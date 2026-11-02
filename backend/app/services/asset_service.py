@@ -17,11 +17,12 @@ from app.core.config import settings
 from app.services.job_service import get_job, update_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.render_queue_service import BACKGROUND_PRIORITY, enqueue_render
-from app.services.video_edit_service import HDR_TO_BT709, run_cancellable
+from app.services.video_edit_service import HDR_TO_BT709, SD_COLOR_SPACES, TO_BT709, run_cancellable
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_BYTES = 1024 * 1024
+ASSET_REVISION = 2  # Raise when proxies change, so old ones are rebuilt.
 PROXY_HEIGHT = 720
 PROXY_GOP = 15  # Short groups of pictures keep scrubbing quick.
 PROXY_BITS = '3M'
@@ -37,7 +38,7 @@ _active: dict[str, str] = {}
 def content_key(path: Path) -> str:
     """Identifies a file by its size and its first and last megabyte, without reading all of it."""
     size = path.stat().st_size
-    digest = hashlib.sha256(str(size).encode())
+    digest = hashlib.sha256(f'{ASSET_REVISION}:{size}'.encode())
     with path.open('rb') as file:
         digest.update(file.read(SAMPLE_BYTES))
         if size > SAMPLE_BYTES:
@@ -97,7 +98,7 @@ def has_videotoolbox() -> bool:
 
 
 def proxy_filters(facts: MediaFacts) -> str:
-    steps = [HDR_TO_BT709] if facts.is_hdr else []
+    steps = [HDR_TO_BT709] if facts.is_hdr else [TO_BT709] if facts.color_space in SD_COLOR_SPACES else []
     steps += [f"scale='if(gt(iw,ih),-2,{PROXY_HEIGHT})':'if(gt(iw,ih),{PROXY_HEIGHT},-2)'", 'fps=30', 'format=yuv420p']
     return ','.join(steps)
 

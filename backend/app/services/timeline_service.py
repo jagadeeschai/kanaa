@@ -16,7 +16,7 @@ from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import Adjust, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
-    BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
+    BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,8 +85,9 @@ def adjust_filters(adjust: Adjust) -> list[str]:
 
 
 def color_filter(facts: MediaFacts) -> str:
-    if facts.media_type == 'image' or facts.color_space in ('bt470bg', 'smpte170m'):
-        return TO_BT709
+    if facts.media_type == 'image' or facts.color_space in SD_COLOR_SPACES:
+        # scale leaves the old label on the frame, and later steps would convert it a second time.
+        return f'{TO_BT709},{TAG_BT709}'
     return HDR_TO_BT709 if facts.is_hdr else TAG_BT709
 
 

@@ -46,6 +46,7 @@ TO_BT709 = 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p'
 # Tone mapping needs linear light; the result is ordinary 8-bit SDR.
 HDR_TO_BT709 = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p'
 TAG_BT709 = 'setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709'
+SD_COLOR_SPACES = ('bt470bg', 'smpte170m')
 BT709_OUTPUT_ARGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv']
 # Everything else, GPS in particular, stays out of exports unless asked for.
 KEPT_METADATA_TAGS = ('creation_time', 'date', 'title')

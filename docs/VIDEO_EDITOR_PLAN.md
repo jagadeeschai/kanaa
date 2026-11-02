@@ -189,16 +189,40 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 **Not yet proven:** real iPhone HDR, rotated or HEVC footage (only synthetic rotated, VFR and HDR clips were tested), audio sync by ear on real speech, and a layer limit test with many animated layers.
 
-### Phase 3: Multi-clip editor and new UI (L)
-This is the first version users will feel.
-- The editor layout above, replacing the single-clip dialog.
-- Canvas timeline with filmstrips, waveforms, playhead, zoom and snapping.
-- Add clips, split, trim, reorder, delete with magnetic ripple.
-- Undo and redo for everything, with autosave.
-- Keyboard: Space, J/K/L, I/O, arrow keys for frames, S to split, Delete, Cmd+Z, Cmd+Shift+Z.
-- Format selection, reframing per clip, platform safe areas, and export presets for YouTube, Reels, Shorts and Square.
+### Phase 3: Multi-clip editor and new UI (done, one check open)
+**Built**
+- `frontend/src/editor/`: `Editor.tsx` (screen, format chooser, inspector, export dialog), `playback.ts` (WebGL preview with a virtual clock), `TimelineView.tsx` (canvas timeline), `editor-shell.css`. Replaces `VideoEditor.tsx`. Lyric projects are unchanged.
+- `frontend/src/timeline/`: `model.ts` (pure editing rules, `normalizeTimeline` fills fields the server omits) and `history.ts` (undo and redo, grouped per drag).
+- Add, split, trim, reorder and delete with magnetic ripple, snapping, zoom, autosave, Fit, Fill, drag to reposition, rotate, flip, picture adjustments, speed, volume and mute per clip, a 9:16 safe-area guide, and 720p, 1080p and 4K export.
+- Keys: Space, K, L (1×, 2×, 4×), J, I, O, arrows (Shift for 10 frames), S, Delete, Cmd+Z, Cmd+Shift+Z.
 
-**Done when:** a new user can join and trim 3 clips and export a Reel in under 3 minutes without help. A 60-clip project stays responsive.
+**Tested in the app's built-in browser with generated clips**
+
+| Check | Result |
+|---|---|
+| Export of the edited 4-clip project | Exactly 510 frames, 17.000 seconds, with sound |
+| 60-clip project export at 1080p, including photos | Exactly 2,700 frames, 90.000 seconds, 38 seconds, 0.42× length |
+| Right clip on screen during playback | 0 wrong of 596 sampled frames |
+| Clip switch cost | 0 long tasks in a 40-second run through 26 cuts |
+| Split on 60 clips, until the next frames are drawn | 14 to 17 ms |
+| Play to first movement | About 50 ms |
+| Phone width, 375 px | Preview, tools and timeline stay on screen, no sideways scroll |
+
+**Fixed along the way**
+- SD-tagged video and photos exported with wrong colors, and SD-tagged proxies previewed with wrong colors. Green measured 221 in export and 161 in preview against 189 in the source. Export now 187, preview 189. Covered by `tests/test_timeline.py`, which fails on the old code. `ASSET_REVISION` rebuilds old proxies, so existing clips prepare again once.
+- Timelines from the server omitted clip fields, which produced `NaN` durations.
+
+**Decisions from this phase**
+- Screenshots on a Mac are in Display P3. Compare preview colors by reading the canvas, not from a screenshot.
+- J steps back one second. Reverse playback isn't possible with `<video>` elements.
+- Clips are added by clicking in Media. Dragging from Media to the timeline isn't built.
+- Only working panels are shown. Text, Audio and Animate tabs arrive with their phases.
+- No platform length limits are shown, because they change and haven't been confirmed.
+
+**Not yet proven**
+- The "done when" user test: a new person trims 3 clips and exports a Reel in under 3 minutes without help. It hasn't been run with a real person.
+- About one 1-second freeze in playback appeared in each of three short runs early in testing, with no long tasks. A blank page showed none in 20 seconds, and a clean 40-second run showed none. The cause is unknown.
+- Audible sync, real phone footage, Chrome and Safari themselves, and touch gestures on a real phone. The test browser is the desktop app's built-in one.
 
 ### Phase 4: Audio (M)
 - Detach audio, volume, fades, music tracks, and mute per clip or layer.

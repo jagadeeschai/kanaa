@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.main import app
 from app.services import asset_service, render_queue_service
+from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.timeline_schema import Timeline, Transform, value_at
@@ -193,6 +194,40 @@ class Join(Clips):
         with self.assertRaises(JobCancelled):
             self.render(data, should_cancel=cancel.is_set)
         self.assertFalse(list(self.out.iterdir()))
+
+
+class Color(Clips):
+    GREEN = (0, 192, 0)
+
+    def tagged_clip(self, matrix):
+        path = self.out / f'{matrix}.mp4'
+        run('-f', 'lavfi', '-i', f'color=c=0x00C000:s=1280x720:r=30:d=1,scale=out_color_matrix={matrix}:out_range=tv,format=yuv420p',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-colorspace', matrix, str(path))
+        return probe_video(path)
+
+    def assert_color(self, frame, expected):
+        for measured, wanted in zip(frame[frame.shape[0] // 2, frame.shape[1] // 2], expected):
+            self.assertAlmostEqual(int(measured), wanted, delta=6)
+
+    def exported(self, media_id, name):
+        return self.render({'format': {'width': 1280, 'height': 720, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'c', 'media_id': media_id, 'start': 0, 'in': 0, 'out': 1}]}]}, f'{name}.mp4')
+
+    def test_export_keeps_sd_and_hd_colors(self):
+        for matrix in ('bt470bg', 'bt709'):
+            with self.subTest(matrix=matrix):
+                self.facts[20] = self.tagged_clip(matrix)
+                self.assert_color(self.frame(self.exported(20, f'export-{matrix}'), 5), self.GREEN)
+
+    def test_export_keeps_image_color(self):
+        self.assert_color(self.frame(self.exported(6, 'image'), 5), (255, 0, 255))
+
+    def test_proxy_keeps_sd_and_hd_colors(self):
+        for matrix in ('bt470bg', 'bt709'):
+            with self.subTest(matrix=matrix):
+                target = self.out / f'proxy-{matrix}.mp4'
+                make_proxy(self.tagged_clip(matrix), target, lambda: False)
+                self.assert_color(self.frame(target, 5), self.GREEN)
 
 
 class Rules(unittest.TestCase):
