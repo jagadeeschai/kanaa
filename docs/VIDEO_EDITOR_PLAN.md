@@ -389,6 +389,14 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 
 **Suggested order:** 0, 1, 2, 3, then 4 and 5 together, then 6, 7, 8. Phases 0–3 give a real multi-clip social editor. Give time estimates only after Phase 1, since its measurements decide how hard the later phases are.
 
+## Mac app
+`desktop/build.sh` builds `WideAngle Motion.app` and installs it in Applications. It's Electron 33 with `desktop/main.cjs` inside, chosen because Chromium is the engine every phase was tested on. FastAPI serves `frontend/dist`.
+
+- The app runs this folder's code and data, so it only works on this Mac and the folder must stay put. Rerun `build.sh` after code changes.
+- It's signed ad hoc. Sharing it needs an Apple Developer ID, notarization, and bundled Python, ffmpeg and models.
+- Don't use `@electron/packager`: its unpacking step exits silently on Node 26.
+- Only one Motion can use port 8010. If an older one from the terminal holds it, the app says so.
+
 ## AI backlog
 Not started. Every AI edit must be a normal timeline change, so one Undo removes it. Build in this order.
 
@@ -425,7 +433,7 @@ Not started. Every AI edit must be a normal timeline change, so one Undo removes
 - Run long jobs through `enqueue_render`, and honor `should_cancel`.
 - Pass ffmpeg arguments as lists, never through a shell.
 - Keep timeline, playback, audio, rendering and UI in separate modules. Keep per-frame state out of React renders.
-- Motion stays independent of Photos, with no shared database or required process.
+- Motion stands alone, with no link to Photos, no shared database and no required process.
 
 ---
 

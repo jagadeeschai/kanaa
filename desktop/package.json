@@ -1,0 +1,7 @@
+{
+  "name": "wideangle-motion-desktop",
+  "productName": "WideAngle Motion",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.cjs"
+}

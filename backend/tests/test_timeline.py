@@ -778,6 +778,19 @@ class Assets(Clips):
 
 
 class Api(Clips):
+    def test_built_page_is_served_without_leaving_its_folder(self):
+        dist = self.out / 'dist'
+        dist.mkdir()
+        (dist / 'index.html').write_text('app page')
+        (dist / 'logo.txt').write_text('logo')
+        (self.out / 'secret.txt').write_text('secret')
+        with patch('app.main.FRONTEND', dist):
+            self.assertEqual(self.client.get('/').text, 'app page')
+            self.assertEqual(self.client.get('/logo.txt').text, 'logo')
+            self.assertEqual(self.client.get('/projects/5').text, 'app page')
+            self.assertEqual(self.client.get('/..%2Fsecret.txt').text, 'app page')
+            self.assertEqual(self.client.get('/api/nothing').status_code, 404)
+
     def test_transparent_picture_previews_with_its_transparency(self):
         logo = self.out / 'logo.png'
         Image.new('RGBA', (64, 64), (0, 255, 0, 0)).save(logo)

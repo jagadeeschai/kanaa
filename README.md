@@ -1,9 +1,14 @@
 # WideAngle Motion
 
-The video and lyrical creation app in the WideAngle suite. This is a standalone
-project: it does not import code from or connect to the WideAngle Photos backend.
+A video editor and lyric video creator that runs on your own Mac.
 
-## Start
+## Mac app
+
+Run `desktop/build.sh` once. It installs `WideAngle Motion.app` in Applications.
+The app runs this folder's code and keeps projects in `backend/.data`, so keep the
+folder where it is. Run `desktop/build.sh` again after pulling new code.
+
+## Start from a terminal
 
 Install Python 3.12+, Node 22+, FFmpeg and ffprobe. Then run:
 
