@@ -10,6 +10,7 @@ type Props = {
   playhead: { current: number };
   onSelect: (id: string | null) => void; onSeek: (t: number) => void;
   onChange: (next: Timeline, group: string) => void; onScrubStart: () => void;
+  onItemMenu: (id: string | null, t: number, x: number, y: number) => void;
 };
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
@@ -24,7 +25,7 @@ const readColors = (element: HTMLElement) => {
 
 const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
@@ -224,6 +225,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     return null;
   };
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    // Right-click, and Control-click on a Mac, open the menu. They must never drag or trim.
+    if (event.button !== 0 || event.ctrlKey) return;
     const x = pointerTime(event); const y = event.nativeEvent.offsetY;
     event.currentTarget.setPointerCapture(event.pointerId);
     onScrubStart();
@@ -297,6 +300,13 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       if (next !== props.current.timeline) onChange(next, drag.group);
     }
   };
+  const onContextMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    event.preventDefault(); event.stopPropagation();
+    const x = event.clientX - canvasRef.current!.getBoundingClientRect().left; const y = event.nativeEvent.offsetY;
+    const item = hitSound(x, y)?.sound.id ?? hit(x, y)?.clip.id ?? null;
+    if (item) onSelect(item);
+    onItemMenu(item, timeOf(x), event.clientX, event.clientY);
+  };
   const onPointerUp = () => { dragRef.current = null; };
 
   const tracks = trackLayers(timeline);
@@ -309,7 +319,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.length * (SOUND_HEIGHT + SOUND_GAP) }}>
       <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, soundTop(row), SOUND_HEIGHT))}</div>
       <div className="tl-scroll" ref={hostRef}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}/>
+        <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}/>
       </div>
     </div>
   </div>;

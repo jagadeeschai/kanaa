@@ -44,7 +44,7 @@ export function Splitter({ label, axis, value, min, max, sign, onChange, onReset
   const at = (event: React.PointerEvent) => (axis === 'x' ? event.clientX : event.clientY);
   return <div className={`ed-split ${axis}`} role="separator" aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'} aria-label={label} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} tabIndex={0} title="Drag to resize. Double-click to reset."
     onDoubleClick={onReset}
-    onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { from: at(event), value }; }}
+    onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { from: at(event), value }; }}
     onPointerMove={(event) => { if (drag.current) onChange(limit(drag.current.value + (at(event) - drag.current.from) * sign)); }}
     onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
     onKeyDown={(event) => {

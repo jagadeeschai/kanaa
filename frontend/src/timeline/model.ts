@@ -424,3 +424,16 @@ export function cornerPlacement(source: { width: number; height: number }, rotat
   const halfX = (fitted.width * scale) / 2 + margin; const halfY = (fitted.height * scale) / 2 + margin;
   return { x: (corner.endsWith('left') ? halfX : format.width - halfX) / format.width, y: (corner.startsWith('top') ? halfY : format.height - halfY) / format.height };
 }
+
+/** A copy right after the original, in the same layer when it fits. */
+export function duplicateItem(timeline: Timeline, id: string, newId: string, layerId: string): Timeline {
+  const main = mainLayer(timeline);
+  const index = main.items.findIndex((clip) => clip.id === id);
+  if (index >= 0) return insertClip(timeline, { ...main.items[index], id: newId, transition_in: null }, index + 1);
+  const clip = findClip(timeline, id);
+  if (clip) return addOverlay(timeline, { ...clip, id: newId, start: round(clip.start + clipLength(clip)) }, layerId);
+  const sound = findSound(timeline, id)?.sound;
+  if (sound) return addSound(timeline, { ...sound, id: newId, start: round(sound.start + soundLength(sound)) }, layerId);
+  const text = findText(timeline, id)?.text;
+  return text ? addText(timeline, { ...text, id: newId, start: round(text.start + text.length) }, layerId) : timeline;
+}

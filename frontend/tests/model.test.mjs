@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
-import { cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -297,4 +297,19 @@ test('a corner tucks the picture in with an even margin', () => {
   const gapRight = (1 - spot.x) * 1920 - 288; const gapBottom = (1 - spot.y) * 1080 - 162;
   assert.ok(Math.abs(gapRight - gapBottom) < 1e-6);
   assert.ok(gapRight > 0);
+});
+
+test('a duplicate lands right after the original, and the main track makes room', () => {
+  const two = insertClip(withClip(), newClip(facts, 'second'));
+  const copied = duplicateItem(two, 'c', 'copy', 'l');
+  assert.deepEqual(mainLayer(copied).items.map((clip) => clip.id), ['c', 'copy', 'second']);
+  assert.equal(findClip(copied, 'second').start, 20);
+  const copy = findSound(duplicateItem(addSound(withClip(), song('s', 1), 'l1'), 's', 'twin', 'l2'), 'twin');
+  assert.equal(copy.sound.start, 4);
+  assert.equal(findText(duplicateItem(addText(withClip(), title('t', 1), 'l1'), 't', 'twin', 'l2'), 'twin').text.start, 4);
+});
+
+test('a duplicated clip does not repeat its opening transition', () => {
+  const base = insertClip(withClip(), { ...newClip(facts, 'b'), transition_in: { kind: 'wipe', duration: 1 } });
+  assert.equal(findClip(duplicateItem(base, 'b', 'copy', 'l'), 'copy').transition_in, null);
 });
