@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Layers, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, AudioLines, Check, CircleHelp, Layers, Monitor, Moon, PanelLeft, PanelRight, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import type { Photo } from '../types/photo';
@@ -7,6 +7,7 @@ import type { Animation, LookName, Preset, Transition, TransitionKind } from '..
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { cornerPlacement, isLocked, layerOf, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
+import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, useEditorTheme } from './layout';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
@@ -27,6 +28,7 @@ const PREVIEW_SHORT_SIDE = 540;
 const RENDERED_ID = -1;
 const BLENDS: { id: BlendMode; label: string }[] = [{ id: 'normal', label: 'Normal' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' }, { id: 'overlay', label: 'Overlay' }, { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }];
 const CORNERS: { id: Corner; label: string }[] = [{ id: 'top-left', label: 'Top left' }, { id: 'top-right', label: 'Top right' }, { id: 'bottom-left', label: 'Bottom left' }, { id: 'bottom-right', label: 'Bottom right' }];
+const FIT_MARGIN = 48;
 const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }];
@@ -49,7 +51,12 @@ function reducer(state: History<Timeline | null>, action: Action): History<Timel
 }
 let idCounter = 0;
 const newId = () => `clip-${Date.now().toString(36)}-${(idCounter += 1)}`;
-const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
+const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable || target.getAttribute('role') === 'separator');
+/** A button keeps focus only when reached by keyboard (see releaseClickedButton), so then it takes Space itself. */
+const buttonTakesSpace = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('button') !== null;
+/** Without this, Space after clicking a media tile would add the clip again instead of playing. */
+const releaseClickedButton = (event: React.MouseEvent) => { if (event.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur(); };
+const RESTART_MESSAGE = 'Motion was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
 export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
@@ -67,6 +74,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [addingMusic, setAddingMusic] = useState(false);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
+  const { choice: themeChoice, next: nextTheme, theme } = useEditorTheme();
+  const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
+  const [leftTab, setLeftTab] = useState<'media' | 'text' | 'audio'>('media');
+  const [showingHelp, setShowingHelp] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const fitted = useRef(false);
   const [heavy, setHeavy] = useState(false);
   const [rendered, setRendered] = useState<{ key: string; url: string } | null>(null);
   const [renderJob, setRenderJob] = useState<{ id: string; key: string; progress: number } | null>(null);
@@ -142,7 +155,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         dispatch({ type: 'load', timeline: loaded });
         if (!started) setChoosingFormat(true);
         loadedRef.current = true;
-      } catch (problem) { if (!cancelled) setError((problem as Error).message); }
+      } catch (problem) {
+        // Only a backend older than this page lacks the timeline route.
+        if (!cancelled) setError((problem as Error).message === 'Not Found' ? RESTART_MESSAGE : (problem as Error).message);
+      }
     })();
     return () => { cancelled = true; };
   }, [projectId]);
@@ -366,7 +382,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isTyping(event.target) || !timeline || exporting || choosingFormat) return;
+      if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
+      if (isTyping(event.target) || !timeline || exporting || choosingFormat || showingHelp) return;
+      if (event.key === ' ' && buttonTakesSpace(event.target)) return;
       const command = event.metaKey || event.ctrlKey;
       const engine = engineRef.current;
       const frame = 1 / timeline.format.fps;
@@ -389,7 +407,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [timeline, exporting, choosingFormat, showingHelp, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -406,13 +424,26 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
 
   const total = timeline ? duration(timeline) : 0;
-  const aspect = timeline ? `${timeline.format.width} / ${timeline.format.height}` : '16 / 9';
+  const fitZoom = useCallback(() => {
+    const width = rootRef.current?.querySelector('.tl-scroll')?.clientWidth;
+    if (width && total) setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (width - FIT_MARGIN) / total)));
+  }, [total]);
+  useEffect(() => { if (total && !fitted.current) { fitted.current = true; fitZoom(); } }, [total, fitZoom]);
+  const usedIds = useMemo(() => new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])) : []), [timeline]);
+  const mediaOpen = layout.mediaOpen; const inspectorOpen = layout.inspectorOpen;
+  const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '0px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '0px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
+  const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && !mainLayer(timeline).items.length;
-  return <div className="ed" role="application" aria-label="Video editor">
+  return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} role="application" aria-label="Video editor">
     <header className="ed-top">
       <button className="ed-icon" onClick={onClose} aria-label="Back to projects"><ArrowLeft size={18}/></button>
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
+      <button className={`ed-icon ed-hide-small ${mediaOpen ? '' : 'on'}`} aria-pressed={!mediaOpen} aria-label="Hide media panel" title={mediaOpen ? 'Hide the media panel' : 'Show the media panel'} onClick={() => updateLayout({ mediaOpen: !mediaOpen })}><PanelLeft size={17}/></button>
+      <button className={`ed-icon ed-hide-small ${inspectorOpen ? '' : 'on'}`} aria-pressed={!inspectorOpen} aria-label="Hide settings panel" title={inspectorOpen ? 'Hide the settings panel' : 'Show the settings panel'} onClick={() => updateLayout({ inspectorOpen: !inspectorOpen })}><PanelRight size={17}/></button>
+      <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
+      <button className="ed-icon ed-hide-small" aria-label="Shortcuts and layout" title="Shortcuts and layout (?)" onClick={() => setShowingHelp(true)}><CircleHelp size={17}/></button>
+      <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
       <button className="ed-button" onClick={() => setChoosingFormat(true)}>{timeline ? `${timeline.format.width} × ${timeline.format.height}` : 'Format'}</button>
@@ -421,51 +452,72 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
     {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
-    <div className="ed-body">
-      <aside className="ed-media" aria-label="Media">
-        <h2>Media</h2>
-        <div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div>
-        <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
-        <label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
-          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
-        <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <div className="ed-tile" key={item.id}>
-          <button className="ed-tile-add" onClick={() => addMedia(item)} title={`Add ${item.filename}`}><img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span><Plus size={13}/>{item.filename}</span></button>
-          <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div>
+    <div className="ed-workspace"><div className="ed-body">
+      <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
+        <div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'text', 'audio'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{tab === 'media' ? 'Media' : tab === 'text' ? 'Text' : 'Audio'}</button>)}</div>
+        {leftTab === 'media' && <>
+          <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
+          <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <div className="ed-tile" key={item.id}>
+            <button className="ed-tile-add" onClick={() => addMedia(item)} title={`Add ${item.filename}`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
+            {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
+            <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div>
+        </>}
+        {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div></>}
+        {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
+          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}
       </aside>
+      {mediaOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <span/>}
       <main className="ed-stage">
-        <div className="ed-frame" style={{ aspectRatio: aspect }}>
+        <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
-          {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Choose something from Media on the left</span></div>}
+          {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick a video in the Media panel</span></div>}
         </div>
         <div className="ed-transport">
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
-          <button className={`ed-icon ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} aria-label="Show safe area" title="Show safe area"><ShieldCheck size={17}/></button>
+          <button className={`ed-icon ed-safe-toggle ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} title="Show where platform buttons may cover your video"><ShieldCheck size={15}/>Safe area</button>
         </div>
       </main>
-      <aside className="ed-inspector" aria-label="Clip settings">{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+      {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <span/>}
+      <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings">{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedText ? <TextInspector text={selectedText} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
-          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p></div>}</aside>
+          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Shortcuts and layout</button></div>}</aside>
     </div>
-    <div className="ed-tools">
+    <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
+    <div className="ed-lower"><div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
       <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
-      <button className="ed-button" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
+      <button className="ed-button ed-hide-small" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
+      <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
       <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
       <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
+    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
+    </div></div>
+    {showingHelp && <HelpDialog onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
   </div>;
+}
+
+const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
+
+function HelpDialog({ onClose, onResetLayout }: { onClose: () => void; onResetLayout: () => void }) {
+  return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Shortcuts and layout" onClick={onClose}><div className="ed-card small" onClick={(event) => event.stopPropagation()}>
+    <button className="ed-close" aria-label="Close" onClick={onClose}><X size={17}/></button>
+    <h2>Shortcuts and layout</h2>
+    <div className="ed-keys">{SHORTCUTS.flatMap(([keys, action]) => [<kbd key={keys}>{keys}</kbd>, <span key={action}>{action}</span>])}</div>
+    <p>Drag the gaps between panels to resize them. Double-click a gap to reset it.</p>
+    <button className="ed-button wide" onClick={() => { onResetLayout(); onClose(); }}>Reset layout</button>
+  </div></div>;
 }
 
 function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | null; current: Format; onChoose: (format: Format) => void }) {
@@ -478,7 +530,7 @@ function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | 
 }
 
 function Slider({ label, value, min, max, step = 0.01, shown, onChange, onReset }: { label: string; value: number; min: number; max: number; step?: number; shown: string; onChange: (value: number) => void; onReset: () => void }) {
-  return <label className="ed-slider" onDoubleClick={onReset} title="Double-click to reset"><span>{label}<em>{shown}</em></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))}/></label>;
+  return <label className="ed-slider" onDoubleClick={onReset} title="Double-click to reset"><span>{label}<em>{shown}</em></span> <input aria-label={label} type="range" style={{ '--fill': `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties} min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))}/></label>;
 }
 
 function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
@@ -553,7 +605,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
   const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
   const percent = (value: number) => `${Math.round(value * 100)}%`;
   return <>
-    <h2>Framing</h2>
+    <Group title="Framing" startOpen>
     <div className="ed-pair">
       <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
       <button className={`ed-button ${filling ? 'on' : ''}`} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
@@ -571,14 +623,18 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       <button className={`ed-icon ${clip.adjust.flip_horizontal ? 'on' : ''}`} aria-label="Flip horizontally" onClick={() => adjust({ flip_horizontal: !clip.adjust.flip_horizontal })}><FlipHorizontal size={16}/></button>
       <button className={`ed-icon ${clip.adjust.flip_vertical ? 'on' : ''}`} aria-label="Flip vertically" onClick={() => adjust({ flip_vertical: !clip.adjust.flip_vertical })}><FlipVertical size={16}/></button>
     </div>
+    </Group>
+    <Group title="Motion" startOpen={Object.keys(clip.transform.keyframes ?? {}).length > 0} changed={Object.keys(clip.transform.keyframes ?? {}).length > 0}>
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} id={clip.id} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal}/>
-    <h2>Picture</h2>
+    </Group>
+    <Group title="Colour" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1}>
+    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
+    <h3 className="ed-sub">Adjust</h3>
     <Slider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} shown={percent(clip.adjust.brightness)} onChange={(brightness) => adjust({ brightness })} onReset={() => adjust({ brightness: 1 })}/>
     <Slider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} shown={percent(clip.adjust.contrast)} onChange={(contrast) => adjust({ contrast })} onReset={() => adjust({ contrast: 1 })}/>
     <Slider label="Saturation" value={clip.adjust.saturation} min={0} max={2} shown={percent(clip.adjust.saturation)} onChange={(saturation) => adjust({ saturation })} onReset={() => adjust({ saturation: 1 })}/>
-    <h2>Look</h2>
-    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
-    <h2>Animation</h2>
+    </Group>
+    <Group title="Animation" changed={Boolean(clip.enter || clip.exit || clip.transition_in)}>
     {canTransition && <>
       <h3 className="ed-sub">Transition from the last clip</h3>
       <Chips label="Transition" options={[{ id: 'none' as const, label: 'None' }, ...TRANSITIONS]} value={transition?.kind ?? 'none'} onPick={(kind) => { onChange({ transition_in: kind === 'none' ? null : { kind, duration: transition?.duration ?? 0.6 } }); if (kind !== 'none') setTimeout(onShowTransition, 60); }}/>
@@ -586,14 +642,14 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     </>}
     {transition ? <p className="ed-tip">The transition replaces this clip's enter animation.</p> : <AnimationPicker label="Enter" value={clip.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onShowEnter}/>}
     {closesWithTransition ? <p className="ed-tip">The next clip's transition replaces this clip's exit animation.</p> : <AnimationPicker label="Exit" value={clip.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onShowExit}/>}
-    {source?.kind === 'video' && <>
-      <h2>Speed</h2>
+    </Group>
+    {source?.kind === 'video' && <Group title="Speed and sound" changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0}>
       <Slider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} shown={`${clip.speed.toFixed(2)}×`} onChange={(speed) => onChange({ speed }, `speed-${clip.id}`)} onReset={() => onChange({ speed: 1 })}/>
-      <h2>Sound</h2>
+      <h3 className="ed-sub">Sound</h3>
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
       <SoundControls item={clip} id={clip.id} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
       {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
-    </>}
+    </Group>}
   </>;
 }
 

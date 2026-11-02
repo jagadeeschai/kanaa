@@ -36,7 +36,6 @@ export function MotionPanel(props: PanelProps) {
   const animated = (['position', 'scale', 'rotation', 'opacity'] as Control[]).filter((control) => isAnimated(transform, control));
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;
   return <>
-    <h2>Motion</h2>
     <div className="ed-motion"><span>Position</span><Stopwatch {...props} control="position"/></div>
     {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a keyframe.</p>}
     {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).map((control) => {
@@ -44,7 +43,7 @@ export function MotionPanel(props: PanelProps) {
       const value = valueAt(transform, slider.property, local);
       return <div key={control} className="ed-motion-row">
         <div className="ed-motion"><span>{slider.label}<em>{slider.shown(value)}</em></span><Stopwatch {...props} control={control}/></div>
-        <input type="range" aria-label={slider.label} min={slider.min} max={slider.max} step={slider.step} value={value} onDoubleClick={() => onChange(writeValue(transform, slider.property, local, slider.rest))} onChange={(event) => onChange(writeValue(transform, slider.property, local, Number(event.target.value)), `${control}-${id}-${local}`)}/>
+        <input type="range" aria-label={slider.label} style={{ '--fill': `${((value - slider.min) / (slider.max - slider.min)) * 100}%` } as React.CSSProperties} min={slider.min} max={slider.max} step={slider.step} value={value} onDoubleClick={() => onChange(writeValue(transform, slider.property, local, slider.rest))} onChange={(event) => onChange(writeValue(transform, slider.property, local, Number(event.target.value)), `${control}-${id}-${local}`)}/>
       </div>;
     })}
     {ease && <div className="ed-chips" role="group" aria-label="Motion style">{EASES.map((option) => <button key={option.id} className={ease === option.id ? 'on' : ''} aria-pressed={ease === option.id} onClick={() => onChange(animated.reduce((next, control) => setEase(next, control, option.id), transform))}>{option.label}</button>)}</div>}

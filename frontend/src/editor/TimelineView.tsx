@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import { keyTimes } from '../timeline/keyframes';
 import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
-  timeline: Timeline; selectedId: string | null; zoom: number;
+  timeline: Timeline; selectedId: string | null; zoom: number; theme: string;
   visuals: (mediaId: number) => ClipVisuals; soundPeaks: (sound: Sound) => ClipVisuals['peaks']; source: (mediaId: number) => SourceFacts | undefined;
   playhead: { current: number };
   onSelect: (id: string | null) => void; onSeek: (t: number) => void;
@@ -14,16 +14,24 @@ type Props = {
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
 const RULER = 26; const TRACK_TOP = 34; const TRACK_HEIGHT = 74; const SOUND_HEIGHT = 36; const SOUND_GAP = 4; const BASE_HEIGHT = 128; const HANDLE = 9; const PAD = 16; const SNAP_PIXELS = 8;
-const COLORS = { ruler: '#8e8aa3', tick: '#3b3850', clip: '#2c2940', clipEdge: '#4a4566', selected: '#a78bfa', wave: '#c4b5fd', veil: 'rgba(15,13,22,.62)', sound: '#1f3b4d', soundEdge: '#35637e', text: '#3b2f6b', textEdge: '#6d58b8', soundWave: '#7dd3fc', fade: 'rgba(10,8,16,.55)', head: '#fbbf24', name: '#f4f2ff' };
+type Colors = Record<'ruler' | 'rulerBg' | 'tick' | 'clip' | 'clipEdge' | 'selected' | 'wave' | 'band' | 'veil' | 'sound' | 'soundEdge' | 'text' | 'textEdge' | 'soundWave' | 'fade' | 'name' | 'head', string>;
+const TOKENS: Colors = { ruler: '--ruler-text', rulerBg: '--ruler-bg', tick: '--hairline', clip: '--clip', clipEdge: '--clip-edge', selected: '--accent-text', wave: '--clip-wave', band: '--wave-band', veil: '--veil', sound: '--sound', soundEdge: '--sound-edge', text: '--text-item', textEdge: '--text-item-edge', soundWave: '--sound-wave', fade: '--fade', name: '--clip-label', head: '--playhead' };
+/** The canvas can't use CSS variables directly, so they are read once per theme. */
+const readColors = (element: HTMLElement) => {
+  const style = getComputedStyle(element);
+  return Object.fromEntries(Object.entries(TOKENS).map(([key, token]) => [key, style.getPropertyValue(token).trim()])) as Colors;
+};
 
 const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
 
-export default function TimelineView({ timeline, selectedId, zoom, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
   props.current = { timeline, selectedId, zoom, visuals, soundPeaks, source };
   const dragRef = useRef<Drag | null>(null);
+  const colors = useRef(TOKENS);
+  useLayoutEffect(() => { colors.current = readColors(hostRef.current!); }, [theme]);
   const groupCount = useRef(0);
 
   const xOf = (t: number) => PAD + t * props.current.zoom;
@@ -37,7 +45,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       const y = TRACK_TOP; const h = TRACK_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, Math.max(2, width), h, 7); context.clip();
-      context.fillStyle = COLORS.clip; context.fillRect(x, y, width, h);
+      context.fillStyle = colors.current.clip; context.fillRect(x, y, width, h);
       const { filmstrip, peaks: allPeaks } = look(clip.media_id);
       const peaks = clip.muted ? undefined : allPeaks;
       if (filmstrip?.image.complete && filmstrip.image.naturalWidth) {
@@ -51,8 +59,8 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         }
       }
       if (peaks?.peaks.length) {
-        context.fillStyle = 'rgba(16,14,26,.72)'; context.fillRect(x, y + h * 0.72, width, h * 0.28);
-        context.fillStyle = COLORS.wave;
+        context.fillStyle = colors.current.band; context.fillRect(x, y + h * 0.72, width, h * 0.28);
+        context.fillStyle = colors.current.wave;
         const base = y + h - 2; const room = h * 0.26;
         for (let px = 0; px < width; px += 2) {
           if (x + px > host.scrollLeft + host.clientWidth || x + px < host.scrollLeft) continue;
@@ -62,10 +70,10 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       }
       context.restore();
       context.lineWidth = clip.id === selected ? 2 : 1;
-      context.strokeStyle = clip.id === selected ? COLORS.selected : COLORS.clipEdge;
+      context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, Math.max(2, width - 1), h - 1, 7); context.stroke();
       if (clip.id === selected) {
-        context.fillStyle = COLORS.selected;
+        context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
@@ -75,11 +83,11 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       const quiet = sound.muted || layerMuted;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
-      context.fillStyle = COLORS.sound; context.fillRect(x, y, width, h);
+      context.fillStyle = colors.current.sound; context.fillRect(x, y, width, h);
       context.globalAlpha = quiet ? 0.3 : 1;
       const peaks = look(sound);
       if (peaks?.peaks.length) {
-        context.fillStyle = COLORS.soundWave;
+        context.fillStyle = colors.current.soundWave;
         const middle = y + h / 2;
         for (let px = Math.max(0, -x); px < Math.min(width, host.scrollLeft + host.clientWidth - x); px += 2) {
           const index = Math.floor((sound.in + (px / width) * (sound.out - sound.in)) * peaks.peaks_per_second);
@@ -88,17 +96,17 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         }
       }
       context.globalAlpha = 1;
-      context.fillStyle = COLORS.fade;
+      context.fillStyle = colors.current.fade;
       if (sound.fade_in) { context.beginPath(); context.moveTo(x, y); context.lineTo(x + sound.fade_in * scale, y); context.lineTo(x, y + h); context.fill(); }
       if (sound.fade_out) { context.beginPath(); context.moveTo(x + width, y); context.lineTo(x + width - sound.fade_out * scale, y); context.lineTo(x + width, y + h); context.fill(); }
-      context.fillStyle = COLORS.name; context.font = '10px Inter, system-ui, sans-serif';
+      context.fillStyle = colors.current.name; context.font = '10px Inter, system-ui, sans-serif';
       context.fillText(`${quiet ? 'Muted · ' : ''}${sound.duck ? 'Dips · ' : ''}${sound.name}`, x + 8, y + 9);
       context.restore();
       context.lineWidth = sound.id === selected ? 2 : 1;
-      context.strokeStyle = sound.id === selected ? COLORS.selected : COLORS.soundEdge;
+      context.strokeStyle = sound.id === selected ? colors.current.selected : colors.current.soundEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
       if (sound.id === selected) {
-        context.fillStyle = COLORS.selected;
+        context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
@@ -107,21 +115,21 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
-      context.fillStyle = COLORS.text; context.fillRect(x, y, width, h);
-      context.fillStyle = COLORS.name; context.font = '12px "Noto Sans Tamil", Inter, system-ui, sans-serif';
+      context.fillStyle = colors.current.text; context.fillRect(x, y, width, h);
+      context.fillStyle = colors.current.name; context.font = '12px "Noto Sans Tamil", Inter, system-ui, sans-serif';
       context.fillText(text.text, x + 8, y + h / 2);
       context.restore();
       context.lineWidth = text.id === selected ? 2 : 1;
-      context.strokeStyle = text.id === selected ? COLORS.selected : COLORS.textEdge;
+      context.strokeStyle = text.id === selected ? colors.current.selected : colors.current.textEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
       if (text.id === selected) {
-        context.fillStyle = COLORS.selected;
+        context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
     const drawKeys = (clip: Clip, x: number, bottom: number) => {
       if (clip.id !== props.current.selectedId) return;
-      context.fillStyle = COLORS.head;
+      context.fillStyle = colors.current.head;
       for (const t of keyTimes(clip.transform)) {
         if (t > clipLength(clip)) continue;
         const middle = x + t * props.current.zoom;
@@ -133,7 +141,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
-      context.fillStyle = COLORS.clip; context.fillRect(x, y, width, h);
+      context.fillStyle = colors.current.clip; context.fillRect(x, y, width, h);
       const { filmstrip } = look(clip.media_id);
       if (filmstrip?.image.complete && filmstrip.image.naturalWidth) {
         const tile = h * (filmstrip.tile_width / filmstrip.tile_height);
@@ -141,10 +149,10 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       }
       context.restore();
       context.lineWidth = clip.id === selected ? 2 : 1;
-      context.strokeStyle = clip.id === selected ? COLORS.selected : COLORS.clipEdge;
+      context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
       if (clip.id === selected) {
-        context.fillStyle = COLORS.selected;
+        context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
       drawKeys(clip, x, y + h);
@@ -165,14 +173,15 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       context.clearRect(0, 0, width, height);
       const { zoom: scale } = props.current;
+      context.fillStyle = colors.current.rulerBg; context.fillRect(0, 0, width, RULER);
       const step = [1, 2, 5, 10, 30, 60, 300].find((seconds) => seconds * scale >= 70) ?? 600;
       context.font = '11px Inter, system-ui, sans-serif'; context.textBaseline = 'middle';
       for (let t = 0; xOf(t) < width; t += step) {
-        context.fillStyle = COLORS.tick; context.fillRect(xOf(t), RULER - 8, 1, 8);
-        context.fillStyle = COLORS.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
+        context.fillStyle = colors.current.tick; context.fillRect(xOf(t), RULER - 8, 1, 8);
+        context.fillStyle = colors.current.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
       for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip, xOf(clip.start), TRACK_TOP + TRACK_HEIGHT); }
-      const veil = (hidden: boolean | undefined, y: number, h: number) => { if (hidden) { context.fillStyle = COLORS.veil; context.fillRect(0, y, width, h); } };
+      const veil = (hidden: boolean | undefined, y: number, h: number) => { if (hidden) { context.fillStyle = colors.current.veil; context.fillRect(0, y, width, h); } };
       veil(mainLayer(shown).hidden, TRACK_TOP, TRACK_HEIGHT);
       tracks.forEach((layer, row) => {
         if (layer.kind === 'video') for (const clip of layer.items) drawOverlay(clip, row);
@@ -181,7 +190,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         veil(layer.hidden, soundTop(row), SOUND_HEIGHT);
       });
       const head = xOf(playhead.current);
-      context.fillStyle = COLORS.head; context.fillRect(head - 1, 0, 2, height);
+      context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
     };
     draw();

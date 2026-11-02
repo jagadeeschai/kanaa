@@ -360,6 +360,25 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 **Not yet proven:** the heavy-project message was triggered by hand, because this Mac never struggled, so its threshold is untested on a slower machine. Also real footage, 4K sources, a machine busy with other work, Chrome and Safari themselves, and phones.
 
+### Editor design pass (done)
+Asked for after using Phase 7: adjustable panels, less flat, light and dark themes.
+
+**Built**
+- `editor/layout.tsx`: theme (system, light, dark) and layout, both stored per browser, resize handles, collapsible settings groups.
+- `editor-shell.css` is token-based. Panels float on the background with 6px gaps, wells sit recessed and controls raised. The stage stays neutral dark in both themes, so colour can be judged. The timeline canvas reads the same tokens once per theme.
+- Drag handles for Media, settings and timeline, with double-click and Reset layout. Handles work by keyboard. Panels can be hidden.
+- Settings grouped as Framing, Motion, Colour, Animation, Speed and sound, with a dot on closed groups that hold changes.
+- Media, Text and Audio tabs. Tiles show duration and a tick when used. Fit zoom on open. Shortcuts guide on `?`.
+- The preview now sizes with container units, so narrow panels can't distort it. Measured 1.778 at 1440, 1000 and 375 px.
+
+**Fixed along the way**
+- Space after clicking a media tile added the clip again. Mouse clicks now release focus. Keyboard users keep it.
+- Arrows or Delete on a focused handle would have reached the timeline.
+- "Not Found" from an old backend now says to restart.
+- Export's hover colour fell below 4.5:1 on white text.
+
+**Not proven:** colour contrast was calculated, not measured on rendered screens. Timeline row height stays fixed on purpose, because heads, drawing and hit-testing share it.
+
 ### Phase 8: Easy automation and lyric videos (L)
 - Auto captions, using Whisper and the letter-level aligner, with editable lines.
 - Cut on the beat, remove silences.
