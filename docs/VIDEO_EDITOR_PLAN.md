@@ -389,6 +389,23 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 
 **Suggested order:** 0, 1, 2, 3, then 4 and 5 together, then 6, 7, 8. Phases 0–3 give a real multi-clip social editor. Give time estimates only after Phase 1, since its measurements decide how hard the later phases are.
 
+## AI backlog
+Not started. Every AI edit must be a normal timeline change, so one Undo removes it. Build in this order.
+
+| Order | Feature | What it does | Runs on | Phase |
+|---|---|---|---|---|
+| 1 | Auto captions | Tamil or English captions on the timeline, editable, using the title styles | This Mac: Whisper | 8 |
+| 2 | Remove silences | Finds pauses and removes them after a review | This Mac | 8 |
+| 3 | Cut to the beat | Snaps clips to the song, using `beat_service.py` | This Mac | 8 |
+| 4 | Auto reframe | Turns 16:9 into 9:16 and keeps faces in frame | This Mac | After 8 |
+| 5 | Edit by asking | A request such as "make a 30-second Reel with captions" becomes timeline changes | Cloud AI, optional | After 1 to 3, which it uses as tools |
+| 6 | Highlights | Picks the best moments from a long video using speech and sound | Cloud AI, optional | After 5 |
+| 7 | AI B-roll | Generates images for what's being said, reusing the lyric scene builder | Cloud AI, optional | After 5 |
+
+**Notes**
+- Tamil caption accuracy is the main risk. Whisper matched 28% of the lyric words on one song. Singing is harder than speech, so captions must be easy to correct, and pasting known lyrics to align them should be an option.
+- Cloud features send project details to an outside service, so they need a clear opt-in.
+
 ---
 
 ## Rules for the implementing agent
