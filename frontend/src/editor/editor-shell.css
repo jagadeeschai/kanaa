@@ -18,7 +18,8 @@
 .ed-workspace{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 6px 6px}
 .ed-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--media-col) var(--media-gap) minmax(280px,1fr) var(--inspector-gap) var(--inspector-col)}
 .ed-media,.ed-inspector{overflow-y:auto;padding:10px;background:var(--panel);border-radius:10px;box-shadow:var(--shade1);min-width:0}.ed-inspector{padding:4px 10px 10px}
-.ed-panel-closed{display:none}
+/* Stays in the grid, or the panels after it would slide into the wrong columns. */
+.ed-panel-closed{visibility:hidden;padding:0;box-shadow:none;overflow:hidden}
 .ed-split{position:relative;touch-action:none;outline-offset:-2px}.ed-split.x{cursor:col-resize}.ed-split.y{height:6px;flex-shrink:0;cursor:row-resize}.ed-split::after{content:'';position:absolute;border-radius:2px;background:transparent;transition:background .12s}.ed-split.x::after{top:50%;left:2px;width:2px;height:36px;margin-top:-18px}.ed-split.y::after{left:50%;top:2px;height:2px;width:36px;margin-left:-18px}.ed-split:hover::after,.ed-split:active::after{background:var(--accent)}.ed-split::before{content:'';position:absolute;inset:0 -3px}.ed-split.y::before{inset:-3px 0}
 .ed-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:2px;margin-bottom:10px;border-radius:8px;background:var(--well);box-shadow:var(--inset)}.ed-tabs button{height:28px;border:0;border-radius:6px;background:none;font-size:12px;font-weight:500;color:var(--text-2)}.ed-tabs button[aria-selected=true]{background:var(--raised);box-shadow:var(--shade2);color:var(--text)}
 .ed-media .import-area{padding:10px;min-height:0;font-size:12px;color:var(--text-2);background:var(--well);border-color:var(--hairline)}.ed-media .import-area span{display:none}
@@ -64,7 +65,7 @@
 @media(max-width:900px){
 .ed{overflow-y:auto}.ed-top{gap:2px;padding:0 8px}.ed-top .ed-button{padding:0 8px;font-size:11px}.ed-primary{padding:0 12px}.ed-hide-small{display:none}
 .ed-button,.ed-icon{min-height:36px}.ed-icon{min-width:36px}
-.ed-workspace,.ed-body,.ed-lower{display:contents}.ed-split{display:none}.ed-panel-closed{display:block}
+.ed-workspace,.ed-body,.ed-lower{display:contents}.ed-split{display:none}.ed-panel-closed{visibility:visible;padding:10px;overflow:visible}
 .ed-stage{order:1;position:sticky;top:0;z-index:2;height:46dvh;flex-shrink:0;border-radius:0}
 .ed-tools{order:2;position:sticky;top:46dvh;z-index:2;background:var(--panel)}
 .tl-host{order:3;position:sticky;top:calc(46dvh + 44px);z-index:2;height:auto;max-height:30dvh}.tl-rows{min-height:128px}.tl-heads{width:106px}.tl-head button{width:20px}
