@@ -12,7 +12,7 @@ test('lyric timing moves cuts to the nearest line', () => {
 });
 
 test('beat timing moves cuts to the nearest beat', () => {
-  assert.deepEqual(computeSlideStarts(2, 20, 'beats', [], [9.6, 10.4, 15]), [0, 10.4]);
+  assert.deepEqual(computeSlideStarts(2, 20, 'beats', [], [9.2, 10.4, 15]), [0, 10.4]);
 });
 
 test('anchors too far away keep even timing', () => {
