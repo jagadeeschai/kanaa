@@ -85,18 +85,13 @@ Item times are seconds on the timeline. Keyframe times are seconds within the it
 - **Compositing:** a WebGL2 canvas draws each visible layer, using `<video>` elements as textures.
 - **Clock:** the audio clock is the master. Use `requestVideoFrameCallback` to detect drift, and correct it beyond about 40 ms.
 - **Audio:** Web Audio mixes all tracks with per-item gain and fades.
-- **Text:** libass-wasm (JASSUB), so preview and export share a renderer.
-- **Seeking:** start with `<video>` elements. Add WebCodecs only if the Phase 1 test shows they can't hold the targets.
+- **Text:** a transparent PNG rendered by the export's libass path, used in both preview and export.
+- **Seeking:** `<video>` elements with `requestVideoFrameCallback`. Phase 1 showed this holds the targets.
 
 Target Chrome first on an M1 Pro with 16 GB. Add Safari later.
 
 ### Export
-Phase 1 chooses between two approaches, and it must pick from measurements:
-
-- **A. FFmpeg graph (try first).** Compile layers to `filter_complex`. Bake keyframes and easing into per-frame values, using `sendcmd` or generated piecewise expressions.
-- **B. Headless Chrome.** Render the same WebGL scene frame by frame and pipe it to FFmpeg. Match is near perfect, but it's slower and adds a heavy dependency.
-
-Either way, exports run through `enqueue_render`.
+Compile the timeline to one FFmpeg `filter_complex` graph, run through `enqueue_render`. Phase 1 chose this approach. Limit live preview to 6 layers at first.
 
 ### Audio separation means two features
 1. **Detach audio:** split a clip's sound onto its own audio layer, instantly and non-destructively.
@@ -141,26 +136,32 @@ Each phase must ship on its own, keep existing tests passing, and meet its "Done
 - Video export, render queue, beat detection, lyric sync and database tests are ported from Photos.
 - Frontend tests run with `npm test`, and `./test.sh` runs everything.
 
-### Phase 1: Prove the risky part (M)
-Build a throwaway-quality prototype before any full UI. It must contain:
-- 3 video layers plus 1 audio track from proxies, on a WebGL canvas.
-- A scale and position keyframe with easing, and one Tamil text layer.
-- Export with approach A, and approach B if A misses the targets.
+### Phase 1: Prove the risky part (done, two near-misses)
+Prototype in `spike/`, on an M1 Pro with 16 GB, in Chromium 152. Rebuild its media with `spike/make_media.py`. This code is throwaway: learn from it, don't ship it.
 
-Pass all of these before continuing:
+**Tested:** 3 video layers from 720p proxies on a 1920×1080 WebGL canvas, position and scale keyframes with easing, one Tamil text layer, one song, and one FFmpeg export.
 
-| Check | Target |
-|---|---|
-| Preview | 30 fps, with under 5% dropped frames for 60 seconds |
-| Seek | Correct frame shown within 300 ms |
-| Audio and video drift | Under 40 ms across 5 minutes |
-| Preview vs export match | Under 2 output pixels of position error at 10 sampled frames, with colors matching closely |
-| Export speed | Under 3× video length at 1080p |
-| Memory | Under 4 GB total |
+| Check | Target | Result | Status |
+|---|---|---|---|
+| Preview, 5 minutes | Under 5% dropped | 0 dropped of 8,851 frames per layer | Pass |
+| Seek | Under 300 ms | Median 31 ms, max 49 ms, within one frame | Pass |
+| Audio and video drift | Under 40 ms | Median 16 ms, 99% under 22 ms, peak 58 ms for a moment at 1:42 | **Near-miss** |
+| Layer position match | Under 2 px | 0–1 px, with one edge of 80 at exactly 2 px | **Near-miss** |
+| Color match | Close | Mean difference 2.9 of 255, text area 4.2 | Pass |
+| Export speed, 1080p | Under 3× | 0.99× at 3 layers, 1.82× at 6, 2.24× at 8 | Pass |
+| Memory | Under 4 GB | No browser process exceeded about 1.2 GB. GPU memory wasn't measured separately | Likely pass |
 
-**If a check fails:** report the numbers to the owner and propose a change, such as fewer live layers or WebCodecs. Don't silently lower a target.
+**Layer limit:** 6 live layers was clean, with a 31 ms peak drift. At 8, no frames dropped, but peak drift was 65 ms and 99% sat under 36 ms. Set the first limit at 6.
 
-**Done when:** an export method is chosen and written down here, with measurements.
+**Decisions from this phase**
+- Export uses approach A, a compiled FFmpeg graph. Headless Chrome isn't needed.
+- Keyframes compile to exact ffmpeg expressions of `t`, with the same easing math as `evaluate.js`.
+- Export composites in RGB (`gbrp`) and converts to BT.709 at the end, so overlays keep their color.
+- WebCodecs isn't needed. `<video>` textures with `requestVideoFrameCallback` are enough.
+- **Text changes from the plan:** render each text item to a transparent PNG with the export's own libass path (`alpha=1`), and use that image in preview and export. Letters are then identical and Tamil shaping can't differ, so JASSUB isn't needed. Editing text needs a short server round trip, so measure that in Phase 5.
+- Start audio first, then video on the same moment. Starting them apart caused the first drift failure.
+
+**Not yet proven:** real iPhone footage, HEVC proxies, rotation and opacity keyframes, keyframes on many layers at once, audible sync (the output was silenced and only the clock measured), Chrome and Safari themselves, and a machine busy with other work.
 
 ### Phase 2: Timeline and media pipeline (L)
 - Timeline version 2, `validate`, `normalize`, `compile`, shared fixtures, and migration of old recipes.
@@ -245,6 +246,7 @@ This is the first version users will feel.
 
 ## Open decisions for the owner
 
-1. Which is the target: desktop Chrome only, or phones too? This plan assumes desktop first, with basic phone support.
-2. Should stem separation be included? It adds a large optional download.
-3. Should stickers, emoji and licensed music be included? Emoji doesn't render in exports today, and music needs a licensed source.
+1. Are the Phase 1 near-misses acceptable? Peak drift was 58 ms against 40 ms, and one edge was 2 px against under 2 px. The suggestion is to accept both, and require 99.9% of drift under 45 ms and no peak over 80 ms.
+2. Which is the target: desktop Chrome only, or phones too? This plan assumes desktop first, with basic phone support.
+3. Should stem separation be included? It adds a large optional download.
+4. Should stickers, emoji and licensed music be included? Emoji doesn't render in exports today, and music needs a licensed source.

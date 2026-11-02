@@ -8,3 +8,5 @@ frontend/dist/
 *.tsbuildinfo
 *.log
 .DS_Store
+spike/.media/
+spike/.out/
