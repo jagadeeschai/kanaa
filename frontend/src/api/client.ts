@@ -47,3 +47,11 @@ export const planImageScenes = (id: number, data: { lyrics: string; cues: { text
 export const generateImageScenes = (id: number, batchId: string, scenes: { id: number; prompt: string }[], quality: string) => requestJson<{ job_id: string }>(`/api/projects/${id}/image-scenes/generate`, { method: 'POST', body: JSON.stringify({ batch_id: batchId, scenes, quality }) });
 
 export const saveImageScenePrompts = (id: number, batchId: string, scenes: { id: number; prompt: string }[]) => requestJson(`/api/projects/${id}/image-scenes/${batchId}`, { method: 'PATCH', body: JSON.stringify({ scenes }) });
+
+export type ClipAssets = { status: 'ready' | 'preparing' | 'unavailable'; key?: string; job_id?: string; progress?: number; filmstrip?: { tiles: number; tile_width: number; tile_height: number } };
+export const getClipAssets = (id: number) => requestJson<ClipAssets>(`/api/photos/${id}/assets`);
+export const clipProxyUrl = (id: number) => `/api/photos/${id}/proxy`;
+export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
+export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
+export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);
+export const exportProjectTimeline = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(`/api/projects/${id}/export`, { method: 'POST', body: JSON.stringify(timeline) });

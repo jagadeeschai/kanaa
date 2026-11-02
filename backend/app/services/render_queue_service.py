@@ -1,6 +1,7 @@
 """One-at-a-time queue for heavy media jobs. Job records survive restarts; running work does not."""
 from __future__ import annotations
 
+import itertools
 import logging
 import queue
 import shutil
@@ -22,9 +23,14 @@ RECENT_JOB_LIMIT = 20
 KEPT_JOB_RECORDS = 100
 AUDIO_RETENTION_SECONDS = 30 * 24 * 3600
 
+# Work the user is waiting for runs before background preparation.
+FOREGROUND_PRIORITY = 0
+BACKGROUND_PRIORITY = 10
+
 RenderTarget = Callable[[Callable[[], bool]], dict[str, Any]]
 
-_queue: 'queue.Queue[tuple[str, RenderTarget]]' = queue.Queue()
+_queue: 'queue.PriorityQueue[tuple[int, int, str, RenderTarget]]' = queue.PriorityQueue()
+_order = itertools.count()
 _cancel_events: dict[str, threading.Event] = {}
 _worker: threading.Thread | None = None
 _worker_lock = threading.Lock()
@@ -39,8 +45,9 @@ def _save(job_id: str, sql: str, values: tuple) -> None:
         logger.exception('Could not record render job %s', job_id)
 
 
-def enqueue_render(kind: str, label: str, target: RenderTarget, **initial: Any) -> str:
-    """target receives should_cancel() and returns the job's final fields."""
+def enqueue_render(kind: str, label: str, target: RenderTarget, priority: int = FOREGROUND_PRIORITY,
+                   reserve: Callable[[str], None] | None = None, **initial: Any) -> str:
+    """target receives should_cancel() and returns the job's final fields. reserve gets the id before the job can start."""
     job_id = create_job(kind, status='queued', label=label, phase='Waiting in the queue', **initial)
     try:
         with get_connection() as conn:
@@ -49,7 +56,9 @@ def enqueue_render(kind: str, label: str, target: RenderTarget, **initial: Any) 
     except sqlite3.Error:
         logger.exception('Could not record render job %s', job_id)
     _cancel_events[job_id] = threading.Event()
-    _queue.put((job_id, target))
+    if reserve:
+        reserve(job_id)
+    _queue.put((priority, next(_order), job_id, target))
     _ensure_worker()
     return job_id
 
@@ -72,7 +81,7 @@ def _finish(job_id: str, status: str, *, error: str | None = None, **fields: Any
 
 def _work() -> None:
     while True:
-        job_id, target = _queue.get()
+        _, _, job_id, target = _queue.get()
         cancel = _cancel_events.get(job_id)
         if cancel is None or cancel.is_set():
             continue

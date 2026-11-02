@@ -2,8 +2,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from PIL import Image, ImageOps
 from app.db.database import get_connection
-from app.services.video_service import _run_ffprobe
-from app.services.video_edit_service import media_duration
+from app.services.media_probe import probe_video
 
 def get_media(identifier):
     with get_connection() as conn:
@@ -25,17 +24,16 @@ def index_media(path: Path, name: str, exported=False):
             image.verify()
         with Image.open(path) as image:
             width, height = ImageOps.exif_transpose(image).size
-        kind, duration = 'image', None
+        kind, duration, fps, rotation, has_audio = 'image', None, None, 0, False
     else:
-        info = _run_ffprobe(path) or {}
-        video = next((stream for stream in info.get('streams', []) if stream.get('codec_type') == 'video'), None)
-        if not video or media_duration(info) <= 0:
+        facts = probe_video(path)
+        if facts is None:
             raise ValueError('This file is not a readable image or video.')
-        width, height = video.get('width'), video.get('height')
-        kind, duration = 'video', media_duration(info)
+        width, height, duration, fps, rotation, has_audio = facts.width, facts.height, facts.duration, facts.fps, facts.rotation, facts.has_audio
+        kind = 'video'
     with get_connection() as conn:
-        cursor = conn.execute('INSERT INTO photos(filename,absolute_path,media_type,width,height,duration,file_size,is_export) VALUES(?,?,?,?,?,?,?,?)',
-                              (name, str(path.resolve()), kind, width, height, duration, path.stat().st_size, int(exported)))
+        cursor = conn.execute('INSERT INTO photos(filename,absolute_path,media_type,width,height,duration,file_size,is_export,fps,rotation,has_audio) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                              (name, str(path.resolve()), kind, width, height, duration, path.stat().st_size, int(exported), fps, rotation, int(has_audio)))
         conn.commit()
         identifier = cursor.lastrowid
     return describe(get_media(identifier))

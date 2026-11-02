@@ -131,8 +131,8 @@ def check_disk_space(folder: Path, duration: float, quality: str = '720p') -> No
         raise ValueError(f'Not enough disk space: this export needs about {needed / 1e9:.1f} GB and {free / 1e9:.1f} GB is free.')
 
 
-def write_lyrics(path: Path, edit: VideoEditRequest, source: Path) -> None:
-    canvas = canvas_size(edit)
+def write_lyrics(path: Path, edit: VideoEditRequest, source: Path, size: tuple[int, int] | None = None) -> None:
+    canvas = size or canvas_size(edit)
     if canvas:
         width, height = canvas
     else:

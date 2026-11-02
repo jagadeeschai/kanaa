@@ -24,6 +24,7 @@ router = APIRouter()
 
 
 from app.services.media_service import get_media, describe, index_media
+from app.services.asset_service import request_assets
 
 
 @router.get('/health')
@@ -47,7 +48,10 @@ async def upload_media(file: UploadFile = File(...)):
                 if size > 2 * 1024**3:
                     raise HTTPException(413, 'Choose a file smaller than 2 GB.')
                 output.write(chunk)
-        return await run_in_threadpool(index_media, target, Path(file.filename or 'Media').name)
+        media = await run_in_threadpool(index_media, target, Path(file.filename or 'Media').name)
+        if media['media_type'] == 'video':
+            await run_in_threadpool(request_assets, target, media['filename'])
+        return media
     except Exception as exc:
         target.unlink(missing_ok=True)
         if isinstance(exc, HTTPException):

@@ -163,13 +163,31 @@ Prototype in `spike/`, on an M1 Pro with 16 GB, in Chromium 152. Rebuild its med
 
 **Not yet proven:** real iPhone footage, HEVC proxies, rotation and opacity keyframes, keyframes on many layers at once, audible sync (the output was silenced and only the clock measured), Chrome and Safari themselves, and a machine busy with other work.
 
-### Phase 2: Timeline and media pipeline (L)
-- Timeline version 2, `validate`, `normalize`, `compile`, shared fixtures, and migration of old recipes.
-- Background proxies, filmstrip sprites and waveform peaks, cached by content hash, with progress visible.
-- Handle mixed resolution, frame rate, rotation, HDR, and clips with no audio. Store fps, which isn't captured today.
-- A disk budget for the cache with cleanup, because imports already copy media and space is limited.
+### Phase 2: Timeline and media pipeline (done)
+No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
-**Done when:** three clips with different sizes, frame rates and orientations export in order, with correct sync, proven by frame and audio tests.
+**Built**
+- `timeline_schema.py`: the version 2 format and its rules, including 6 video layers at most, no overlaps on a layer, and unique ids.
+- `timeline_service.py`: compiles any timeline to ffmpeg, and upgrades version 1 recipes when read. Stored recipes aren't rewritten.
+- `asset_service.py`: proxies, filmstrips and waveform peaks, built automatically on import at background priority, cached by content, limited to 5 GB by default (`WIDEANGLE_MOTION_CACHE_GB`).
+- API: `GET /projects/{id}/timeline`, `POST /projects/{id}/export`, `GET /photos/{id}/assets`, `/proxy`, `/filmstrip`, `/peaks`.
+- `frontend/src/timeline/evaluate.ts`, with `timeline/fixtures/` shared by the Python and TypeScript tests.
+- `photos` gained `fps`, `rotation` and `has_audio`. Media imported earlier keeps default values, so read facts with `probe_video` until a backfill exists.
+
+**Tested with real footage:** 60 clips from 5 sources, covering 4K variable frame rate, 29.97, 25, a 10 fps portrait clip, and 720p.
+
+| Check | Result |
+|---|---|
+| Length | Exactly 5,400 frames for 180 seconds |
+| Export at 1080p | 120 seconds, 0.67× length, peak 2.3 GB |
+| Proxy, filmstrip and peaks for 60 seconds of 4K | 22 seconds, 0.37× length, 27 MB |
+
+**Decisions from this phase**
+- **Audio is mixed in its own pass** to a WAV file, then muxed. In a shared graph, ffmpeg lost the end of a clip's sound. Don't merge the two passes.
+- Clips join with `concat` per layer, and each clip is forced to an exact frame count, so rounding can't build up.
+- Text renders once per item through `render_text_image`.
+
+**Not yet proven:** real iPhone HDR, rotated or HEVC footage (only synthetic rotated, VFR and HDR clips were tested), audio sync by ear on real speech, and a layer limit test with many animated layers.
 
 ### Phase 3: Multi-clip editor and new UI (L)
 This is the first version users will feel.
