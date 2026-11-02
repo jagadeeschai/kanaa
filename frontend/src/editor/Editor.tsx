@@ -381,8 +381,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         case 'ArrowLeft': event.preventDefault(); engine?.pause(); seek(playhead.current - frame * (event.shiftKey ? 10 : 1)); break;
         case 'ArrowRight': event.preventDefault(); engine?.pause(); seek(playhead.current + frame * (event.shiftKey ? 10 : 1)); break;
         case 's': split(); break;
-        case 'i': { const item = clip(); if (item) change(trimClip(timeline, item.id, 'in', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
-        case 'o': { const item = clip(); if (item) change(trimClip(timeline, item.id, 'out', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
+        case 'i': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'in', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
+        case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'out', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); removeSelected(); break;
         default: break;
       }
