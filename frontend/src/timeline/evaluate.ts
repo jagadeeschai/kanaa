@@ -1,7 +1,7 @@
 export type Ease = 'linear' | 'easeOut' | 'easeInOut';
 export type Keyframe = { t: number; v: number; ease?: Ease };
-export type AnimatedProperty = 'x' | 'y' | 'scale';
-export type Transform = { x: number; y: number; scale: number; opacity: number; keyframes?: Partial<Record<AnimatedProperty, Keyframe[]>> };
+export type AnimatedProperty = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
+export type Transform = { x: number; y: number; scale: number; opacity: number; rotation?: number; keyframes?: Partial<Record<AnimatedProperty, Keyframe[]>> };
 
 const EASE: Record<Ease, (p: number) => number> = {
   linear: (p) => p,
@@ -12,7 +12,7 @@ const EASE: Record<Ease, (p: number) => number> = {
 /** The value of a property `t` seconds into an item. Matches value_at in timeline_schema.py. */
 export function valueAt(transform: Transform, property: AnimatedProperty, t: number): number {
   const keys = transform.keyframes?.[property];
-  if (!keys?.length) return transform[property];
+  if (!keys?.length) return transform[property] ?? 0;
   if (t <= keys[0].t) return keys[0].v;
   for (let index = 0; index + 1 < keys.length; index += 1) {
     const a = keys[index];

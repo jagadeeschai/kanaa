@@ -291,12 +291,40 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 **Later:** exports with many Fill clips are over 3 times slower than plain ones. Static clips could use a plain crop instead of a per-frame overlay. Split doesn't work on text yet. Transitions work only on touching clips, and sound doesn't crossfade.
 
-### Phase 6: Keyframes (M)
-- Keyframe position, scale, rotation and opacity from the inspector, with a stopwatch toggle per property.
-- Easing presets first, curve editing after.
-- Motion paths shown on the canvas.
+### Phase 6: Keyframes (done, curve editing not built)
+**Built**
+- `timeline/keyframes.ts` and `editor/Keyframes.tsx`: a stopwatch for position, size, rotation and opacity, with previous, add or remove, and next keyframe. Once a property is animated, changing it at the playhead makes a keyframe, including by dragging the picture.
+- Motion styles: Smooth, Slow down and Steady. Curve editing isn't built.
+- A motion path on the canvas with draggable keyframes, shown from two keyframes on, and keyframe diamonds on the timeline.
+- Free rotation. Export turns the item at a fixed size with `rotate`, then scales it. Eased opacity is written per frame with `sendcmd`, because `fade` is linear only.
+- A simple overlay track, needed for a logo over video: an Overlay button on each media tile, free timing and position, sound, trim, split and delete. Layer ordering and more belong to Phase 7.
+- Split and trim keep motion on the same footage. A split clip now enters once and exits once.
 
-**Done when:** a logo can be animated across the frame by a non-expert, and the export matches the preview.
+**Tested**
+
+| Check | Result |
+|---|---|
+| Golden samples, adding rotation, eased opacity, all properties together and a transparent logo crossing video | 155 |
+| Mean difference, of 255 | 1.21 |
+| Worst sample | 3.03 |
+| Worst 20-pixel block | 37 |
+| Logo animated through the UI over real video, export against preview, 6 moments | 1.62 to 1.71 |
+| Exact length, UI project | 180 frames |
+
+**Fixed along the way**
+- `rotate` with `c=none` doesn't clear between frames, so animated rotation left a trail of old angles. Use `c=black@0`. The golden test caught it.
+- The preview's image route always made JPEGs, so transparent logos showed as solid squares. Pictures with transparency stay PNG.
+- Export turned pictures into YUV before use, which lost their transparency. Pictures now stay RGB.
+- Clicking the ruler deselected the clip, and a lone keyframe's dot sat under the picture and caught drags. Both broke the second keyframe, and only a real run through the workflow showed it.
+
+**Decisions from this phase**
+- Moves between keys keep the easing of the key before them. One motion style applies to all animated properties of a clip.
+- Rotation of a phone photo through EXIF already works in export, and `test_phone_photo_exports_upright` keeps it so.
+- Editing a transformed clip in the inspector always acts at the playhead.
+
+**Not yet proven:** a non-expert doing this unaided. I drove the UI, so the "done when" is met on function, not on ease. Also keyframes on many layers at once, touch dragging on phones, and Chrome and Safari themselves.
+
+**Later:** curve editing and keyframes on text. Splitting a clip mid-move keeps the value at the cut, but each half eases on its own, so a curved stretch can change shape slightly.
 
 ### Phase 7: Full multilayer (L)
 - Picture-in-picture, overlays, image layers, and any number of layers up to the proven limit.

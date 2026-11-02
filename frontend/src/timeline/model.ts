@@ -1,5 +1,6 @@
 import type { Animation, LookName, Transition } from './animation';
 import type { Transform } from './evaluate';
+import { shiftKeys, splitKeys } from './keyframes.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
 export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName };
@@ -8,8 +9,8 @@ export type Sound = { id: string; asset_id?: string; media_id?: number; start: n
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
-export type TrackLayer = TextLayer | AudioLayer;
-export type TrackItem = TextItem | Sound;
+export type TrackLayer = VideoLayer | TextLayer | AudioLayer;
+export type TrackItem = TextItem | Sound | Clip;
 export type Format = { width: number; height: number; fps: number };
 export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer)[]; normalize_audio?: boolean };
 export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; duration?: number | null; width?: number | null; height?: number | null };
@@ -39,8 +40,21 @@ export const audioLayers = (timeline: Timeline) => timeline.layers.filter((layer
 
 export const textLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is TextLayer => layer.kind === 'text');
 /** The rows under the main track: text first, then sound. */
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...audioLayers(timeline)];
-export const itemLength = (item: TrackItem) => ('length' in item ? item.length : soundLength(item));
+export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...overlayLayers(timeline), ...textLayers(timeline), ...audioLayers(timeline)];
+export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
+export const isClip = (item: TrackItem): item is Clip => 'transform' in item;
+
+export function findClip(timeline: Timeline, id: string | null): Clip | null {
+  for (const layer of timeline.layers) {
+    if (layer.kind !== 'video') continue;
+    const clip = layer.items.find((item) => item.id === id);
+    if (clip) return clip;
+  }
+  return null;
+}
+
+const overlayHolding = (timeline: Timeline, id: string | null) => overlayLayers(timeline).find((layer) => layer.items.some((item) => item.id === id));
 
 export function findText(timeline: Timeline, id: string | null): { text: TextItem; layer: TextLayer } | null {
   for (const layer of textLayers(timeline)) {
@@ -86,7 +100,7 @@ export function clipAt(timeline: Timeline, t: number): Clip | undefined {
 export function newClip(source: SourceFacts, id: string): Clip {
   const length = source.media_type === 'image' ? PHOTO_SECONDS : source.duration ?? PHOTO_SECONDS;
   return { id, media_id: source.media_id, start: 0, in: 0, out: length, speed: 1, volume: 1, muted: false,
-    fade_in: 0, fade_out: 0, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1 }, adjust: { ...DEFAULT_ADJUST } };
+    fade_in: 0, fade_out: 0, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 }, adjust: { ...DEFAULT_ADJUST } };
 }
 
 const SOUND_DEFAULTS = { speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: '' };
@@ -101,7 +115,7 @@ export function normalizeTimeline(timeline: Timeline): Timeline {
     const items = layer.items.map((item) => {
       const partial = item as Partial<Clip> & Pick<Clip, 'id' | 'media_id' | 'in' | 'out'>;
       const clip: Clip = { ...partial, start: partial.start ?? 0, speed: partial.speed ?? 1, volume: partial.volume ?? 1, muted: partial.muted ?? false, fade_in: partial.fade_in ?? 0, fade_out: partial.fade_out ?? 0,
-        transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, ...partial.transform }, adjust: { ...DEFAULT_ADJUST, ...partial.adjust } };
+        transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, ...partial.transform }, adjust: { ...DEFAULT_ADJUST, ...partial.adjust } };
       if (layer.magnetic) clip.start = cursor;
       cursor = clip.start + clipLength(clip);
       return clip;
@@ -118,6 +132,11 @@ export function insertClip(timeline: Timeline, clip: Clip, index?: number): Time
 }
 
 export function removeClip(timeline: Timeline, id: string): Timeline {
+  const overlay = overlayHolding(timeline, id);
+  if (overlay) {
+    const items = overlay.items.filter((clip) => clip.id !== id);
+    return items.length ? withItems(timeline, overlay, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== overlay.id) };
+  }
   return withClips(timeline, mainLayer(timeline).items.filter((clip) => clip.id !== id));
 }
 
@@ -137,7 +156,8 @@ export function splitClip(timeline: Timeline, t: number, newId: string): Timelin
   const clip = clips[index];
   const cut = round(clip.in + (t - clip.start) * clip.speed);
   const next = [...clips];
-  next.splice(index, 1, { ...clip, out: cut }, { ...clip, id: newId, in: cut });
+  const [before, after] = splitKeys(clip.transform, t - clip.start);
+  next.splice(index, 1, { ...clip, out: cut, transform: before, exit: null, fade_out: 0 }, { ...clip, id: newId, in: cut, transform: after, enter: null, fade_in: 0, transition_in: null });
   return withClips(timeline, next);
 }
 
@@ -146,13 +166,18 @@ export function trimClip(timeline: Timeline, id: string, edge: 'in' | 'out', sec
   const clips = mainLayer(timeline).items.map((clip) => {
     if (clip.id !== id) return clip;
     const end = source?.media_type === 'image' ? MAX_PHOTO_SECONDS : source?.duration ?? clip.out;
-    if (edge === 'in') return { ...clip, in: round(Math.max(0, Math.min(seconds, clip.out - MIN_CLIP_SECONDS))) };
+    if (edge === 'in') {
+      const next = round(Math.max(0, Math.min(seconds, clip.out - MIN_CLIP_SECONDS)));
+      return { ...clip, in: next, transform: shiftKeys(clip.transform, -(next - clip.in) / clip.speed) };
+    }
     return { ...clip, out: round(Math.min(end, Math.max(seconds, clip.in + MIN_CLIP_SECONDS))) };
   });
   return withClips(timeline, clips);
 }
 
 export function updateClip(timeline: Timeline, id: string, changes: Partial<Clip>): Timeline {
+  const overlay = overlayHolding(timeline, id);
+  if (overlay) return withItems(timeline, overlay, overlay.items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
   return withClips(timeline, mainLayer(timeline).items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
 }
 
@@ -260,36 +285,53 @@ export function moveItem(timeline: Timeline, id: string, start: number, layerId?
 
 export const moveSound = moveItem;
 
-/** `seconds` is the wanted source time of that edge. Trimming the start keeps the rest of the sound in place. */
-export function trimSound(timeline: Timeline, id: string, edge: 'in' | 'out', seconds: number): Timeline {
-  const found = findSound(timeline, id);
-  if (!found) return timeline;
-  const { sound, layer } = found;
-  const others = layer.items.filter((item) => item.id !== id);
-  if (edge === 'in') {
-    const earliest = Math.max(0, sound.in - (sound.start - others.filter((item) => item.start < sound.start).reduce((end, item) => Math.max(end, soundEnd(item)), 0)) * sound.speed);
-    const next = round(Math.min(Math.max(seconds, earliest), sound.out - MIN_CLIP_SECONDS * sound.speed));
-    return updateSound(timeline, id, { in: next, start: round(sound.start + (next - sound.in) / sound.speed) });
+const timedItem = (timeline: Timeline, id: string): { item: Sound | Clip; layer: AudioLayer | VideoLayer } | null => {
+  for (const layer of [...overlayLayers(timeline), ...audioLayers(timeline)]) {
+    const item = (layer.items as (Sound | Clip)[]).find((entry) => entry.id === id);
+    if (item) return { item, layer };
   }
-  const after = others.filter((item) => item.start >= soundEnd(sound) - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
-  const longest = Math.min(sound.source_length ?? Infinity, sound.in + (after - sound.start) * sound.speed);
-  return updateSound(timeline, id, { out: round(Math.max(sound.in + MIN_CLIP_SECONDS * sound.speed, Math.min(seconds, longest))) });
+  return null;
+};
+
+const changeItem = (timeline: Timeline, id: string, changes: Partial<Sound> & Partial<Clip>) => {
+  const found = timedItem(timeline, id)!;
+  return withItems(timeline, found.layer, (found.layer.items as TrackItem[]).map((item) => (item.id === id ? { ...item, ...changes } as TrackItem : item)));
+};
+
+/** `seconds` is the wanted source time of that edge. Trimming the start keeps the rest of the item in place. Works on sounds and overlays. */
+export function trimSound(timeline: Timeline, id: string, edge: 'in' | 'out', seconds: number, limit?: number): Timeline {
+  const found = timedItem(timeline, id);
+  if (!found) return timeline;
+  const { item, layer } = found;
+  const others = (layer.items as TrackItem[]).filter((entry) => entry.id !== id);
+  const end = item.start + itemLength(item);
+  if (edge === 'in') {
+    const earliest = Math.max(0, item.in - (item.start - others.filter((entry) => entry.start < item.start).reduce((last, entry) => Math.max(last, itemEnd(entry)), 0)) * item.speed);
+    const next = round(Math.min(Math.max(seconds, earliest), item.out - MIN_CLIP_SECONDS * item.speed));
+    const shift = (next - item.in) / item.speed;
+    return changeItem(timeline, id, { in: next, start: round(item.start + shift), ...(isClip(item) ? { transform: shiftKeys(item.transform, -shift) } : {}) });
+  }
+  const after = others.filter((entry) => entry.start >= end - 1e-6).reduce((first, entry) => Math.min(first, entry.start), Infinity);
+  const longest = Math.min(limit ?? (isClip(item) ? Infinity : item.source_length ?? Infinity), item.in + (after - item.start) * item.speed);
+  return changeItem(timeline, id, { out: round(Math.max(item.in + MIN_CLIP_SECONDS * item.speed, Math.min(seconds, longest))) });
 }
 
+/** Works on sounds and overlays. */
 export function splitSound(timeline: Timeline, id: string, t: number, newId: string): Timeline {
-  const found = findSound(timeline, id);
+  const found = timedItem(timeline, id);
   if (!found) return timeline;
-  const { sound, layer } = found;
-  const middle = round(sound.in + (t - sound.start) * sound.speed);
-  if (t - sound.start < MIN_CLIP_SECONDS || soundEnd(sound) - t < MIN_CLIP_SECONDS) return timeline;
-  const first = { ...sound, out: middle, fade_out: 0 };
-  const second = { ...sound, id: newId, start: round(t), in: middle, fade_in: 0 };
-  return withSounds(timeline, layer, layer.items.flatMap((item) => item.id === id ? [first, second] : [item]));
+  const { item, layer } = found;
+  const middle = round(item.in + (t - item.start) * item.speed);
+  if (t - item.start < MIN_CLIP_SECONDS || itemEnd(item) - t < MIN_CLIP_SECONDS) return timeline;
+  const clipped = isClip(item) ? splitKeys(item.transform, t - item.start) : null;
+  const first = { ...item, out: middle, fade_out: 0, ...(clipped ? { transform: clipped[0], exit: null } : {}) };
+  const second = { ...item, id: newId, start: round(t), in: middle, fade_in: 0, ...(clipped ? { transform: clipped[1], enter: null } : {}) };
+  return withItems(timeline, layer, (layer.items as TrackItem[]).flatMap((entry) => entry.id === id ? [first, second] as TrackItem[] : [entry]));
 }
 
 /** The picture stays. Its sound becomes a separate item, in the same place, that can then move on its own. */
 export function detachAudio(timeline: Timeline, clipId: string, soundId: string, layerId: string, name: string, sourceLength?: number): Timeline {
-  const clip = mainLayer(timeline).items.find((item) => item.id === clipId);
+  const clip = findClip(timeline, clipId);
   if (!clip || clip.muted) return timeline;
   const sound: Sound = { id: soundId, media_id: clip.media_id, start: clip.start, in: clip.in, out: clip.out, speed: clip.speed, volume: clip.volume, muted: false,
     fade_in: clip.fade_in, fade_out: clip.fade_out, duck: false, name, source_length: sourceLength };
@@ -342,4 +384,17 @@ export function transitionHalf(before: Clip, clip: Clip, fps: number): number {
   const frames = (item: Clip) => Math.max(1, Math.round(clipLength(item) * fps));
   if (Math.round(before.start * fps) + frames(before) !== Math.round(clip.start * fps)) return 0;
   return Math.min(Math.round((clip.transition_in.duration * fps) / 2), Math.floor(frames(before) / 2), Math.floor(frames(clip) / 2));
+}
+
+export const MAX_VIDEO_LAYERS = 6;
+export const OVERLAY_SCALE = 0.3;
+
+/** On top of the main track, at its own time and place. Text stays above it. */
+export function addOverlay(timeline: Timeline, clip: Clip, layerId: string): Timeline {
+  const fits = (layer: VideoLayer) => layer.items.every((item) => item.start + clipLength(item) <= clip.start + 1e-6 || clip.start + clipLength(clip) <= item.start + 1e-6);
+  const free = overlayLayers(timeline).find(fits);
+  if (free) return withItems(timeline, free, [...free.items, clip]);
+  if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers.`);
+  const after = timeline.layers.reduce((last, layer, index) => (layer.kind === 'video' ? index : last), 0) + 1;
+  return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: layerId, kind: 'video', name: 'Overlay', items: [clip] }, ...timeline.layers.slice(after)] };
 }

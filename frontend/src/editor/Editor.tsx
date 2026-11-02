@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, AudioLines, Check, Layers, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
+import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
+import { valueAt } from '../timeline/evaluate';
+import { writeValue } from '../timeline/keyframes';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -59,6 +62,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [exporting, setExporting] = useState(false);
   const [addingMusic, setAddingMusic] = useState(false);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
+  const [now, setNow] = useState(0);
   const [stems, setStems] = useState<{ available: boolean; install_command: string } | null>(null);
   const [, redrawPeaks] = useReducer((count: number) => count + 1, 0);
   const songPeaks = useRef(new Map<string, ClipVisuals['peaks'] | 'loading'>());
@@ -144,8 +148,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       engine.onTime = (t) => {
         playhead.current = t;
         if (clockRef.current) clockRef.current.textContent = timecode(t);
+        if (!engine.playing) setNow(t);
       };
-      engine.onPlayingChange = setPlaying;
+      engine.onPlayingChange = (value) => { setPlaying(value); if (!value) setNow(engine.currentTime); };
       engineRef.current = engine;
       if (import.meta.env.DEV) (window as unknown as { motionEngine: PlaybackEngine }).motionEngine = engine;
       return () => { engine.destroy(); engineRef.current = null; };
@@ -154,7 +159,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl); }, [timeline, sourceFor, soundUrl, textUrl, textVersion]);
 
-  const usedMedia = useMemo(() => [...new Set(timeline ? [...mainLayer(timeline).items.map((clip) => clip.media_id), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
+  const usedMedia = useMemo(() => [...new Set(timeline ? [...timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
 
   useEffect(() => {
     for (const sound of timeline ? audioLayers(timeline).flatMap((layer) => layer.items) : []) {
@@ -224,7 +229,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline, projectId, choosingFormat]);
 
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: next, group }), []);
-  const selected = timeline && selectedId ? mainLayer(timeline).items.find((clip) => clip.id === selectedId) ?? null : null;
+  const selected = timeline ? findClip(timeline, selectedId) : null;
+  const local = selected ? Math.max(0, Math.min(now - selected.start, clipLength(selected))) : 0;
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) change(updateText(timeline, selectedText.id, changes), group); };
@@ -302,6 +308,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(insertClip(timeline, clip));
     setSelectedId(clip.id);
   };
+  const addOverlayMedia = (item: Photo) => {
+    if (!timeline) return;
+    const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
+    const base = newClip(source, newId());
+    const clip = { ...base, start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, transform: { ...base.transform, scale: OVERLAY_SCALE } };
+    try {
+      change(addOverlay(timeline, clip, newId()));
+      setSelectedId(clip.id);
+    } catch (problem) { setError((problem as Error).message); }
+  };
   const chooseFormat = (format: Format) => {
     if (!timeline) return;
     change({ ...timeline, format });
@@ -339,13 +355,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!selected) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragPreview.current = { x: event.clientX, y: event.clientY, clipX: selected.transform.x, clipY: selected.transform.y, group: `move-${Date.now()}` };
+    dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(selected.transform, 'x', local), clipY: valueAt(selected.transform, 'y', local), group: `move-${Date.now()}` };
   };
   const previewMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragPreview.current;
     if (!drag || !selected) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    updateSelected({ transform: { ...selected.transform, x: drag.clipX + (event.clientX - drag.x) / rect.width, y: drag.clipY + (event.clientY - drag.y) / rect.height } }, drag.group);
+    const moved = writeValue(selected.transform, 'x', local, drag.clipX + (event.clientX - drag.x) / rect.width);
+    updateSelected({ transform: writeValue(moved, 'y', local, drag.clipY + (event.clientY - drag.y) / rect.height) }, drag.group);
   };
 
   const total = timeline ? duration(timeline) : 0;
@@ -369,12 +386,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
         <label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
-        <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <button key={item.id} onClick={() => addMedia(item)} title={`Add ${item.filename}`}>
-          <img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span><Plus size={13}/>{item.filename}</span></button>)}</div>
+        <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <div className="ed-tile" key={item.id}>
+          <button className="ed-tile-add" onClick={() => addMedia(item)} title={`Add ${item.filename}`}><img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span><Plus size={13}/>{item.filename}</span></button>
+          <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div>
       </aside>
       <main className="ed-stage">
         <div className="ed-frame" style={{ aspectRatio: aspect }}>
           <canvas ref={canvasRef} aria-label="Preview" onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={selected ? 'movable' : ''}/>
+          {selected && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
           {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Choose something from Media on the left</span></div>}
         </div>
@@ -388,7 +407,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         : selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}
-          canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p></div>}</aside>
     </div>
@@ -481,19 +500,20 @@ function SoundInspector({ sound, layer, onChange, onLayer, stems, job, busy, onS
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>) => onChange({ adjust: { ...clip.adjust, ...changes } }, `adjust-${clip.id}`);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
-  const filling = Math.abs(clip.transform.scale - fill) < 0.01;
+  const size = valueAt(clip.transform, 'scale', local);
+  const filling = Math.abs(size - fill) < 0.01;
+  const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
   const percent = (value: number) => `${Math.round(value * 100)}%`;
   return <>
     <h2>Framing</h2>
     <div className="ed-pair">
-      <button className={`ed-button ${!filling && clip.transform.scale === 1 ? 'on' : ''}`} onClick={() => onChange({ transform: { ...clip.transform, x: 0.5, y: 0.5, scale: 1 } })}><Minimize size={14}/>Fit</button>
-      <button className={`ed-button ${filling ? 'on' : ''}`} onClick={() => onChange({ transform: { ...clip.transform, x: 0.5, y: 0.5, scale: fill } })}><Maximize size={14}/>Fill</button>
+      <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
+      <button className={`ed-button ${filling ? 'on' : ''}`} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
     </div>
-    <Slider label="Size" value={clip.transform.scale} min={0.2} max={4} shown={percent(clip.transform.scale)} onChange={(scale) => onChange({ transform: { ...clip.transform, scale } }, `scale-${clip.id}`)} onReset={() => onChange({ transform: { ...clip.transform, scale: 1 } })}/>
     <p className="ed-tip">Drag the picture in the preview to position it.</p>
     <div className="ed-pair">
       <button className="ed-icon" aria-label="Rotate left" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 270) % 360) as Adjust['rotation'] })}><RotateCcw size={16}/></button>
@@ -501,6 +521,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, canTra
       <button className={`ed-icon ${clip.adjust.flip_horizontal ? 'on' : ''}`} aria-label="Flip horizontally" onClick={() => adjust({ flip_horizontal: !clip.adjust.flip_horizontal })}><FlipHorizontal size={16}/></button>
       <button className={`ed-icon ${clip.adjust.flip_vertical ? 'on' : ''}`} aria-label="Flip vertically" onClick={() => adjust({ flip_vertical: !clip.adjust.flip_vertical })}><FlipVertical size={16}/></button>
     </div>
+    <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} id={clip.id} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal}/>
     <h2>Picture</h2>
     <Slider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} shown={percent(clip.adjust.brightness)} onChange={(brightness) => adjust({ brightness })} onReset={() => adjust({ brightness: 1 })}/>
     <Slider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} shown={percent(clip.adjust.contrast)} onChange={(contrast) => adjust({ contrast })} onReset={() => adjust({ contrast: 1 })}/>

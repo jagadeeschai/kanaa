@@ -38,18 +38,23 @@ class Transform(Strict):
     y: float = 0.5
     scale: float = Field(default=1, gt=0, le=4)
     opacity: float = Field(default=1, ge=0, le=1)
-    keyframes: Dict[Literal['x', 'y', 'scale'], List[Keyframe]] = Field(default_factory=dict)
+    rotation: float = Field(default=0, ge=-3600, le=3600)  # Degrees, clockwise.
+    keyframes: Dict[Literal['x', 'y', 'scale', 'rotation', 'opacity'], List[Keyframe]] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def ordered(self):
         for keys in self.keyframes.values():
             if any(b.t <= a.t for a, b in zip(keys, keys[1:])):
                 raise ValueError('Keyframes must be in time order.')
+        if any(not 0 <= key.v <= 1 for key in self.keyframes.get('opacity', [])):
+            raise ValueError('Opacity keyframes must be between 0 and 1.')
+        if any(key.v <= 0 or key.v > 4 for key in self.keyframes.get('scale', [])):
+            raise ValueError('Size keyframes must be above 0 and at most 4.')
         return self
 
     @property
     def is_default(self) -> bool:
-        return (self.x, self.y, self.scale, self.opacity) == (0.5, 0.5, 1, 1) and not self.keyframes
+        return (self.x, self.y, self.scale, self.opacity, self.rotation) == (0.5, 0.5, 1, 1, 0) and not self.keyframes
 
 
 class Adjust(Strict):

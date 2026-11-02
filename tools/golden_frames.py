@@ -39,6 +39,12 @@ def upload(path):
     return json.load(urllib.request.urlopen(request))['id']
 
 
+def make_logo():
+    path = WORK / 'logo.png'
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black@0:s=400x400,format=rgba', '-vf', "geq=r='255*lt(X,200)':g='255*gte(X,200)':b=80:a='255*lt(hypot(X-200,Y-200),190)'", '-frames:v', '1', str(path)], check=True)
+    return upload(path)
+
+
 def make_sources():
     pictures = []
     for name, pattern in (('a', 'gradients=s=1280x720:c0=red:c1=blue:x0=0:y0=0:x1=1280:y1=720:n=2'), ('b', 'gradients=s=1280x720:c0=yellow:c1=teal:x0=1280:y0=0:x1=0:y1=720:n=2')):
@@ -52,7 +58,11 @@ def clip(ident, media, start, **extra):
     return {'id': ident, 'media_id': media, 'start': start, 'in': 0, 'out': SECONDS, **extra}
 
 
-def build(first, second):
+def keys(*points, ease='easeInOut'):
+    return [{'t': t, 'v': v, 'ease': ease} for t, v in points]
+
+
+def build(first, second, logo):
     clips, texts, samples, t = [], [], [], 0.0
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -77,6 +87,21 @@ def build(first, second):
         clips.append(clip(name.replace(' ', '-'), second if name == 'filled transition' else first, t, transform={'scale': 2.4}, **extra))
         samples.append({'name': name, 't': t + at})
         t += SECONDS
+    # Keyframes, on the picture itself.
+    for name, transform in (('turned', {'rotation': 30, 'scale': 0.7}),
+                            ('spinning', {'scale': 0.6, 'keyframes': {'rotation': keys((0, -40), (2, 220))}}),
+                            ('fading', {'keyframes': {'opacity': keys((0, 0), (2, 1), ease='easeOut')}}),
+                            ('everything', {'keyframes': {'x': keys((0, 0.2), (2, 0.8)), 'y': keys((0, 0.3), (2, 0.7), ease='easeOut'), 'scale': keys((0, 0.4), (1, 1.2), (2, 0.5), ease='linear'), 'rotation': keys((0, 0), (2, 90)), 'opacity': keys((0, 0.4), (1, 1))}})):
+        clips.append(clip(name, first, t, transform=transform))
+        for at in (0.3, 1, 1.7):
+            samples.append({'name': f'key {name} {at}', 't': t + at})
+        t += SECONDS
+    # A transparent logo crossing the video on its own layer.
+    overlay = {'id': 'logo', 'media_id': logo, 'start': t, 'in': 0, 'out': 4, 'transform': {'scale': 0.3, 'keyframes': {'x': keys((0, 0.1), (4, 0.9)), 'y': keys((0, 0.8), (4, 0.2)), 'rotation': keys((0, 0), (4, 360)), 'opacity': keys((0, 0.3), (2, 1))}}}
+    clips += [clip('under1', second, t), clip('under2', first, t + SECONDS)]
+    for at in (0.5, 1.5, 2, 3.5):
+        samples.append({'name': f'logo {at}', 't': t + at})
+    t += 2 * SECONDS
     # Tamil text runs through every preset on plain frames.
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -87,17 +112,18 @@ def build(first, second):
         samples.append({'name': f'text rest {preset}', 't': t + 1})
         samples.append({'name': f'text exit {preset} 0.5', 't': t + SECONDS - ANIMATION * 0.5})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': [overlay]}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
 
 
 def main():
     WORK.mkdir(parents=True, exist_ok=True)
     first, second = make_sources()
+    logo = make_logo()
     cover = WORK / 'cover.mp4'
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', str(cover)], check=True)
     cover_id = upload(cover)
     project = call('/api/projects', {'name': 'Golden frames', 'kind': 'edit', 'media_id': cover_id, 'media_ids': [cover_id]})
-    timeline, samples = build(first, second)
+    timeline, samples = build(first, second, logo)
     call(f"/api/projects/{project['id']}/recipe", {'recipe': timeline}, 'PUT')
     job = call(f"/api/projects/{project['id']}/export", timeline)['job_id']
     while (status := call(f'/api/jobs/{job}/status'))['status'] not in ('done', 'failed', 'cancelled'):

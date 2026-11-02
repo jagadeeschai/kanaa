@@ -19,8 +19,9 @@ const BLUR_TAPS = 24;
 const smoothstep = (low: number, high: number, x: number) => { const t = Math.min(1, Math.max(0, (x - low) / (high - low))); return t * t * (3 - 2 * t); };
 
 const VERTEX = `#version 300 es
-in vec2 p; out vec2 uv; uniform vec4 box;
-void main(){ uv=p; vec2 pos=box.xy+(p-.5)*box.zw; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
+in vec2 p; out vec2 uv; uniform vec4 box; uniform float turn; uniform vec2 frame;
+void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
+  vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation; uniform vec2 flip, blurAspect; uniform vec3 tint;
@@ -85,7 +86,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame']) this.uniforms[name] = gl.getUniformLocation(program, name);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -144,7 +145,8 @@ export class PlaybackEngine {
     const clips = [...layer.items].sort((a, b) => a.start - b.start);
     const index = clips.findIndex((clip) => t >= clip.start && t < clip.start + clipLength(clip));
     if (index >= 0) return { clip: clips[index], next: clips[index + 1] };
-    if (t >= duration(this.timeline!) && clips.length) return { clip: clips[clips.length - 1] };
+    const last = clips[clips.length - 1];
+    if (last && t >= duration(this.timeline!) && last.start + clipLength(last) >= t - 0.001) return { clip: last };
     return { next: clips.find((clip) => clip.start > t) };
   }
 
@@ -265,7 +267,9 @@ export class PlaybackEngine {
       gl.scissor(Math.round(left), Math.round(h - bottom), Math.max(0, Math.round(right - left)), Math.max(0, Math.round(bottom - top)));
     }
     gl.uniform4f(uniforms.box, centerX + (valueAt(clip.transform, 'x', local) - 0.5) * frame, centerY + (valueAt(clip.transform, 'y', local) - 0.5) * frame, (fitted.width * scale) / format.width, height / format.height);
-    gl.uniform1f(uniforms.opacity, clip.transform.opacity * look.opacity * opacity);
+    gl.uniform1f(uniforms.turn, (valueAt(clip.transform, 'rotation', local) * Math.PI) / 180);
+    gl.uniform2f(uniforms.frame, format.width, format.height);
+    gl.uniform1f(uniforms.opacity, Math.max(0, Math.min(1, valueAt(clip.transform, 'opacity', local))) * look.opacity * opacity);
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
     gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
     gl.uniform1f(uniforms.saturation, clip.adjust.saturation * saturation);
@@ -334,6 +338,7 @@ export class PlaybackEngine {
     const look = animatedLook(item.enter, item.exit, this.time - item.start, item.length);
     const { width, height } = this.timeline!.format;
     gl.uniform4f(uniforms.box, 0.5 + look.dx, 0.5 + look.dy, look.scale, look.scale);
+    gl.uniform1f(uniforms.turn, 0);
     gl.uniform1f(uniforms.opacity, look.opacity);
     gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
     gl.uniform3f(uniforms.tint, 1, 1, 1);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { clipLength, itemLength, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, trackLayers, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { keyTimes } from '../timeline/keyframes';
+import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, trackLayers, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -117,6 +118,36 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
+    const drawKeys = (clip: Clip, x: number, bottom: number) => {
+      if (clip.id !== props.current.selectedId) return;
+      context.fillStyle = COLORS.head;
+      for (const t of keyTimes(clip.transform)) {
+        if (t > clipLength(clip)) continue;
+        const middle = x + t * props.current.zoom;
+        context.beginPath(); context.moveTo(middle, bottom - 11); context.lineTo(middle + 4, bottom - 7); context.lineTo(middle, bottom - 3); context.lineTo(middle - 4, bottom - 7); context.fill();
+      }
+    };
+    const drawOverlay = (clip: Clip, row: number) => {
+      const { selectedId: selected, zoom: scale, visuals: look } = props.current;
+      const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      context.save();
+      context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
+      context.fillStyle = COLORS.clip; context.fillRect(x, y, width, h);
+      const { filmstrip } = look(clip.media_id);
+      if (filmstrip?.image.complete && filmstrip.image.naturalWidth) {
+        const tile = h * (filmstrip.tile_width / filmstrip.tile_height);
+        for (let left = 0; left < width; left += tile) context.drawImage(filmstrip.image, 0, 0, filmstrip.tile_width, filmstrip.tile_height, x + left, y, tile, h);
+      }
+      context.restore();
+      context.lineWidth = clip.id === selected ? 2 : 1;
+      context.strokeStyle = clip.id === selected ? COLORS.selected : COLORS.clipEdge;
+      context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
+      if (clip.id === selected) {
+        context.fillStyle = COLORS.selected;
+        for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
+      }
+      drawKeys(clip, x, y + h);
+    };
     const draw = () => {
       frame = requestAnimationFrame(draw);
       const shown = props.current.timeline;
@@ -139,9 +170,10 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         context.fillStyle = COLORS.tick; context.fillRect(xOf(t), RULER - 8, 1, 8);
         context.fillStyle = COLORS.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
-      for (const clip of clips) drawClip(clip, xOf(clip.start), clipLength(clip) * scale);
+      for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip, xOf(clip.start), TRACK_TOP + TRACK_HEIGHT); }
       tracks.forEach((layer, row) => {
-        if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
+        if (layer.kind === 'video') for (const clip of layer.items) drawOverlay(clip, row);
+        else if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
       });
       const head = xOf(playhead.current);
@@ -192,7 +224,11 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         : { kind: 'soundTrim', id: sound.id, edge: zone, startX: x, origin: sound, base: props.current.timeline, group };
       return;
     }
-    if (!found) { onSelect(null); dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return; }
+    if (!found) {
+      // The ruler only moves the playhead, so a clip stays selected while setting keyframes.
+      if (y >= TRACK_TOP) onSelect(null);
+      dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return;
+    }
     onSelect(found.clip.id);
     if (found.zone === 'body') { dragRef.current = { kind: 'move', id: found.clip.id, startX: x, moved: false, base: props.current.timeline, group }; onSeek(timeOf(x)); }
     else dragRef.current = { kind: 'trim', id: found.clip.id, edge: found.zone, startX: x, origin: found.clip, base: props.current.timeline, group };
@@ -222,7 +258,11 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       const edgeTime = (edge === 'in' ? origin.start : end) + (x - drag.startX) / props.current.zoom;
       const snapped = snap(edgeTime, snapPoints(base, playhead.current, id), reach);
       if ('text' in origin) onChange(trimText(base, id, edge, snapped), drag.group);
-      else onChange(trimSound(base, id, edge, edge === 'in' ? origin.in + (snapped - origin.start) * origin.speed : origin.out + (snapped - end) * origin.speed), drag.group);
+      else {
+        const facts = isClip(origin) ? props.current.source(origin.media_id) : undefined;
+        const limit = facts ? (facts.media_type === 'image' ? MAX_PHOTO_SECONDS : facts.duration ?? undefined) : undefined;
+        onChange(trimSound(base, id, edge, edge === 'in' ? origin.in + (snapped - origin.start) * origin.speed : origin.out + (snapped - end) * origin.speed, limit), drag.group);
+      }
     } else if (drag.kind === 'trim') {
       const { origin, edge, base, id } = drag;
       const shift = ((x - drag.startX) / props.current.zoom) * origin.speed;

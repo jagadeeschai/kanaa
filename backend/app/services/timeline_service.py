@@ -17,7 +17,7 @@ from app.api.schemas import VideoEditRequest
 from app.services.animation import LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import Adjust, Animation, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import value_at, Adjust, Animation, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -101,7 +101,9 @@ def picture_filters(adjust: Adjust, look: str) -> list[str]:
 
 
 def color_filter(facts: MediaFacts) -> str:
-    if facts.media_type == 'image' or facts.color_space in SD_COLOR_SPACES:
+    if facts.media_type == 'image':
+        return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
+    if facts.color_space in SD_COLOR_SPACES:
         # scale leaves the old label on the frame, and later steps would convert it a second time.
         return f'{TO_BT709},{TAG_BT709}'
     return HDR_TO_BT709 if facts.is_hdr else TAG_BT709
@@ -241,7 +243,9 @@ class Builder:
         first, last = shared_fit(enter, exit_, length)
         clock = f'(t-{lead:.6f})' if lead else 't'
         filters: list[str] = []
-        if transform.opacity != 1:
+        if 'opacity' in transform.keyframes:
+            filters.append(self.opacity_commands(transform, frames, lead, name))
+        elif transform.opacity != 1:
             filters.append(f'colorchannelmixer=aa={transform.opacity}')
         moves = []
         if enter:
@@ -256,7 +260,15 @@ class Builder:
             filters.append(blur)
         x, y, scale = property_expression(transform, 'x', clock), property_expression(transform, 'y', clock), property_expression(transform, 'scale', clock)
         sized, back, posed = f'{name}_sized', f'{name}_back', f'{name}_posed'
-        self.graph.append(f"[{label}]{''.join(step + ',' for step in filters)}scale=w='max(2,{W}*({scale}))':h='max(2,{H}*({scale}))':eval=frame:flags=bicubic[{sized}]")
+        spread = 1.0
+        if transform.rotation or 'rotation' in transform.keyframes:
+            # Turned first, while the size is fixed. The square output holds every angle, and the scale below allows for it.
+            canvas_w, canvas_h = round(W * canvas_scale), round(H * canvas_scale)
+            side = math.ceil(math.hypot(canvas_w, canvas_h) / 2) * 2
+            spread = side / canvas_w
+            filters.append(f"rotate=a='({property_expression(transform, 'rotation', clock)})*PI/180':c=black@0:ow={side}:oh={side}:bilinear=1")
+        wide, tall = (W * spread, W * spread) if spread != 1 else (W, H)
+        self.graph.append(f"[{label}]{''.join(step + ',' for step in filters)}scale=w='max(2,{wide}*({scale}))':h='max(2,{tall}*({scale}))':eval=frame:flags=bicubic[{sized}]")
         self.transparent_gap(back, frames)
         self.graph.append(f"[{back}][{sized}]overlay=x='{W}*({x})-overlay_w/2':y='{H}*({y})-overlay_h/2':eval=frame:format=gbrp[{posed}]")
         # The item is now cropped to the frame. Moves carry that whole frame, so a zoomed-in clip still slides in from outside.
@@ -271,6 +283,13 @@ class Builder:
         self.transparent_gap(moved_back, frames)
         self.graph.append(f"[{moved_back}][{moved_sized}]overlay=x='{W}*(0.5+{'+'.join(shift_x) or '0'})-overlay_w/2':y='{H}*(0.5+{'+'.join(shift_y) or '0'})-overlay_h/2':eval=frame:format=gbrp[{moved}]")
         return moved
+
+    def opacity_commands(self, transform: Transform, frames: int, lead: float, name: str) -> str:
+        """Eased opacity has no linear filter, so each frame gets its exact value."""
+        fps = self.fmt.fps
+        lines = [f'{frame / fps:.6f} colorchannelmixer@{name}o aa {value_at(transform, "opacity", max(0, frame / fps - lead)):.5f};' for frame in range(frames)]
+        (self.folder / f'{name}-o.cmd').write_text('\n'.join(lines), encoding='utf-8')
+        return f"sendcmd=f={name}-o.cmd,colorchannelmixer@{name}o=aa={value_at(transform, 'opacity', 0):.5f}"
 
     def blur_commands(self, enter: Animation | None, exit_: Animation | None, first: float, last: float, length: float, frames: int, lead: float, name: str) -> str | None:
         if not any(item and item.preset == 'blur' for item in (enter, exit_)):

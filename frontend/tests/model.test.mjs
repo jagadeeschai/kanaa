@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
+import { valueAt } from '../src/timeline/evaluate.ts';
+import { addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -165,4 +167,96 @@ test('transitionHalf needs touching clips and fits inside both', () => {
   assert.equal(transitionHalf(a, { ...b, start: 3 }, 30), 0);
   assert.equal(transitionHalf(a, { ...b, transition_in: { kind: 'wipe', duration: 2 }, out: 0.5 }, 30), 7);
   assert.equal(transitionHalf(a, { ...b, transition_in: null }, 30), 0);
+});
+
+const still = () => ({ x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 });
+const moving = () => {
+  let t = toggleAnimated(still(), 'position', 0);
+  t = writeValue(writeValue(t, 'x', 2, 0.9), 'y', 2, 0.1);
+  return t;
+};
+
+test('the stopwatch keeps the value on, and keeps the value at the playhead off', () => {
+  const on = toggleAnimated({ ...still(), scale: 2 }, 'scale', 1);
+  assert.deepEqual(on.keyframes.scale.map((key) => [key.t, key.v]), [[1, 2]]);
+  const twoKeys = writeValue(on, 'scale', 3, 4);
+  const off = toggleAnimated(twoKeys, 'scale', 2);
+  assert.equal(isAnimated(off, 'scale'), false);
+  assert.equal(off.scale, valueAt(twoKeys, 'scale', 2));
+});
+
+test('editing writes a key only when animated, and position keys both axes', () => {
+  assert.equal(writeValue(still(), 'x', 2, 0.1).x, 0.1);
+  const path = moving();
+  assert.deepEqual(keyTimes(path, 'position'), [0, 2]);
+  assert.deepEqual(path.keyframes.y.map((key) => key.v), [0.5, 0.1]);
+});
+
+test('a second edit near a key changes it instead of adding one', () => {
+  const again = writeValue(moving(), 'x', 2.01, 0.2);
+  assert.equal(again.keyframes.x.length, 2);
+  assert.equal(again.keyframes.x[1].v, 0.2);
+});
+
+test('removing the last key leaves the value it had', () => {
+  const removed = removeKey(removeKey(moving(), 'position', 0), 'position', 2);
+  assert.equal(isAnimated(removed, 'position'), false);
+  assert.equal(removed.x, 0.9);
+});
+
+test('adding a key mid curve does not change the motion much, and ease applies to the control', () => {
+  const added = addKey(setEase(moving(), 'position', 'linear'), 'position', 1);
+  assert.ok(hasKeyAt(added, 'position', 1));
+  assert.ok(Math.abs(valueAt(added, 'x', 1.5) - 0.8) < 1e-9);
+  assert.deepEqual([...new Set(setEase(moving(), 'position', 'easeOut').keyframes.y.map((key) => key.ease))], ['easeOut']);
+});
+
+test('moveKey changes both axes of one key', () => {
+  const moved = moveKey(moving(), 2, 0.3, 0.7);
+  assert.deepEqual([valueAt(moved, 'x', 2), valueAt(moved, 'y', 2)], [0.3, 0.7]);
+});
+
+test('splitKeys keeps the motion on both sides of the cut', () => {
+  const path = setEase(moving(), 'position', 'linear');
+  const [first, second] = splitKeys(path, 1);
+  assert.ok(Math.abs(valueAt(first, 'x', 0.5) - valueAt(path, 'x', 0.5)) < 1e-9);
+  assert.ok(Math.abs(valueAt(second, 'x', 0.5) - valueAt(path, 'x', 1.5)) < 1e-9);
+});
+
+test('shiftKeys never leaves a key before the start', () => {
+  const later = shiftKeys(setEase(moving(), 'position', 'linear'), -1);
+  assert.equal(later.keyframes.x[0].t, 0);
+  assert.ok(Math.abs(later.keyframes.x[0].v - 0.7) < 1e-9);
+});
+
+test('split and trim keep a clip animated on the same footage', () => {
+  const clip = { ...newClip(facts, 'c'), transform: setEase(moving(), 'position', 'linear') };
+  const base = insertClip(emptyTimeline({ width: 1080, height: 1920, fps: 30 }), clip);
+  const cut = splitClip(base, 1, 'd');
+  assert.ok(Math.abs(valueAt(findClip(cut, 'd').transform, 'x', 0) - 0.7) < 1e-9);
+  const trimmed = trimClip(base, 'c', 'in', 1, facts);
+  assert.ok(Math.abs(valueAt(findClip(trimmed, 'c').transform, 'x', 0) - 0.7) < 1e-9);
+});
+
+test('a split clip enters once and exits once', () => {
+  const clip = { ...newClip(facts, 'c'), enter: { preset: 'fade', duration: 1 }, exit: { preset: 'zoom', duration: 1 } };
+  const cut = splitClip(insertClip(emptyTimeline({ width: 1080, height: 1920, fps: 30 }), clip), 5, 'd');
+  assert.deepEqual([findClip(cut, 'c').exit, findClip(cut, 'd').enter], [null, null]);
+  assert.equal(findClip(cut, 'c').enter.preset, 'fade');
+  assert.equal(findClip(cut, 'd').exit.preset, 'zoom');
+});
+
+test('overlays sit above the main track, below text, and never pull the main track', () => {
+  const logo = (id, start) => ({ ...newClip(facts, id), start, out: 2 });
+  let next = addText(withClip(), title('t', 0), 'words');
+  next = addOverlay(next, logo('o', 3), 'over');
+  assert.deepEqual(next.layers.map((layer) => layer.id), [mainLayer(next).id, 'over', 'words']);
+  assert.equal(findClip(next, 'o').start, 3);
+  assert.equal(mainLayer(next).items[0].start, 0);
+  assert.equal(addOverlay(next, logo('p', 6), 'x').layers.length, 3);
+  assert.equal(addOverlay(next, logo('q', 4), 'x').layers.length, 4);
+  const moved = moveItem(next, 'o', 7);
+  assert.equal(findClip(moved, 'o').start, 7);
+  assert.equal(removeClip(next, 'o').layers.length, 2);
+  assert.equal(updateClip(next, 'o', { volume: 0.5 }).layers[1].items[0].volume, 0.5);
 });

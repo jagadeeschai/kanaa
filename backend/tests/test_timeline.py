@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import re
@@ -469,6 +470,68 @@ class Animations(Clips):
         row = self.frame(self.render(data), 5, self.size())[180, :, 1]
         self.assertGreater(int(row.max()) - int(row.min()), 120)
 
+    def test_rotation_turns_clockwise_about_the_center(self):
+        bar = self.root / 'bar.png'
+        picture = Image.new('RGB', (640, 360), (0, 0, 0))
+        picture.paste((255, 255, 255), (400, 170, 600, 190))  # A bar to the right of center.
+        picture.save(bar)
+        self.facts[10] = MediaFacts(path=bar, media_type='image', width=640, height=360)
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 10, 'start': 0, 'in': 0, 'out': 1, 'transform': {'rotation': 90, 'scale': 0.5}}]}]}
+        x, y, _ = self.center(self.frame(self.render(data), 5, self.size()))
+        self.assertAlmostEqual(x, 320, delta=4)
+        self.assertGreater(y, 220)  # Clockwise on screen carries right to down.
+
+    def test_rotation_keyframes_follow_the_curve(self):
+        bar = self.root / 'dot.png'
+        picture = Image.new('RGB', (640, 360), (0, 0, 0))
+        picture.paste((255, 255, 255), (470, 165, 500, 195))
+        picture.save(bar)
+        self.facts[11] = MediaFacts(path=bar, media_type='image', width=640, height=360)
+        transform = {'scale': 0.5, 'keyframes': {'rotation': [{'t': 0, 'v': 0, 'ease': 'linear'}, {'t': 2, 'v': 180}]}}
+        target = self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 11, 'start': 0, 'in': 0, 'out': 2, 'transform': transform}]}]})
+        frame = self.frame(target, 30, self.size())
+        x, y, _ = self.center(frame)
+        self.assertLess((frame[:, :, 1] > 40).sum(), 300)  # One dot, with no trail of old angles.
+        radius = (485 - 320) * 0.5
+        self.assertAlmostEqual(x, 320 + radius * np.cos(np.radians(90)), delta=4)
+        self.assertAlmostEqual(y, 180 + radius, delta=4)
+
+    def test_opacity_keyframes_are_eased_exactly(self):
+        white = self.root / 'white.png'
+        Image.new('RGB', (640, 360), (255, 255, 255)).save(white)
+        self.facts[12] = MediaFacts(path=white, media_type='image', width=640, height=360)
+        transform = {'keyframes': {'opacity': [{'t': 0, 'v': 0, 'ease': 'easeOut'}, {'t': 2, 'v': 1}]}}
+        target = self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 12, 'start': 0, 'in': 0, 'out': 2, 'transform': transform}]}]})
+        parsed = Transform.model_validate(transform)
+        for number in (6, 15, 30, 45):
+            self.assertAlmostEqual(int(self.frame(target, number, self.size())[180, 320, 1]), 255 * value_at(parsed, 'opacity', number / 30), delta=6)
+
+    def test_transparent_logo_stays_transparent_over_video(self):
+        logo = self.root / 'logo.png'
+        picture = Image.new('RGBA', (200, 200), (0, 0, 0, 0))
+        picture.paste((0, 255, 0, 255), (50, 50, 150, 150))
+        picture.save(logo)
+        self.facts[13] = MediaFacts(path=logo, media_type='image', width=200, height=200)
+        target = self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 1, 'start': 0, 'in': 0, 'out': 1}]},
+                                                                {'id': 'over', 'kind': 'video', 'items': [{'id': 'l', 'media_id': 13, 'start': 0, 'in': 0, 'out': 1, 'muted': True}]}]})
+        frame = self.frame(target, 10, self.size())
+        self.assertGreater(frame[180, 320, 1], 200)  # The logo.
+        self.assertGreater(frame[180, 200, 0], 200)  # Red video through its clear corner area.
+        self.assertGreater(frame[20, 320, 0], 200)
+
+    def test_phone_photo_exports_upright(self):
+        path = self.root / 'phone.jpg'
+        picture = Image.new('RGB', (400, 240), (0, 0, 0))
+        picture.paste((255, 255, 255), (0, 0, 100, 240))  # Stored sideways: the left is the top once turned.
+        exif = Image.Exif()
+        exif[0x0112] = 6
+        picture.save(path, exif=exif, quality=95)
+        self.facts[14] = MediaFacts(path=path, media_type='image', width=240, height=400)
+        data = {'format': {'width': 240, 'height': 400, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 14, 'start': 0, 'in': 0, 'out': 0.5}]}]}
+        frame = self.frame(self.render(data), 3, (240, 400))
+        self.assertGreater(frame[40, 120, 1], 200)  # White across the top, once turned.
+        self.assertLess(frame[350, 120, 1], 60)
+
     def test_each_clip_keeps_its_own_opacity(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
             {'id': 'a', 'media_id': 6, 'start': 0, 'in': 0, 'out': 1, 'transform': {'opacity': 0.5}},
@@ -658,6 +721,15 @@ class Assets(Clips):
 
 
 class Api(Clips):
+    def test_transparent_picture_previews_with_its_transparency(self):
+        logo = self.out / 'logo.png'
+        Image.new('RGBA', (64, 64), (0, 255, 0, 0)).save(logo)
+        with patch('app.api.routes.get_media', return_value={'media_type': 'image', 'absolute_path': str(logo)}):
+            response = self.client.get('/api/photos/1/image')
+        self.assertEqual(response.headers['content-type'], 'image/png')
+        with Image.open(io.BytesIO(response.content)) as picture:
+            self.assertEqual(picture.convert('RGBA').getpixel((5, 5))[3], 0)
+
     def setUp(self):
         super().setUp()
         self.patches = [patch.object(settings, 'data_dir', self.out / 'data'), patch.object(settings, 'edit_workspace_dir', self.out / 'data' / 'exports'), patch.object(settings, 'thumbnail_dir', self.out / 'data' / 'thumbnails')]

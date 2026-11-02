@@ -102,13 +102,15 @@ def image(identifier: int):
     if row['media_type'] != 'image':
         raise HTTPException(400, 'Choose an image')
     settings.thumbnail_dir.mkdir(parents=True, exist_ok=True)
-    target = settings.thumbnail_dir / f'{identifier}-preview.jpg'
-    if not target.exists():
-        with Image.open(row['absolute_path']) as original:
-            preview = ImageOps.exif_transpose(original).convert('RGB')
+    with Image.open(row['absolute_path']) as original:
+        # JPEG has no transparency, and a logo must keep the shape it exports with.
+        clear = original.mode in ('RGBA', 'LA', 'PA') or 'transparency' in original.info
+        target = settings.thumbnail_dir / f"{identifier}-preview.{'png' if clear else 'jpg'}"
+        if not target.exists():
+            preview = ImageOps.exif_transpose(original).convert('RGBA' if clear else 'RGB')
             preview.thumbnail((2400, 2400))
-            temporary = target.with_name(f'{identifier}-{uuid.uuid4().hex}.jpg')
-            preview.save(temporary, quality=92)
+            temporary = target.with_name(f'{identifier}-{uuid.uuid4().hex}{target.suffix}')
+            preview.save(temporary, **({} if clear else {'quality': 92}))
             temporary.replace(target)
     return FileResponse(target)
 
