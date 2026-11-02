@@ -101,4 +101,18 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(any(stream['codec_type'] == 'audio' for stream in info['streams']))
         self.assertEqual(self.client.get('/api/fonts/NotoSansTamil-Bold.ttf').status_code, 200)
 
+    def test_failed_export_leaves_nothing_behind(self):
+        from app.api import routes
+        media = self.client.post('/api/media', files={'file': ('source.mp4', self.video.read_bytes(), 'video/mp4')}).json()
+        with patch.object(routes, 'index_media', side_effect=RuntimeError('Test indexing failure')):
+            job_id = self.client.post(f"/api/photos/{media['id']}/video-export", json={'trim_end': 0.5}).json()['job_id']
+            for _ in range(200):
+                job = self.client.get(f'/api/jobs/{job_id}/status').json()
+                if job['done']:
+                    break
+                time.sleep(0.05)
+        self.assertEqual(job['status'], 'failed')
+        self.assertIn('Test indexing failure', job['error'])
+        self.assertFalse(list(settings.edit_workspace_dir.rglob('*.mp4')))
+
 if __name__ == '__main__': unittest.main()

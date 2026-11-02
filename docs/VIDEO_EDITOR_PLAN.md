@@ -40,9 +40,7 @@ Motion runs at `http://localhost:5190` with its API on `127.0.0.1:8010`. It's Re
 - The preview is CSS filters, which only approximate the export.
 - The UI has no animation library. `framer-motion` isn't a dependency.
 
-**Two risks to fix first**
-- **No version control.** The git root is the user's home folder, and `wideangle-motion` is untracked there, so this project has no history.
-- **Few tests.** `backend/tests` holds only `test_lyric_images.py` and `test_studio.py`. The video export, render queue, beat and lyric sync tests from WideAngle Photos weren't carried over.
+**Run all tests:** `./test.sh` from the project root.
 
 ---
 
@@ -138,13 +136,10 @@ Keep Studio as the home screen. The editor opens full screen:
 
 Each phase must ship on its own, keep existing tests passing, and meet its "Done when" before the next starts.
 
-### Phase 0: Make it safe to build (S)
-- Create a git repository inside `wideangle-motion` with a proper `.gitignore`, covering `.data`, `.models`, `.venv`, `node_modules` and `dist`. Confirm with the owner first, because the home folder is itself a git repo.
-- Port the Photos tests for video export, the render queue, beat detection and lyric sync. Fix what they reveal.
-- Add a frontend test runner, starting with `lyrics.ts` and `slides.ts`.
-- Fix the small editor bugs: playing past trim end snaps back, the time display can show `0:60.0`, and trim end overshoots.
-
-**Done when:** the project has its own history, and all tests run with one command.
+### Phase 0: Make it safe to build (done)
+- `wideangle-motion` has its own git repository.
+- Video export, render queue, beat detection, lyric sync and database tests are ported from Photos.
+- Frontend tests run with `npm test`, and `./test.sh` runs everything.
 
 ### Phase 1: Prove the risky part (M)
 Build a throwaway-quality prototype before any full UI. It must contain:
@@ -250,7 +245,6 @@ This is the first version users will feel.
 
 ## Open decisions for the owner
 
-1. Can `wideangle-motion` become its own git repository?
-2. Which is the target: desktop Chrome only, or phones too? This plan assumes desktop first, with basic phone support.
-3. Should stem separation be included? It adds a large optional download.
-4. Should stickers, emoji and licensed music be included? Emoji doesn't render in exports today, and music needs a licensed source.
+1. Which is the target: desktop Chrome only, or phones too? This plan assumes desktop first, with basic phone support.
+2. Should stem separation be included? It adds a large optional download.
+3. Should stickers, emoji and licensed music be included? Emoji doesn't render in exports today, and music needs a licensed source.
