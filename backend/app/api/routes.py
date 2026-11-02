@@ -82,6 +82,72 @@ def media_details(identifier: int):
     return describe(get_media(identifier))
 
 
+class MediaFolder(BaseModel):
+    folder: str | None = Field(default=None, max_length=60)
+
+
+@router.patch('/photos/{identifier}')
+def set_media_folder(identifier: int, data: MediaFolder):
+    get_media(identifier)
+    folder = (data.folder or '').strip() or None
+    with get_connection() as conn:
+        conn.execute('UPDATE photos SET folder=? WHERE id=?', (folder, identifier))
+        conn.commit()
+    return {'folder': folder}
+
+
+def mentions_media(value: Any, identifier: int) -> bool:
+    """Whether a project's saved work uses this media, at any depth."""
+    if isinstance(value, dict):
+        return any((key in ('media_id', 'photo_id') and item == identifier) or mentions_media(item, identifier) for key, item in value.items())
+    return isinstance(value, list) and any(mentions_media(item, identifier) for item in value)
+
+
+def first_media(value: Any) -> int | None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found = item if key in ('media_id', 'photo_id') and isinstance(item, int) else first_media(item)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = first_media(item)
+            if found is not None:
+                return found
+    return None
+
+
+@router.delete('/photos/{identifier}')
+def delete_media(identifier: int):
+    """Removes Motion's own copy. Anything a project still uses stays, so no project can break."""
+    row = get_media(identifier)
+    with get_connection() as conn:
+        if conn.execute('SELECT 1 FROM image_scenes WHERE media_id=?', (identifier,)).fetchone():
+            raise HTTPException(409, 'A lyric project still uses this as a generated scene.')
+        projects = conn.execute('SELECT id, name, media_id, recipe FROM projects').fetchall()
+        plans = []
+        for project in projects:
+            recipe = json.loads(project['recipe']) if project['recipe'] else None
+            if mentions_media(recipe, identifier):
+                raise HTTPException(409, f'“{project["name"]}” still uses this. Remove it from that project first.')
+            if project['media_id'] == identifier:
+                # Only the cover picture points here, so the project can move on to something it does use.
+                cover = first_media(recipe)
+                if cover is None:
+                    raise HTTPException(409, f'This is the only media in “{project["name"]}”. Add something else to that project, or delete the project.')
+                plans.append((cover, project['id']))
+        for cover, project_id in plans:
+            conn.execute('UPDATE projects SET media_id=? WHERE id=?', (cover, project_id))
+        conn.execute('DELETE FROM photos WHERE id=?', (identifier,))
+        conn.commit()
+    path = Path(row['absolute_path']).resolve()
+    if settings.data_dir.resolve() in path.parents:
+        path.unlink(missing_ok=True)
+    for leftover in settings.thumbnail_dir.glob(f'{identifier}[-.]*'):
+        leftover.unlink(missing_ok=True)
+    return {'deleted': identifier}
+
+
 @router.get('/photos/{identifier}/thumbnail')
 def thumbnail(identifier: int):
     row = get_media(identifier)

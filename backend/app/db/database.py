@@ -50,7 +50,7 @@ def init_db():
         ''')
         # Added for the timeline; older databases gain them here and fill in on next use.
         existing = {row['name'] for row in conn.execute('PRAGMA table_info(photos)')}
-        for column, definition in (('fps', 'REAL'), ('rotation', 'INTEGER NOT NULL DEFAULT 0'), ('has_audio', 'INTEGER NOT NULL DEFAULT 0')):
+        for column, definition in (('fps', 'REAL'), ('rotation', 'INTEGER NOT NULL DEFAULT 0'), ('has_audio', 'INTEGER NOT NULL DEFAULT 0'), ('folder', 'TEXT')):
             if column not in existing:
                 conn.execute(f'ALTER TABLE photos ADD COLUMN {column} {definition}')
         conn.commit()

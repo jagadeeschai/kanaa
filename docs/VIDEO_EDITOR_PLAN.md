@@ -389,6 +389,13 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 
 **Suggested order:** 0, 1, 2, 3, then 4 and 5 together, then 6, 7, 8. Phases 0–3 give a real multi-clip social editor. Give time estimates only after Phase 1, since its measurements decide how hard the later phases are.
 
+## Home page and media
+- One theme for the app, set on `<html>` by `useAppTheme` in `editor/layout.tsx`. The lyric editor follows it through `data-theme`.
+- `studio.css` colours are tokens with a light and dark value, and all text was checked for 4.5:1.
+- Returning users get recent projects and two compact New tiles on one screen. First-time users keep the welcome. Exports show as a pill in the top bar.
+- Folders are one name per file, in `photos.folder`. A file sits in one folder at a time.
+- "Remove from this video" only edits the timeline. "Delete from Motion" removes Motion's copy, and is refused while any project or generated scene uses the file. If only a project's cover uses it, the cover moves to something else in that project.
+
 ## Mac app
 `desktop/build.sh` builds `WideAngle Motion.app` and installs it in Applications. It's Electron 33 with `desktop/main.cjs` inside, chosen because Chromium is the engine every phase was tested on. FastAPI serves `frontend/dist`.
 

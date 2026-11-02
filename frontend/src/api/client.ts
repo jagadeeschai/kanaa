@@ -63,6 +63,8 @@ export const fetchTextImage = async (text: unknown, format: unknown) => {
 };
 export const previewRenderUrl = (id: number) => `/api/projects/${id}/preview-render`;
 export const startPreviewRender = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(previewRenderUrl(id), { method: 'POST', body: JSON.stringify(timeline) });
+export const setMediaFolder = (id: number, folder: string | null) => requestJson<{ folder: string | null }>(`/api/photos/${id}`, { method: 'PATCH', body: JSON.stringify({ folder }) });
+export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
 export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
 export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);

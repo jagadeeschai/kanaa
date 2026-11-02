@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
-import { duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -312,4 +312,16 @@ test('a duplicate lands right after the original, and the main track makes room'
 test('a duplicated clip does not repeat its opening transition', () => {
   const base = insertClip(withClip(), { ...newClip(facts, 'b'), transition_in: { kind: 'wipe', duration: 1 } });
   assert.equal(findClip(duplicateItem(base, 'b', 'copy', 'l'), 'copy').transition_in, null);
+});
+
+test('removing media clears it from every track, and keeps everything else', () => {
+  let next = insertClip(withClip(), { ...newClip({ ...facts, media_id: 2 }, 'other') });
+  next = addOverlay(next, { ...newClip(facts, 'logo'), start: 0, out: 2 }, 'over');
+  next = detachAudio(next, 'other', 'voice', 'tune', 'Voice', 10);
+  next = addSound(next, { ...song('s', 0), media_id: 1, asset_id: undefined }, 'more');
+  const cleared = removeMedia(next, 1);
+  assert.deepEqual(mainLayer(cleared).items.map((clip) => [clip.id, clip.start]), [['other', 0]]);
+  assert.equal(findClip(cleared, 'logo'), null);
+  assert.equal(findSound(cleared, 's'), null);
+  assert.equal(findSound(cleared, 'voice').sound.media_id, 2);
 });

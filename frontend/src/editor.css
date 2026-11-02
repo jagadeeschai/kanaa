@@ -518,3 +518,6 @@ body {
 .editor-input:focus {
   border-color: theme('colors.brand.400 / 45%');
 }
+
+/* The lyric editor's preview controls sit on white, which only suits the light theme. */
+:root[data-theme='dark'] .theme-modal .bg-white { background-color: #1a1a19; }

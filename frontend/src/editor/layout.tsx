@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
@@ -11,7 +11,8 @@ const write = (key: string, value: string) => { try { localStorage.setItem(key, 
 
 const systemIsDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-export function useEditorTheme() {
+/** One theme for the whole app. Set on <html>, which the lyric editor's styles already follow. */
+export function useAppTheme() {
   const [choice, setChoice] = useState<ThemeChoice>(() => { const saved = read(THEME_KEY); return saved === 'light' || saved === 'dark' ? saved : 'system'; });
   const [dark, setDark] = useState(systemIsDark);
   useEffect(() => {
@@ -21,7 +22,9 @@ export function useEditorTheme() {
     return () => media.removeEventListener('change', update);
   }, []);
   const next = () => { const value = choice === 'system' ? 'light' : choice === 'light' ? 'dark' : 'system'; setChoice(value); write(THEME_KEY, value); };
-  return { choice, next, theme: choice === 'system' ? (dark ? 'dark' : 'light') : choice };
+  const theme = choice === 'system' ? (dark ? 'dark' : 'light') : choice;
+  useLayoutEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  return { choice, next, theme };
 }
 
 export type Layout = { media: number; inspector: number; timeline: number; mediaOpen: boolean; inspectorOpen: boolean };

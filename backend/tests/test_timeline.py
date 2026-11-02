@@ -778,6 +778,54 @@ class Assets(Clips):
 
 
 class Api(Clips):
+    def add_media(self, name='clip.png'):
+        picture = io.BytesIO()
+        Image.new('RGB', (64, 64), (10, 20, 30)).save(picture, 'PNG')
+        return self.client.post('/api/media', files={'file': (name, picture.getvalue())}).json()
+
+    def add_project(self, cover):
+        video = shutil.copy(self.root / 'red.mp4', self.out / 'cover.mp4')
+        with open(video, 'rb') as file:
+            first = self.client.post('/api/media', files={'file': ('cover.mp4', file.read())}).json()
+        return first, self.client.post('/api/projects', json={'name': 'Trip', 'kind': 'edit', 'media_id': first['id'], 'media_ids': [first['id']]}).json()
+
+    def timeline_with(self, *ids):
+        return {'recipe': {'version': 2, 'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': f'c{i}', 'media_id': i, 'start': 0, 'in': 0, 'out': 1} for i in ids]}]}}
+
+    def test_folder_is_saved_and_cleared(self):
+        media = self.add_media()
+        self.assertEqual(self.client.patch(f"/api/photos/{media['id']}", json={'folder': '  Parade '}).json()['folder'], 'Parade')
+        self.assertEqual(self.client.get(f"/api/photos/{media['id']}").json()['folder'], 'Parade')
+        self.assertIsNone(self.client.patch(f"/api/photos/{media['id']}", json={'folder': ' '}).json()['folder'])
+
+    def test_unused_media_is_deleted_with_its_file(self):
+        media = self.add_media()
+        path = Path(media['absolute_path'])
+        self.assertTrue(path.exists())
+        self.assertEqual(self.client.delete(f"/api/photos/{media['id']}").status_code, 200)
+        self.assertFalse(path.exists())
+        self.assertEqual(self.client.get(f"/api/photos/{media['id']}").status_code, 404)
+
+    def test_media_on_a_timeline_cannot_be_deleted(self):
+        media = self.add_media()
+        _, project = self.add_project(media)
+        self.client.put(f"/api/projects/{project['id']}/recipe", json=self.timeline_with(media['id']))
+        response = self.client.delete(f"/api/photos/{media['id']}")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Trip', response.json()['detail'])
+        self.assertTrue(Path(media['absolute_path']).exists())
+
+    def test_cover_moves_on_when_only_the_cover_uses_it(self):
+        other = self.add_media()
+        cover, project = self.add_project(other)
+        self.client.put(f"/api/projects/{project['id']}/recipe", json=self.timeline_with(other['id']))
+        self.assertEqual(self.client.delete(f"/api/photos/{cover['id']}").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/projects/{project['id']}").json()['media_id'], other['id'])
+
+    def test_a_projects_only_media_cannot_be_deleted(self):
+        cover, _ = self.add_project(None)
+        self.assertEqual(self.client.delete(f"/api/photos/{cover['id']}").status_code, 409)
+
     def test_built_page_is_served_without_leaving_its_folder(self):
         dist = self.out / 'dist'
         dist.mkdir()

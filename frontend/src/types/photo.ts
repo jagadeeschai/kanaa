@@ -47,6 +47,7 @@ export type ScanStatus = {
 // ---- Photo (DB-backed) ----
 
 export type Photo = {
+  folder?: string | null;
   has_original_backup?: boolean;
   id: number;
   library_id: number;

@@ -2,19 +2,20 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { ArrowLeft, AudioLines, Check, CircleHelp, Layers, Monitor, Moon, PanelLeft, PanelRight, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
+import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { cornerPlacement, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { cornerPlacement, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
-import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, useEditorTheme } from './layout';
+import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 
-type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void };
+type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const SAVE_DELAY_MS = 650;
@@ -59,7 +60,7 @@ const buttonTakesSpace = (target: EventTarget | null) => target instanceof HTMLE
 const releaseClickedButton = (event: React.MouseEvent) => { if (event.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur(); };
 const RESTART_MESSAGE = 'Motion was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
-export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput }: Props) {
+export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
   const timeline = history.present;
   const [choosingFormat, setChoosingFormat] = useState(false);
@@ -75,11 +76,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [addingMusic, setAddingMusic] = useState(false);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
-  const { choice: themeChoice, next: nextTheme, theme } = useEditorTheme();
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
   const [leftTab, setLeftTab] = useState<'media' | 'text' | 'audio'>('media');
   const [showingHelp, setShowingHelp] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [folder, setFolder] = useState<string | null>(null);
+  const [filing, setFiling] = useState<Photo | null>(null);
+  const [deleting, setDeleting] = useState<Photo | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const rootRef = useRef<HTMLDivElement>(null);
   const fitted = useRef(false);
@@ -443,7 +446,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const openMediaMenu = (event: React.MouseEvent, item: Photo) => {
     event.preventDefault(); event.stopPropagation();
-    setMenu({ x: event.clientX, y: event.clientY, items: [{ label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }] });
+    setMenu({ x: event.clientX, y: event.clientY, items: [
+      { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }, { label: 'Move to folder…', onSelect: () => setFiling(item) },
+      ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
+      'divider', { label: 'Delete from Motion…', danger: true, onSelect: () => setDeleting(item) },
+    ] });
   };
   const openItemMenu = (id: string | null, t: number, x: number, y: number) => {
     if (!timeline) return;
@@ -478,7 +485,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (width && total) setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (width - FIT_MARGIN) / total)));
   }, [total]);
   useEffect(() => { if (total && !fitted.current) { fitted.current = true; fitZoom(); } }, [total, fitZoom]);
-  const usedIds = useMemo(() => new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])) : []), [timeline]);
+  const usedIds = useMemo(() => new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'text' ? [] : (layer.items as { media_id?: number }[]).flatMap((item) => item.media_id ?? []))) : []), [timeline]);
+  const folders = folderNames(media);
+  const shownMedia = media.filter((item) => !item.filename.startsWith('Blank canvas') && (!folder || item.folder === folder));
+  const inVideo = shownMedia.filter((item) => usedIds.has(item.id));
+  const otherMedia = shownMedia.filter((item) => !usedIds.has(item.id));
   const mediaOpen = layout.mediaOpen; const inspectorOpen = layout.inspectorOpen;
   const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '0px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '0px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
@@ -506,10 +517,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         <div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'text', 'audio'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{tab === 'media' ? 'Media' : tab === 'text' ? 'Text' : 'Audio'}</button>)}</div>
         {leftTab === 'media' && <>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
-          <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <div className="ed-tile" key={item.id}>
-            <button className="ed-tile-add" onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
+          {folders.length > 0 && <div className="ed-chips ed-folders" role="group" aria-label="Folders"><button className={folder === null ? 'on' : ''} onClick={() => setFolder(null)}>All</button>{folders.map((name) => <button key={name} className={folder === name ? 'on' : ''} onClick={() => setFolder(name)}>{name}</button>)}</div>}
+          {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
+            <button className="ed-tile-add" onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
-            <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div>
+            <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}
         {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div></>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
@@ -552,6 +564,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
     </div></div>
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
+    {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
+    {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
     {showingHelp && <HelpDialog onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}

@@ -437,3 +437,15 @@ export function duplicateItem(timeline: Timeline, id: string, newId: string, lay
   const text = findText(timeline, id)?.text;
   return text ? addText(timeline, { ...text, id: newId, start: round(text.start + text.length) }, layerId) : timeline;
 }
+
+/** Takes every use of a file off the timeline. The file itself stays in Media. */
+export function removeMedia(timeline: Timeline, mediaId: number): Timeline {
+  const main = mainLayer(timeline);
+  const cleared = withClips(timeline, main.items.filter((clip) => clip.media_id !== mediaId));
+  const layers = cleared.layers.flatMap((layer) => {
+    if (layer.id === main.id || layer.kind === 'text') return [layer];
+    const items = (layer.items as (Clip | Sound)[]).filter((item) => item.media_id !== mediaId);
+    return items.length ? [{ ...layer, items } as Timeline['layers'][number]] : [];
+  });
+  return { ...cleared, layers };
+}
