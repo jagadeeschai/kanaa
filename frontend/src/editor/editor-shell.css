@@ -36,6 +36,11 @@
 .ed-name{margin:0 0 8px;color:#ece9f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-stack{display:flex;flex-direction:column;gap:6px}
 .ed-check{display:flex;gap:8px;margin:12px 0;align-items:flex-start;cursor:pointer}.ed-check input{margin-top:2px;accent-color:#a78bfa}.ed-check span{display:flex;flex-direction:column;gap:2px}.ed-check small{color:#8e8aa3;font-size:11px;line-height:1.35}
 .ed code{background:#14121d;padding:1px 4px;border-radius:4px;color:#d9ceff;user-select:text}
+.ed-sub{font-size:11px;font-weight:600;color:#8e8aa3;margin:12px 0 6px}
+.ed-chips{display:flex;flex-wrap:wrap;gap:4px}.ed-chips button{padding:5px 9px;border:1px solid #3a3650;border-radius:999px;background:#1f1c2c;font-size:11px}.ed-chips button:hover{background:#2a2739}.ed-chips button.on{border-color:#a78bfa;background:#3b2f6b}
+.ed-titles{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}.ed-titles .ed-button{font-size:11px;padding:0 6px;white-space:nowrap}
+.ed-text{width:100%;box-sizing:border-box;padding:8px;border:1px solid #3a3650;border-radius:9px;background:#14121d;color:#ece9f6;font:inherit;font-size:14px;resize:vertical;user-select:text}
+.ed-color{display:flex;justify-content:space-between;align-items:center;margin:10px 0}.ed-color input{width:40px;height:26px;padding:0;border:1px solid #3a3650;border-radius:6px;background:none}
 @media(max-width:900px){
 .ed{overflow-y:auto}.ed-top{gap:2px;padding:0 8px}.ed-top .ed-button{white-space:nowrap;padding:0 8px;font-size:11px}.ed-primary{padding:0 12px}
 .ed-body{display:contents}

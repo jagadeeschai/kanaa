@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.api.schemas import VideoEditRequest
+from app.services.animation import LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import Adjust, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import Adjust, Animation, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -27,6 +28,8 @@ AUDIO_FORMAT = 'aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo'
 DUCK_THRESHOLD = 0.02
 DUCK_RATIO = 2
 DUCK_FILTER = f'sidechaincompress=threshold={DUCK_THRESHOLD}:ratio={DUCK_RATIO}:attack=20:release=400:level_sc=1'
+LUMA_RED, LUMA_GREEN, LUMA_BLUE = 0.2126, 0.7152, 0.0722
+MAX_SUPERSAMPLE = 4
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
 MIN_ATEMPO_STEP = 0.5
@@ -63,15 +66,6 @@ def property_expression(transform: Transform, prop: str, clock: str = 't') -> st
     return f'if(lte({clock},{keys[0].t}),{keys[0].v},{tail})'
 
 
-def layer_expression(clips: list[Clip], prop: str, fallback: float) -> str:
-    """Pick the active clip's curve at the current time. Gaps use the fallback."""
-    tail = f'{fallback}'
-    for clip in reversed(clips):
-        end = clip.start + clip.length
-        tail = f'if(between(t,{clip.start},{end}),{property_expression(clip.transform, prop, f"(t-{clip.start})")},{tail})'
-    return tail
-
-
 def adjust_filters(adjust: Adjust) -> list[str]:
     filters = []
     if adjust.rotation == 90:
@@ -84,12 +78,26 @@ def adjust_filters(adjust: Adjust) -> list[str]:
         filters.append('hflip')
     if adjust.flip_vertical:
         filters.append('vflip')
-    if adjust.brightness != 1:
-        b = adjust.brightness
-        filters += [f'format=gbrp,colorchannelmixer=rr={b}:gg={b}:bb={b}']
-    if adjust.contrast != 1 or adjust.saturation != 1:
-        filters.append(f'eq=contrast={adjust.contrast}:saturation={adjust.saturation}')
     return filters
+
+
+def picture_filters(adjust: Adjust, look: str) -> list[str]:
+    """The preview shader's steps in its order, on RGB values, so the two can't disagree."""
+    red, green, blue, contrast, saturation = LOOKS[look]
+    contrast *= adjust.contrast
+    saturation *= adjust.saturation
+    b = adjust.brightness
+    filters = []
+    if (red, green, blue, b) != (1, 1, 1, 1):
+        filters.append(f'colorchannelmixer=rr={red * b:.5f}:gg={green * b:.5f}:bb={blue * b:.5f}')
+    if contrast != 1:
+        curve = f'clip((val-127.5)*{contrast:.5f}+127.5,0,255)'
+        filters.append(f"lutrgb=r='{curve}':g='{curve}':b='{curve}'")
+    if saturation != 1:
+        keep = 1 - saturation
+        r, g, l = LUMA_RED * keep, LUMA_GREEN * keep, LUMA_BLUE * keep
+        filters.append(f'colorchannelmixer=rr={r + saturation:.5f}:rg={g:.5f}:rb={l:.5f}:gr={r:.5f}:gg={g + saturation:.5f}:gb={l:.5f}:br={r:.5f}:bg={g:.5f}:bb={l + saturation:.5f}')
+    return ['format=rgba', *filters] if filters else []
 
 
 def color_filter(facts: MediaFacts) -> str:
@@ -99,17 +107,38 @@ def color_filter(facts: MediaFacts) -> str:
     return HDR_TO_BT709 if facts.is_hdr else TAG_BT709
 
 
-def clip_chain(clip: Clip, facts: MediaFacts, fmt: Format, frames: int) -> str:
-    """Bring any source to the project's size, rate and color, and exactly `frames` long."""
-    W, H = fmt.width, fmt.height
-    steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *adjust_filters(clip.adjust)]
+def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0) -> str:
+    """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame."""
+    W, H = canvas
+    steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
     if clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
-    steps += [f'fps={fmt.fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1',
-              # Short or variable sources are held on their last frame, so later layers never slip.
-              'tpad=stop=-1:stop_mode=clone', f'trim=end_frame={frames}', 'setpts=PTS-STARTPTS']
+    steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1']
+    if held_head:
+        steps.append(f'tpad=start={held_head}:start_mode=clone')
+    # Short or variable sources are held on their last frame, so later layers never slip.
+    steps += ['tpad=stop=-1:stop_mode=clone', f'trim=end_frame={frames}', 'setpts=PTS-STARTPTS', 'settb=AVTB']
     return ','.join(steps)
+
+
+def shared_fit(enter: Animation | None, exit_: Animation | None, length: float) -> tuple[float, float]:
+    """Overlong animations share the item's length, like fades."""
+    first, last = enter.duration if enter else 0, exit_.duration if exit_ else 0
+    excess = max(1, (first + last) / length)
+    return first / excess, last / excess
+
+
+def supersample(transform: Transform, enter: Animation | None, exit_: Animation | None, facts: MediaFacts | None, fmt: Format) -> float:
+    """Work at the largest size the item reaches, within its source, so zooming in stays sharp."""
+    if facts is None or not facts.width or not facts.height:
+        return 1
+    keys = transform.keyframes.get('scale', [])
+    largest = max([transform.scale, *(key.v for key in keys)])
+    if any(item and item.preset == 'pop' for item in (enter, exit_)):
+        largest *= 1.11  # The overshoot.
+    detail = max(facts.width, facts.height) / min(fmt.width, fmt.height)
+    return max(1, min(largest, detail, MAX_SUPERSAMPLE))
 
 
 def atempo_chain(speed: float) -> list[str]:
@@ -183,54 +212,133 @@ class Builder:
         return max(1, round(seconds * self.fmt.fps))
 
     def transparent_gap(self, label: str, frames: int) -> None:
-        self.graph.append(f'color=c=black@0:s={self.fmt.width}x{self.fmt.height}:r={self.fmt.fps}:d={frames / self.fmt.fps},format=gbrap,trim=end_frame={frames},setsar=1[{label}]')
+        self.graph.append(f'color=c=black@0:s={self.fmt.width}x{self.fmt.height}:r={self.fmt.fps}:d={frames / self.fmt.fps:.6f},format=gbrap,settb=AVTB,trim=end_frame={frames},setsar=1[{label}]')
 
-    def clip_input(self, clip: Clip, facts: MediaFacts) -> int:
+    def clip_input(self, clip: Clip, facts: MediaFacts, source_start: float, seconds: float) -> int:
         if facts.media_type == 'image':
-            return self.add_input('-loop', '1', '-framerate', str(self.fmt.fps), '-t', f'{(clip.out - clip.in_):.6f}', '-i', str(facts.path))
-        return self.add_input('-ss', f'{clip.in_:.6f}', '-t', f'{(clip.out - clip.in_):.6f}', '-i', str(facts.path))
+            return self.add_input('-loop', '1', '-framerate', str(self.fmt.fps), '-t', f'{seconds:.6f}', '-i', str(facts.path))
+        return self.add_input('-ss', f'{source_start:.6f}', '-t', f'{seconds:.6f}', '-i', str(facts.path))
 
     def add_clip_audio(self, clip: Clip, facts: MediaFacts, layer_muted: bool) -> None:
         if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0:
             return
         self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
 
+    def transition_frames(self, clips: list[Clip]) -> list[int]:
+        """For each clip, the frames either side of its opening cut. Matches transitionHalf in model.ts."""
+        fps = self.fmt.fps
+        halves = [0] * len(clips)
+        for number, (before, clip) in enumerate(zip(clips, clips[1:]), start=1):
+            if clip.transition_in and round(before.start * fps) + self.frames(before.length) == round(clip.start * fps):
+                halves[number] = min(round(clip.transition_in.duration * fps / 2), self.frames(before.length) // 2, self.frames(clip.length) // 2)
+        return halves
+
+    def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str) -> str:
+        """Place one item on a transparent full frame. `lead` is how many seconds of the stream come before the item's own start."""
+        if transform.is_default and not enter and not exit_ and canvas_scale == 1:
+            return label
+        W, H = self.fmt.width, self.fmt.height
+        first, last = shared_fit(enter, exit_, length)
+        clock = f'(t-{lead:.6f})' if lead else 't'
+        filters: list[str] = []
+        if transform.opacity != 1:
+            filters.append(f'colorchannelmixer=aa={transform.opacity}')
+        moves = []
+        if enter:
+            moves.append((enter.preset, f'min(1,max(0,{clock}/{first:.6f}))'))
+            if span := OPACITY_SPAN.get(enter.preset):
+                filters.append(f'fade=t=in:st={lead:.6f}:d={first * span:.6f}:alpha=1')
+        if exit_:
+            moves.append((exit_.preset, f'min(1,max(0,({length:.6f}-{clock})/{last:.6f}))'))
+            if span := OPACITY_SPAN.get(exit_.preset):
+                filters.append(f'fade=t=out:st={lead + length - last * span:.6f}:d={last * span:.6f}:alpha=1')
+        if blur := self.blur_commands(enter, exit_, first, last, length, frames, lead, name):
+            filters.append(blur)
+        x, y, scale = property_expression(transform, 'x', clock), property_expression(transform, 'y', clock), property_expression(transform, 'scale', clock)
+        sized, back, posed = f'{name}_sized', f'{name}_back', f'{name}_posed'
+        self.graph.append(f"[{label}]{''.join(step + ',' for step in filters)}scale=w='max(2,{W}*({scale}))':h='max(2,{H}*({scale}))':eval=frame:flags=bicubic[{sized}]")
+        self.transparent_gap(back, frames)
+        self.graph.append(f"[{back}][{sized}]overlay=x='{W}*({x})-overlay_w/2':y='{H}*({y})-overlay_h/2':eval=frame:format=gbrp[{posed}]")
+        # The item is now cropped to the frame. Moves carry that whole frame, so a zoomed-in clip still slides in from outside.
+        shift_x = [extra for preset, p in moves if (extra := offset_expression(preset, 'dx', p))]
+        shift_y = [extra for preset, p in moves if (extra := offset_expression(preset, 'dy', p))]
+        zoom = [extra for preset, p in moves if (extra := scale_expression(preset, p))]
+        if not (shift_x or shift_y or zoom):
+            return posed
+        size = '*'.join(zoom) or '1'
+        moved_sized, moved_back, moved = f'{name}_msized', f'{name}_mback', f'{name}_moved'
+        self.graph.append(f"[{posed}]scale=w='max(2,{W}*({size}))':h='max(2,{H}*({size}))':eval=frame:flags=bicubic[{moved_sized}]")
+        self.transparent_gap(moved_back, frames)
+        self.graph.append(f"[{moved_back}][{moved_sized}]overlay=x='{W}*(0.5+{'+'.join(shift_x) or '0'})-overlay_w/2':y='{H}*(0.5+{'+'.join(shift_y) or '0'})-overlay_h/2':eval=frame:format=gbrp[{moved}]")
+        return moved
+
+    def blur_commands(self, enter: Animation | None, exit_: Animation | None, first: float, last: float, length: float, frames: int, lead: float, name: str) -> str | None:
+        if not any(item and item.preset == 'blur' for item in (enter, exit_)):
+            return None
+        fps = self.fmt.fps
+        lines = []
+        for frame in range(frames):
+            local = frame / fps - lead
+            amount = 0.0
+            if enter and enter.preset == 'blur':
+                amount = max(amount, look_at('blur', local / first)['blur'])
+            if exit_ and exit_.preset == 'blur':
+                amount = max(amount, look_at('blur', (length - local) / last)['blur'])
+            lines.append(f'{frame / fps:.6f} gblur@{name} sigma {amount * self.fmt.height:.3f};')
+        (self.folder / f'{name}.cmd').write_text('\n'.join(lines), encoding='utf-8')
+        return f'sendcmd=f={name}.cmd,gblur@{name}=sigma=0'
+
     def add_video_layer(self, layer: VideoLayer, position: int, base: str) -> str:
         clips = sorted(layer.items, key=lambda clip: clip.start)
         fps = self.fmt.fps
+        halves = self.transition_frames(clips)
         segments: list[str] = []
         cursor = 0  # In frames, so rounding can't accumulate down a long timeline.
+        joined_label, joined_frames = None, 0
         for number, clip in enumerate(clips):
             facts = self.media(clip.media_id)
-            start = round(clip.start * fps)
-            if start > cursor:
-                label = f'gap{position}_{number}'
-                self.transparent_gap(label, start - cursor)
-                segments.append(f'[{label}]')
-            frames = self.frames(clip.length)
-            index = self.clip_input(clip, facts)
+            head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
+            if not head:
+                if joined_label:
+                    segments.append(f'[{joined_label}]')
+                    joined_label = None
+                start = round(clip.start * fps)
+                if start > cursor:
+                    label = f'gap{position}_{number}'
+                    self.transparent_gap(label, start - cursor)
+                    segments.append(f'[{label}]')
+                    cursor = start
+            base_frames = self.frames(clip.length)
+            frames = base_frames + head + tail
+            # The extra frames come from the source when it has them. Otherwise the first or last frame is held.
+            wanted = clip.in_ - head * clip.speed / fps
+            held = max(0, math.ceil(-wanted * fps / clip.speed)) if facts.media_type != 'image' else 0
+            index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps)
+            enter, exit_ = None if head else clip.enter, None if tail else clip.exit
+            scale = supersample(clip.transform, enter, exit_, facts, self.fmt)
+            canvas = (round(self.fmt.width * scale / 2) * 2, round(self.fmt.height * scale / 2) * 2)
             label = f'c{position}_{number}'
-            self.graph.append(f'[{index}:v]{clip_chain(clip, facts, self.fmt, frames)}[{label}]')
-            segments.append(f'[{label}]')
-            cursor = start + frames
+            self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held)}[{label}]')
+            shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label)
+            if head:
+                merged = f'x{position}_{number}'
+                self.graph.append(f'[{joined_label}][{shown}]xfade=transition={XFADE_NAMES[clip.transition_in.kind]}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
+                joined_label, joined_frames = merged, joined_frames + frames - 2 * head
+            elif tail:
+                joined_label, joined_frames = shown, frames
+            else:
+                segments.append(f'[{shown}]')
+            cursor += base_frames
             self.add_clip_audio(clip, facts, layer.muted)
+        if joined_label:
+            segments.append(f'[{joined_label}]')
         if cursor < self.total_frames:
             label = f'gap{position}_end'
             self.transparent_gap(label, self.total_frames - cursor)
             segments.append(f'[{label}]')
         joined = f'layer{position}'
         self.graph.append(f"{''.join(segments)}concat=n={len(segments)}:v=1:a=0[{joined}]")
-        if all(clip.transform.is_default for clip in clips):
-            return self.overlay(base, joined, position, '0', '0')
-        W, H = self.fmt.width, self.fmt.height
-        scale = layer_expression(clips, 'scale', 1)
-        opacity = clips[0].transform.opacity
-        posed = f'posed{position}'
-        fade = f'colorchannelmixer=aa={opacity},' if opacity != 1 else ''
-        self.graph.append(f"[{joined}]{fade}scale=w='{W}*({scale})':h='{H}*({scale})':eval=frame:flags=bilinear[{posed}]")
-        x = f"{W}*({layer_expression(clips, 'x', 0.5)})-overlay_w/2"
-        y = f"{H}*({layer_expression(clips, 'y', 0.5)})-overlay_h/2"
-        return self.overlay(base, posed, position, x, y)
+        return self.overlay(base, joined, position, '0', '0')
 
     def overlay(self, base: str, top: str, position: int, x: str, y: str) -> str:
         output = f'v{position}'
@@ -238,12 +346,18 @@ class Builder:
         return output
 
     def add_text_layer(self, layer, position: int, base: str) -> str:
+        fps = self.fmt.fps
         for number, item in enumerate(sorted(layer.items, key=lambda text: text.start)):
             image = self.folder / f'text-{position}-{number}.png'
             render_text_image(item, self.fmt, image)
-            index = self.add_input('-loop', '1', '-framerate', str(self.fmt.fps), '-t', f'{self.duration:.6f}', '-i', str(image))
-            output = f't{position}_{number}'
-            self.graph.append(f"[{base}][{index}:v]overlay=format=gbrp:eof_action=pass:enable='between(t,{item.start},{item.start + item.length})'[{output}]")
+            frames = self.frames(item.length)
+            index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(image))
+            label, output = f'text{position}_{number}', f't{position}_{number}'
+            self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
+            shown = self.pose(label, Transform(), item.enter, item.exit, item.length, frames, 1, 0, label)
+            late = f'{label}_late'
+            self.graph.append(f'[{shown}]tpad=start={round(item.start * fps)}:color=black@0[{late}]')
+            self.graph.append(f'[{base}][{late}]overlay=format=gbrp:eof_action=pass[{output}]')
             base = output
         return base
 

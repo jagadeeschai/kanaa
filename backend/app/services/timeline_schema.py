@@ -61,6 +61,16 @@ class Adjust(Strict):
     saturation: float = Field(default=1, ge=0, le=2)
 
 
+class Animation(Strict):
+    preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce']
+    duration: float = Field(default=0.5, ge=0.1, le=3)
+
+
+class Transition(Strict):
+    kind: Literal['crossfade', 'wipe', 'slide', 'zoom']
+    duration: float = Field(default=0.6, ge=0.1, le=2)
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -75,6 +85,10 @@ class Clip(Strict):
     fade_out: float = Field(default=0, ge=0)
     transform: Transform = Field(default_factory=Transform)
     adjust: Adjust = Field(default_factory=Adjust)
+    enter: Optional[Animation] = None
+    exit: Optional[Animation] = None
+    transition_in: Optional[Transition] = None
+    look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
 
     @model_validator(mode='after')
     def valid_range(self):
@@ -96,6 +110,8 @@ class Text(Strict):
     position: Literal['top', 'center', 'bottom'] = 'bottom'
     color: str = Field(default='#ffffff', pattern=r'^#[0-9a-fA-F]{6}$')
     size: int = Field(default=44, ge=12, le=100)
+    enter: Optional[Animation] = None
+    exit: Optional[Animation] = None
 
     @property
     def length(self) -> float:

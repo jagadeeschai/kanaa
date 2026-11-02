@@ -1,13 +1,17 @@
+import type { Animation, LookName, Transition } from './animation';
 import type { Transform } from './evaluate';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName };
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
-export type OtherLayer = { id: string; kind: 'text'; items: { id: string; start: number; [key: string]: unknown }[]; [key: string]: unknown };
+export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null };
+export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
+export type TrackLayer = TextLayer | AudioLayer;
+export type TrackItem = TextItem | Sound;
 export type Format = { width: number; height: number; fps: number };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | OtherLayer)[]; normalize_audio?: boolean };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer)[]; normalize_audio?: boolean };
 export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; duration?: number | null; width?: number | null; height?: number | null };
 
 export const MIN_CLIP_SECONDS = 0.1;
@@ -32,6 +36,19 @@ export function mainLayer(timeline: Timeline): VideoLayer {
 }
 
 export const audioLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is AudioLayer => layer.kind === 'audio');
+
+export const textLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is TextLayer => layer.kind === 'text');
+/** The rows under the main track: text first, then sound. */
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...audioLayers(timeline)];
+export const itemLength = (item: TrackItem) => ('length' in item ? item.length : soundLength(item));
+
+export function findText(timeline: Timeline, id: string | null): { text: TextItem; layer: TextLayer } | null {
+  for (const layer of textLayers(timeline)) {
+    const text = layer.items.find((item) => item.id === id);
+    if (text) return { text, layer };
+  }
+  return null;
+}
 
 export function findSound(timeline: Timeline, id: string | null): { sound: Sound; layer: AudioLayer } | null {
   for (const layer of audioLayers(timeline)) {
@@ -151,7 +168,7 @@ export function snap(t: number, points: number[], reach: number): number {
 }
 
 export function snapPoints(timeline: Timeline, playhead: number, except?: string): number[] {
-  const sounds = audioLayers(timeline).flatMap((layer) => layer.items).filter((sound) => sound.id !== except).flatMap((sound) => [sound.start, sound.start + soundLength(sound)]);
+  const sounds = trackLayers(timeline).flatMap((layer) => layer.items as TrackItem[]).filter((item) => item.id !== except).flatMap((item) => [item.start, item.start + itemLength(item)]);
   return [0, playhead, ...sounds, ...mainLayer(timeline).items.filter((clip) => clip.id !== except).flatMap((clip) => [clip.start, clip.start + clipLength(clip)])];
 }
 
@@ -213,25 +230,35 @@ export function updateLayer(timeline: Timeline, id: string, changes: Partial<Aud
   return { ...timeline, layers: timeline.layers.map((layer) => layer.id === id ? { ...layer, ...changes } as AudioLayer : layer) };
 }
 
-/** Moves in time, stopping at neighbours. A sound changes track only when it fits there. */
-export function moveSound(timeline: Timeline, id: string, start: number, layerId?: string): Timeline {
-  const found = findSound(timeline, id);
-  if (!found) return timeline;
-  const target = audioLayers(timeline).find((layer) => layer.id === layerId) ?? found.layer;
-  const length = soundLength(found.sound);
-  let at = Math.max(0, round(start));
-  for (const item of [...target.items].filter((entry) => entry.id !== id).sort((a, b) => a.start - b.start)) {
-    if (at < soundEnd(item) && at + length > item.start) at = at + length / 2 < item.start + soundLength(item) / 2 ? round(item.start - length) : round(soundEnd(item));
-  }
-  const moved = { ...found.sound, start: at };
-  if (at < 0 || !fits(target, moved)) return timeline;
-  if (target.id === found.layer.id) return withSounds(timeline, target, target.items.map((item) => item.id === id ? moved : item));
-  return withSounds(removeSoundKeepingLayer(timeline, found), target, [...target.items, moved]);
+const itemEnd = (item: TrackItem) => item.start + itemLength(item);
+
+function withItems(timeline: Timeline, layer: TrackLayer, items: TrackItem[]): Timeline {
+  const sorted = [...items].sort((a, b) => a.start - b.start);
+  return { ...timeline, layers: timeline.layers.map((entry) => entry.id === layer.id ? { ...layer, items: sorted } as TrackLayer : entry) };
 }
 
-function removeSoundKeepingLayer(timeline: Timeline, found: { sound: Sound; layer: AudioLayer }): Timeline {
-  return withSounds(timeline, found.layer, found.layer.items.filter((item) => item.id !== found.sound.id));
+/** Moves in time, stopping at neighbours. An item changes track only when it fits there, and text stays with text. */
+export function moveItem(timeline: Timeline, id: string, start: number, layerId?: string): Timeline {
+  const layers = trackLayers(timeline);
+  const from = layers.find((layer) => (layer.items as TrackItem[]).some((item) => item.id === id));
+  if (!from) return timeline;
+  const item = (from.items as TrackItem[]).find((entry) => entry.id === id)!;
+  const wanted = layers.find((layer) => layer.id === layerId);
+  const target = wanted && wanted.kind === from.kind ? wanted : from;
+  const others = (target.items as TrackItem[]).filter((entry) => entry.id !== id).sort((a, b) => a.start - b.start);
+  const length = itemLength(item);
+  let at = Math.max(0, round(start));
+  for (const other of others) {
+    if (at < itemEnd(other) && at + length > other.start) at = at + length / 2 < other.start + itemLength(other) / 2 ? round(other.start - length) : round(itemEnd(other));
+  }
+  const moved = { ...item, start: at };
+  if (at < 0 || others.some((other) => other.start < at + length - 1e-6 && itemEnd(other) > at + 1e-6)) return timeline;
+  if (target.id === from.id) return withItems(timeline, from, (from.items as TrackItem[]).map((entry) => entry.id === id ? moved : entry));
+  const without = withItems(timeline, from, (from.items as TrackItem[]).filter((entry) => entry.id !== id));
+  return withItems(without, target, [...target.items as TrackItem[], moved]);
 }
+
+export const moveSound = moveItem;
 
 /** `seconds` is the wanted source time of that edge. Trimming the start keeps the rest of the sound in place. */
 export function trimSound(timeline: Timeline, id: string, edge: 'in' | 'out', seconds: number): Timeline {
@@ -273,4 +300,46 @@ export function fadeGain(item: { fade_in: number; fade_out: number }, into: numb
   const shrink = Math.max(1, (item.fade_in + item.fade_out) / length);
   const fadeIn = item.fade_in / shrink; const fadeOut = item.fade_out / shrink;
   return Math.max(0, Math.min(1, fadeIn ? into / fadeIn : 1, fadeOut ? (length - into) / fadeOut : 1));
+}
+
+export function addText(timeline: Timeline, text: TextItem, layerId: string): Timeline {
+  const free = textLayers(timeline).find((layer) => layer.items.every((item) => item.start + item.length <= text.start + 1e-6 || text.start + text.length <= item.start + 1e-6));
+  if (free) return withItems(timeline, free, [...free.items, text]);
+  return { ...timeline, layers: [...timeline.layers, { id: layerId, kind: 'text', name: 'Text', items: [text] }] };
+}
+
+export function removeText(timeline: Timeline, id: string): Timeline {
+  const found = findText(timeline, id);
+  if (!found) return timeline;
+  const items = found.layer.items.filter((item) => item.id !== id);
+  return items.length ? withItems(timeline, found.layer, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== found.layer.id) };
+}
+
+export function updateText(timeline: Timeline, id: string, changes: Partial<TextItem>): Timeline {
+  const found = findText(timeline, id);
+  return found ? withItems(timeline, found.layer, found.layer.items.map((item) => item.id === id ? { ...item, ...changes } : item)) : timeline;
+}
+
+/** `at` is the wanted timeline time of that edge. */
+export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at: number): Timeline {
+  const found = findText(timeline, id);
+  if (!found) return timeline;
+  const { text, layer } = found;
+  const others = layer.items.filter((item) => item.id !== id);
+  const end = text.start + text.length;
+  if (edge === 'in') {
+    const earliest = others.filter((item) => item.start < text.start).reduce((last, item) => Math.max(last, item.start + item.length), 0);
+    const start = round(Math.min(Math.max(at, earliest), end - MIN_CLIP_SECONDS));
+    return updateText(timeline, id, { start, length: round(end - start) });
+  }
+  const after = others.filter((item) => item.start >= end - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
+  return updateText(timeline, id, { length: round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start) });
+}
+
+/** Half the frames of the transition opening `clip`, or 0. Matches transition_frames in timeline_service.py. */
+export function transitionHalf(before: Clip, clip: Clip, fps: number): number {
+  if (!clip.transition_in) return 0;
+  const frames = (item: Clip) => Math.max(1, Math.round(clipLength(item) * fps));
+  if (Math.round(before.start * fps) + frames(before) !== Math.round(clip.start * fps)) return 0;
+  return Math.min(Math.round((clip.transition_in.duration * fps) / 2), Math.floor(frames(before) / 2), Math.floor(frames(clip) / 2));
 }

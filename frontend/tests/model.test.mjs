@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -136,4 +136,33 @@ test('fadeGain rises, holds and falls, and shares overlong fades', () => {
   assert.equal(fadeGain(item, 5, 10), 1);
   assert.equal(fadeGain(item, 9, 10), 0.5);
   assert.equal(fadeGain({ fade_in: 4, fade_out: 4 }, 1, 2), 1);
+});
+
+const title = (id, start, length = 3) => ({ id, start, length, text: 'தமிழ்', style: 'band', position: 'bottom', color: '#ffffff', size: 44 });
+
+test('titles stack on a new track only when they overlap, and leave when empty', () => {
+  let next = addText(addText(withClip(), title('a', 0), 'l1'), title('b', 1), 'l2');
+  assert.equal(next.layers.filter((layer) => layer.kind === 'text').length, 2);
+  next = addText(next, title('c', 5), 'l3');
+  assert.equal(next.layers.filter((layer) => layer.kind === 'text').length, 2);
+  assert.equal(removeText(removeText(next, 'a'), 'c').layers.filter((layer) => layer.kind === 'text').length, 1);
+});
+
+test('text moves in time and trims against its neighbours, and stays off sound tracks', () => {
+  let next = addText(addText(withClip(), title('a', 0), 'l1'), title('b', 4), 'l1');
+  next = addSound(next, song('s', 0), 'l2');
+  assert.equal(findText(moveItem(next, 'a', 3), 'a').text.start, 1);
+  assert.equal(findText(moveItem(next, 'a', 0, 'l2'), 'a').layer.id, 'l1');
+  assert.equal(findText(trimText(next, 'a', 'out', 9), 'a').text.length, 4);
+  const late = findText(trimText(next, 'b', 'in', 5), 'b').text;
+  assert.deepEqual([late.start, late.length], [5, 2]);
+});
+
+test('transitionHalf needs touching clips and fits inside both', () => {
+  const a = { ...newClip(facts, 'a'), start: 0, out: 2 };
+  const b = { ...newClip(facts, 'b'), start: 2, out: 2, transition_in: { kind: 'wipe', duration: 1 } };
+  assert.equal(transitionHalf(a, b, 30), 15);
+  assert.equal(transitionHalf(a, { ...b, start: 3 }, 30), 0);
+  assert.equal(transitionHalf(a, { ...b, transition_in: { kind: 'wipe', duration: 2 }, out: 0.5 }, 30), 7);
+  assert.equal(transitionHalf(a, { ...b, transition_in: null }, 30), 0);
 });

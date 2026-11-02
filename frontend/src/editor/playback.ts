@@ -1,35 +1,59 @@
+import { animatedLook, LOOKS, REST, type Look } from '../timeline/animation';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
-import { clipLength, duration, fittedSize, type Clip, type Sound, type Timeline, type VideoLayer } from '../timeline/model';
+import { clipLength, duration, fittedSize, transitionHalf, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
 type LayerSlots = { slots: [Slot, Slot] };
+type Crossing = { before: Clip; after: Clip; p: number };
+type Pose = { look?: Look; opacity?: number; scale?: number };
 
 const DRIFT_RESEEK_SECONDS = 0.25;
 const DRIFT_NUDGE_SECONDS = 0.02;
 const MAX_NUDGE = 0.05;
 const MAX_BUFFER_SIDE = 1280;
 
+const MIN_ZOOM = 0.02;
+const BLUR_TAPS = 24;
+const smoothstep = (low: number, high: number, x: number) => { const t = Math.min(1, Math.max(0, (x - low) / (high - low))); return t * t * (3 - 2 * t); };
+
 const VERTEX = `#version 300 es
 in vec2 p; out vec2 uv; uniform vec4 box;
 void main(){ uv=p; vec2 pos=box.xy+(p-.5)*box.zw; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation; uniform int rotation; uniform vec2 flip;
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation; uniform vec2 flip, blurAspect; uniform vec3 tint;
+vec4 pick(vec2 at){ vec4 c=texture(tex,at); c.rgb*=c.a; return c; }
 void main(){
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
-  vec3 c = texture(tex, s).rgb * brightness;
-  c = (c - .5) * contrast + .5;
-  float luma = dot(c, vec3(.2126, .7152, .0722));
-  color = vec4(clamp(mix(vec3(luma), c, saturation), 0., 1.), opacity);
+  vec4 c = pick(s);
+  if (blur > 0.) {
+    // A Gaussian-weighted spiral. One pass, and close enough to the export's Gaussian blur for a moving frame.
+    float total = 1.; const float tau = 6.2831853;
+    for (int i = 0; i < ${BLUR_TAPS}; i++) {
+      float r = sqrt((float(i) + .5) / ${BLUR_TAPS}.) * 2.2; float a = float(i) * 2.399963;
+      vec2 at = s + vec2(cos(a), sin(a)) * r * blur * blurAspect;
+      float w = exp(-.5 * r * r); c += pick(at) * w; total += w;
+    }
+    c /= total;
+  }
+  float alpha = c.a; vec3 rgb = alpha > 0. ? c.rgb / alpha : vec3(0.);
+  rgb = rgb * brightness * tint;
+  rgb = (clamp(rgb, 0., 1.) - .5) * contrast + .5;
+  float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
+  rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
+  float a = alpha * opacity;
+  color = vec4(rgb * a, a);
 }`;
 
 /** Draws the timeline to a canvas and keeps video in step with one clock. Lives outside React. */
 export class PlaybackEngine {
   readonly mixer = new AudioMixer();
   private soundUrl: (sound: Sound) => string | undefined = () => undefined;
+  private textUrl: (text: TextItem) => string | undefined = () => undefined;
+  private stopAt = Infinity;
   private gl: WebGL2RenderingContext;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private layers = new Map<string, LayerSlots>();
@@ -61,9 +85,9 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect']) this.uniforms[name] = gl.getUniformLocation(program, name);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   private newTexture(): WebGLTexture {
@@ -95,8 +119,9 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined) {
     this.timeline = timeline;
+    this.textUrl = textUrl;
     this.sources = sources;
     this.soundUrl = soundUrl;
     const { width, height } = timeline.format;
@@ -123,8 +148,20 @@ export class PlaybackEngine {
     return { next: clips.find((clip) => clip.start > t) };
   }
 
-  private sourceTime(clip: Clip, t: number) {
-    return clip.in + Math.max(0, Math.min(t - clip.start, clipLength(clip) - 0.001)) * clip.speed;
+  private sorted(layer: VideoLayer) { return [...layer.items].sort((a, b) => a.start - b.start); }
+
+  private crossing(layer: VideoLayer, t: number): Crossing | null {
+    const clips = this.sorted(layer);
+    for (let index = 1; index < clips.length; index += 1) {
+      const half = transitionHalf(clips[index - 1], clips[index], this.timeline!.format.fps) / this.timeline!.format.fps;
+      if (half && t >= clips[index].start - half && t < clips[index].start + half) return { before: clips[index - 1], after: clips[index], p: (t - clips[index].start + half) / (2 * half) };
+    }
+    return null;
+  }
+
+  private sourceTime(clip: Clip, t: number, inside = true) {
+    const local = t - clip.start;
+    return Math.max(0, clip.in + (inside ? Math.max(0, Math.min(local, clipLength(clip) - 0.001)) : local) * clip.speed);
   }
 
   private load(slot: Slot, clip: Clip, url: string, at: number) {
@@ -138,24 +175,31 @@ export class PlaybackEngine {
     for (const layer of this.videoLayers()) {
       const { slots } = this.slotsFor(layer);
       const { clip, next } = this.clipFor(layer, t);
-      const source = clip && this.sources(clip.media_id);
-      let active: Slot | undefined;
-      if (clip && source?.kind === 'video') {
-        active = slots.find((slot) => slot.clipId === clip.id) ?? slots.find((slot) => slot.clipId !== next?.id) ?? slots[0];
-        const at = this.sourceTime(clip, t);
-        if (active.clipId !== clip.id || !this.playing) this.load(active, clip, source.url, at);
-        active.video.muted = false;
-        if (this.playing) this.mixer.setVideoGain(active.video, this.mixer.clipGain(clip, t, Boolean(layer.muted)));
-        active.video.playbackRate = clip.speed * this.rate;
-        if (this.playing && active.video.paused) void active.video.play().catch(() => {});
-        if (!this.playing && !active.video.paused) active.video.pause();
-      } else if (clip && source?.kind === 'image') this.imageTexture(source.url);
-      const spare = slots.find((slot) => slot !== active);
+      const crossing = this.crossing(layer, t);
+      const wanted = crossing ? [crossing.before, crossing.after] : clip ? [clip] : [];
+      const used: Slot[] = [];
+      for (const item of wanted) {
+        const source = this.sources(item.media_id);
+        if (source?.kind === 'image') this.imageTexture(source.url);
+        if (source?.kind !== 'video') continue;
+        const slot = slots.find((entry) => entry.clipId === item.id) ?? slots.find((entry) => !used.includes(entry) && !wanted.some((other) => other.id === entry.clipId) && entry.clipId !== next?.id) ?? slots.find((entry) => !used.includes(entry))!;
+        used.push(slot);
+        const at = this.sourceTime(item, t, !crossing);
+        if (slot.clipId !== item.id || !this.playing) this.load(slot, item, source.url, at);
+        slot.video.muted = false;
+        if (this.playing) this.mixer.setVideoGain(slot.video, item === clip ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
+        slot.video.playbackRate = item.speed * this.rate;
+        const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;
+        if (this.playing && slot.video.paused && !finished) void slot.video.play().catch(() => {});
+        if (!this.playing && !slot.video.paused) slot.video.pause();
+      }
+      const spare = slots.find((entry) => !used.includes(entry));
       if (spare && !spare.video.paused) spare.video.pause();
       const nextSource = next && this.sources(next.media_id);
       if (spare && next && nextSource?.kind === 'video' && spare.clipId !== next.id) {
         spare.video.muted = true;
-        this.load(spare, next, nextSource.url, next.in);
+        const half = clip ? transitionHalf(clip, next, this.timeline!.format.fps) / this.timeline!.format.fps : 0;
+        this.load(spare, next, nextSource.url, Math.max(0, next.in - half * next.speed));
       }
     }
   }
@@ -184,37 +228,131 @@ export class PlaybackEngine {
     requestAnimationFrame(() => { this.drawQueued = false; this.draw(); });
   }
 
-  private draw() {
+  private bindClip(layer: VideoLayer, clip: Clip, source: PlaybackSource): boolean {
+    const { gl } = this;
+    if (source.kind === 'video') {
+      const slot = this.slotsFor(layer).slots.find((entry) => entry.clipId === clip.id);
+      if (!slot || slot.video.readyState < 2) return false;
+      gl.bindTexture(gl.TEXTURE_2D, slot.texture);
+      if (slot.fresh) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, slot.video); slot.fresh = false; }
+      return true;
+    }
+    const image = this.imageTexture(source.url);
+    if (!image.ready) return false;
+    gl.bindTexture(gl.TEXTURE_2D, image.texture);
+    return true;
+  }
+
+  private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1 }: Pose) {
     const { gl, uniforms } = this;
+    const { format } = this.timeline!;
+    const source = this.sources(clip.media_id);
+    if (!source || !this.bindClip(layer, clip, source)) return;
+    const local = this.time - clip.start;
+    const frame = look.scale * zoom;
+    const moved = look.scale !== 1 || look.dx !== 0 || look.dy !== 0;
+    const scale = valueAt(clip.transform, 'scale', local) * frame;
+    const fitted = fittedSize(source, clip.adjust.rotation, format);
+    const [red, green, blue, contrast, saturation] = LOOKS[clip.look ?? 'none'];
+    const height = fitted.height * scale;
+    // The clip is cropped to the frame, and that whole frame moves, as in the export.
+    const centerX = 0.5 + look.dx; const centerY = 0.5 + look.dy;
+    if (moved) {
+      const { width: w, height: h } = this.canvas;
+      gl.enable(gl.SCISSOR_TEST);
+      const left = Math.max(0, (centerX - frame / 2) * w); const right = Math.min(w, (centerX + frame / 2) * w);
+      const top = Math.max(0, (centerY - frame / 2) * h); const bottom = Math.min(h, (centerY + frame / 2) * h);
+      gl.scissor(Math.round(left), Math.round(h - bottom), Math.max(0, Math.round(right - left)), Math.max(0, Math.round(bottom - top)));
+    }
+    gl.uniform4f(uniforms.box, centerX + (valueAt(clip.transform, 'x', local) - 0.5) * frame, centerY + (valueAt(clip.transform, 'y', local) - 0.5) * frame, (fitted.width * scale) / format.width, height / format.height);
+    gl.uniform1f(uniforms.opacity, clip.transform.opacity * look.opacity * opacity);
+    gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
+    gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
+    gl.uniform1f(uniforms.saturation, clip.adjust.saturation * saturation);
+    gl.uniform3f(uniforms.tint, red, green, blue);
+    gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
+    gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), 1);
+    gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
+    gl.uniform2f(uniforms.flip, clip.adjust.flip_horizontal ? 1 : 0, clip.adjust.flip_vertical ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (moved) gl.disable(gl.SCISSOR_TEST);
+  }
+
+  private drawCrossing(layer: VideoLayer, { before, after, p }: Crossing) {
+    const { gl, canvas } = this;
+    const kind = after.transition_in!.kind;
+    const remaining = 1 - p;
+    if (kind === 'wipe') {
+      gl.enable(gl.SCISSOR_TEST);
+      const edge = Math.round(canvas.width * remaining);
+      gl.scissor(0, 0, edge, canvas.height);
+      this.drawClip(layer, before, {});
+      gl.scissor(edge, 0, canvas.width - edge, canvas.height);
+      this.drawClip(layer, after, {});
+      gl.disable(gl.SCISSOR_TEST);
+      return;
+    }
+    if (kind === 'slide') {
+      this.drawClip(layer, before, { look: { ...REST, dx: -p } });
+      this.drawClip(layer, after, { look: { ...REST, dx: remaining } });
+      return;
+    }
+    // Two weights that add to one, on black, as xfade mixes them.
+    gl.blendFunc(gl.ONE, gl.ONE);
+    if (kind === 'crossfade') {
+      this.drawClip(layer, before, { opacity: remaining });
+      this.drawClip(layer, after, { opacity: p });
+    } else {
+      const weight = smoothstep(0, 0.5, remaining);
+      this.drawClip(layer, before, { opacity: weight, scale: 1 / Math.max(MIN_ZOOM, smoothstep(0.5, 1, remaining)) });
+      this.drawClip(layer, after, { opacity: 1 - weight });
+    }
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  }
+
+  private drawLayer(layer: VideoLayer) {
+    const crossing = this.crossing(layer, this.time);
+    if (crossing) { this.drawCrossing(layer, crossing); return; }
+    const { clip } = this.clipFor(layer, this.time);
+    if (!clip) return;
+    const { format } = this.timeline!;
+    const clips = this.sorted(layer);
+    const index = clips.findIndex((item) => item.id === clip.id);
+    const opensWithTransition = index > 0 && transitionHalf(clips[index - 1], clip, format.fps) > 0;
+    const closesWithTransition = index + 1 < clips.length && transitionHalf(clip, clips[index + 1], format.fps) > 0;
+    this.drawClip(layer, clip, { look: animatedLook(opensWithTransition ? null : clip.enter, closesWithTransition ? null : clip.exit, this.time - clip.start, clipLength(clip)) });
+  }
+
+  private drawText(layer: TextLayer) {
+    const { gl, uniforms } = this;
+    const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
+    const url = item && this.textUrl(item);
+    if (!item || !url) return;
+    const image = this.imageTexture(url);
+    if (!image.ready) return;
+    gl.bindTexture(gl.TEXTURE_2D, image.texture);
+    const look = animatedLook(item.enter, item.exit, this.time - item.start, item.length);
+    const { width, height } = this.timeline!.format;
+    gl.uniform4f(uniforms.box, 0.5 + look.dx, 0.5 + look.dy, look.scale, look.scale);
+    gl.uniform1f(uniforms.opacity, look.opacity);
+    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
+    gl.uniform3f(uniforms.tint, 1, 1, 1);
+    gl.uniform1f(uniforms.blur, look.blur / look.scale);
+    gl.uniform2f(uniforms.blurAspect, height / width, 1);
+    gl.uniform1i(uniforms.rotation, 0);
+    gl.uniform2f(uniforms.flip, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  private draw() {
+    const { gl } = this;
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (!this.timeline) return;
-    const { format } = this.timeline;
-    for (const layer of this.videoLayers()) {
-      const { clip } = this.clipFor(layer, this.time);
-      const source = clip && this.sources(clip.media_id);
-      if (!clip || !source) continue;
-      if (source.kind === 'video') {
-        const slot = this.slotsFor(layer).slots.find((entry) => entry.clipId === clip.id);
-        if (!slot || slot.video.readyState < 2) continue;
-        gl.bindTexture(gl.TEXTURE_2D, slot.texture);
-        if (slot.fresh) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, slot.video); slot.fresh = false; }
-      } else {
-        const image = this.imageTexture(source.url);
-        if (!image.ready) continue;
-        gl.bindTexture(gl.TEXTURE_2D, image.texture);
-      }
-      const local = this.time - clip.start;
-      const scale = valueAt(clip.transform, 'scale', local);
-      const fitted = fittedSize(source, clip.adjust.rotation, format);
-      gl.uniform4f(uniforms.box, valueAt(clip.transform, 'x', local), valueAt(clip.transform, 'y', local), (fitted.width * scale) / format.width, (fitted.height * scale) / format.height);
-      gl.uniform1f(uniforms.opacity, clip.transform.opacity);
-      gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
-      gl.uniform1f(uniforms.contrast, clip.adjust.contrast);
-      gl.uniform1f(uniforms.saturation, clip.adjust.saturation);
-      gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
-      gl.uniform2f(uniforms.flip, clip.adjust.flip_horizontal ? 1 : 0, clip.adjust.flip_vertical ? 1 : 0);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    for (const layer of this.timeline.layers) {
+      if (layer.hidden) continue;
+      if (layer.kind === 'video') this.drawLayer(layer);
+      else if (layer.kind === 'text') this.drawText(layer);
     }
   }
 
@@ -238,20 +376,32 @@ export class PlaybackEngine {
 
   private keepInStep() {
     for (const layer of this.videoLayers()) {
+      const crossing = this.crossing(layer, this.time);
       const { clip } = this.clipFor(layer, this.time);
-      const slot = clip && this.slotsFor(layer).slots.find((entry) => entry.clipId === clip.id);
-      if (!clip || !slot || slot.video.paused) continue;
-      const drift = slot.video.currentTime - this.sourceTime(clip, this.time);
-      if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) slot.video.currentTime = this.sourceTime(clip, this.time);
-      else {
-        const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift)) : 0;
-        slot.video.playbackRate = clip.speed * this.rate * (1 + nudge);
+      for (const item of crossing ? [crossing.before, crossing.after] : clip ? [clip] : []) {
+        const slot = this.slotsFor(layer).slots.find((entry) => entry.clipId === item.id);
+        if (!slot || slot.video.paused) continue;
+        const at = this.sourceTime(item, this.time, !crossing);
+        const drift = slot.video.currentTime - at;
+        if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) slot.video.currentTime = at;
+        else {
+          const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift)) : 0;
+          slot.video.playbackRate = item.speed * this.rate * (1 + nudge);
+        }
       }
     }
   }
 
+  /** Plays one stretch and stops, to show what a preset does. */
+  playRange(start: number, end: number) {
+    this.seek(start);
+    this.play();
+    this.stopAt = end;
+  }
+
   play(rate = 1) {
     if (!this.timeline || duration(this.timeline) === 0) return;
+    this.stopAt = Infinity;
     this.rate = rate;
     if (this.time >= duration(this.timeline) - 0.01) this.time = 0;
     this.startClock();
@@ -279,6 +429,7 @@ export class PlaybackEngine {
     if (!this.playing || !this.timeline) return;
     const end = duration(this.timeline);
     this.time = this.clockBase + ((performance.now() - this.clockStart) / 1000) * this.rate;
+    if (this.time >= this.stopAt) { this.onTime(this.time); this.pause(); return; }
     if (this.time >= end) { this.time = end; this.onTime(end); this.pause(); return; }
     this.syncSlots();
     this.syncSound();

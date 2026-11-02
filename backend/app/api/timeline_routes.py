@@ -1,3 +1,4 @@
+import hashlib
 import json
 import threading
 import uuid
@@ -14,8 +15,8 @@ from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
-from app.services.timeline_schema import Timeline
-from app.services.timeline_service import render_timeline, upgrade_edit_recipe
+from app.services.timeline_schema import Format, Text, Timeline
+from app.services.timeline_service import render_text_image, render_timeline, upgrade_edit_recipe
 from app.services.video_edit_service import check_disk_space, resolve_audio_asset
 from app.services.video_service import serve_file_with_ranges
 from app.db.database import get_connection
@@ -86,6 +87,23 @@ def song_peaks(asset_id: str):
         folder.mkdir(parents=True, exist_ok=True)
         make_peaks(MediaFacts(path=path, media_type='audio', has_audio=True), target)
     return json.loads(target.read_text())
+
+
+@router.post('/text-image')
+def text_image(body: dict):
+    """The export's own text drawing, so the preview shows the same letters. Tamil shaping can't differ."""
+    try:
+        item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
+    except (KeyError, ValidationError) as exc:
+        raise HTTPException(400, 'This text is not valid.') from exc
+    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size')}
+    key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
+    folder = settings.data_dir / 'cache' / 'text'
+    target = folder / f'{key}.png'
+    if not target.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        render_text_image(item, fmt, target)
+    return FileResponse(target, media_type='image/png')
 
 
 @router.get('/stems')

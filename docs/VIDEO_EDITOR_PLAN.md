@@ -216,7 +216,7 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 - Screenshots on a Mac are in Display P3. Compare preview colors by reading the canvas, not from a screenshot.
 - J steps back one second. Reverse playback isn't possible with `<video>` elements.
 - Clips are added by clicking in Media. Dragging from Media to the timeline isn't built.
-- Only working panels are shown. Text, Audio and Animate tabs arrive with their phases.
+- Only working panels are shown.
 - No platform length limits are shown, because they change and haven't been confirmed.
 
 **Not yet proven**
@@ -259,13 +259,37 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 **Not yet proven:** sync and ducking by ear, ducking on real speech rather than a tone, separation on a full-length song or on a Mac without a GPU, and Chrome and Safari themselves. Detaching only copies the clip's speed and fades, so a detached sound won't follow later trims of its clip.
 
-### Phase 5: Animation presets, transitions and text (M)
-- Enter and exit presets: fade, slide, zoom, pop, blur, bounce, each with a duration.
-- Transitions: crossfade, wipe, slide, zoom, using `xfade` where possible.
-- Text: title presets, band, shadow and outline styles, simple animations.
-- Filters and speed changes.
+### Phase 5: Animation presets, transitions and text (done)
+**Built**
+- `services/animation.py` and `timeline/animation.ts`: 9 enter and exit presets (fade, 4 slides, zoom, pop, blur, bounce) and 5 looks, with the same math on both sides. `timeline/fixtures/animation.expected.json` keeps them equal.
+- Crossfade, wipe, slide and zoom transitions with `xfade`. Timeline length and sound don't change: the transition is centered on the cut, using footage past the trim points, or holding a frame when there is none. Sound still cuts hard.
+- Text track, title presets (Big title, Lower third, Caption, Top note), style, position, size, color, typing, and enter and exit animations. `POST /api/text-image` draws preview text with the export's libass path, so letters are the same in both.
+- Every item is now posed on its own frame. Fill keeps source detail instead of enlarging a shrunken picture, per-clip opacity works, and picture adjustments use one RGB formula in shader and export.
+- Picking a preset plays it on the canvas. A transition replaces the enter or exit animation on its side of the cut, and the inspector says so.
 
-**Done when:** every preset matches between preview and export in a golden-frame test, and Tamil text stays correctly shaped through its animations.
+**Golden-frame test:** `tools/golden_frames.py` exports every preset, then `tools/golden_check.js` compares the browser canvas with the export.
+
+| Check | Result |
+|---|---|
+| Samples, covering 9 enters, 9 exits, 4 transitions, 5 looks, Tamil text through all 9 presets, zoomed clips | 139 |
+| Mean difference, of 255 | 1.43 |
+| Worst sample | 2.64 |
+| Worst 20-pixel block in any sample | 18 |
+| Golden export length | Exactly 1,920 frames |
+| Tamil through a slide | Same letter shapes as the still text, checked in `test_tamil_keeps_its_shape_through_animation` |
+| 60 Fill clips with transitions and animations, 1080×1920 | Exactly 2,700 frames, 205 seconds, 2.3× length, 3.4 GB peak |
+
+**Decisions from this phase**
+- Compare by averaging exact pixel blocks on both sides. Letting each side shrink the frame made equal frames look different.
+- Opacity in presets is always linear, so ffmpeg's `fade` can draw it exactly.
+- A clip is cropped to the frame first, and animation moves that whole frame. Otherwise a zoomed-in clip's overflow hides the slide, which the first golden run missed because its clips weren't zoomed. Keep zoomed clips in the golden test.
+- `window.motionEngine` exists in dev builds only, for the golden test.
+- The golden test draws directly because a hidden pane limits `requestAnimationFrame` to about once a second. That may explain the Phase 3 playback freezes, but it hasn't been proven.
+- The blur preview is a one-pass approximation of the export's Gaussian blur. It's close on moving frames, not identical.
+
+**Not yet proven:** how long text takes to appear while typing wasn't timed. The golden test needs a browser, so `./test.sh` doesn't run it; only its math and export halves run there. Transitions on rotated or HDR footage, Chrome and Safari themselves, and phone use of the new panels.
+
+**Later:** exports with many Fill clips are over 3 times slower than plain ones. Static clips could use a plain crop instead of a per-frame overlay. Split doesn't work on text yet. Transitions work only on touching clips, and sound doesn't crossfade.
 
 ### Phase 6: Keyframes (M)
 - Keyframe position, scale, rotation and opacity from the inspector, with a stopwatch toggle per property.

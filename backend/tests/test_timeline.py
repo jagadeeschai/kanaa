@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.main import app
 from app.services import asset_service, render_queue_service, stem_service
+from app.services.animation import LOOKS, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
 from app.services.media_probe import MediaFacts, probe_video
@@ -380,6 +381,139 @@ class Retention(unittest.TestCase):
                 render_queue_service.recover_after_restart()
             self.assertTrue(kept.exists())
             self.assertFalse(unused.exists())
+
+
+class Animations(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mark = cls.root / 'mark.png'
+        picture = Image.new('RGB', (640, 360), (0, 0, 0))
+        picture.paste((255, 255, 255), (280, 140, 360, 220))
+        picture.save(cls.mark)
+        cls.facts[7] = MediaFacts(path=cls.mark, media_type='image', width=640, height=360)
+
+    def timeline(self, **clip):
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 7, 'start': 0, 'in': 0, 'out': 2, **clip}]}]}
+
+    def center(self, frame):
+        rows, columns = np.where(frame[:, :, 1] > 40)
+        return (columns.mean(), rows.mean(), len(rows))
+
+    def size(self):
+        return (640, 360)
+
+    def test_presets_match_the_shared_math(self):
+        expected = json.loads((Path(__file__).parents[2] / 'timeline/fixtures/animation.expected.json').read_text())
+        for preset, rows in expected['presets'].items():
+            for row in rows:
+                look = look_at(preset, row['p'])
+                for key, value in look.items():
+                    self.assertAlmostEqual(value, row[key], places=9)
+
+    def test_every_preset_lands_where_the_math_says(self):
+        for preset in ('slide-up', 'slide-left', 'zoom', 'pop', 'bounce'):
+            with self.subTest(preset=preset):
+                target = self.render(self.timeline(enter={'preset': preset, 'duration': 1}), f'{preset}.mp4')
+                for frame_number in (12, 21):
+                    look = look_at(preset, frame_number / 30)
+                    frame = self.frame(target, frame_number, self.size())
+                    x, y, _ = self.center(frame)
+                    self.assertAlmostEqual(x, 320 * (1 + 2 * look['dx']) - 0.5, delta=3)
+                    self.assertAlmostEqual(y, 180 + 360 * look['dy'] - 0.5, delta=3)
+
+    def test_zoomed_clip_slides_in_as_a_cropped_frame(self):
+        target = self.render(self.timeline(enter={'preset': 'slide-left', 'duration': 1}, transform={'scale': 2}))
+        look = look_at('slide-left', 0.3)
+        frame = self.frame(target, 9, self.size())
+        edge = round(640 * look['dx'])
+        # The enlarged white square would reach the left edge if the overflow were kept.
+        self.assertEqual(frame[180, max(0, edge - 8), 1], 0)
+        self.assertGreater(frame[180, min(639, edge + 320), 1], 200)
+
+    def test_transition_keeps_length_and_cut(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},
+            {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'kind': 'wipe', 'duration': 1}}]}]}
+        target = self.render(data)
+        self.assertEqual(probe_frames(target), 120)
+        middle = self.frame(target, 60, self.size())[180]
+        self.assertGreater(middle[120, 0], 200)  # Red on the left.
+        self.assertGreater(middle[520, 2], 200)  # Blue on the right.
+
+    def test_transition_past_the_start_of_a_source_holds_its_first_frame(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},
+            {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'kind': 'crossfade', 'duration': 2}}]}]}
+        self.assertEqual(probe_frames(self.render(data)), 120)
+
+    def test_transition_replaces_the_enter_animation(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2, 'exit': {'preset': 'fade', 'duration': 1}},
+            {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'enter': {'preset': 'fade', 'duration': 1}, 'transition_in': {'kind': 'wipe', 'duration': 0.5}}]}]}
+        frame = self.frame(self.render(data), 70, self.size())
+        self.assertGreater(frame[180, 320, 2], 200)
+
+    def test_fill_keeps_source_detail(self):
+        source = self.root / 'fine.png'
+        lines = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        lines[:, ::8] = 255
+        lines[:, 1::8] = 255
+        lines[:, 2::8] = 255
+        lines[:, 3::8] = 255
+        Image.fromarray(lines).save(source)
+        self.facts[8] = MediaFacts(path=source, media_type='image', width=2560, height=1440)
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 8, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 4}}]}]}
+        row = self.frame(self.render(data), 5, self.size())[180, :, 1]
+        self.assertGreater(int(row.max()) - int(row.min()), 120)
+
+    def test_each_clip_keeps_its_own_opacity(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 6, 'start': 0, 'in': 0, 'out': 1, 'transform': {'opacity': 0.5}},
+            {'id': 'b', 'media_id': 6, 'start': 1, 'in': 0, 'out': 1}]}]}
+        target = self.render(data)
+        self.assertLess(self.frame(target, 15, self.size())[180, 320, 0], 160)
+        self.assertGreater(self.frame(target, 45, self.size())[180, 320, 0], 230)
+
+    def test_looks_use_the_preview_math(self):
+        gray = self.root / 'gray.png'
+        Image.new('RGB', (240, 240), (200, 100, 50)).save(gray)
+        self.facts[9] = MediaFacts(path=gray, media_type='image', width=240, height=240)
+        for look, (red, green, blue, contrast, saturation) in LOOKS.items():
+            with self.subTest(look=look):
+                value = np.array([200 * red, 100 * green, 50 * blue]) / 255
+                value = np.clip((np.clip(value, 0, 1) - 0.5) * contrast + 0.5, 0, 1)
+                luma = value @ np.array([0.2126, 0.7152, 0.0722])
+                wanted = np.clip(luma + (value - luma) * saturation, 0, 1) * 255
+                data = {'format': {'width': 240, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 9, 'start': 0, 'in': 0, 'out': 0.3, 'look': look}]}]}
+                measured = self.frame(self.render(data, f'{look}.mp4'), 3, (240, 240))[120, 120]
+                for got, want in zip(measured, wanted):
+                    self.assertAlmostEqual(int(got), float(want), delta=5)
+
+    def text_timeline(self, **animation):
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 3, 'start': 0, 'in': 0, 'out': 2, 'muted': True}]},
+                                                  {'id': 'words', 'kind': 'text', 'items': [{'id': 't', 'start': 0.5, 'length': 1.5, 'text': 'தமிழ் வாழ்க கண்டேன்', 'style': 'outline', 'position': 'center', 'size': 40, **animation}]}]}
+
+    def test_tamil_keeps_its_shape_through_animation(self):
+        still = self.render(self.text_timeline(), 'still.mp4')
+        moving = self.render(self.text_timeline(enter={'preset': 'slide-left', 'duration': 1}), 'moving.mp4')
+        rest = self.frame(still, 40, self.size())
+        shifted = self.frame(moving, 30, self.size())
+        offset = round(640 * look_at('slide-left', 0.5)['dx'])
+        white = lambda frame: (frame.min(axis=2) > 200).astype(int)
+        # The same letters, moved: the shaped text can't have changed.
+        self.assertLess(np.abs(white(rest)[:, 200:440 - offset] - white(shifted)[:, 200 + offset:440]).mean(), 0.02)
+        self.assertGreater(white(rest).sum(), 300)
+
+    def test_text_is_absent_before_its_start(self):
+        target = self.render(self.text_timeline())
+        self.assertEqual((self.frame(target, 10, self.size()).min(axis=2) > 200).sum(), 0)
+
+
+def probe_frames(path):
+    return int(subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v', '-count_frames', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', str(path)], capture_output=True, text=True, check=True).stdout.strip().rstrip(','))
 
 
 class Rules(unittest.TestCase):

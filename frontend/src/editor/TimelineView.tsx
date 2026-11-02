@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { audioLayers, clipLength, mainLayer, moveSound, snap, snapPoints, soundLength, timecode, trimClip, trimSound, moveClip, type Clip, type Sound, type SourceFacts, type Timeline } from '../timeline/model';
+import { clipLength, itemLength, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, trackLayers, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -9,10 +9,10 @@ type Props = {
   onSelect: (id: string | null) => void; onSeek: (t: number) => void;
   onChange: (next: Timeline, group: string) => void; onScrubStart: () => void;
 };
-type Drag = { kind: 'soundMove'; id: string; startX: number; origin: Sound; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: Sound; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
+type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
 const RULER = 26; const TRACK_TOP = 34; const TRACK_HEIGHT = 74; const SOUND_HEIGHT = 36; const SOUND_GAP = 4; const BASE_HEIGHT = 128; const HANDLE = 9; const PAD = 16; const SNAP_PIXELS = 8;
-const COLORS = { ruler: '#8e8aa3', tick: '#3b3850', clip: '#2c2940', clipEdge: '#4a4566', selected: '#a78bfa', wave: '#c4b5fd', sound: '#1f3b4d', soundEdge: '#35637e', soundWave: '#7dd3fc', fade: 'rgba(10,8,16,.55)', head: '#fbbf24', name: '#f4f2ff' };
+const COLORS = { ruler: '#8e8aa3', tick: '#3b3850', clip: '#2c2940', clipEdge: '#4a4566', selected: '#a78bfa', wave: '#c4b5fd', sound: '#1f3b4d', soundEdge: '#35637e', text: '#3b2f6b', textEdge: '#6d58b8', soundWave: '#7dd3fc', fade: 'rgba(10,8,16,.55)', head: '#fbbf24', name: '#f4f2ff' };
 
 const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
 
@@ -100,14 +100,31 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
+    const drawText = (text: TextItem, row: number) => {
+      const { selectedId: selected, zoom: scale } = props.current;
+      const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      context.save();
+      context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
+      context.fillStyle = COLORS.text; context.fillRect(x, y, width, h);
+      context.fillStyle = COLORS.name; context.font = '12px "Noto Sans Tamil", Inter, system-ui, sans-serif';
+      context.fillText(text.text, x + 8, y + h / 2);
+      context.restore();
+      context.lineWidth = text.id === selected ? 2 : 1;
+      context.strokeStyle = text.id === selected ? COLORS.selected : COLORS.textEdge;
+      context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
+      if (text.id === selected) {
+        context.fillStyle = COLORS.selected;
+        for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
+      }
+    };
     const draw = () => {
       frame = requestAnimationFrame(draw);
       const shown = props.current.timeline;
       const dpr = window.devicePixelRatio || 1;
       const clips = mainLayer(shown).items;
-      const sounds = audioLayers(shown);
+      const tracks = trackLayers(shown);
       const end = Math.max(clips.reduce((longest, clip) => Math.max(longest, clip.start + clipLength(clip)), 0),
-        ...sounds.flatMap((layer) => layer.items.map((sound) => sound.start + soundLength(sound))));
+        ...tracks.flatMap((layer) => (layer.items as TrackItem[]).map((item) => item.start + itemLength(item))));
       const width = Math.max(host.clientWidth, xOf(end) + 240); const height = host.clientHeight;
       if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
         canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
@@ -123,7 +140,10 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         context.fillStyle = COLORS.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
       for (const clip of clips) drawClip(clip, xOf(clip.start), clipLength(clip) * scale);
-      sounds.forEach((layer, row) => { for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted)); });
+      tracks.forEach((layer, row) => {
+        if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
+        else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
+      });
       const head = xOf(playhead.current);
       context.fillStyle = COLORS.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
@@ -138,10 +158,10 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
   };
   const rowAt = (y: number) => Math.floor((y - (TRACK_TOP + TRACK_HEIGHT + SOUND_GAP)) / (SOUND_HEIGHT + SOUND_GAP));
   const hitSound = (x: number, y: number) => {
-    const layer = audioLayers(props.current.timeline)[rowAt(y)];
+    const layer = trackLayers(props.current.timeline)[rowAt(y)];
     if (!layer || y < TRACK_TOP + TRACK_HEIGHT) return null;
-    for (const sound of layer.items) {
-      const left = xOf(sound.start); const right = left + soundLength(sound) * props.current.zoom;
+    for (const sound of layer.items as TrackItem[]) {
+      const left = xOf(sound.start); const right = left + itemLength(sound) * props.current.zoom;
       if (x < left - 2 || x > right + 2) continue;
       const reach = Math.min(HANDLE, (right - left) / 3);
       return { sound, zone: x - left <= reach ? 'in' as const : right - x <= reach ? 'out' as const : 'body' as const };
@@ -188,19 +208,21 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
     if (drag.kind === 'seek') onSeek(snap(timeOf(x), snapPoints(props.current.timeline, -1), reach));
     else if (drag.kind === 'soundMove') {
       const shift = (x - drag.startX) / props.current.zoom;
-      const layer = audioLayers(drag.base)[rowAt(event.nativeEvent.offsetY)];
-      const length = soundLength(drag.origin);
+      const layer = trackLayers(drag.base)[rowAt(event.nativeEvent.offsetY)];
+      const length = itemLength(drag.origin);
       const points = snapPoints(drag.base, playhead.current, drag.id);
       const fromStart = snap(drag.origin.start + shift, points, reach);
       const fromEnd = snap(drag.origin.start + shift + length, points, reach) - length;
       const start = fromStart !== drag.origin.start + shift ? fromStart : fromEnd;
-      const next = moveSound(drag.base, drag.id, start, layer?.id);
+      const next = moveItem(drag.base, drag.id, start, layer?.id);
       if (next !== props.current.timeline) onChange(next, drag.group);
     } else if (drag.kind === 'soundTrim') {
       const { origin, edge, base, id } = drag;
-      const edgeTime = (edge === 'in' ? origin.start : origin.start + soundLength(origin)) + (x - drag.startX) / props.current.zoom;
+      const end = origin.start + itemLength(origin);
+      const edgeTime = (edge === 'in' ? origin.start : end) + (x - drag.startX) / props.current.zoom;
       const snapped = snap(edgeTime, snapPoints(base, playhead.current, id), reach);
-      onChange(trimSound(base, id, edge, edge === 'in' ? origin.in + (snapped - origin.start) * origin.speed : origin.out + (snapped - origin.start - soundLength(origin)) * origin.speed), drag.group);
+      if ('text' in origin) onChange(trimText(base, id, edge, snapped), drag.group);
+      else onChange(trimSound(base, id, edge, edge === 'in' ? origin.in + (snapped - origin.start) * origin.speed : origin.out + (snapped - end) * origin.speed), drag.group);
     } else if (drag.kind === 'trim') {
       const { origin, edge, base, id } = drag;
       const shift = ((x - drag.startX) / props.current.zoom) * origin.speed;
@@ -222,7 +244,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
   };
   const onPointerUp = () => { dragRef.current = null; };
 
-  const rows = audioLayers(timeline).length;
+  const rows = trackLayers(timeline).length;
   return <div className="tl-host" ref={hostRef} style={{ height: BASE_HEIGHT + rows * (SOUND_HEIGHT + SOUND_GAP) }}>
     <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}/>
   </div>;

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Check, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import type { Photo } from '../types/photo';
+import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { addSound, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findSound, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, normalizeTimeline, removeClip, removeSound, soundLength, splitClip, splitSound, timecode, trimClip, updateClip, updateLayer, updateSound, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type Timeline } from '../timeline/model';
+import { addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 
@@ -19,6 +20,17 @@ const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
 const FAST_RATES = [1, 2, 4];
 const MAX_FADE_SECONDS = 5;
 const MIN_MUSIC_SECONDS = 1;
+const TEXT_SECONDS = 3;
+const TEXT_TYPE_DELAY_MS = 250;
+const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }];
+const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }];
+const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
+const TITLES: { label: string; text: Omit<TextItem, 'id' | 'start' | 'length'> }[] = [
+  { label: 'Big title', text: { text: 'Your title', style: 'outline', position: 'center', color: '#ffffff', size: 72, enter: { preset: 'pop', duration: 0.5 }, exit: { preset: 'fade', duration: 0.4 } } },
+  { label: 'Lower third', text: { text: 'Name or place', style: 'band', position: 'bottom', color: '#ffffff', size: 40, enter: { preset: 'slide-left', duration: 0.5 }, exit: { preset: 'fade', duration: 0.3 } } },
+  { label: 'Caption', text: { text: 'Your caption', style: 'shadow', position: 'bottom', color: '#ffffff', size: 36, enter: { preset: 'fade', duration: 0.3 }, exit: { preset: 'fade', duration: 0.3 } } },
+  { label: 'Top note', text: { text: 'Your note', style: 'band', position: 'top', color: '#ffffff', size: 36, enter: { preset: 'slide-down', duration: 0.4 }, exit: { preset: 'fade', duration: 0.3 } } },
+];
 type StemChoice = 'music' | 'vocals' | 'both';
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
 
@@ -74,6 +86,25 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size };
   }, [mediaById, ready]);
 
+  const textImages = useRef(new Map<string, string | 'loading'>());
+  const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, format.width, format.height]);
+  const textUrl = useCallback((text: TextItem) => {
+    const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format));
+    return found && found !== 'loading' ? found : undefined;
+  }, []);
+  useEffect(() => {
+    if (!timeline) return;
+    const timer = setTimeout(() => {
+      for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
+        const key = textKey(text, timeline.format);
+        if (textImages.current.has(key)) continue;
+        textImages.current.set(key, 'loading');
+        void fetchTextImage(text, timeline.format).then((url) => { textImages.current.set(key, url); redrawText(); }).catch((problem: Error) => { textImages.current.delete(key); setError(problem.message); });
+      }
+    }, TEXT_TYPE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [timeline]);
   const soundUrl = useCallback((sound: Sound) => {
     if (sound.asset_id) return songUrl(sound.asset_id);
     const item = sound.media_id === undefined ? undefined : mediaById.get(sound.media_id);
@@ -116,11 +147,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       };
       engine.onPlayingChange = setPlaying;
       engineRef.current = engine;
+      if (import.meta.env.DEV) (window as unknown as { motionEngine: PlaybackEngine }).motionEngine = engine;
       return () => { engine.destroy(); engineRef.current = null; };
     } catch (problem) { setError((problem as Error).message); }
   }, [playhead]);
 
-  useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor, soundUrl); }, [timeline, sourceFor, soundUrl]);
+  useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl); }, [timeline, sourceFor, soundUrl, textUrl, textVersion]);
 
   const usedMedia = useMemo(() => [...new Set(timeline ? [...mainLayer(timeline).items.map((clip) => clip.media_id), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
 
@@ -194,6 +226,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: next, group }), []);
   const selected = timeline && selectedId ? mainLayer(timeline).items.find((clip) => clip.id === selectedId) ?? null : null;
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
+  const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
+  const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) change(updateText(timeline, selectedText.id, changes), group); };
+  const addTitle = (title: typeof TITLES[number]) => {
+    if (!timeline) return;
+    const text: TextItem = { ...title.text, id: newId(), start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
+    change(addText(timeline, text, newId()));
+    setSelectedId(text.id);
+    // A title starts hidden behind its enter animation, so show it at rest.
+    setTimeout(() => engineRef.current?.seek(text.start + TEXT_SECONDS / 2), 0);
+  };
+  const showEnter = (start: number, seconds: number) => engineRef.current?.playRange(start, start + seconds);
+  const showExit = (end: number, seconds: number) => engineRef.current?.playRange(Math.max(0, end - seconds), Math.max(0, end - 0.02));
+  const clipsInOrder = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start) : [];
+  const clipIndex = selected ? clipsInOrder.findIndex((clip) => clip.id === selected.id) : -1;
   const applyStems = (result: Stems) => {
     const current = timelineRef.current; const job = stemJob;
     const found = current && job ? findSound(current, job.soundId) : null;
@@ -246,7 +292,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline, selectedId, playhead, change]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId) return;
-    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : removeClip(timeline, selectedId));
+    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, change]);
   const addMedia = (item: Photo) => {
@@ -319,6 +365,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     <div className="ed-body">
       <aside className="ed-media" aria-label="Media">
         <h2>Media</h2>
+        <div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div>
         <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
         <label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
@@ -337,13 +384,17 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
           <button className={`ed-icon ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} aria-label="Show safe area" title="Show safe area"><ShieldCheck size={17}/></button>
         </div>
       </main>
-      <aside className="ed-inspector" aria-label="Clip settings">{selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
+      <aside className="ed-inspector" aria-label="Clip settings">{selectedText ? <TextInspector text={selectedText} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
-        : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, change its speed, or adjust its picture and sound.</p></div>}</aside>
+        : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}
+          canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
+          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p></div>}</aside>
     </div>
     <div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-      <button className="ed-button" onClick={removeSelected} disabled={!selected && !selectedSound} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <button className="ed-button" onClick={removeSelected} disabled={!selected && !selectedSound && !selectedText} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
       <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
@@ -365,6 +416,37 @@ function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | 
 
 function Slider({ label, value, min, max, step = 0.01, shown, onChange, onReset }: { label: string; value: number; min: number; max: number; step?: number; shown: string; onChange: (value: number) => void; onReset: () => void }) {
   return <label className="ed-slider" onDoubleClick={onReset} title="Double-click to reset"><span>{label}<em>{shown}</em></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))}/></label>;
+}
+
+function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
+  return <div className="ed-chips" role="group" aria-label={label}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{option.label}</button>)}</div>;
+}
+
+function AnimationPicker({ label, value, onChange, onShow }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void }) {
+  const pick = (id: Preset | 'none') => {
+    onChange(id === 'none' ? null : { preset: id, duration: value?.duration ?? 0.5 });
+    if (id !== 'none') setTimeout(onShow, 60);
+  };
+  return <>
+    <h3 className="ed-sub">{label}</h3>
+    <Chips label={label} options={[{ id: 'none' as const, label: 'None' }, ...PRESETS]} value={value?.preset ?? 'none'} onPick={pick}/>
+    {value && <Slider label="Length" value={value.duration} min={0.1} max={3} step={0.1} shown={`${value.duration.toFixed(1)}s`} onChange={(duration) => onChange({ ...value, duration }, `length-${label}`)} onReset={() => onChange({ ...value, duration: 0.5 })}/>}
+  </>;
+}
+
+function TextInspector({ text, onChange, onEnter, onExit }: { text: TextItem; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+  return <>
+    <h2>Text</h2>
+    <textarea className="ed-text" aria-label="Text" lang="ta" value={text.text} maxLength={500} rows={3} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
+    <h3 className="ed-sub">Style</h3>
+    <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
+    <h3 className="ed-sub">Position</h3>
+    <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
+    <Slider label="Size" value={text.size} min={20} max={100} step={1} shown={`${text.size}`} onChange={(size) => onChange({ size }, `size-${text.id}`)} onReset={() => onChange({ size: 44 })}/>
+    <label className="ed-color"><span>Color</span><input type="color" aria-label="Text color" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
+    <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
+    <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
+  </>;
 }
 
 function SoundControls({ item, length, onChange, id }: { item: { volume: number; fade_in: number; fade_out: number }; length: number; id: string; onChange: (changes: { volume?: number; fade_in?: number; fade_out?: number }, group?: string) => void }) {
@@ -399,7 +481,8 @@ function SoundInspector({ sound, layer, onChange, onLayer, stems, job, busy, onS
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+  const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>) => onChange({ adjust: { ...clip.adjust, ...changes } }, `adjust-${clip.id}`);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
   const filling = Math.abs(clip.transform.scale - fill) < 0.01;
@@ -422,6 +505,16 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach }: { cl
     <Slider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} shown={percent(clip.adjust.brightness)} onChange={(brightness) => adjust({ brightness })} onReset={() => adjust({ brightness: 1 })}/>
     <Slider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} shown={percent(clip.adjust.contrast)} onChange={(contrast) => adjust({ contrast })} onReset={() => adjust({ contrast: 1 })}/>
     <Slider label="Saturation" value={clip.adjust.saturation} min={0} max={2} shown={percent(clip.adjust.saturation)} onChange={(saturation) => adjust({ saturation })} onReset={() => adjust({ saturation: 1 })}/>
+    <h2>Look</h2>
+    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
+    <h2>Animation</h2>
+    {canTransition && <>
+      <h3 className="ed-sub">Transition from the last clip</h3>
+      <Chips label="Transition" options={[{ id: 'none' as const, label: 'None' }, ...TRANSITIONS]} value={transition?.kind ?? 'none'} onPick={(kind) => { onChange({ transition_in: kind === 'none' ? null : { kind, duration: transition?.duration ?? 0.6 } }); if (kind !== 'none') setTimeout(onShowTransition, 60); }}/>
+      {transition && <Slider label="Length" value={transition.duration} min={0.2} max={2} step={0.1} shown={`${transition.duration.toFixed(1)}s`} onChange={(duration) => onChange({ transition_in: { ...transition, duration } }, `transition-${clip.id}`)} onReset={() => onChange({ transition_in: { ...transition, duration: 0.6 } })}/>}
+    </>}
+    {transition ? <p className="ed-tip">The transition replaces this clip's enter animation.</p> : <AnimationPicker label="Enter" value={clip.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onShowEnter}/>}
+    {closesWithTransition ? <p className="ed-tip">The next clip's transition replaces this clip's exit animation.</p> : <AnimationPicker label="Exit" value={clip.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onShowExit}/>}
     {source?.kind === 'video' && <>
       <h2>Speed</h2>
       <Slider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} shown={`${clip.speed.toFixed(2)}×`} onChange={(speed) => onChange({ speed }, `speed-${clip.id}`)} onReset={() => onChange({ speed: 1 })}/>
