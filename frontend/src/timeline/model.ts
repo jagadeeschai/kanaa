@@ -4,7 +4,8 @@ import { shiftKeys, splitKeys } from './keyframes.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
 export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName };
-export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Clip[] };
+export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
+export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null };
@@ -41,7 +42,7 @@ export const audioLayers = (timeline: Timeline) => timeline.layers.filter((layer
 export const textLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is TextLayer => layer.kind === 'text');
 /** The rows under the main track: text first, then sound. */
 export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...overlayLayers(timeline), ...textLayers(timeline), ...audioLayers(timeline)];
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
 export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
 export const isClip = (item: TrackItem): item is Clip => 'transform' in item;
 
@@ -251,8 +252,22 @@ export function updateSound(timeline: Timeline, id: string, changes: Partial<Sou
   return found ? withSounds(timeline, found.layer, found.layer.items.map((item) => item.id === id ? { ...item, ...changes } : item)) : timeline;
 }
 
-export function updateLayer(timeline: Timeline, id: string, changes: Partial<AudioLayer>): Timeline {
-  return { ...timeline, layers: timeline.layers.map((layer) => layer.id === id ? { ...layer, ...changes } as AudioLayer : layer) };
+export type LayerChanges = { hidden?: boolean; locked?: boolean; muted?: boolean; blend?: BlendMode };
+
+export function updateLayer(timeline: Timeline, id: string, changes: LayerChanges): Timeline {
+  return { ...timeline, layers: timeline.layers.map((layer) => (layer.id === id ? { ...layer, ...changes } as Timeline['layers'][number] : layer)) };
+}
+
+export const layerOf = (timeline: Timeline, itemId: string | null) => timeline.layers.find((layer) => (layer.items as { id: string }[]).some((item) => item.id === itemId));
+export const isLocked = (timeline: Timeline, itemId: string | null) => Boolean(layerOf(timeline, itemId)?.locked);
+
+/** Overlays stack in layer order. Forward means nearer the viewer. The main track stays at the back. */
+export function reorderLayer(timeline: Timeline, id: string, direction: 'forward' | 'back'): Timeline {
+  const overlays = overlayLayers(timeline);
+  const index = overlays.findIndex((layer) => layer.id === id);
+  const other = overlays[index + (direction === 'forward' ? 1 : -1)];
+  if (index < 0 || !other) return timeline;
+  return { ...timeline, layers: timeline.layers.map((layer) => (layer.id === id ? other : layer.id === other.id ? overlays[index] : layer)) };
 }
 
 const itemEnd = (item: TrackItem) => item.start + itemLength(item);
@@ -397,4 +412,15 @@ export function addOverlay(timeline: Timeline, clip: Clip, layerId: string): Tim
   if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers.`);
   const after = timeline.layers.reduce((last, layer, index) => (layer.kind === 'video' ? index : last), 0) + 1;
   return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: layerId, kind: 'video', name: 'Overlay', items: [clip] }, ...timeline.layers.slice(after)] };
+}
+
+export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+const CORNER_MARGIN = 0.03;
+
+/** Where a picture-in-picture goes: tucked into a corner, the same margin from both edges. */
+export function cornerPlacement(source: { width: number; height: number }, rotation: number, format: Format, scale: number, corner: Corner) {
+  const fitted = fittedSize(source, rotation, format);
+  const margin = CORNER_MARGIN * Math.min(format.width, format.height);
+  const halfX = (fitted.width * scale) / 2 + margin; const halfY = (fitted.height * scale) / 2 + margin;
+  return { x: (corner.endsWith('left') ? halfX : format.width - halfX) / format.width, y: (corner.startsWith('top') ? halfY : format.height - halfY) / format.height };
 }

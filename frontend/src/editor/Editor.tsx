@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Check, Layers, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { cornerPlacement, isLocked, layerOf, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
@@ -23,6 +23,10 @@ const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
 const FAST_RATES = [1, 2, 4];
 const MAX_FADE_SECONDS = 5;
 const MIN_MUSIC_SECONDS = 1;
+const PREVIEW_SHORT_SIDE = 540;
+const RENDERED_ID = -1;
+const BLENDS: { id: BlendMode; label: string }[] = [{ id: 'normal', label: 'Normal' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' }, { id: 'overlay', label: 'Overlay' }, { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }];
+const CORNERS: { id: Corner; label: string }[] = [{ id: 'top-left', label: 'Top left' }, { id: 'top-right', label: 'Top right' }, { id: 'bottom-left', label: 'Bottom left' }, { id: 'bottom-right', label: 'Bottom right' }];
 const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }];
@@ -63,6 +67,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [addingMusic, setAddingMusic] = useState(false);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
+  const [heavy, setHeavy] = useState(false);
+  const [rendered, setRendered] = useState<{ key: string; url: string } | null>(null);
+  const [renderJob, setRenderJob] = useState<{ id: string; key: string; progress: number } | null>(null);
   const [stems, setStems] = useState<{ available: boolean; install_command: string } | null>(null);
   const [, redrawPeaks] = useReducer((count: number) => count + 1, 0);
   const songPeaks = useRef(new Map<string, ClipVisuals['peaks'] | 'loading'>());
@@ -150,6 +157,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         if (clockRef.current) clockRef.current.textContent = timecode(t);
         if (!engine.playing) setNow(t);
       };
+      engine.onStruggling = () => setHeavy(true);
       engine.onPlayingChange = (value) => { setPlaying(value); if (!value) setNow(engine.currentTime); };
       engineRef.current = engine;
       if (import.meta.env.DEV) (window as unknown as { motionEngine: PlaybackEngine }).motionEngine = engine;
@@ -157,7 +165,28 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } catch (problem) { setError((problem as Error).message); }
   }, [playhead]);
 
-  useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl); }, [timeline, sourceFor, soundUrl, textUrl, textVersion]);
+  useEffect(() => { if (!timeline) return;
+    const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
+    if (!flat) { engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl); return; }
+    // The rendered copy plays as one clip, so nothing else has to keep up.
+    const length = duration(timeline);
+    const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');
+    const single: Timeline = { version: 2, format: timeline.format, layers: [{ id: 'rendered', kind: 'video', magnetic: true, items: [{ ...base, out: length }] }] };
+    engineRef.current?.setTimeline(single, (id) => (id === RENDERED_ID ? { url: flat.url, kind: 'video', ...timeline.format } : sourceFor(id)), soundUrl, textUrl);
+  }, [timeline, sourceFor, soundUrl, textUrl, textVersion, rendered]);
+
+  useEffect(() => {
+    if (!renderJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(renderJob.id);
+        if (status.status === 'done') { setRendered({ key: renderJob.key, url: `${previewRenderUrl(projectId)}?v=${renderJob.id}` }); setRenderJob(null); setHeavy(false); return; }
+        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'The preview could not be rendered.'); setRenderJob(null); return; }
+        setRenderJob({ ...renderJob, progress: status.progress });
+      } catch (problem) { setError((problem as Error).message); setRenderJob(null); }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [renderJob, projectId]);
 
   const usedMedia = useMemo(() => [...new Set(timeline ? [...timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
 
@@ -232,6 +261,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selected = timeline ? findClip(timeline, selectedId) : null;
   const local = selected ? Math.max(0, Math.min(now - selected.start, clipLength(selected))) : 0;
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
+  const selectedLayer = timeline ? layerOf(timeline, selectedId) : undefined;
+  const isRendered = Boolean(timeline && rendered && rendered.key === JSON.stringify(timeline));
+  const renderPreview = async () => {
+    if (!timeline) return;
+    engineRef.current?.pause();
+    try {
+      const { job_id } = await startPreviewRender(projectId, { ...timeline, format: exportFormat(timeline.format, PREVIEW_SHORT_SIDE) });
+      setRenderJob({ id: job_id, key: JSON.stringify(timeline), progress: 0 });
+    } catch (problem) { setError((problem as Error).message); }
+  };
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) change(updateText(timeline, selectedText.id, changes), group); };
   const addTitle = (title: typeof TITLES[number]) => {
@@ -293,11 +332,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const togglePlay = useCallback(() => { const engine = engineRef.current; if (!engine) return; if (engine.playing) engine.pause(); else engine.play(); }, []);
   const split = useCallback(() => {
     if (!timeline) return;
+    if (selectedId && isLocked(timeline, selectedId)) return;
     const next = findSound(timeline, selectedId) ? splitSound(timeline, selectedId!, playhead.current, newId()) : splitClip(timeline, playhead.current, newId());
     if (next !== timeline) change(next);
   }, [timeline, selectedId, playhead, change]);
   const removeSelected = useCallback(() => {
-    if (!timeline || !selectedId) return;
+    if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, change]);
@@ -353,7 +393,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!selected) return;
+    if (!selected || selectedLayer?.locked) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(selected.transform, 'x', local), clipY: valueAt(selected.transform, 'y', local), group: `move-${Date.now()}` };
   };
@@ -379,6 +419,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       <button className="ed-primary" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }}><Download size={16}/>Export</button>
     </header>
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
+    {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
+    {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-body">
       <aside className="ed-media" aria-label="Media">
         <h2>Media</h2>
@@ -393,7 +435,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       <main className="ed-stage">
         <div className="ed-frame" style={{ aspectRatio: aspect }}>
           <canvas ref={canvasRef} aria-label="Preview" onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={selected ? 'movable' : ''}/>
-          {selected && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
+          {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
           {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Choose something from Media on the left</span></div>}
         </div>
@@ -403,18 +445,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
           <button className={`ed-icon ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} aria-label="Show safe area" title="Show safe area"><ShieldCheck size={17}/></button>
         </div>
       </main>
-      <aside className="ed-inspector" aria-label="Clip settings">{selectedText ? <TextInspector text={selectedText} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+      <aside className="ed-inspector" aria-label="Clip settings">{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+        : selectedText ? <TextInspector text={selectedText} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p></div>}</aside>
     </div>
     <div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-      <button className="ed-button" onClick={removeSelected} disabled={!selected && !selectedSound && !selectedText} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
+      <button className="ed-button" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
       <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
       <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
     </div>
@@ -500,7 +544,7 @@ function SoundInspector({ sound, layer, onChange, onLayer, stems, job, busy, onS
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>) => onChange({ adjust: { ...clip.adjust, ...changes } }, `adjust-${clip.id}`);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -515,6 +559,12 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       <button className={`ed-button ${filling ? 'on' : ''}`} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
     </div>
     <p className="ed-tip">Drag the picture in the preview to position it.</p>
+    {overlay && source && <>
+      <h3 className="ed-sub">Corner</h3>
+      <Chips label="Corner" options={CORNERS} value={null} onPick={(corner) => { const spot = cornerPlacement(source, clip.adjust.rotation, format, size, corner); onChange({ transform: writeValue(writeValue(clip.transform, 'x', local, spot.x), 'y', local, spot.y) }); }}/>
+      <h3 className="ed-sub">Blend</h3>
+      <Chips label="Blend" options={BLENDS} value={overlay.blend ?? 'normal'} onPick={(blend) => onLayer({ blend })}/>
+    </>}
     <div className="ed-pair">
       <button className="ed-icon" aria-label="Rotate left" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 270) % 360) as Adjust['rotation'] })}><RotateCcw size={16}/></button>
       <button className="ed-icon" aria-label="Rotate right" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 90) % 360) as Adjust['rotation'] })}><RotateCw size={16}/></button>

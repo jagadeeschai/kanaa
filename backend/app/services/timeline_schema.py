@@ -164,6 +164,7 @@ class LayerBase(Strict):
 class VideoLayer(LayerBase):
     kind: Literal['video'] = 'video'
     magnetic: bool = False
+    blend: Literal['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] = 'normal'
     items: List[Clip] = Field(default_factory=list)
 
 

@@ -14,6 +14,11 @@ const DRIFT_NUDGE_SECONDS = 0.02;
 const MAX_NUDGE = 0.05;
 const MAX_BUFFER_SIDE = 1280;
 
+const BLEND_NUMBERS = { normal: 0, multiply: 1, screen: 2, overlay: 3, darken: 4, lighten: 5 };
+const STRUGGLE_WINDOW_MS = 5000;
+const STRUGGLE_EVENTS = 6;
+const SLOW_FRAME_MS = 100;
+const THROTTLED_FRAME_MS = 900; // A hidden page updates about once a second, which isn't the project's fault.
 const MIN_ZOOM = 0.02;
 const BLUR_TAPS = 24;
 const smoothstep = (low: number, high: number, x: number) => { const t = Math.min(1, Math.max(0, (x - low) / (high - low))); return t * t * (3 - 2 * t); };
@@ -24,7 +29,7 @@ void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation; uniform vec2 flip, blurAspect; uniform vec3 tint;
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode; uniform sampler2D backdrop; uniform vec2 flip, blurAspect; uniform vec3 tint;
 vec4 pick(vec2 at){ vec4 c=texture(tex,at); c.rgb*=c.a; return c; }
 void main(){
   vec2 q = mix(uv, 1. - uv, flip);
@@ -46,6 +51,14 @@ void main(){
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
   float a = alpha * opacity;
+  if (blendMode > 0) {
+    vec3 b = texture(backdrop, gl_FragCoord.xy / vec2(textureSize(backdrop, 0))).rgb;
+    if (blendMode == 1) rgb = b * rgb;
+    else if (blendMode == 2) rgb = 1. - (1. - b) * (1. - rgb);
+    else if (blendMode == 3) rgb = mix(2. * b * rgb, 1. - 2. * (1. - b) * (1. - rgb), step(.5, b));
+    else if (blendMode == 4) rgb = min(b, rgb);
+    else rgb = max(b, rgb);
+  }
   color = vec4(rgb * a, a);
 }`;
 
@@ -56,6 +69,11 @@ export class PlaybackEngine {
   private textUrl: (text: TextItem) => string | undefined = () => undefined;
   private stopAt = Infinity;
   private gl: WebGL2RenderingContext;
+  private backdrop!: WebGLTexture;
+  private struggles: number[] = [];
+  private warned = false;
+  private lastTick = 0;
+  onStruggling: () => void = () => {};
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
@@ -86,7 +104,8 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -190,7 +209,8 @@ export class PlaybackEngine {
         if (slot.clipId !== item.id || !this.playing) this.load(slot, item, source.url, at);
         slot.video.muted = false;
         if (this.playing) this.mixer.setVideoGain(slot.video, item === clip ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
-        slot.video.playbackRate = item.speed * this.rate;
+        // While playing, keepInStep owns the rate. Setting it here too would undo each nudge.
+        if (slot.video.paused) slot.video.playbackRate = item.speed * this.rate;
         const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;
         if (this.playing && slot.video.paused && !finished) void slot.video.play().catch(() => {});
         if (!this.playing && !slot.video.paused) slot.video.pause();
@@ -315,6 +335,22 @@ export class PlaybackEngine {
   }
 
   private drawLayer(layer: VideoLayer) {
+    const { gl, uniforms } = this;
+    const mode = BLEND_NUMBERS[layer.blend ?? 'normal'];
+    if (mode) {
+      // The shader needs what is under the layer so far.
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.backdrop);
+      gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(uniforms.backdrop, 1);
+    }
+    gl.uniform1i(uniforms.blendMode, mode);
+    this.drawLayerClips(layer);
+    gl.uniform1i(uniforms.blendMode, 0);
+  }
+
+  private drawLayerClips(layer: VideoLayer) {
     const crossing = this.crossing(layer, this.time);
     if (crossing) { this.drawCrossing(layer, crossing); return; }
     const { clip } = this.clipFor(layer, this.time);
@@ -374,6 +410,12 @@ export class PlaybackEngine {
     if (this.timeline) this.mixer.sync(this.timeline, this.time, this.playing, this.rate, this.soundUrl);
   }
 
+  private struggled() {
+    const now = performance.now();
+    this.struggles = [...this.struggles.filter((time) => now - time < STRUGGLE_WINDOW_MS), now];
+    if (this.struggles.length >= STRUGGLE_EVENTS && !this.warned) { this.warned = true; this.onStruggling(); }
+  }
+
   private startClock() {
     this.clockStart = performance.now();
     this.clockBase = this.time;
@@ -388,10 +430,11 @@ export class PlaybackEngine {
         if (!slot || slot.video.paused) continue;
         const at = this.sourceTime(item, this.time, !crossing);
         const drift = slot.video.currentTime - at;
-        if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) slot.video.currentTime = at;
+        if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) { slot.video.currentTime = at; this.struggled(); }
         else {
           const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift)) : 0;
-          slot.video.playbackRate = item.speed * this.rate * (1 + nudge);
+          const wanted = item.speed * this.rate * (1 + nudge);
+          if (Math.abs(slot.video.playbackRate - wanted) > 0.001) slot.video.playbackRate = wanted;
         }
       }
     }
@@ -407,6 +450,7 @@ export class PlaybackEngine {
   play(rate = 1) {
     if (!this.timeline || duration(this.timeline) === 0) return;
     this.stopAt = Infinity;
+    this.lastTick = 0;
     this.rate = rate;
     if (this.time >= duration(this.timeline) - 0.01) this.time = 0;
     this.startClock();
@@ -432,6 +476,10 @@ export class PlaybackEngine {
 
   private tick = () => {
     if (!this.playing || !this.timeline) return;
+    const stamp = performance.now();
+    const gap = stamp - this.lastTick;
+    if (this.lastTick && gap > SLOW_FRAME_MS && gap < THROTTLED_FRAME_MS) this.struggled();
+    this.lastTick = stamp;
     const end = duration(this.timeline);
     this.time = this.clockBase + ((performance.now() - this.clockStart) / 1000) * this.rate;
     if (this.time >= this.stopAt) { this.onTime(this.time); this.pause(); return; }

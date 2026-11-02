@@ -61,6 +61,8 @@ export const fetchTextImage = async (text: unknown, format: unknown) => {
   if (!response.ok) throw new Error('This text could not be drawn.');
   return URL.createObjectURL(await response.blob());
 };
+export const previewRenderUrl = (id: number) => `/api/projects/${id}/preview-render`;
+export const startPreviewRender = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(previewRenderUrl(id), { method: 'POST', body: JSON.stringify(timeline) });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
 export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
 export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);

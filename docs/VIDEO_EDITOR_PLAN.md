@@ -326,12 +326,39 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 **Later:** curve editing and keyframes on text. Splitting a clip mid-move keeps the value at the cut, but each half eases on its own, so a curved stretch can change shape slightly.
 
-### Phase 7: Full multilayer (L)
-- Picture-in-picture, overlays, image layers, and any number of layers up to the proven limit.
-- Hide, lock, mute, reorder, blend modes.
-- A clear message when a project exceeds what can preview live, with a preview render option.
+### Phase 7: Full multilayer (done)
+**Built**
+- Layer headers beside the timeline: hide, mute, lock, bring forward and send back. Rows run text, then overlays front to back, then sound. The main track stays at the back and text stays in front.
+- Lock blocks dragging, trimming, splitting, deleting, motion path dots and the inspector.
+- Blend modes per overlay layer: multiply, screen, overlay, darken, lighten. Export blends color, then applies the layer's alpha. Preview copies what's underneath into a backdrop texture for the shader.
+- Picture-in-picture: corner buttons with an even margin, working on any overlay, video or image.
+- The limit stays at 6 video layers, refused in plain words.
+- `PlaybackEngine.onStruggling`: a plain message when video has to resync or frames run slow repeatedly, with Render preview. Render preview is also always available. `POST /projects/{id}/preview-render` makes a 540p draft outside the library. It plays as one clip until the next edit.
+- Small overlays are worked on at their shown size.
 
-**Done when:** a project at the layer limit previews within target and exports correctly.
+**Tested with 6 moving 1080p sources through 720p proxies, 5 with animated position and rotation, one screen blend, a Tamil title, a ducked song, on this Mac**
+
+| Check | Target | Result |
+|---|---|---|
+| Video against the clock, 6 layers, 20 seconds | Under 40 ms | Median 3 ms, peak 6 ms |
+| Frames over 50 ms | None | 0 of 2,186, longest 43 ms |
+| False heavy warning | None | None |
+| Export length | Exact | 900 frames, 30.000 seconds |
+| Export time | | 68 seconds, 2.3× length, was 177 seconds |
+| Export memory peak | | 1.3 GB |
+| Render preview of the same project, before the speed change | | About 50 seconds |
+| Golden samples, now 4 blends at the layer limit | | 159, mean 1.40, worst 2.67, worst block 28 |
+
+**Fixed along the way**
+- Two steps set each video's rate every frame, so drift nudges barely worked. Median drift at 6 layers fell from 74 ms to 3 ms. This also applies to the near-miss in open decision 1, though it hasn't been re-measured over 5 minutes.
+- Overlays were turned at full size and then shrunk, which made exports 2.6 times slower.
+
+**Decisions from this phase**
+- Measure drift against the real clock (`clockBase` and `clockStart`), not `currentTime` on the engine, which stops when the page isn't drawing.
+- A gap near 1 second between frames isn't counted as struggling: hidden pages update about once a second. One such gap appeared while the pane was hidden, and none in a clean 20-second run, which supports the hidden-page explanation for the Phase 3 freeze. It isn't proven, and playback in a visible window hasn't been separately measured.
+- Blend is per layer, not per clip. Overlays can't go above text.
+
+**Not yet proven:** the heavy-project message was triggered by hand, because this Mac never struggled, so its threshold is untested on a slower machine. Also real footage, 4K sources, a machine busy with other work, Chrome and Safari themselves, and phones.
 
 ### Phase 8: Easy automation and lyric videos (L)
 - Auto captions, using Whisper and the letter-level aligner, with editable lines.

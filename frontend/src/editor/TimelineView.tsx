@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import { keyTimes } from '../timeline/keyframes';
-import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, trackLayers, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, type Clip, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
 const RULER = 26; const TRACK_TOP = 34; const TRACK_HEIGHT = 74; const SOUND_HEIGHT = 36; const SOUND_GAP = 4; const BASE_HEIGHT = 128; const HANDLE = 9; const PAD = 16; const SNAP_PIXELS = 8;
-const COLORS = { ruler: '#8e8aa3', tick: '#3b3850', clip: '#2c2940', clipEdge: '#4a4566', selected: '#a78bfa', wave: '#c4b5fd', sound: '#1f3b4d', soundEdge: '#35637e', text: '#3b2f6b', textEdge: '#6d58b8', soundWave: '#7dd3fc', fade: 'rgba(10,8,16,.55)', head: '#fbbf24', name: '#f4f2ff' };
+const COLORS = { ruler: '#8e8aa3', tick: '#3b3850', clip: '#2c2940', clipEdge: '#4a4566', selected: '#a78bfa', wave: '#c4b5fd', veil: 'rgba(15,13,22,.62)', sound: '#1f3b4d', soundEdge: '#35637e', text: '#3b2f6b', textEdge: '#6d58b8', soundWave: '#7dd3fc', fade: 'rgba(10,8,16,.55)', head: '#fbbf24', name: '#f4f2ff' };
 
 const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
 
@@ -171,10 +172,13 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
         context.fillStyle = COLORS.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
       for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip, xOf(clip.start), TRACK_TOP + TRACK_HEIGHT); }
+      const veil = (hidden: boolean | undefined, y: number, h: number) => { if (hidden) { context.fillStyle = COLORS.veil; context.fillRect(0, y, width, h); } };
+      veil(mainLayer(shown).hidden, TRACK_TOP, TRACK_HEIGHT);
       tracks.forEach((layer, row) => {
         if (layer.kind === 'video') for (const clip of layer.items) drawOverlay(clip, row);
         else if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
+        veil(layer.hidden, soundTop(row), SOUND_HEIGHT);
       });
       const head = xOf(playhead.current);
       context.fillStyle = COLORS.head; context.fillRect(head - 1, 0, 2, height);
@@ -220,6 +224,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
     if (foundSound) {
       const { sound, zone } = foundSound;
       onSelect(sound.id);
+      if (trackLayers(props.current.timeline)[rowAt(y)]?.locked) return;
       dragRef.current = zone === 'body' ? { kind: 'soundMove', id: sound.id, startX: x, origin: sound, base: props.current.timeline, group }
         : { kind: 'soundTrim', id: sound.id, edge: zone, startX: x, origin: sound, base: props.current.timeline, group };
       return;
@@ -230,6 +235,7 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
       dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return;
     }
     onSelect(found.clip.id);
+    if (mainLayer(props.current.timeline).locked) { onSeek(timeOf(x)); return; }
     if (found.zone === 'body') { dragRef.current = { kind: 'move', id: found.clip.id, startX: x, moved: false, base: props.current.timeline, group }; onSeek(timeOf(x)); }
     else dragRef.current = { kind: 'trim', id: found.clip.id, edge: found.zone, startX: x, origin: found.clip, base: props.current.timeline, group };
   };
@@ -284,8 +290,34 @@ export default function TimelineView({ timeline, selectedId, zoom, visuals, soun
   };
   const onPointerUp = () => { dragRef.current = null; };
 
-  const rows = trackLayers(timeline).length;
-  return <div className="tl-host" ref={hostRef} style={{ height: BASE_HEIGHT + rows * (SOUND_HEIGHT + SOUND_GAP) }}>
-    <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}/>
+  const tracks = trackLayers(timeline);
+  const main = mainLayer(timeline);
+  const change = (next: Timeline) => onChange(next, `layer-${groupCount.current += 1}`);
+  const head = (layer: VideoLayer | TrackLayer, top: number, height: number) => <LayerHead key={layer.id} layer={layer} top={top} height={height} isMain={layer === main}
+    position={layer.kind === 'video' && layer !== main ? overlayLayers(timeline).findIndex((entry) => entry.id === layer.id) : -1} overlays={overlayLayers(timeline).length}
+    onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))}/>;
+  return <div className="tl-host">
+    <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.length * (SOUND_HEIGHT + SOUND_GAP) }}>
+      <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, soundTop(row), SOUND_HEIGHT))}</div>
+      <div className="tl-scroll" ref={hostRef}>
+        <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}/>
+      </div>
+    </div>
+  </div>;
+}
+
+function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, onMove }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void }) {
+  const name = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : 'Sound';
+  return <div className="tl-head" style={{ top, height }} role="group" aria-label={`${name} layer`}>
+    {height > SOUND_HEIGHT && <span>{name}</span>}
+    <div>
+      {position >= 0 && <>
+        <button aria-label={`Bring ${name} forward`} title="Bring forward" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ChevronUp size={13}/></button>
+        <button aria-label={`Send ${name} back`} title="Send back" disabled={position === 0} onClick={() => onMove('back')}><ChevronDown size={13}/></button>
+      </>}
+      {layer.kind !== 'audio' && <button className={layer.hidden ? 'on' : ''} aria-pressed={Boolean(layer.hidden)} aria-label={`Hide ${name}`} title={layer.hidden ? 'Show this layer' : 'Hide this layer'} onClick={() => onToggle({ hidden: !layer.hidden })}>{layer.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</button>}
+      {layer.kind !== 'text' && <button className={layer.muted ? 'on' : ''} aria-pressed={Boolean(layer.muted)} aria-label={`Mute ${name}`} title={layer.muted ? 'Turn sound on' : 'Mute this layer'} onClick={() => onToggle({ muted: !layer.muted })}>{layer.muted ? <VolumeX size={13}/> : <Volume2 size={13}/>}</button>}
+      <button className={layer.locked ? 'on' : ''} aria-pressed={Boolean(layer.locked)} aria-label={`Lock ${name}`} title={layer.locked ? 'Unlock this layer' : 'Lock this layer'} onClick={() => onToggle({ locked: !layer.locked })}>{layer.locked ? <Lock size={13}/> : <LockOpen size={13}/>}</button>
+    </div>
   </div>;
 }

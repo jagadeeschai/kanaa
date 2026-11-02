@@ -146,6 +146,48 @@ def get_timeline(identifier: int):
     return upgrade_edit_recipe(recipe, row['media_id'], media['duration'] or 1, media['width'], media['height'])
 
 
+def preview_file(identifier: int) -> Path:
+    return settings.data_dir / 'cache' / 'previews' / f'{identifier}.mp4'
+
+
+@router.post('/projects/{identifier}/preview-render')
+def preview_render(identifier: int, timeline: dict):
+    """A quick flattened copy for watching a project too heavy to play live. It stays out of the library."""
+    project_for(identifier)
+    try:
+        parsed = Timeline.model_validate(timeline)
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc.errors()[0].get('msg', 'This timeline is not valid.')).removeprefix('Value error, ')) from exc
+    if parsed.duration <= 0:
+        raise HTTPException(400, 'Add a clip to the timeline first.')
+    target = preview_file(identifier)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        check_disk_space(target.parent, parsed.duration)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    fresh = target.with_name(f'{identifier}-{uuid.uuid4().hex}.mp4')
+
+    def run(should_cancel):
+        try:
+            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True)
+            fresh.replace(target)
+            return {'progress': 100, 'preview_ready': True}
+        finally:
+            fresh.unlink(missing_ok=True)
+
+    job_id = enqueue_render('preview_render', 'Render preview', run, total=100)
+    return {'job_id': job_id}
+
+
+@router.get('/projects/{identifier}/preview-render')
+def preview_render_file(identifier: int, request: Request):
+    target = preview_file(identifier)
+    if not target.is_file():
+        raise HTTPException(404, 'This preview is no longer available.')
+    return serve_file_with_ranges(target, 'video/mp4', request)
+
+
 @router.post('/projects/{identifier}/export')
 def export_project(identifier: int, timeline: dict):
     row = project_for(identifier)

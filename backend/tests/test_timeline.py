@@ -579,6 +579,63 @@ def probe_frames(path):
     return int(subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v', '-count_frames', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', str(path)], capture_output=True, text=True, check=True).stdout.strip().rstrip(','))
 
 
+class Layers(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for name, color in (('under', (200, 100, 50)), ('top', (60, 180, 220))):
+            path = cls.root / f'{name}.png'
+            Image.new('RGB', (640, 360), color).save(path)
+            cls.facts[20 if name == 'under' else 21] = MediaFacts(path=path, media_type='image', width=640, height=360)
+
+    def stack(self, **top):
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 20, 'start': 0, 'in': 0, 'out': 1}]},
+                                                  {'id': 'up', 'kind': 'video', **top, 'items': [{'id': 'b', 'media_id': 21, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 0.5}}]}]}
+
+    def test_blend_modes_follow_their_formulas(self):
+        b, s = np.array([200, 100, 50]) / 255, np.array([60, 180, 220]) / 255
+        wanted = {'multiply': b * s, 'screen': 1 - (1 - b) * (1 - s), 'overlay': np.where(b < 0.5, 2 * b * s, 1 - 2 * (1 - b) * (1 - s)), 'darken': np.minimum(b, s), 'lighten': np.maximum(b, s)}
+        for mode, color in wanted.items():
+            with self.subTest(mode=mode):
+                frame = self.frame(self.render(self.stack(blend=mode), f'{mode}.mp4'), 5, (640, 360))
+                for got, want in zip(frame[180, 320], color * 255):
+                    self.assertAlmostEqual(int(got), float(want), delta=6)
+                for got, want in zip(frame[20, 20], (200, 100, 50)):  # Outside the layer's shape, nothing changes.
+                    self.assertAlmostEqual(int(got), want, delta=6)
+
+    def test_hidden_layer_is_absent_with_its_sound(self):
+        data = self.stack(hidden=True)
+        data['layers'][1]['items'] = [{'id': 'b', 'media_id': 1, 'start': 0, 'in': 0, 'out': 1}]
+        target = self.render(data)
+        for got, want in zip(self.frame(target, 5, (640, 360))[180, 320], (200, 100, 50)):
+            self.assertAlmostEqual(int(got), want, delta=6)
+        self.assertFalse(has_stream(target, 'audio'))
+
+    def test_layer_order_decides_what_is_in_front(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 20, 'start': 0, 'in': 0, 'out': 1}]},
+                                                  {'id': 'one', 'kind': 'video', 'items': [{'id': 'b', 'media_id': 21, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 0.5}}]},
+                                                  {'id': 'two', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 20, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 0.25}}]}]}
+        self.assertLess(self.frame(self.render(data), 5, (640, 360))[180, 320, 2], 90)
+
+    def test_six_layers_export_at_the_limit(self):
+        layers = [{'id': f'l{n}', 'kind': 'video', 'blend': 'screen' if n == 3 else 'normal', 'items': [{'id': f'c{n}', 'media_id': 1 + n % 3, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 1 - n * 0.1}}]} for n in range(6)]
+        self.assertEqual(probe_frames(self.render({'format': self.FORMAT, 'layers': layers})), 30)
+
+    def test_a_seventh_layer_is_refused_in_plain_words(self):
+        layers = [{'id': f'l{n}', 'kind': 'video', 'items': []} for n in range(7)]
+        with self.assertRaisesRegex(ValidationError, 'up to 6 video layers'):
+            Timeline.model_validate({'layers': layers})
+
+    def test_draft_is_the_same_length(self):
+        data = self.stack()
+        final, draft = self.out / 'final.mp4', self.out / 'draft.mp4'
+        render_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, final, lambda _: None)
+        render_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, draft, lambda _: None, draft=True)
+        self.assertEqual(probe_frames(final), probe_frames(draft))
+
+
 class Rules(unittest.TestCase):
     def test_overlapping_items_are_refused(self):
         with self.assertRaisesRegex(ValidationError, 'overlap'):

@@ -30,6 +30,7 @@ DUCK_RATIO = 2
 DUCK_FILTER = f'sidechaincompress=threshold={DUCK_THRESHOLD}:ratio={DUCK_RATIO}:attack=20:release=400:level_sc=1'
 LUMA_RED, LUMA_GREEN, LUMA_BLUE = 0.2126, 0.7152, 0.0722
 MAX_SUPERSAMPLE = 4
+MIN_WORK_SCALE = 0.1
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
 MIN_ATEMPO_STEP = 0.5
@@ -132,13 +133,15 @@ def shared_fit(enter: Animation | None, exit_: Animation | None, length: float) 
 
 
 def supersample(transform: Transform, enter: Animation | None, exit_: Animation | None, facts: MediaFacts | None, fmt: Format) -> float:
-    """Work at the largest size the item reaches, within its source, so zooming in stays sharp."""
+    """Work at the largest size the item reaches, within its source: sharp when zoomed in, cheap when small."""
     if facts is None or not facts.width or not facts.height:
         return 1
     keys = transform.keyframes.get('scale', [])
     largest = max([transform.scale, *(key.v for key in keys)])
     if any(item and item.preset == 'pop' for item in (enter, exit_)):
         largest *= 1.11  # The overshoot.
+    if largest < 1:
+        return max(largest, MIN_WORK_SCALE)  # A small overlay needs no full-size frames to turn and scale.
     detail = max(facts.width, facts.height) / min(fmt.width, fmt.height)
     return max(1, min(largest, detail, MAX_SUPERSAMPLE))
 
@@ -357,7 +360,17 @@ class Builder:
             segments.append(f'[{label}]')
         joined = f'layer{position}'
         self.graph.append(f"{''.join(segments)}concat=n={len(segments)}:v=1:a=0[{joined}]")
+        if layer.blend != 'normal':
+            return self.blended(base, joined, position, layer.blend)
         return self.overlay(base, joined, position, '0', '0')
+
+    def blended(self, base: str, top: str, position: int, mode: str) -> str:
+        """Blend the color, then let the layer's own alpha decide how much of that shows. Matches the preview shader."""
+        n = f'b{position}'
+        self.graph += [f'[{top}]split=2[{n}_color][{n}_shape]', f'[{n}_shape]alphaextract[{n}_mask]', f'[{n}_color]format=gbrp[{n}_rgb]',
+                       f'[{base}]format=gbrp,split=2[{n}_under][{n}_base]', f'[{n}_under][{n}_rgb]blend=all_mode={mode},format=gbrp[{n}_mixed]',
+                       f'[{n}_mixed]format=gbrap[{n}_open]', f'[{n}_open][{n}_mask]alphamerge[{n}_shaped]']
+        return self.overlay(f'{n}_base', f'{n}_shaped', position, '0', '0')
 
     def overlay(self, base: str, top: str, position: int, x: str, y: str) -> str:
         output = f'v{position}'
@@ -467,8 +480,8 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False) -> None:
-    """Encode into a private folder, then publish a complete file."""
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False) -> None:
+    """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
         raise ValueError('Exporting requires ffmpeg on the server.')
@@ -482,13 +495,13 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
         audio_input, audio = [], ['-an']
         if compiled.has_audio:
             mix = mix_audio(ffmpeg, compiled, folder, should_cancel)
-            if compiled.normalize_audio:
+            if compiled.normalize_audio and not draft:
                 mix = normalize_loudness(ffmpeg, compiled, mix, folder, should_cancel)
             audio_input = ['-i', str(mix)]
             audio = ['-map', f'{video_inputs(compiled)}:a', '-c:a', 'aac', '-b:a', '192k']
         # The graph goes in a file: a long timeline's graph can exceed the command-line limit.
         args = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', *compiled.args, *audio_input, '-filter_complex_script', str(folder / 'graph.txt'),
-                '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
+                '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', '-c:v', 'libx264', *(['-preset', 'veryfast', '-crf', '26', '-g', '15'] if draft else ['-preset', 'fast', '-crf', '20']), '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-n', str(output)]
         with tempfile.TemporaryFile(mode='w+') as errors:
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=errors, text=True, cwd=folder)

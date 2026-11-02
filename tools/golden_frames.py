@@ -102,6 +102,14 @@ def build(first, second, logo):
     for at in (0.5, 1.5, 2, 3.5):
         samples.append({'name': f'logo {at}', 't': t + at})
     t += 2 * SECONDS
+    # Blend modes, with the project at the six-layer limit.
+    blends = ['multiply', 'screen', 'overlay', 'darken']
+    extra_layers = []
+    for number, mode in enumerate(blends):
+        clips.append(clip(f'base{number}', first, t))
+        extra_layers.append({'id': f'blend{number}', 'kind': 'video', 'blend': mode, 'items': [{'id': f'top{number}', 'media_id': second, 'start': t, 'in': 0, 'out': SECONDS, 'transform': {'scale': 0.7, 'rotation': 15}}]})
+        samples.append({'name': f'blend {mode}', 't': t + 1})
+        t += SECONDS
     # Tamil text runs through every preset on plain frames.
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -112,7 +120,7 @@ def build(first, second, logo):
         samples.append({'name': f'text rest {preset}', 't': t + 1})
         samples.append({'name': f'text exit {preset} 0.5', 't': t + SECONDS - ANIMATION * 0.5})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': [overlay]}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': [overlay]}, *extra_layers, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
 
 
 def main():

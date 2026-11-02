@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
-import { addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -259,4 +259,42 @@ test('overlays sit above the main track, below text, and never pull the main tra
   assert.equal(findClip(moved, 'o').start, 7);
   assert.equal(removeClip(next, 'o').layers.length, 2);
   assert.equal(updateClip(next, 'o', { volume: 0.5 }).layers[1].items[0].volume, 0.5);
+});
+
+const stacked = () => {
+  const logo = (id, start) => ({ ...newClip(facts, id), start, out: 2 });
+  return addOverlay(addOverlay(addOverlay(withClip(), logo('a', 0), 'one'), logo('b', 0), 'two'), logo('c', 0), 'three');
+};
+
+test('forward moves an overlay nearer the viewer, and the ends stay put', () => {
+  const start = stacked();
+  assert.deepEqual(overlayLayers(reorderLayer(start, 'one', 'forward')).map((layer) => layer.id), ['two', 'one', 'three']);
+  assert.equal(reorderLayer(start, 'three', 'forward'), start);
+  assert.equal(reorderLayer(start, 'one', 'back'), start);
+  assert.equal(reorderLayer(start, mainLayer(start).id, 'forward'), start);
+});
+
+test('the frontmost overlay gets the top row, under text and above sound', () => {
+  const next = addSound(addText(stacked(), title('t', 0), 'words'), song('s', 0), 'tune');
+  assert.deepEqual(trackLayers(next).map((layer) => layer.id), ['words', 'three', 'two', 'one', 'tune']);
+});
+
+test('locks are per layer', () => {
+  const next = updateLayer(stacked(), 'two', { locked: true });
+  assert.equal(isLocked(next, 'b'), true);
+  assert.equal(isLocked(next, 'a'), false);
+});
+
+test('the seventh video layer is refused in words', () => {
+  const logo = (id) => ({ ...newClip(facts, id), start: 0, out: 2 });
+  const five = addOverlay(addOverlay(stacked(), logo('d'), 'four'), logo('e'), 'five');
+  assert.throws(() => addOverlay(five, logo('f'), 'six'), /up to 6/);
+});
+
+test('a corner tucks the picture in with an even margin', () => {
+  const format = { width: 1920, height: 1080, fps: 30 };
+  const spot = cornerPlacement({ width: 1920, height: 1080 }, 0, format, 0.3, 'bottom-right');
+  const gapRight = (1 - spot.x) * 1920 - 288; const gapBottom = (1 - spot.y) * 1080 - 162;
+  assert.ok(Math.abs(gapRight - gapBottom) < 1e-6);
+  assert.ok(gapRight > 0);
 });
