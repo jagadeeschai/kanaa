@@ -141,13 +141,13 @@ def recover_after_restart() -> None:
         conn.execute(f"UPDATE render_jobs SET status = 'failed', error = ?, finished_at = CURRENT_TIMESTAMP WHERE status IN ({placeholders})", (INTERRUPTED_MESSAGE, *ACTIVE_STATUSES))
         conn.execute('DELETE FROM render_jobs WHERE id NOT IN (SELECT id FROM render_jobs ORDER BY created_at DESC, rowid DESC LIMIT ?)', (KEPT_JOB_RECORDS,))
         conn.commit()
-        recipes = [row['recipe'] for row in conn.execute("SELECT recipe FROM projects WHERE recipe IS NOT NULL AND kind = 'lyric'").fetchall()]
+        recipes = [row['recipe'] for row in conn.execute("SELECT recipe FROM projects WHERE recipe IS NOT NULL").fetchall()]
     for folder in settings.edit_workspace_dir.glob('.video-export-*'):
         shutil.rmtree(folder, ignore_errors=True)
     audio_dir = settings.data_dir / 'video_audio'
     if audio_dir.is_dir():
         cutoff = time.time() - AUDIO_RETENTION_SECONDS
         for asset in audio_dir.iterdir():
-            # Songs a saved lyric project still uses stay, however old they are.
+            # Songs a saved project still uses stay, however old they are.
             if asset.is_file() and asset.stat().st_mtime < cutoff and not any(asset.name in recipe for recipe in recipes):
                 asset.unlink(missing_ok=True)

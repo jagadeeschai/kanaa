@@ -1,5 +1,6 @@
 import { valueAt } from '../timeline/evaluate';
-import { clipLength, duration, fittedSize, type Clip, type Timeline, type VideoLayer } from '../timeline/model';
+import { AudioMixer } from './audio';
+import { clipLength, duration, fittedSize, type Clip, type Sound, type Timeline, type VideoLayer } from '../timeline/model';
 
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
@@ -27,6 +28,8 @@ void main(){
 
 /** Draws the timeline to a canvas and keeps video in step with one clock. Lives outside React. */
 export class PlaybackEngine {
+  readonly mixer = new AudioMixer();
+  private soundUrl: (sound: Sound) => string | undefined = () => undefined;
   private gl: WebGL2RenderingContext;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private layers = new Map<string, LayerSlots>();
@@ -92,9 +95,10 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number) => PlaybackSource | undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined) {
     this.timeline = timeline;
     this.sources = sources;
+    this.soundUrl = soundUrl;
     const { width, height } = timeline.format;
     const shrink = Math.min(1, MAX_BUFFER_SIDE / Math.max(width, height));
     this.canvas.width = Math.round(width * shrink);
@@ -140,8 +144,8 @@ export class PlaybackEngine {
         active = slots.find((slot) => slot.clipId === clip.id) ?? slots.find((slot) => slot.clipId !== next?.id) ?? slots[0];
         const at = this.sourceTime(clip, t);
         if (active.clipId !== clip.id || !this.playing) this.load(active, clip, source.url, at);
-        active.video.muted = Boolean(clip.muted || layer.muted);
-        active.video.volume = Math.min(1, clip.volume);
+        active.video.muted = false;
+        if (this.playing) this.mixer.setVideoGain(active.video, this.mixer.clipGain(clip, t, Boolean(layer.muted)));
         active.video.playbackRate = clip.speed * this.rate;
         if (this.playing && active.video.paused) void active.video.play().catch(() => {});
         if (!this.playing && !active.video.paused) active.video.pause();
@@ -218,8 +222,13 @@ export class PlaybackEngine {
     this.time = Math.max(0, Math.min(t, this.timeline ? duration(this.timeline) : 0));
     if (this.playing) this.startClock();
     this.syncSlots();
+    this.syncSound();
     this.requestDraw();
     this.onTime(this.time);
+  }
+
+  private syncSound() {
+    if (this.timeline) this.mixer.sync(this.timeline, this.time, this.playing, this.rate, this.soundUrl);
   }
 
   private startClock() {
@@ -246,6 +255,7 @@ export class PlaybackEngine {
     this.rate = rate;
     if (this.time >= duration(this.timeline) - 0.01) this.time = 0;
     this.startClock();
+    this.mixer.resume();
     if (!this.playing) {
       this.playing = true;
       this.onPlayingChange(true);
@@ -260,6 +270,7 @@ export class PlaybackEngine {
     this.rate = 1;
     cancelAnimationFrame(this.frame);
     this.syncSlots();
+    this.syncSound();
     this.onPlayingChange(false);
     this.requestDraw();
   }
@@ -270,6 +281,7 @@ export class PlaybackEngine {
     this.time = this.clockBase + ((performance.now() - this.clockStart) / 1000) * this.rate;
     if (this.time >= end) { this.time = end; this.onTime(end); this.pause(); return; }
     this.syncSlots();
+    this.syncSound();
     this.keepInStep();
     this.draw();
     this.onTime(this.time);
@@ -278,6 +290,7 @@ export class PlaybackEngine {
 
   destroy() {
     this.pause();
+    this.mixer.destroy();
     for (const { slots } of this.layers.values()) for (const slot of slots) { slot.video.pause(); slot.video.removeAttribute('src'); slot.video.load(); }
     this.layers.clear();
   }

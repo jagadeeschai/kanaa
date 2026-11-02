@@ -10,3 +10,4 @@ frontend/dist/
 .DS_Store
 spike/.media/
 spike/.out/
+backend/.stems/

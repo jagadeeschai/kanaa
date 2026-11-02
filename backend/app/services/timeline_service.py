@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +23,11 @@ from app.services.video_edit_service import (
 
 logger = logging.getLogger(__name__)
 AUDIO_FORMAT = 'aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo'
+# Matched by editor/audio.ts. A gentle ratio dips music by about 8 to 14 dB under normal speech.
+DUCK_THRESHOLD = 0.02
+DUCK_RATIO = 2
+DUCK_FILTER = f'sidechaincompress=threshold={DUCK_THRESHOLD}:ratio={DUCK_RATIO}:attack=20:release=400:level_sc=1'
+LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
 MIN_ATEMPO_STEP = 0.5
 
@@ -32,6 +39,7 @@ class Compiled:
     duration: float
     audio_args: list[str]
     audio_graph: str
+    normalize_audio: bool = False
 
     @property
     def has_audio(self) -> bool:
@@ -115,6 +123,19 @@ def atempo_chain(speed: float) -> list[str]:
     return [*steps, f'atempo={speed}'] if speed != 1 else steps
 
 
+def sound_steps(item: Clip | Sound) -> list[str]:
+    """Fades are in timeline seconds, so they follow the speed change. Overlong fades share the item's length."""
+    length = item.length
+    excess = max(1, (item.fade_in + item.fade_out) / length)
+    fade_in, fade_out = item.fade_in / excess, item.fade_out / excess
+    steps = [AUDIO_FORMAT, *atempo_chain(item.speed), f'volume={item.volume}']
+    if fade_in:
+        steps.append(f'afade=t=in:st=0:d={fade_in}')
+    if fade_out:
+        steps.append(f'afade=t=out:st={length - fade_out}:d={fade_out}')
+    return [*steps, f'adelay={round(item.start * 1000)}:all=1']
+
+
 def render_text_image(item: Text, fmt: Format, target: Path) -> None:
     """Text goes through libass once, so preview and export share the same letters."""
     edit = VideoEditRequest(canvas='original', lyric_style=item.style, lyric_size=max(20, item.size), lyric_position=item.position,
@@ -138,6 +159,7 @@ class Builder:
         self.args: list[str] = []
         self.graph: list[str] = []
         self.audio: list[str] = []
+        self.ducked: list[str] = []
         self.audio_args: list[str] = []
         self.audio_graph: list[str] = []
         self.audio_inputs = 0
@@ -150,11 +172,11 @@ class Builder:
         self.inputs += 1
         return self.inputs - 1
 
-    def add_audio_track(self, path: Path, source_start: float, seconds: float, steps: list[str]) -> None:
+    def add_audio_track(self, path: Path, source_start: float, seconds: float, steps: list[str], duck: bool = False) -> None:
         self.audio_args += ['-ss', f'{source_start:.6f}', '-t', f'{seconds:.6f}', '-i', str(path)]
         label = f'a{self.audio_inputs}'
         self.audio_graph.append(f"[{self.audio_inputs}:a]{','.join(steps)}[{label}]")
-        self.audio.append(label)
+        (self.ducked if duck else self.audio).append(label)
         self.audio_inputs += 1
 
     def frames(self, seconds: float) -> int:
@@ -171,8 +193,7 @@ class Builder:
     def add_clip_audio(self, clip: Clip, facts: MediaFacts, layer_muted: bool) -> None:
         if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0:
             return
-        steps = [AUDIO_FORMAT, *atempo_chain(clip.speed), f'volume={clip.volume}', f'adelay={round(clip.start * 1000)}:all=1']
-        self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, steps)
+        self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
 
     def add_video_layer(self, layer: VideoLayer, position: int, base: str) -> str:
         clips = sorted(layer.items, key=lambda clip: clip.start)
@@ -230,6 +251,8 @@ class Builder:
         if layer.muted:
             return
         for sound in layer.items:
+            if sound.muted or sound.volume == 0:
+                continue
             if sound.media_id is not None:
                 facts = self.media(sound.media_id)
                 if not facts.has_audio:
@@ -237,13 +260,18 @@ class Builder:
                 path = facts.path
             else:
                 path = self.audio_asset(sound.asset_id)
-            steps = [AUDIO_FORMAT, f'volume={sound.volume}']
-            if sound.fade_in:
-                steps.append(f'afade=t=in:st=0:d={sound.fade_in}')
-            if sound.fade_out:
-                steps.append(f'afade=t=out:st={max(0, sound.length - sound.fade_out)}:d={sound.fade_out}')
-            steps.append(f'adelay={round(sound.start * 1000)}:all=1')
-            self.add_audio_track(path, sound.in_, sound.length, steps)
+            self.add_audio_track(path, sound.in_, sound.out - sound.in_, sound_steps(sound), sound.duck)
+
+    def bus(self, labels: list[str], total: float) -> str:
+        # normalize=0 keeps each track's level.
+        return f"{''.join(f'[{label}]' for label in labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,apad,atrim=end={total}"
+
+    def mix_tracks(self, total: float) -> None:
+        if self.audio and self.ducked:
+            self.audio_graph += [f'{self.bus(self.audio, total)},asplit=2[key][main]', f'{self.bus(self.ducked, total)}[under]',
+                                 f'[under][key]{DUCK_FILTER}[dipped]', '[main][dipped]amix=inputs=2:duration=longest:normalize=0[mix]']
+        elif self.audio or self.ducked:
+            self.audio_graph.append(f'{self.bus(self.audio or self.ducked, total)}[mix]')
 
     def build(self) -> Compiled:
         fmt = self.fmt
@@ -260,11 +288,8 @@ class Builder:
                 self.add_audio_layer(layer)
         self.graph.append(f'[{current}]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[final]')
         total = self.total_frames / fmt.fps
-        if self.audio:
-            mixed = ''.join(f'[{label}]' for label in self.audio)
-            # normalize=0 keeps each track's level.
-            self.audio_graph.append(f'{mixed}amix=inputs={len(self.audio)}:duration=longest:normalize=0,apad,atrim=end={total}[mix]')
-        return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph))
+        self.mix_tracks(total)
+        return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
 def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path) -> Compiled:
@@ -288,6 +313,26 @@ def mix_audio(ffmpeg: str, compiled: Compiled, folder: Path, should_cancel: Call
     return target
 
 
+def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Path, should_cancel: Callable[[], bool]) -> Path:
+    """Two passes: measure, then apply one steady gain, so quiet and loud moments keep their balance."""
+    measure = run_cancellable([ffmpeg, '-nostdin', '-hide_banner', '-y', '-i', str(source), '-af', f'{LOUDNORM}:print_format=json', '-f', 'null', '-'], should_cancel)
+    found = re.search(r'\{[^{}]*"input_i"[^{}]*\}', measure.stderr or '')
+    if measure.returncode or not found:
+        logger.warning('Could not measure loudness: %s', (measure.stderr or '')[-500:])
+        return source
+    stats = json.loads(found.group())
+    if not math.isfinite(float(stats['input_i'])):  # Silence has no loudness to correct.
+        return source
+    target = folder / 'normalized.wav'
+    measured = f"measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:offset={stats['target_offset']}"
+    result = run_cancellable([ffmpeg, '-nostdin', '-v', 'error', '-y', '-i', str(source), '-af', f'{LOUDNORM}:{measured}:linear=true,aresample=48000,apad,atrim=end={compiled.duration}',
+                              '-c:a', 'pcm_f32le', str(target)], should_cancel)
+    if result.returncode:
+        logger.warning('Loudness correction failed: %s', result.stderr[-500:])
+        return source
+    return target
+
+
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
                     on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False) -> None:
     """Encode into a private folder, then publish a complete file."""
@@ -304,6 +349,8 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
         audio_input, audio = [], ['-an']
         if compiled.has_audio:
             mix = mix_audio(ffmpeg, compiled, folder, should_cancel)
+            if compiled.normalize_audio:
+                mix = normalize_loudness(ffmpeg, compiled, mix, folder, should_cancel)
             audio_input = ['-i', str(mix)]
             audio = ['-map', f'{video_inputs(compiled)}:a', '-c:a', 'aac', '-b:a', '192k']
         # The graph goes in a file: a long timeline's graph can exceed the command-line limit.

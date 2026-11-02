@@ -51,6 +51,11 @@ export const saveImageScenePrompts = (id: number, batchId: string, scenes: { id:
 export type ClipAssets = { status: 'ready' | 'preparing' | 'unavailable'; key?: string; job_id?: string; progress?: number; filmstrip?: { tiles: number; tile_width: number; tile_height: number } };
 export const getClipAssets = (id: number) => requestJson<ClipAssets>(`/api/photos/${id}/assets`);
 export const clipProxyUrl = (id: number) => `/api/photos/${id}/proxy`;
+export const getSongPeaks = (id: string) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/video-audio/${id}/peaks`);
+export const songUrl = (id: string) => `/api/video-audio/${id}`;
+export type Stems = { vocals: string; music: string };
+export const getStemsStatus = () => requestJson<{ available: boolean; install_command: string }>('/api/stems');
+export const startStems = (source: { asset_id?: string; media_id?: number }) => requestJson<{ job_id: string }>('/api/stems', { method: 'POST', body: JSON.stringify(source) });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
 export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
 export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);

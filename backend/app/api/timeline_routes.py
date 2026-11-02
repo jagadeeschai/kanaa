@@ -1,4 +1,5 @@
 import json
+import threading
 import uuid
 from pathlib import Path
 
@@ -7,11 +8,12 @@ from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.services.asset_service import content_key, folder_for, manifest_for, request_assets
+from app.services.asset_service import content_key, folder_for, make_peaks, manifest_for, request_assets
 from app.services.job_service import update_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
+from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Timeline
 from app.services.timeline_service import render_timeline, upgrade_edit_recipe
 from app.services.video_edit_service import check_disk_space, resolve_audio_asset
@@ -70,6 +72,52 @@ def filmstrip(identifier: int):
 @router.get('/photos/{identifier}/peaks')
 def peaks(identifier: int):
     return json.loads(asset_path(identifier, 'peaks.json').read_text())
+
+
+@router.get('/video-audio/{asset_id}/peaks')
+def song_peaks(asset_id: str):
+    try:
+        path = resolve_audio_asset(asset_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    folder = folder_for(content_key(path))
+    target = folder / 'song-peaks.json'
+    if not target.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        make_peaks(MediaFacts(path=path, media_type='audio', has_audio=True), target)
+    return json.loads(target.read_text())
+
+
+@router.get('/stems')
+def stems_status():
+    return {'available': stems_available(), 'install_command': INSTALL_COMMAND}
+
+
+@router.post('/stems')
+def start_stems(source: dict):
+    asset_id, media_id = source.get('asset_id'), source.get('media_id')
+    try:
+        path = resolve_audio_asset(asset_id) if asset_id else Path(get_media(int(media_id))['absolute_path'])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not stems_available():
+        raise HTTPException(400, f'Voice separation is not installed. Run {INSTALL_COMMAND} in the Motion folder, then restart Motion.')
+
+    def run(should_cancel):
+        update_job(job_id, status='running', phase='Separating voice and music', progress=0)
+        stems = separate(path, lambda progress: update_job(job_id, progress=min(99, progress)), should_cancel)
+        return {'progress': 100, 'phase': 'Separated', 'stems': stems}
+
+    job_id = ''
+    ready = threading.Event()
+
+    def start(should_cancel):
+        ready.wait()
+        return run(should_cancel)
+
+    job_id = enqueue_render('stems', 'Separate voice and music', start, total=100)
+    ready.set()
+    return {'job_id': job_id}
 
 
 @router.get('/projects/{identifier}/timeline')

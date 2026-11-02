@@ -1,4 +1,6 @@
 import json
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,11 +17,12 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, render_queue_service
+from app.services import asset_service, render_queue_service, stem_service
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.timeline_schema import Timeline, Transform, value_at
+from app.services.video_edit_service import resolve_audio_asset
 from app.services.timeline_service import atempo_chain, property_expression, render_timeline, upgrade_edit_recipe
 from app.services.video_service import _run_ffprobe
 
@@ -228,6 +231,155 @@ class Color(Clips):
                 target = self.out / f'proxy-{matrix}.mp4'
                 make_proxy(self.tagged_clip(matrix), target, lambda: False)
                 self.assert_color(self.frame(target, 5), self.GREEN)
+
+
+class Sounds(Clips):
+    """Each test measures the exported file, not the graph."""
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.song = cls.root / 'song.wav'
+        run('-f', 'lavfi', '-i', 'sine=f=1200:d=6', '-af', 'volume=0.5', str(cls.song))
+
+    def timeline(self, sounds, clips=None, **extra):
+        clips = clips or [{'id': 'c', 'media_id': 3, 'start': 0, 'in': 0, 'out': 2, 'muted': True}]
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': clips}, {'id': 'a', 'kind': 'audio', 'items': sounds}], **extra}
+
+    def render_song(self, data, name='out.mp4'):
+        target = self.out / name
+        render_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda _: self.song, target, lambda _: None)
+        return target
+
+    def test_detached_sound_moves_independently_of_its_clip(self):
+        # Clip 1 is red, with a 300 Hz tone. Its sound now plays a full second late.
+        target = self.render({'format': self.FORMAT, 'layers': [
+            {'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2, 'muted': True}]},
+            {'id': 'a', 'kind': 'audio', 'items': [{'id': 's', 'media_id': 1, 'start': 1, 'in': 0, 'out': 1}]}]})
+        self.assertLess(self.tone(target, 0.2, 0.6)[1], 0.001)
+        self.assertAlmostEqual(self.tone(target, 1.2, 0.6)[0], 300, delta=10)
+
+    def test_sound_speed_changes_pitch_free_length(self):
+        target = self.render_song(self.timeline([{'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 2, 'speed': 2}]))
+        self.assertAlmostEqual(self.tone(target, 0.2, 0.6)[0], 1200, delta=15)
+        self.assertLess(self.tone(target, 1.2, 0.6)[1], 0.001)
+
+    def test_fades_follow_the_item(self):
+        target = self.render_song(self.timeline([{'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 2, 'fade_in': 1, 'fade_out': 0.5}]))
+        start, middle, end = (self.tone(target, at, 0.1)[1] for at in (0.05, 1.2, 1.85))
+        self.assertLess(start, middle * 0.25)
+        self.assertLess(end, middle * 0.5)
+
+    def test_overlong_fades_share_the_length(self):
+        target = self.render_song(self.timeline([{'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 2, 'fade_in': 5, 'fade_out': 5}]))
+        self.assertGreater(self.tone(target, 0.95, 0.1)[1], 0.03)
+
+    def test_clip_fade_out(self):
+        target = self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2, 'fade_out': 1}]}]})
+        self.assertLess(self.tone(target, 1.85, 0.1)[1], self.tone(target, 0.3, 0.3)[1] * 0.4)
+
+    def test_muted_sound_and_muted_layer_are_silent(self):
+        sound = {'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 2, 'muted': True}
+        self.assertFalse(has_stream(self.render_song(self.timeline([sound]), 'a.mp4'), 'audio'))
+        data = self.timeline([{**sound, 'muted': False}])
+        data['layers'][1]['muted'] = True
+        self.assertFalse(has_stream(self.render_song(data, 'b.mp4'), 'audio'))
+
+    def test_music_dips_under_other_sound(self):
+        # Clip 1 has a tone for its 2 seconds; the music then runs on alone.
+        data = self.timeline([{'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 4, 'duck': True}],
+                             [{'id': 'c', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2}, {'id': 'd', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'muted': True}])
+        target = self.render_song(data)
+        under = self.band(target, 1200, 0.5, 1.2)
+        alone = self.band(target, 1200, 3.0, 0.8)
+        self.assertLess(under, alone * 0.6)
+        self.assertGreater(under, alone * 0.05)
+
+    def test_loudness_is_normalized_without_changing_length(self):
+        data = self.timeline([{'id': 's', 'asset_id': 'a' * 32, 'start': 0, 'in': 0, 'out': 4, 'volume': 0.1}],
+                             [{'id': 'c', 'media_id': 3, 'start': 0, 'in': 0, 'out': 4, 'muted': True}], normalize_audio=True)
+        target = self.render_song(data)
+        measured = subprocess.run([FFMPEG, '-hide_banner', '-i', str(target), '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'], capture_output=True, text=True, timeout=60)
+        loudness = float(re.findall(r'I:\s+(-?[\d.]+) LUFS', measured.stderr)[-1])
+        self.assertAlmostEqual(loudness, -14, delta=1.5)
+        self.assertAlmostEqual(probe_video(target).duration, 4, delta=0.05)
+
+    def band(self, path, frequency, start, seconds):
+        data = subprocess.run([FFMPEG, '-v', 'error', '-i', str(path), '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'], capture_output=True, check=True, timeout=60)
+        samples = np.frombuffer(data.stdout, dtype=np.float32)[round(start * 16000):round((start + seconds) * 16000)]
+        phase = np.exp(-2j * np.pi * frequency * np.arange(len(samples)) / 16000)
+        return float(abs((samples * phase).mean()) * 2)
+
+
+def has_stream(path, kind):
+    return kind in subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', str(path)], capture_output=True, text=True, check=True).stdout
+
+
+class Stems(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.root = Path(self.folder.name)
+        self.patch = patch.object(settings, 'data_dir', self.root)
+        self.patch.start()
+        self.source = self.root / 'song.wav'
+        run('-f', 'lavfi', '-i', 'sine=f=440:d=1', str(self.source))
+
+    def tearDown(self):
+        self.patch.stop()
+        self.folder.cleanup()
+
+    def fake_demucs(self, calls):
+        def fake(source, output, device, on_progress, should_cancel):
+            calls.append(device)
+            if device == 'mps':
+                return 1, 'mps refused'
+            folder = output / 'htdemucs' / 'song'
+            folder.mkdir(parents=True)
+            for name in stem_service.STEM_FILES.values():
+                (folder / name).write_bytes(b'stem')
+            return 0, ''
+        return fake
+
+    def test_reports_a_plain_message_when_not_installed(self):
+        with patch.object(stem_service, 'stems_available', return_value=False), self.assertRaisesRegex(ValueError, 'install-stems'):
+            stem_service.separate(self.source, lambda _: None, lambda: False)
+
+    def test_falls_back_to_cpu_and_keeps_the_result(self):
+        calls = []
+        with patch.object(stem_service, 'stems_available', return_value=True), patch.object(stem_service, 'run_demucs', self.fake_demucs(calls)):
+            first = stem_service.separate(self.source, lambda _: None, lambda: False)
+            second = stem_service.separate(self.source, lambda _: None, lambda: False)
+        self.assertEqual(calls, ['mps', 'cpu'])
+        self.assertEqual(first, second)
+        self.assertTrue(resolve_audio_asset(first['music']).is_file())
+        self.assertFalse(list(self.root.glob('.stems-*')))
+
+
+class Retention(unittest.TestCase):
+    def test_old_song_stays_while_an_edit_project_uses_it(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(settings, 'data_dir', Path(folder)):
+            songs = Path(folder) / 'video_audio'
+            songs.mkdir()
+            kept, unused = songs / ('a' * 32), songs / ('b' * 32)
+            for song in (kept, unused):
+                song.write_bytes(b'x')
+                os.utime(song, (1, 1))
+            class Rows:
+                def execute(self, sql, *_):
+                    return self
+                def fetchall(self):
+                    return [{'recipe': json.dumps({'layers': [{'items': [{'asset_id': 'a' * 32}]}]})}]
+                def commit(self):
+                    pass
+                def __enter__(self):
+                    return self
+                def __exit__(self, *_):
+                    return False
+            with patch.object(render_queue_service, 'get_connection', Rows):
+                render_queue_service.recover_after_restart()
+            self.assertTrue(kept.exists())
+            self.assertFalse(unused.exists())
 
 
 class Rules(unittest.TestCase):

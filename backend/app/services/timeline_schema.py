@@ -71,6 +71,8 @@ class Clip(Strict):
     speed: float = Field(default=1, ge=0.25, le=4)
     volume: float = Field(default=1, ge=0, le=2)
     muted: bool = False
+    fade_in: float = Field(default=0, ge=0)
+    fade_out: float = Field(default=0, ge=0)
     transform: Transform = Field(default_factory=Transform)
     adjust: Adjust = Field(default_factory=Adjust)
 
@@ -108,9 +110,14 @@ class Sound(Strict):
     start: float = Field(ge=0)
     in_: float = Field(default=0, ge=0, alias='in')
     out: float = Field(gt=0)
+    speed: float = Field(default=1, ge=0.25, le=4)
     volume: float = Field(default=1, ge=0, le=2)
+    muted: bool = False
     fade_in: float = Field(default=0, ge=0)
     fade_out: float = Field(default=0, ge=0)
+    duck: bool = False  # Dips under the timeline's other sound.
+    name: str = Field(default='', max_length=120)
+    source_length: Optional[float] = Field(default=None, gt=0)  # Limits trimming in the editor.
 
     @model_validator(mode='after')
     def one_source(self):
@@ -122,7 +129,7 @@ class Sound(Strict):
 
     @property
     def length(self) -> float:
-        return self.out - self.in_
+        return (self.out - self.in_) / self.speed
 
 
 class LayerBase(Strict):
@@ -156,6 +163,7 @@ class Timeline(Strict):
     version: Literal[2] = 2
     format: Format = Field(default_factory=Format)
     layers: List[Layer] = Field(default_factory=list)
+    normalize_audio: bool = False
 
     @model_validator(mode='after')
     def limits(self):

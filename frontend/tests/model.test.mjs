@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -67,4 +67,73 @@ test('normalizeTimeline fills fields the server omits and repairs magnetic start
   assert.equal(first.transform.scale, 1);
   assert.equal(first.adjust.brightness, 1);
   assert.equal(second.start, 8);
+});
+
+const facts = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
+const song = (id, start, length = 3, extra = {}) => ({ id, asset_id: 'a'.repeat(32), start, in: 0, out: length, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: id, source_length: 20, ...extra });
+const withClip = () => insertClip(emptyTimeline({ width: 1080, height: 1920, fps: 30 }), newClip(facts, 'c'));
+
+test('detachAudio mutes the picture and leaves the sound in the same place', () => {
+  const next = detachAudio(withClip(), 'c', 's', 'l', 'Sound', 10);
+  assert.equal(mainLayer(next).items[0].muted, true);
+  const { sound } = findSound(next, 's');
+  assert.deepEqual([sound.media_id, sound.start, sound.in, sound.out], [1, 0, 0, 10]);
+  assert.equal(detachAudio(next, 'c', 't', 'm', 'Again'), next);
+});
+
+test('undoing a detach through history restores the clip sound', () => {
+  let history = startHistory(withClip());
+  history = commit(history, detachAudio(history.present, 'c', 's', 'l', 'Sound', 10), null);
+  history = undo(history);
+  assert.equal(mainLayer(history.present).items[0].muted, false);
+  assert.equal(audioLayers(history.present).length, 0);
+});
+
+test('sounds that overlap go on a new track, and an empty track is removed', () => {
+  let next = addSound(addSound(withClip(), song('a', 0), 'l1'), song('b', 1), 'l2');
+  assert.equal(audioLayers(next).length, 2);
+  next = addSound(next, song('c', 4), 'l3');
+  assert.equal(audioLayers(next).length, 2);
+  assert.equal(audioLayers(removeSound(next, 'b')).length, 1);
+});
+
+test('a moved sound stops at its neighbour and can change track', () => {
+  let next = addSound(addSound(withClip(), song('a', 0), 'l1'), song('b', 5), 'l1');
+  assert.equal(findSound(moveSound(next, 'a', 4), 'a').sound.start, 2);
+  assert.equal(findSound(moveSound(next, 'a', -3), 'a').sound.start, 0);
+  next = addSound(next, song('c', 1), 'l2');
+  const moved = moveSound(next, 'c', 9, 'l1');
+  assert.equal(findSound(moved, 'c').layer.id, 'l1');
+});
+
+test('moving a sound does not move its clip', () => {
+  const next = detachAudio(withClip(), 'c', 's', 'l', 'Sound', 10);
+  const moved = moveSound(next, 's', 2);
+  assert.equal(mainLayer(moved).items[0].start, 0);
+  assert.equal(findSound(moved, 's').sound.start, 2);
+  assert.equal(duration(moved), 12);
+});
+
+test('trimming a sound respects its source and neighbours', () => {
+  const next = addSound(addSound(withClip(), song('a', 2), 'l1'), song('b', 6), 'l1');
+  const late = findSound(trimSound(next, 'a', 'in', 1), 'a').sound;
+  assert.deepEqual([late.start, late.in], [3, 1]);
+  assert.equal(findSound(trimSound(next, 'a', 'out', 15), 'a').sound.out, 4);
+  assert.equal(findSound(trimSound(next, 'b', 'out', 50), 'b').sound.out, 20);
+});
+
+test('splitting a sound keeps each outer fade', () => {
+  const next = addSound(withClip(), song('a', 1, 4, { fade_in: 1, fade_out: 1 }), 'l1');
+  const split = splitSound(next, 'a', 3, 'b');
+  const [first, second] = [findSound(split, 'a').sound, findSound(split, 'b').sound];
+  assert.deepEqual([first.out, first.fade_in, first.fade_out], [2, 1, 0]);
+  assert.deepEqual([second.start, second.in, second.fade_in, second.fade_out], [3, 2, 0, 1]);
+});
+
+test('fadeGain rises, holds and falls, and shares overlong fades', () => {
+  const item = { fade_in: 1, fade_out: 2 };
+  assert.equal(fadeGain(item, 0.5, 10), 0.5);
+  assert.equal(fadeGain(item, 5, 10), 1);
+  assert.equal(fadeGain(item, 9, 10), 0.5);
+  assert.equal(fadeGain({ fade_in: 4, fade_out: 4 }, 1, 2), 1);
 });

@@ -224,12 +224,40 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 - About one 1-second freeze in playback appeared in each of three short runs early in testing, with no long tasks. A blank page showed none in 20 seconds, and a clean 40-second run showed none. The cause is unknown.
 - Audible sync, real phone footage, Chrome and Safari themselves, and touch gestures on a real phone. The test browser is the desktop app's built-in one.
 
-### Phase 4: Audio (M)
-- Detach audio, volume, fades, music tracks, and mute per clip or layer.
-- Auto-ducking and loudness normalization.
-- Optional stem separation: vocals and music as separate tracks.
+### Phase 4: Audio (done)
+**Built**
+- `editor/audio.ts`: preview sound now runs through Web Audio, so volume above 100%, fades, ducking and drift correction work. Video elements feed the same mixer.
+- Audio tracks on the timeline with waveforms. Sounds move, trim and split on their own, and change track when there's room. Add music, detach a clip's sound, volume to 200%, fades, speed, mute per sound or track.
+- Ducking: "Dip under speech", on by default for added music. Export uses `sidechaincompress`, and preview applies the same threshold and ratio from a live level meter.
+- "Even out loudness" in the export dialog: two-pass `loudnorm` to -14 LUFS with one steady gain. Export only, so preview doesn't change.
+- `stem_service.py`, `POST /api/stems` and `install-stems.sh`: Demucs `htdemucs` through the render queue. It runs in its own environment, `backend/.stems`, and a song is only separated once. Remove vocals, keep only vocals, or split into two tracks.
 
-**Done when:** a clip's audio can be moved and edited on its own, exports stay in sync, and removing vocals from a test song works from the UI.
+**Tested through the UI on a 30-second excerpt of a real Tamil song**
+
+| Check | Result |
+|---|---|
+| Whisper words found in the original | 22, the real lyrics |
+| Whisper words found after Remove vocals | 0 |
+| Whisper words found in vocals only | 20 |
+| Music plus vocals against the original | Residual 0.0023 against 0.1722 level |
+| Separation time on the Mac GPU | 22 seconds for 30 seconds of song |
+| Export with a sound moved 2 seconds | Exactly 960 frames, 32.000 seconds, tone starts at 2 seconds |
+| Export loudness | -14.0 LUFS |
+| Preview music against picture over 10 seconds | Median 17 ms, 99% under 30 ms, peak 33 ms |
+| Preview ducking on a test tone | -8 dB, as the formula predicts |
+
+**Fixed along the way**
+- Songs used only by edit projects were deleted after 30 days, because the cleanup only protected lyric projects.
+- Preview music sat about 125 ms late, under the old correction limit. It's now nudged like video.
+
+**Decisions from this phase**
+- Stem separation is included as an optional add-on, answering open decision 3. It takes 650 MB. Remove it by deleting `backend/.stems` and `backend/.models/torch`.
+- The add-on must use Motion's Python. Python 3.14 has no matching PyTorch builds.
+- The Demucs code is MIT licensed. The `htdemucs` weights are downloaded at install, not bundled. Their terms haven't been reviewed for commercial distribution, so check them before shipping the add-on to others.
+- Fades are set with sliders. Dragging fades on the timeline isn't built.
+- Songs are added per project. There's no shared music library, and no licensed music.
+
+**Not yet proven:** sync and ducking by ear, ducking on real speech rather than a tone, separation on a full-length song or on a Mac without a GPU, and Chrome and Safari themselves. Detaching only copies the clip's speed and fades, so a detached sound won't follow later trims of its clip.
 
 ### Phase 5: Animation presets, transitions and text (M)
 - Enter and exit presets: fade, slide, zoom, pop, blur, bounce, each with a duration.
@@ -290,5 +318,5 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 
 1. Are the Phase 1 near-misses acceptable? Peak drift was 58 ms against 40 ms, and one edge was 2 px against under 2 px. The suggestion is to accept both, and require 99.9% of drift under 45 ms and no peak over 80 ms.
 2. Which is the target: desktop Chrome only, or phones too? This plan assumes desktop first, with basic phone support.
-3. Should stem separation be included? It adds a large optional download.
+3. Decided: stem separation is an optional add-on (Phase 4).
 4. Should stickers, emoji and licensed music be included? Emoji doesn't render in exports today, and music needs a licensed source.

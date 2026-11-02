@@ -32,6 +32,10 @@
 .ed-qualities{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}.ed-qualities button{display:flex;flex-direction:column;gap:2px;padding:10px 6px;border:1px solid #3a3650;border-radius:10px;background:#14121d}.ed-qualities button.on{border-color:#a78bfa;background:#3b2f6b}.ed-qualities span{font-size:10px;color:#a9a4c0}
 .ed-progress{height:8px;border-radius:4px;background:#14121d;overflow:hidden;margin:12px 0}.ed-progress i{display:block;height:100%;background:#7c5cf0;transition:width .3s}
 .ed-good{display:flex;gap:6px;align-items:center;color:#86efac!important}.ed-bad{color:#fda4af!important}
+.ed-music{margin-top:8px;cursor:pointer;position:relative}.ed-music input{position:absolute;inset:0;opacity:0;cursor:pointer}.ed-music.busy{opacity:.6}.ed-music:focus-within{outline:2px solid #a78bfa;outline-offset:1px}
+.ed-name{margin:0 0 8px;color:#ece9f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-stack{display:flex;flex-direction:column;gap:6px}
+.ed-check{display:flex;gap:8px;margin:12px 0;align-items:flex-start;cursor:pointer}.ed-check input{margin-top:2px;accent-color:#a78bfa}.ed-check span{display:flex;flex-direction:column;gap:2px}.ed-check small{color:#8e8aa3;font-size:11px;line-height:1.35}
+.ed code{background:#14121d;padding:1px 4px;border-radius:4px;color:#d9ceff;user-select:text}
 @media(max-width:900px){
 .ed{overflow-y:auto}.ed-top{gap:2px;padding:0 8px}.ed-top .ed-button{white-space:nowrap;padding:0 8px;font-size:11px}.ed-primary{padding:0 12px}
 .ed-body{display:contents}

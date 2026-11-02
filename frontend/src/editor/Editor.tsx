@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, Check, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject } from '../api/client';
+import { ArrowLeft, AudioLines, Check, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, getClipAssets, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import type { Photo } from '../types/photo';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { clipLength, duration, exportFormat, fillScale, FORMATS, insertClip, mainLayer, newClip, normalizeTimeline, removeClip, splitClip, timecode, trimClip, updateClip, type Adjust, type Clip, type Format, type SourceFacts, type Timeline } from '../timeline/model';
+import { addSound, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findSound, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, normalizeTimeline, removeClip, removeSound, soundLength, splitClip, splitSound, timecode, trimClip, updateClip, updateLayer, updateSound, type Adjust, type AudioLayer, type Clip, type Format, type Sound, type SourceFacts, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 
@@ -17,6 +17,10 @@ const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
 const FAST_RATES = [1, 2, 4];
+const MAX_FADE_SECONDS = 5;
+const MIN_MUSIC_SECONDS = 1;
+type StemChoice = 'music' | 'vocals' | 'both';
+type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
 
 function reducer(state: History<Timeline | null>, action: Action): History<Timeline | null> {
   if (action.type === 'load') return startHistory(action.timeline);
@@ -41,6 +45,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [error, setError] = useState('');
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [addingMusic, setAddingMusic] = useState(false);
+  const [stemJob, setStemJob] = useState<StemJob | null>(null);
+  const [stems, setStems] = useState<{ available: boolean; install_command: string } | null>(null);
+  const [, redrawPeaks] = useReducer((count: number) => count + 1, 0);
+  const songPeaks = useRef(new Map<string, ClipVisuals['peaks'] | 'loading'>());
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const clockRef = useRef<HTMLSpanElement>(null);
   const engineRef = useRef<PlaybackEngine | null>(null);
@@ -62,6 +73,19 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (item.media_type !== 'video') return { url: photoImageUrl(id), kind: 'image', ...size };
     return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size };
   }, [mediaById, ready]);
+
+  const soundUrl = useCallback((sound: Sound) => {
+    if (sound.asset_id) return songUrl(sound.asset_id);
+    const item = sound.media_id === undefined ? undefined : mediaById.get(sound.media_id);
+    return item ? (ready[item.id] ? clipProxyUrl(item.id) : photoVideoUrl(item.id)) : undefined;
+  }, [mediaById, ready]);
+  const soundPeaks = useCallback((sound: Sound) => {
+    if (sound.media_id !== undefined) return visuals.current.get(sound.media_id)?.peaks;
+    const peaks = songPeaks.current.get(sound.asset_id ?? '');
+    return peaks === 'loading' ? undefined : peaks;
+  }, []);
+
+  useEffect(() => { void getStemsStatus().then(setStems).catch(() => setStems(null)); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,9 +120,35 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } catch (problem) { setError((problem as Error).message); }
   }, [playhead]);
 
-  useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor); }, [timeline, sourceFor]);
+  useEffect(() => { if (timeline) engineRef.current?.setTimeline(timeline, sourceFor, soundUrl); }, [timeline, sourceFor, soundUrl]);
 
-  const usedMedia = useMemo(() => [...new Set(timeline ? mainLayer(timeline).items.map((clip) => clip.media_id) : [])].join(','), [timeline]);
+  const usedMedia = useMemo(() => [...new Set(timeline ? [...mainLayer(timeline).items.map((clip) => clip.media_id), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
+
+  useEffect(() => {
+    for (const sound of timeline ? audioLayers(timeline).flatMap((layer) => layer.items) : []) {
+      const id = sound.asset_id;
+      if (!id || songPeaks.current.has(id)) continue;
+      songPeaks.current.set(id, 'loading');
+      void getSongPeaks(id).then((peaks) => { songPeaks.current.set(id, peaks); redrawPeaks(); }).catch(() => songPeaks.current.delete(id));
+    }
+  }, [timeline]);
+
+  useEffect(() => {
+    if (!stemJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(stemJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; stems?: Stems };
+        if (status.status === 'done' && status.stems && timelineRef.current) { applyStems(status.stems); return; }
+        if (status.status === 'failed' || status.status === 'cancelled') {
+          if (status.status === 'failed') setError(status.error ?? 'Voice separation failed.');
+          setStemJob(null);
+          return;
+        }
+        setStemJob({ ...stemJob, progress: status.progress });
+      } catch (problem) { setError((problem as Error).message); setStemJob(null); }
+    }, 1000);
+    return () => clearTimeout(timer);
+  });
   useEffect(() => {
     const ids = usedMedia ? usedMedia.split(',').map(Number) : [];
     let stopped = false;
@@ -143,11 +193,62 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: next, group }), []);
   const selected = timeline && selectedId ? mainLayer(timeline).items.find((clip) => clip.id === selectedId) ?? null : null;
+  const selectedSound = timeline ? findSound(timeline, selectedId) : null;
+  const applyStems = (result: Stems) => {
+    const current = timelineRef.current; const job = stemJob;
+    const found = current && job ? findSound(current, job.soundId) : null;
+    setStemJob(null);
+    if (!current || !job || !found) return;
+    const { sound } = found;
+    const as = (id: string, label: string): Partial<Sound> => ({ asset_id: id, media_id: undefined, name: `${sound.name} (${label})`.slice(0, 120) });
+    if (job.choice === 'vocals') change(updateSound(current, sound.id, as(result.vocals, 'vocals only')));
+    else {
+      const next = updateSound(current, sound.id, as(result.music, 'no vocals'));
+      change(job.choice === 'music' ? next : addSound(next, { ...sound, ...as(result.vocals, 'vocals only'), id: newId() }, newId()));
+    }
+  };
+  const separate = async (choice: StemChoice) => {
+    if (!selectedSound) return;
+    const { sound } = selectedSound;
+    try {
+      const { job_id } = await startStems(sound.asset_id ? { asset_id: sound.asset_id } : { media_id: sound.media_id });
+      setStemJob({ soundId: sound.id, jobId: job_id, choice, progress: 0 });
+    } catch (problem) { setError((problem as Error).message); }
+  };
+  const updateSelectedSound = (changes: Partial<Sound>, group?: string) => { if (timeline && selectedSound) change(updateSound(timeline, selectedSound.sound.id, changes), group); };
+  const hasSound = (id: number) => Boolean(visuals.current.get(id)?.peaks?.peaks.some(Boolean));
+  const detach = () => {
+    if (!timeline || !selected) return;
+    const soundId = newId();
+    change(detachAudio(timeline, selected.id, soundId, newId(), `${mediaById.get(selected.media_id)?.filename ?? 'Clip'} sound`.slice(0, 120), mediaById.get(selected.media_id)?.duration ?? undefined));
+    setSelectedId(soundId);
+  };
+  const addMusic = async (file: File) => {
+    if (!timeline) return;
+    setAddingMusic(true);
+    try {
+      const song = await uploadVideoAudio(file);
+      const at = Math.round(engineRef.current ? engineRef.current.currentTime * 1000 : 0) / 1000;
+      const left = duration(timeline) - at;
+      const length = left >= MIN_MUSIC_SECONDS ? Math.min(left, song.duration) : song.duration;
+      const sound: Sound = { id: newId(), asset_id: song.asset_id, start: at, in: 0, out: length, speed: 1, volume: MUSIC_VOLUME, muted: false, fade_in: 0, fade_out: 0, duck: true, name: file.name.slice(0, 120), source_length: song.duration };
+      change(addSound(timeline, sound, newId()));
+      setSelectedId(sound.id);
+    } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
+  };
   const updateSelected = (changes: Partial<Clip>, group?: string) => { if (timeline && selected) change(updateClip(timeline, selected.id, changes), group); };
   const seek = useCallback((t: number) => engineRef.current?.seek(t), []);
   const togglePlay = useCallback(() => { const engine = engineRef.current; if (!engine) return; if (engine.playing) engine.pause(); else engine.play(); }, []);
-  const split = useCallback(() => { if (timeline) { const next = splitClip(timeline, playhead.current, newId()); if (next !== timeline) change(next); } }, [timeline, playhead, change]);
-  const removeSelected = useCallback(() => { if (timeline && selectedId) { change(removeClip(timeline, selectedId)); setSelectedId(null); } }, [timeline, selectedId, change]);
+  const split = useCallback(() => {
+    if (!timeline) return;
+    const next = findSound(timeline, selectedId) ? splitSound(timeline, selectedId!, playhead.current, newId()) : splitClip(timeline, playhead.current, newId());
+    if (next !== timeline) change(next);
+  }, [timeline, selectedId, playhead, change]);
+  const removeSelected = useCallback(() => {
+    if (!timeline || !selectedId) return;
+    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : removeClip(timeline, selectedId));
+    setSelectedId(null);
+  }, [timeline, selectedId, change]);
   const addMedia = (item: Photo) => {
     if (!timeline) return;
     const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
@@ -219,6 +320,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       <aside className="ed-media" aria-label="Media">
         <h2>Media</h2>
         <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
+        <label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
+          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
         <div className="ed-media-grid">{media.filter((item) => !item.filename.startsWith('Blank canvas')).map((item) => <button key={item.id} onClick={() => addMedia(item)} title={`Add ${item.filename}`}>
           <img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span><Plus size={13}/>{item.filename}</span></button>)}</div>
       </aside>
@@ -234,18 +337,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
           <button className={`ed-icon ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} aria-label="Show safe area" title="Show safe area"><ShieldCheck size={17}/></button>
         </div>
       </main>
-      <aside className="ed-inspector" aria-label="Clip settings">{selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, change its speed, or adjust its picture and sound.</p></div>}</aside>
+      <aside className="ed-inspector" aria-label="Clip settings">{selectedSound ? <SoundInspector sound={selectedSound.sound} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
+        stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
+        : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={detach}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, change its speed, or adjust its picture and sound.</p></div>}</aside>
     </div>
     <div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-      <button className="ed-button" onClick={removeSelected} disabled={!selected} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <button className="ed-button" onClick={removeSelected} disabled={!selected && !selectedSound} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
       <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
+    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
-    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
+    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
   </div>;
 }
 
@@ -262,7 +367,39 @@ function Slider({ label, value, min, max, step = 0.01, shown, onChange, onReset 
   return <label className="ed-slider" onDoubleClick={onReset} title="Double-click to reset"><span>{label}<em>{shown}</em></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))}/></label>;
 }
 
-function Inspector({ clip, source, format, onChange }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void }) {
+function SoundControls({ item, length, onChange, id }: { item: { volume: number; fade_in: number; fade_out: number }; length: number; id: string; onChange: (changes: { volume?: number; fade_in?: number; fade_out?: number }, group?: string) => void }) {
+  const longest = Math.min(MAX_FADE_SECONDS, length);
+  return <>
+    <Slider label="Volume" value={item.volume} min={0} max={2} shown={`${Math.round(item.volume * 100)}%`} onChange={(volume) => onChange({ volume }, `volume-${id}`)} onReset={() => onChange({ volume: 1 })}/>
+    <Slider label="Fade in" value={Math.min(item.fade_in, longest)} min={0} max={longest} step={0.1} shown={`${item.fade_in.toFixed(1)}s`} onChange={(fade_in) => onChange({ fade_in }, `fade-${id}`)} onReset={() => onChange({ fade_in: 0 })}/>
+    <Slider label="Fade out" value={Math.min(item.fade_out, longest)} min={0} max={longest} step={0.1} shown={`${item.fade_out.toFixed(1)}s`} onChange={(fade_out) => onChange({ fade_out }, `fade-${id}`)} onReset={() => onChange({ fade_out: 0 })}/>
+  </>;
+}
+
+function SoundInspector({ sound, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems }: { sound: Sound; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
+  stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void }) {
+  return <>
+    <h2>Sound</h2>
+    <p className="ed-name" title={sound.name}>{sound.name}</p>
+    <div className="ed-pair">
+      <button className={`ed-button ${sound.muted ? 'on' : ''}`} aria-pressed={sound.muted} onClick={() => onChange({ muted: !sound.muted })}>{sound.muted ? <VolumeX size={14}/> : <Volume2 size={14}/>}Mute</button>
+      <button className={`ed-button ${layer.muted ? 'on' : ''}`} aria-pressed={Boolean(layer.muted)} onClick={() => onLayer({ muted: !layer.muted })}>Mute track</button>
+    </div>
+    <SoundControls item={sound} id={sound.id} length={soundLength(sound)} onChange={onChange}/>
+    <Slider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} shown={`${sound.speed.toFixed(2)}×`} onChange={(speed) => onChange({ speed }, `speed-${sound.id}`)} onReset={() => onChange({ speed: 1 })}/>
+    <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
+    <h2>Voice and music</h2>
+    {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Motion folder, then restart Motion.</p>
+      : job ? <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Separating… {job.progress}%. This can take a few minutes, and you can keep editing.</p><button className="ed-button wide" onClick={onCancelStems}>Cancel</button></>
+        : <div className="ed-stack">
+          <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('music')}>Remove vocals</button>
+          <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('vocals')}>Keep only vocals</button>
+          <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('both')}>Split into two tracks</button>
+        </div>}
+  </>;
+}
+
+function Inspector({ clip, source, format, onChange, canDetach, onDetach }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void }) {
   const adjust = (changes: Partial<Adjust>) => onChange({ adjust: { ...clip.adjust, ...changes } }, `adjust-${clip.id}`);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
   const filling = Math.abs(clip.transform.scale - fill) < 0.01;
@@ -290,12 +427,13 @@ function Inspector({ clip, source, format, onChange }: { clip: Clip; source?: Pl
       <Slider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} shown={`${clip.speed.toFixed(2)}×`} onChange={(speed) => onChange({ speed }, `speed-${clip.id}`)} onReset={() => onChange({ speed: 1 })}/>
       <h2>Sound</h2>
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
-      <Slider label="Volume" value={clip.volume} min={0} max={1} shown={percent(clip.volume)} onChange={(volume) => onChange({ volume }, `volume-${clip.id}`)} onReset={() => onChange({ volume: 1 })}/>
+      <SoundControls item={clip} id={clip.id} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
+      {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
     </>}
   </>;
 }
 
-function ExportDialog({ timeline, projectId, onClose, onOpen }: { timeline: Timeline; projectId: number; onClose: () => void; onOpen: (id: number) => void }) {
+function ExportDialog({ timeline, projectId, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {
   const shortest = Math.min(timeline.format.width, timeline.format.height);
   const [quality, setQuality] = useState(shortest >= 2160 ? 2160 : Math.max(720, Math.min(1080, shortest)));
   const [job, setJob] = useState<{ id: string; progress: number; status?: string | null; error?: string | null; output?: number | null } | null>(null);
@@ -328,6 +466,7 @@ function ExportDialog({ timeline, projectId, onClose, onOpen }: { timeline: Time
     <h2>Export video</h2>
     {!job && <><p>{timecode(seconds)} long · about {megabytes >= 1000 ? `${(megabytes / 1000).toFixed(1)} GB` : `${megabytes} MB`}</p>
       <div className="ed-qualities">{QUALITIES.map((item) => <button key={item.id} className={quality === item.id ? 'on' : ''} aria-pressed={quality === item.id} onClick={() => setQuality(item.id)}><strong>{item.label}</strong><span>{item.note}</span></button>)}</div>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onNormalize(event.target.checked)}/><span>Even out loudness<small>Matches the level social apps expect. Applied to the export, not the preview.</small></span></label>
       {error && <p role="alert" className="ed-bad">{error}</p>}
       <button className="ed-primary wide" onClick={() => { void start(); }}><Download size={16}/>Export MP4</button></>}
     {running && <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p>{job.status === 'queued' ? 'Waiting for another job to finish…' : `Exporting… ${job.progress}%`}</p>
