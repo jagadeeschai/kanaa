@@ -112,6 +112,7 @@ class Clip(Strict):
     reverse: bool = False  # Plays in..out backwards, without sound.
     stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
+    cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
 
     @model_validator(mode='after')
     def valid_range(self):

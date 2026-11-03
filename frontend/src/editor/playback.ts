@@ -16,6 +16,7 @@ type Pose = { look?: Look; opacity?: number; scale?: number; sideways?: boolean 
 const DRIFT_RESEEK_SECONDS = 0.25;
 const DRIFT_NUDGE_SECONDS = 0.02;
 const MAX_NUDGE = 0.05;
+const SEEK_NUDGE_SECONDS = 0.25 / 30;
 const MAX_BUFFER_SIDE = 1280;
 
 const BLEND_NUMBERS = { normal: 0, multiply: 1, screen: 2, overlay: 3, darken: 4, lighten: 5 };
@@ -237,7 +238,9 @@ export class PlaybackEngine {
 
   private load(slot: Slot, clip: Clip, url: string, at: number) {
     if (slot.url !== url) { slot.url = url; slot.video.src = url; }
-    if (slot.clipId !== clip.id || Math.abs(slot.video.currentTime - at) > 0.04) slot.video.currentTime = at;
+    // A quarter frame in, as the export reads, so a time right on a frame's edge can't show the frame before.
+    const target = at + SEEK_NUDGE_SECONDS;
+    if (slot.clipId !== clip.id || Math.abs(slot.video.currentTime - target) > 0.04) slot.video.currentTime = target;
     slot.clipId = clip.id;
   }
 

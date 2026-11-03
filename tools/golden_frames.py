@@ -4,6 +4,7 @@
 Usage: golden_frames.py API_URL OUTPUT_JSON WORK_FOLDER, against a test server with empty data.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -88,6 +89,20 @@ def make_motion():
     sys.exit('The moving clip never became ready.')
 
 
+def make_person():
+    """An optional clip with real people, from PERSON_VIDEO, for the cut-out samples. Waits for its masks and copies."""
+    path = os.environ.get('PERSON_VIDEO')
+    if not path:
+        return None
+    media = upload(Path(path))
+    for _ in range(600):
+        ready = call(f'/api/photos/{media}/assets').get('status') == 'ready'
+        if ready and all(call(f'/api/photos/{media}/prepared?cutout={mode}', {}).get('status') == 'ready' for mode in ('remove', 'blur')):
+            return media
+        time.sleep(1)
+    sys.exit('The person clip never became ready.')
+
+
 def make_sources():
     pictures = []
     for name, pattern in (('a', 'gradients=s=1280x720:c0=red:c1=blue:x0=0:y0=0:x1=1280:y1=720:n=2'), ('b', 'gradients=s=1280x720:c0=yellow:c1=teal:x0=1280:y0=0:x1=0:y1=720:n=2')):
@@ -105,7 +120,7 @@ def keys(*points, ease='easeInOut'):
     return [{'t': t, 'v': v, 'ease': ease} for t, v in points]
 
 
-def build(first, second, logo, screen_image, screen_video, detail, motion):
+def build(first, second, logo, screen_image, screen_video, detail, motion, person=None):
     clips, texts, samples, t = [], [], [], 0.0
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -163,6 +178,21 @@ def build(first, second, logo, screen_image, screen_video, detail, motion):
     clips.append({'id': 'ramped', 'media_id': motion, 'start': t, 'in': 0.2, 'out': 3.8, 'speed': 1.2, 'ramp': hero})
     samples += [{'name': f'ramp {at}', 't': t + at} for at in (0.4, 1.2, 1.6, 2.1, 2.8)]
     t += 3
+    person_layers, person_texts = [], []
+    if person:
+        # A real person, cut out over another picture, with the background blurred, and in front of a title.
+        clips.append(clip('person-under', first, t))
+        overlays.append({'id': 'cut', 'media_id': person, 'start': t, 'in': 1, 'out': 3, 'cutout': 'remove', 'muted': True})
+        samples += [{'name': f'person remove {at}', 't': t + at} for at in (0.3, 1.5)]
+        t += SECONDS
+        clips.append({'id': 'portrait', 'media_id': person, 'start': t, 'in': 1, 'out': 3, 'cutout': 'blur'})
+        samples += [{'name': f'person blur {at}', 't': t + at} for at in (0.3, 1.5)]
+        t += SECONDS
+        clips.append({'id': 'behind', 'media_id': person, 'start': t, 'in': 1, 'out': 3})
+        person_texts.append({'id': 'behind-title', 'start': t, 'length': SECONDS, 'text': 'BEHIND', 'style': 'outline', 'position': 'center', 'size': 100})
+        person_layers.append({'id': 'person-front', 'kind': 'video', 'items': [{'id': 'front', 'media_id': person, 'start': t, 'in': 1, 'out': 3, 'cutout': 'remove', 'muted': True}]})
+        samples += [{'name': f'person behind {at}', 't': t + at} for at in (0.3, 1.5)]
+        t += SECONDS
     clips.append({'id': 'steadied', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 2.5, 'stabilise': True})
     samples += [{'name': f'steady {at}', 't': t + at} for at in (0.3, 1.7)]
     t += 2
@@ -175,7 +205,8 @@ def build(first, second, logo, screen_image, screen_video, detail, motion):
         samples.append({'name': name, 't': t + 1})
         t += SECONDS
     # Blend modes, with the project at the six-layer limit.
-    blends = ['multiply', 'screen', 'overlay', 'darken']
+    # Six video layers at most: the person in front of a title needs one, so darken sits out when it's there.
+    blends = ['multiply', 'screen', 'overlay'] + ([] if person else ['darken'])
     extra_layers = []
     for number, mode in enumerate(blends):
         clips.append(clip(f'base{number}', first, t))
@@ -200,7 +231,7 @@ def build(first, second, logo, screen_image, screen_video, detail, motion):
         for at in (0.5, 1, 1.6):
             samples.append({'name': f'{name} {at}', 't': t + at})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}, *([{'id': 'person-title', 'kind': 'text', 'items': person_texts}] if person_texts else []), *person_layers]}, samples
 
 
 def main():
@@ -212,7 +243,7 @@ def main():
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', str(cover)], check=True)
     cover_id = upload(cover)
     project = call('/api/projects', {'name': 'Golden frames', 'kind': 'edit', 'media_id': cover_id, 'media_ids': [cover_id]})
-    timeline, samples = build(first, second, logo, screen_image, screen_video, make_detail(), make_motion())
+    timeline, samples = build(first, second, logo, screen_image, screen_video, make_detail(), make_motion(), make_person())
     call(f"/api/projects/{project['id']}/recipe", {'recipe': timeline}, 'PUT')
     job = call(f"/api/projects/{project['id']}/export", timeline)['job_id']
     while (status := call(f'/api/jobs/{job}/status'))['status'] not in ('done', 'failed', 'cancelled'):

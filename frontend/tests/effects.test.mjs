@@ -73,3 +73,14 @@ test('a reversed clip splits and trims from its far end', () => {
   const frozen = mainLayer(freezeFrame(timeline, 1, ['f', 'b'])).items.find((clip) => clip.id === 'f');
   assert.equal(frozen.freeze, 5);
 });
+
+test('putting a title behind the person adds a silent cut-out copy just above the title', async () => {
+  const { addText, putBehindPerson } = await import('../src/timeline/model.ts');
+  let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5, volume: 0.8 }));
+  timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Hi', style: 'band', position: 'center', color: '#ffffff', size: 60 }, 'words');
+  const behind = putBehindPerson(timeline, 't', ['p', 'layer']);
+  assert.deepEqual(behind.layers.map((layer) => layer.id), ['main', 'words', 'layer']);
+  const person = behind.layers[2].items[0];
+  assert.deepEqual([person.cutout, person.muted, person.start, person.in, person.out], ['remove', true, 0, 1, 5]);
+  assert.equal(putBehindPerson(emptyTimeline(format), 't', ['p', 'l']).layers.length, 1);
+});

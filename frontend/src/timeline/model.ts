@@ -6,7 +6,7 @@ import { valueAt } from './evaluate.ts';
 import { rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
@@ -233,6 +233,19 @@ export function updateClip(timeline: Timeline, id: string, changes: Partial<Clip
   const overlay = overlayHolding(timeline, id);
   if (overlay) return withItems(timeline, overlay, overlay.items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
   return withClips(timeline, mainLayer(timeline).items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
+}
+
+/**
+ * Puts a title behind the person: a cut-out copy of the main clip under it goes on a layer just above the title.
+ * The copy is silent and follows the main clip's timing; later edits to the main clip don't change it.
+ */
+export function putBehindPerson(timeline: Timeline, textId: string, ids: [string, string]): Timeline {
+  const found = findText(timeline, textId);
+  const clip = found && mainLayer(timeline).items.find((item) => found.text.start >= item.start && found.text.start < item.start + clipLength(item));
+  if (!found || !clip || timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) return timeline;
+  const person: Clip = { ...clip, id: ids[0], cutout: 'remove', muted: true, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
+  const after = timeline.layers.indexOf(found.layer) + 1;
+  return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name: 'Person', items: [person] }, ...timeline.layers.slice(after)] };
 }
 
 /** The I and O keys: cut the clip's start or end at `local`. A ramped clip is split there, so the rest keeps its exact timing. */

@@ -4,6 +4,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import subprocess
 import tempfile
 import threading
@@ -19,7 +20,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, cutout_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -30,6 +31,20 @@ from app.services.timeline_service import atempo_chain, chroma_filters, property
 from app.services.video_service import _run_ffprobe
 
 FFMPEG = shutil.which('ffmpeg')
+
+
+# Stands in for the Vision helper: the 'person' is a circle in the middle of every frame.
+FAKE_FINDER_CODE = '''
+import sys
+width, height = int(sys.argv[1]), int(sys.argv[2])
+rows = [bytes(255 if (x - width / 2) ** 2 + (y - height / 2) ** 2 < (height / 3) ** 2 else 0 for x in range(width)) for y in range(height)]
+mask = b''.join(rows)
+while len(sys.stdin.buffer.read(width * height * 3)) == width * height * 3:
+    sys.stdout.buffer.write(mask)
+'''
+FAKE_FINDER_FILE = Path(tempfile.gettempdir()) / 'kanaa-fake-person-finder.py'
+FAKE_FINDER_FILE.write_text(FAKE_FINDER_CODE)
+FAKE_FINDER = [sys.executable, str(FAKE_FINDER_FILE)]
 
 
 def run(*args):
@@ -1173,11 +1188,16 @@ class QuickEffects(Clips):
     def stack(self, *clips):
         return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': f'c{number}', 'media_id': 60, **clip} for number, clip in enumerate(clips)]}]}
 
-    def prepared(self, media_id, steady, backwards):
+    def prepared(self, media_id, steady, backwards, portrait=False):
         facts = self.facts[media_id]
         if steady:
             facts = stabilise_service.ensure_stable(facts)
-        return reverse_service.ensure_reversed(facts) if backwards else facts
+        if backwards:
+            facts = reverse_service.ensure_reversed(facts)
+        if portrait:
+            cutout_service.prepare(facts, 'blur', lambda _: None, lambda: False, finder=FAKE_FINDER)
+            facts = probe_video(cutout_service.files(facts.path)[cutout_service.PORTRAIT])
+        return facts
 
     def test_freeze_holds_one_frame_and_is_silent(self):
         path = self.render(self.stack({'start': 0, 'in': 0, 'out': 1}, {'start': 1, 'in': 0, 'out': 1, 'freeze': 1.5, 'muted': False}), 'freeze.mp4')
@@ -1262,7 +1282,7 @@ class Steady(Clips):
 
     def test_export_uses_the_steady_copy_and_can_reverse_it(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 70, 'start': 0, 'in': 0, 'out': 3, 'stabilise': True}]}]}
-        prepared = lambda media_id, steady, backwards: QuickEffects.prepared(self, media_id, steady, backwards)
+        prepared = lambda media_id, steady, backwards, portrait=False: QuickEffects.prepared(self, media_id, steady, backwards, portrait)
         path = self.render(data, 'steady.mp4', prepared=prepared)
         self.assertLess(self.jitter(path)[0], self.jitter(self.facts[70].path)[0] * 0.4)
         data['layers'][0]['items'][0]['reverse'] = True
@@ -1294,4 +1314,46 @@ class SpeedRamps(QuickEffects):
     def test_a_ramp_must_cover_the_whole_clip(self):
         with self.assertRaises(ValidationError):
             Timeline.model_validate(self.stack({'start': 0, 'in': 0, 'out': 2, 'ramp': [{'t': 0, 'v': 1}, {'t': 0.5, 'v': 2}]}))
+
+
+class Cutout(QuickEffects):
+    def setUp(self):
+        super().setUp()
+        rng = np.random.default_rng(9)
+        scene = (rng.random((45, 80, 3)) * 255).astype(np.uint8).repeat(8, 0).repeat(8, 1)
+        busy = self.out / 'busy.mp4'
+        process = subprocess.Popen([FFMPEG, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '640x360', '-r', '30', '-i', '-', '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', str(busy)], stdin=subprocess.PIPE)
+        process.communicate(scene.tobytes() * 60)
+        self.facts[80] = probe_video(busy)
+        red = self.out / 'red.png'
+        Image.new('RGB', (640, 360), (220, 30, 30)).save(red)
+        self.facts[81] = MediaFacts(path=red, media_type='image', width=640, height=360)
+
+    def masks(self, facts):
+        cutout_service.prepare(facts, 'remove', lambda _: None, lambda: False, finder=FAKE_FINDER)
+        return cutout_service.files(facts.path)[cutout_service.MASK]
+
+    def detail(self, frame, x, y):
+        return frame[y - 15:y + 15, x - 15:x + 15].astype(float).std()
+
+    def test_remove_shows_what_is_under_the_person(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'r', 'media_id': 81, 'start': 0, 'in': 0, 'out': 2}]},
+                                                  {'id': 'top', 'kind': 'video', 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'remove'}]}]}
+        frame = self.frame(self.render(data, 'cut.mp4', masks=self.masks), 20, (640, 360))
+        self.assertGreater(self.detail(frame, 320, 180), 40)
+        for got, want in zip(frame[20, 20], (220, 30, 30)):
+            self.assertAlmostEqual(int(got), want, delta=12)
+        self.assertTrue(cutout_service.is_ready(self.facts[80].path, 'remove'))
+
+    def test_blur_keeps_the_person_sharp_and_softens_the_rest(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'blur'}]}]}
+        frame = self.frame(self.render(data, 'portrait.mp4', prepared=self.prepared), 20, (640, 360))
+        original = self.frame(self.facts[80].path, 20, (640, 360))
+        self.assertGreater(self.detail(frame, 320, 180), self.detail(original, 320, 180) * 0.85)
+        self.assertLess(self.detail(frame, 40, 40), self.detail(original, 40, 40) * 0.6)
+
+    def test_without_its_mask_a_cut_out_clip_is_refused(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'remove'}]}]}
+        with self.assertRaises(ValueError):
+            self.render(data, 'no-mask.mp4')
 

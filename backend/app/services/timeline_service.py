@@ -37,8 +37,8 @@ MAX_SUPERSAMPLE = 4
 MIN_WORK_SCALE = 0.1
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
-# A source's prepared copy: (media id, steadied, reversed) to the copy's facts.
-Prepared = Callable[[int, bool, bool], MediaFacts]
+# A source's prepared copy: (media id, steadied, reversed, background blurred) to the copy's facts.
+Prepared = Callable[[int, bool, bool, bool], MediaFacts]
 RAMP_MARGIN = 2.0  # Seconds.
 BLUR_REACH = 0.04  # A blur box's strength at 1, as a share of the frame height. Matches timeline/blur.ts.
 BLUR_FEATHER = 0.12
@@ -160,10 +160,15 @@ def color_filter(facts: MediaFacts) -> str:
     return HDR_TO_BT709 if facts.is_hdr else TAG_BT709
 
 
-def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None) -> str:
-    """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame."""
+def source_steps(facts: MediaFacts) -> list[str]:
+    """Standard colour and square pixels. A person mask is applied right after these, at the source's own size."""
+    return [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1']
+
+
+def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None, sourced: bool = False) -> str:
+    """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame. `sourced` skips source_steps, already done."""
     W, H = canvas
-    steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
+    steps = [*([] if sourced else source_steps(facts)), *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
     if timing:
         steps.append(f"setpts='{timing}'")
     elif clip.speed != 1:
@@ -239,8 +244,8 @@ def render_text_image(item: Text, fmt: Format, target: Path) -> None:
 
 
 class Builder:
-    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None):
-        self.timeline, self.media, self.audio_asset, self.folder, self.prepared = timeline, media, audio_asset, folder, prepared
+    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None):
+        self.timeline, self.media, self.audio_asset, self.folder, self.prepared, self.masks = timeline, media, audio_asset, folder, prepared, masks
         self.fmt = timeline.format
         self.args: list[str] = []
         self.graph: list[str] = []
@@ -376,13 +381,17 @@ class Builder:
             frozen = clip.freeze is not None and facts.media_type == 'video'
             steady = clip.stabilise and facts.media_type == 'video'
             backwards = clip.reverse and facts.media_type == 'video' and not frozen
-            if steady or backwards:
+            portrait = clip.cutout == 'blur' and facts.media_type == 'video'
+            cut = clip.cutout == 'remove' and facts.media_type == 'video'
+            if steady or backwards or portrait:
                 if self.prepared is None:
-                    raise ValueError('A steadied or reversed clip needs its prepared copy.')
+                    raise ValueError('A steadied, reversed or background-blurred clip needs its prepared copy.')
                 if backwards:
                     # The reversed copy runs from the source's end, so in..out maps to the mirrored stretch.
                     source_in = max(0.0, (facts.duration or clip.out) - clip.out)
-                facts = self.prepared(clip.media_id, steady, backwards)
+                facts = self.prepared(clip.media_id, steady, backwards, portrait)
+            if cut and self.masks is None:
+                raise ValueError('A clip with its background removed needs its person mask.')
             head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
             if not head:
                 if joined_label:
@@ -404,9 +413,11 @@ class Builder:
             if frozen:
                 # One frame in, held for every frame out, transitions included.
                 held = head
-                index = self.add_input('-ss', f'{max(0, clip.freeze - 0.25 / fps):.6f}', '-t', f'{1 / fps:.6f}', '-i', str(facts.path))  # A quarter frame early, so rounding can't pick the next one.
+                reading = ('-ss', f'{max(0, clip.freeze - 0.25 / fps):.6f}', '-t', f'{1 / fps:.6f}')  # A quarter frame early, so rounding can't pick the next one.
+                index = self.add_input(*reading, '-i', str(facts.path))
             else:
                 # A ramp can play faster than average at the end, so it reads a little more than it needs.
+                reading = ('-ss', f'{max(0, wanted):.6f}', '-t', f'{(frames - held) * clip.speed / fps + (RAMP_MARGIN if clip.ramp else 0):.6f}')
                 index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps + (RAMP_MARGIN if clip.ramp else 0))
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             scale = supersample(clip.transform, enter, exit_, facts, self.fmt)
@@ -417,7 +428,14 @@ class Builder:
                 # Each source frame moves to the moment the ramp shows it, then fps= keeps the nearest frame for each output frame.
                 share = f'((T+{max(0, wanted) - source_in:.6f})/{clip.out - clip.in_:.6f})'
                 timing = f'({ramp_time_expression(clip.ramp, share)}*{clip.length:.6f}+{(head - held) / fps:.6f})/TB'
-            self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
+            if cut:
+                # The mask is read over the same stretch as the video, frame for frame, and applied at the source's size.
+                mask = self.add_input(*reading, '-i', str(self.masks(facts)))
+                self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray[{label}_shape]',
+                               f'[{label}_shape][{label}_full]scale2ref=flags=bicubic[{label}_mask][{label}_sized]', f'[{label}_sized][{label}_mask]alphamerge[{label}_cut]',
+                               f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True)}[{label}]']
+            else:
+                self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label)
             if head:
                 merged = f'x{position}_{number}'
@@ -546,10 +564,10 @@ class Builder:
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
-def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None) -> Compiled:
+def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None) -> Compiled:
     if timeline.duration <= 0:
         raise ValueError('Add a clip to the timeline first.')
-    return Builder(timeline, media, audio_asset, folder, prepared).build()
+    return Builder(timeline, media, audio_asset, folder, prepared, masks).build()
 
 
 def video_inputs(compiled: Compiled) -> int:
@@ -588,7 +606,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -596,7 +614,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
-        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared)
+        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks)
         (folder / 'graph.txt').write_text(compiled.graph, encoding='utf-8')
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.

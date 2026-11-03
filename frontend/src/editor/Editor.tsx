@@ -6,7 +6,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { freezeFrame, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -46,11 +46,11 @@ const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in'
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
 /** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
-const preparedWant = (clip: Clip): [boolean, boolean] | null => {
-  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null;
-  return steady || backwards ? [steady, backwards] : null;
+const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
+  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = clip.cutout ?? '';
+  return steady || backwards || cutout ? [steady, backwards, cutout] : null;
 };
-const preparedKey = (id: number, steady: boolean, backwards: boolean) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}`;
+const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
 const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
 const TITLES: { label: string; text: Omit<TextItem, 'id' | 'start' | 'length'> }[] = [
   { label: 'Big title', text: { text: 'Your title', style: 'outline', position: 'center', color: '#ffffff', size: 72, enter: { preset: 'pop', duration: 0.5 }, exit: { preset: 'fade', duration: 0.4 } } },
@@ -258,8 +258,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
       for (const key of keys) {
-        const [id, steady, backwards] = key.split(':');
-        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1')).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch { /* Tried again below. */ }
+        const [id, steady, backwards, cutout] = key.split(':');
+        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1', cutout)).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch (problem) { if (!stopped && cutout) setError((problem as Error).message); }
       }
       if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
     };
@@ -855,7 +855,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
       <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} onBehind={() => { const next = putBehindPerson(timeline!, selectedText.id, [newId(), newId()]); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else change(next); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -926,7 +926,7 @@ function AnimationPicker({ label, value, onChange, onShow }: { label: string; va
   </>;
 }
 
-function TextInspector({ text, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, onBehind, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onBehind: () => void; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   return <>
     <h2>Text</h2>
     <textarea className="ed-text" aria-label="Text" lang="ta" value={text.text} maxLength={500} rows={3} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
@@ -941,6 +941,7 @@ function TextInspector({ text, timing, local, onSeekLocal, onPause, follow, onCh
     <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
     <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
     <p className="ed-tip">Drag the title in the preview to move it.</p>
+    <button className="ed-button wide" onClick={onBehind} title="The person in the video stays in front of this title"><Layers size={14}/>Put behind the person</button>
     <Group title="Motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0}>
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
@@ -1003,6 +1004,12 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       <Chips label="Split screen" options={[{ id: 'side' as const, label: 'Side by side' }, { id: 'stack' as const, label: 'Top and bottom' }]} value={null} onPick={onLayout}/>
       <h3 className="ed-sub">Blend</h3>
       <Chips label="Blend" options={BLENDS} value={overlay.blend ?? 'normal'} onPick={(blend) => onLayer({ blend })}/>
+    </>}
+    {source?.kind === 'video' && <>
+      <h3 className="ed-sub">Background</h3>
+      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange({ cutout: id === 'keep' ? null : id })}/>
+      {clip.cutout && <p className="ed-tip">{!copyReady ? 'Finding the person… This runs in the background, and the preview shows the original until it is ready.'
+        : clip.cutout === 'blur' ? 'The person stays sharp and everything behind them is softened.' : isMain ? 'The person shows over black. To put something behind them, add this clip as an overlay over your new background.' : 'The person shows over whatever is under this layer.'}</p>}
     </>}
     {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
     <div className="ed-pair">

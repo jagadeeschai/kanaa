@@ -18,6 +18,7 @@ from app.services.transcript_service import LANGUAGES, PHASE, saved_words, trans
 from app.services.face_service import find_faces
 from app.services.reverse_service import ensure_reversed, request_reversed, reversed_files
 from app.services.stabilise_service import ensure_stable, request_stable, stable_files
+from app.services import cutout_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Format, Text, Timeline
@@ -70,44 +71,59 @@ def proxy(identifier: int, request: Request):
     return serve_file_with_ranges(asset_path(identifier, 'proxy.mp4'), 'video/mp4', request)
 
 
-def prepared_copy(identifier: int, steady: bool, backwards: bool, should_cancel=lambda: False) -> MediaFacts:
-    """Steadied first, then reversed, so a steady clip plays backwards steadily. Each copy is made once."""
+def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait: bool = False, should_cancel=lambda: False) -> MediaFacts:
+    """Steadied, then reversed, then the background blurred, so the steps combine. Each copy is made once."""
     facts = media_facts(identifier)
     if steady:
         facts = ensure_stable(facts, should_cancel)
     if backwards:
         facts = ensure_reversed(facts, should_cancel)
+    if portrait:
+        facts = cutout_service.ensure_portrait(facts, should_cancel)
     return facts
 
 
+CUTOUTS = {'', 'remove', 'blur'}
+
+
 @router.post('/photos/{identifier}/prepared')
-def request_prepared(identifier: int, steady: bool = False, backwards: bool = False):
-    """Starts making a steadied and/or reversed copy if needed. Ready, or preparing with a job to watch."""
+def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = ''):
+    """Starts making whatever copies a clip needs, one step at a time. Ready, or preparing with a job to watch."""
     row = get_media(identifier)
-    if row['media_type'] != 'video':
-        raise HTTPException(400, 'Only videos can be steadied or played backwards.')
+    if row['media_type'] != 'video' or cutout not in CUTOUTS:
+        raise HTTPException(400, 'Only videos can be steadied, reversed or cut out.')
     facts = media_facts(identifier)
-    if steady:
-        status = request_stable(facts, row['filename'])
-        if status['status'] != 'ready' or not backwards:
+    for wanted, request, ensure in ((steady, request_stable, ensure_stable), (backwards, request_reversed, ensure_reversed)):
+        if not wanted:
+            continue
+        status = request(facts, row['filename'])
+        if status['status'] != 'ready':
             return status
-        facts = ensure_stable(facts)
-    return request_reversed(facts, row['filename']) if backwards else {'status': 'ready'}
+        facts = ensure(facts)
+    try:
+        return cutout_service.request_cutout(facts, cutout, row['filename']) if cutout else {'status': 'ready'}
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get('/photos/{identifier}/prepared-proxy')
-def prepared_proxy(identifier: int, request: Request, steady: bool = False, backwards: bool = False):
-    """The preview's copy of a steadied and/or reversed clip."""
-    source = Path(get_media(identifier)['absolute_path'])
-    steady_copy, steady_proxy = stable_files(source)
+def prepared_proxy(identifier: int, request: Request, steady: bool = False, backwards: bool = False, cutout: str = ''):
+    """The preview's copy of a clip that is steadied, reversed and/or cut out. Each step works on the one before."""
+    base = Path(get_media(identifier)['absolute_path'])
     target = None
-    if backwards and (not steady or steady_copy.is_file()):
-        target = reversed_files(steady_copy if steady else source)[1]
-    elif steady and not backwards:
-        target = steady_proxy
+    for wanted, copies in ((steady, stable_files), (backwards, reversed_files)):
+        if not wanted:
+            continue
+        if not base.is_file():
+            raise HTTPException(404, 'This copy is still being made.')
+        base, target = copies(base)
+    if cutout in ('remove', 'blur'):
+        if not base.is_file():
+            raise HTTPException(404, 'This copy is still being made.')
+        target = cutout_service.files(base)[cutout_service.SEE_THROUGH if cutout == 'remove' else cutout_service.PORTRAIT_PROXY]
     if target is None or not target.is_file():
         raise HTTPException(404, 'This copy is still being made.')
-    return serve_file_with_ranges(target, 'video/mp4', request)
+    return serve_file_with_ranges(target, 'video/webm' if target.suffix == '.webm' else 'video/mp4', request)
 
 
 @router.get('/photos/{identifier}/filmstrip')
@@ -303,7 +319,7 @@ def preview_render(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards: prepared_copy(media_id, steady, backwards, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel))
             fresh.replace(target)
             return {'progress': 100, 'preview_ready': True}
         finally:
@@ -339,7 +355,7 @@ def export_project(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards: prepared_copy(media_id, steady, backwards, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel))
             output = index_media(target, f"{row['name']}.mp4", exported=True)
             return {'progress': 100, 'output_photo_id': output['id']}
         except Exception:
