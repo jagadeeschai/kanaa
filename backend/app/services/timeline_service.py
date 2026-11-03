@@ -14,10 +14,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.api.schemas import VideoEditRequest
-from app.services.animation import LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
+from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import value_at, Adjust, Animation, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import value_at, Adjust, Animation, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -82,6 +82,18 @@ def adjust_filters(adjust: Adjust) -> list[str]:
     return filters
 
 
+def chroma_filters(chroma: Chroma, image: bool) -> list[str]:
+    """Keyed in BT.709 YUV, the same space the preview shader measures distance in."""
+    y, u, v = chroma_yuv(chroma.color)
+    red, green, blue = (int(chroma.color[index:index + 2], 16) for index in (1, 3, 5))
+    steps = ['scale=out_color_matrix=bt709:out_range=tv'] if image else []
+    steps += ['format=yuva444p', f'chromakey=color=0x{y:02x}{u:02x}{v:02x}:similarity={chroma.similarity}:blend={chroma.softness}:yuv=1', 'format=gbrap']
+    if chroma.spill:
+        kind = 'blue' if blue > green else 'green'
+        steps.append(f'despill=type={kind}:mix=0.5:expand=0:red=0:green={-chroma.spill if kind == "green" else 0}:blue={-chroma.spill if kind == "blue" else 0}:brightness=0:alpha=0')
+    return steps
+
+
 def picture_filters(adjust: Adjust, look: str) -> list[str]:
     """The preview shader's steps in its order, on RGB values, so the two can't disagree."""
     red, green, blue, contrast, saturation = LOOKS[look]
@@ -113,7 +125,7 @@ def color_filter(facts: MediaFacts) -> str:
 def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0) -> str:
     """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame."""
     W, H = canvas
-    steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
+    steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
     if clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',

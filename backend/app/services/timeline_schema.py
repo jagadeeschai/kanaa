@@ -76,6 +76,14 @@ class Transition(Strict):
     duration: float = Field(default=0.6, ge=0.1, le=2)
 
 
+class Chroma(Strict):
+    """Removes a background colour. Similarity and softness are chroma distances, 0 to about 0.7."""
+    color: str = Field(default='#00b140', pattern=r'^#[0-9a-fA-F]{6}$')
+    similarity: float = Field(default=0.08, ge=0.001, le=0.5)
+    softness: float = Field(default=0.06, ge=0.001, le=0.5)
+    spill: float = Field(default=0.5, ge=0, le=1)
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -94,6 +102,7 @@ class Clip(Strict):
     exit: Optional[Animation] = None
     transition_in: Optional[Transition] = None
     look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
+    chroma: Optional[Chroma] = None
 
     @model_validator(mode='after')
     def valid_range(self):

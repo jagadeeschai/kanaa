@@ -1,4 +1,5 @@
 import { animatedLook, LOOKS, REST, type Look } from '../timeline/animation';
+import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
 import { clipLength, duration, fittedSize, transitionHalf, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
@@ -29,8 +30,19 @@ void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode; uniform sampler2D backdrop; uniform vec2 flip, blurAspect; uniform vec3 tint;
-vec4 pick(vec2 at){ vec4 c=texture(tex,at); c.rgb*=c.a; return c; }
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint;
+vec4 pick(vec2 at){
+  vec4 c=texture(tex,at);
+  if (keyType > 0) {
+    // ffmpeg's chromakey: distance in BT.709 limited-range chroma, over the square root of two. Then its despill.
+    float l = dot(c.rgb, vec3(.2126, .7152, .0722));
+    vec2 chroma = vec2((128. + 224. * (c.b - l) / 1.8556) / 255., (128. + 224. * (c.r - l) / 1.5748) / 255.);
+    c.a *= clamp((length(chroma - keyColor) / 1.41421356 - keySimilarity) / keySoftness, 0., 1.);
+    if (keyType == 1) c.g -= max(c.g - (c.r + c.b) * .5, 0.) * keySpill;
+    else c.b -= max(c.b - (c.r + c.g) * .5, 0.) * keySpill;
+  }
+  c.rgb*=c.a; return c;
+}
 void main(){
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
@@ -74,6 +86,7 @@ export class PlaybackEngine {
   private warned = false;
   private lastTick = 0;
   onStruggling: () => void = () => {};
+  private unkeyedClip: string | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
@@ -104,7 +117,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -288,6 +301,14 @@ export class PlaybackEngine {
     }
     gl.uniform4f(uniforms.box, centerX + (valueAt(clip.transform, 'x', local) - 0.5) * frame, centerY + (valueAt(clip.transform, 'y', local) - 0.5) * frame, (fitted.width * scale) / format.width, height / format.height);
     gl.uniform1f(uniforms.turn, (valueAt(clip.transform, 'rotation', local) * Math.PI) / 180);
+    const key = clip.id === this.unkeyedClip ? null : clip.chroma;
+    gl.uniform1i(uniforms.keyType, key ? keyKind(key.color) : 0);
+    if (key) {
+      gl.uniform2f(uniforms.keyColor, ...keyChroma(key.color));
+      gl.uniform1f(uniforms.keySimilarity, key.similarity);
+      gl.uniform1f(uniforms.keySoftness, key.softness);
+      gl.uniform1f(uniforms.keySpill, key.spill);
+    }
     gl.uniform2f(uniforms.frame, format.width, format.height);
     gl.uniform1f(uniforms.opacity, Math.max(0, Math.min(1, valueAt(clip.transform, 'opacity', local))) * look.opacity * opacity);
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
@@ -375,6 +396,7 @@ export class PlaybackEngine {
     const { width, height } = this.timeline!.format;
     gl.uniform4f(uniforms.box, 0.5 + look.dx, 0.5 + look.dy, look.scale, look.scale);
     gl.uniform1f(uniforms.turn, 0);
+    gl.uniform1i(uniforms.keyType, 0);
     gl.uniform1f(uniforms.opacity, look.opacity);
     gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
     gl.uniform3f(uniforms.tint, 1, 1, 1);
@@ -408,6 +430,23 @@ export class PlaybackEngine {
 
   private syncSound() {
     if (this.timeline) this.mixer.sync(this.timeline, this.time, this.playing, this.rate, this.soundUrl);
+  }
+
+  /** While picking a colour, this clip shows unkeyed, so the colour under the click is its own. */
+  showUnkeyed(clipId: string | null) { this.unkeyedClip = clipId; this.requestDraw(); }
+
+  /** The average colour around a point in the preview, from 0 to 1 across and down. */
+  sampleColor(x: number, y: number) {
+    const { gl, canvas } = this;
+    this.draw();
+    const size = 5;
+    const left = Math.max(0, Math.min(canvas.width - size, Math.round(x * canvas.width) - 2));
+    const bottom = Math.max(0, Math.min(canvas.height - size, Math.round((1 - y) * canvas.height) - 2));
+    const pixels = new Uint8Array(size * size * 4);
+    gl.readPixels(left, bottom, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const total = [0, 0, 0];
+    pixels.forEach((value, index) => { if (index % 4 < 3) total[index % 4] += value; });
+    return toHex(total.map((value) => value / (size * size)));
   }
 
   private struggled() {

@@ -405,7 +405,8 @@ Not started. Rivals' weaknesses here are guesses, not tested. Ranked for ordinar
 4. **What you see is what you export.** Keep the golden-frame test as a promise: preview and export match, with no watermark, account or upload.
 5. **Saved versions.** Name a point in a project, try another cut, and compare or return to it.
 
-**Next editing features:** chroma key on overlay clips, with a colour picker on the preview and strength and edge softness. The preview shader and export must use the same formula, and it needs golden samples before it's called done.
+### Remove background, chroma key (done)
+Any clip can have a `chroma` setting: colour, strength (similarity), edge softness and colour spill. "Remove a colour" in clip settings shows the clip unkeyed and the user clicks the screen in the preview; Esc cancels. Export uses ffmpeg `chromakey` in limited-range BT.709 YUV plus `despill`; the preview shader in `playback.ts` uses the same distance formula (`timeline/chroma.ts`, `chroma_yuv` in `animation.py`). Golden samples cover a shaded picture, a compressed video, and tight and wide settings: mean gap about 2/255 on the keyed frames, 1.4 across all 163. Not yet tried on real green-screen footage; uneven lighting may need a second colour or a garbage matte later.
 
 ### Edit by words (done)
 `transcript_service.py` runs Whisper on this Mac and stores words with the clip's prepared files, per language. The Words tab in the editor shows the main track as text. Cuts go through `timeline/words.ts`, so each is a normal timeline change and one Undo.

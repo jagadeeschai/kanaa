@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowLeft, AudioLines, Check, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -12,6 +12,7 @@ import { ContextMenu, isEditable, type MenuItem, type MenuState } from './Contex
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
+import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
@@ -87,10 +88,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [wordSelection, setWordSelection] = useState<Set<string>>(new Set());
   const [showingHelp, setShowingHelp] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [pickingKey, setPickingKey] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
   const [deleting, setDeleting] = useState<Photo | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const stopPicking = useCallback(() => { setPickingKey(false); engineRef.current?.showUnkeyed(null); }, []);
   const rootRef = useRef<HTMLDivElement>(null);
   const fitted = useRef(false);
   const [heavy, setHeavy] = useState(false);
@@ -462,6 +465,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
+      if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
       if (isTyping(event.target) || !timeline || exporting || choosingFormat || showingHelp || menu) return;
       if (event.key === ' ' && buttonTakesSpace(event.target)) return;
       // Arrows on a focused slider change the slider, not the playhead.
@@ -489,10 +493,18 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, showingHelp, menu, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
+  const startPicking = () => { if (selected) { engineRef.current?.pause(); engineRef.current?.showUnkeyed(selected.id); setPickingKey(true); } };
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pickingKey && selected) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const color = engineRef.current?.sampleColor((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+      if (color) updateSelected({ chroma: { ...(selected.chroma ?? DEFAULT_CHROMA), color } });
+      stopPicking();
+      return;
+    }
     if (!selected || selectedLayer?.locked || event.button !== 0 || event.ctrlKey) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(selected.transform, 'x', local), clipY: valueAt(selected.transform, 'y', local), group: `move-${Date.now()}` };
@@ -608,8 +620,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       {mediaOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show media panel" title="Show the media panel" onClick={() => updateLayout({ mediaOpen: true })}><PanelLeftOpen size={15}/></button></div>}
       <main className="ed-stage">
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
-          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={selected ? 'movable' : ''}/>
+          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
+          {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
           {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick a video in the Media panel</span></div>}
         </div>
@@ -625,7 +638,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Shortcuts and layout</button></div>}</aside>
     </div>
@@ -741,7 +754,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -771,6 +784,19 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     </Group>
     <Group title="Motion" startOpen={Object.keys(clip.transform.keyframes ?? {}).length > 0} changed={Object.keys(clip.transform.keyframes ?? {}).length > 0}>
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
+    </Group>
+    <Group title="Remove background" startOpen={Boolean(clip.chroma)} changed={Boolean(clip.chroma)}>
+    {clip.chroma ? <>
+      <div className="ed-key-color"><label><span className="ed-key-swatch" style={{ background: clip.chroma.color }}/><input type="color" aria-label="Colour to remove" value={clip.chroma.color} onChange={(event) => onChange({ chroma: { ...clip.chroma!, color: event.target.value } }, `key-colour-${clip.id}`)}/></label>
+        <button className={`ed-button ${picking ? 'on' : ''}`} onClick={onPick}><Pipette size={14}/>{picking ? 'Click the preview' : 'Pick from preview'}</button></div>
+      <ValueSlider label="Strength" value={clip.chroma.similarity} min={0.001} max={0.5} step={0.001} defaultValue={DEFAULT_CHROMA.similarity} unit="%" factor={100} decimals={1} onChange={(similarity, group) => onChange({ chroma: { ...clip.chroma!, similarity } }, group)}/>
+      <ValueSlider label="Edge softness" value={clip.chroma.softness} min={0.001} max={0.5} step={0.001} defaultValue={DEFAULT_CHROMA.softness} unit="%" factor={100} decimals={1} onChange={(softness, group) => onChange({ chroma: { ...clip.chroma!, softness } }, group)}/>
+      <ValueSlider label="Remove colour spill" value={clip.chroma.spill} min={0} max={1} step={0.01} defaultValue={DEFAULT_CHROMA.spill} unit="%" factor={100} onChange={(spill, group) => onChange({ chroma: { ...clip.chroma!, spill } }, group)}/>
+      <button className="ed-button wide" onClick={() => onChange({ chroma: null })}>Turn off</button>
+    </> : <>
+      <p className="ed-tip">Removes a green or blue screen. Add the clip as an overlay to put something behind it.</p>
+      <button className="ed-button wide" onClick={() => { onChange({ chroma: DEFAULT_CHROMA }); onPick(); }}><Pipette size={14}/>Remove a colour</button>
+    </>}
     </Group>
     <Group title="Colour" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1}>
     <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>

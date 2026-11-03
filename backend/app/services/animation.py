@@ -52,3 +52,10 @@ def scale_expression(preset: str, p: str) -> str | None:
     if preset == 'pop':
         return f'max(0.01,1+2.7*pow({p}-1,3)+1.7*pow({p}-1,2))'
     return None
+
+
+def chroma_yuv(color: str) -> tuple[int, int, int]:
+    """A #rrggbb colour as limited-range BT.709, the form video is keyed in."""
+    r, g, b = (int(color[index:index + 2], 16) / 255 for index in (1, 3, 5))
+    luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return round(16 + 219 * luma), round(128 + 224 * (b - luma) / 1.8556), round(128 + 224 * (r - luma) / 1.5748)

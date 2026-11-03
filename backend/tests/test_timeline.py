@@ -19,13 +19,13 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.main import app
 from app.services import asset_service, render_queue_service, stem_service, transcript_service
-from app.services.animation import LOOKS, look_at
+from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
 from app.services.media_probe import MediaFacts, probe_video
-from app.services.timeline_schema import Timeline, Transform, value_at
+from app.services.timeline_schema import Chroma, Timeline, Transform, value_at
 from app.services.video_edit_service import resolve_audio_asset
-from app.services.timeline_service import atempo_chain, property_expression, render_timeline, upgrade_edit_recipe
+from app.services.timeline_service import atempo_chain, chroma_filters, property_expression, render_timeline, upgrade_edit_recipe
 from app.services.video_service import _run_ffprobe
 
 FFMPEG = shutil.which('ffmpeg')
@@ -634,6 +634,47 @@ class Layers(Clips):
         render_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, final, lambda _: None)
         render_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, draft, lambda _: None, draft=True)
         self.assertEqual(probe_frames(final), probe_frames(draft))
+
+
+class ChromaKey(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        back = cls.root / 'back.png'
+        Image.new('RGB', (640, 360), (200, 40, 40)).save(back)
+        green = Image.new('RGB', (640, 360), (0, 177, 64))
+        green.paste((230, 230, 230), (220, 100, 420, 260))
+        screen = cls.root / 'screen.png'
+        green.save(screen)
+        cls.facts[30] = MediaFacts(path=back, media_type='image', width=640, height=360)
+        cls.facts[31] = MediaFacts(path=screen, media_type='image', width=640, height=360)
+        video = cls.root / 'screen.mp4'
+        run('-loop', '1', '-i', str(screen), '-t', '1', '-r', '30', '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast', '-qp', '10', '-colorspace', 'bt709', str(video))
+        cls.facts[32] = probe_video(video)
+
+    def stack(self, media, chroma):
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 30, 'start': 0, 'in': 0, 'out': 1}]},
+                                                  {'id': 'up', 'kind': 'video', 'items': [{'id': 'b', 'media_id': media, 'start': 0, 'in': 0, 'out': 1, 'chroma': chroma}]}]}
+
+    def test_green_goes_and_the_subject_stays(self):
+        for media in (31, 32):
+            with self.subTest(media=media):
+                frame = self.frame(self.render(self.stack(media, {'color': '#00b140'}), f'k{media}.mp4'), 5, (640, 360))
+                for got, want in zip(frame[30, 30], (200, 40, 40)):
+                    self.assertAlmostEqual(int(got), want, delta=8)
+                for got in frame[180, 320]:
+                    self.assertAlmostEqual(int(got), 230, delta=8)
+
+    def test_key_colour_converts_to_limited_range_bt709(self):
+        self.assertEqual(chroma_yuv('#00b140'), (129, 96, 55))
+
+    def test_blue_screen_uses_blue_despill(self):
+        self.assertIn('despill=type=blue', ','.join(chroma_filters(Chroma(color='#0047bb'), False)))
+
+    def test_no_spill_removal_when_turned_off(self):
+        self.assertNotIn('despill', ','.join(chroma_filters(Chroma(spill=0), False)))
 
 
 class Rules(unittest.TestCase):

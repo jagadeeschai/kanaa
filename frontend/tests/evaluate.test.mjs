@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { animatedLook, lookAt, LOOKS } from '../src/timeline/animation.ts';
+import { keyChroma, keyKind, toHex } from '../src/timeline/chroma.ts';
 import { readFileSync } from 'node:fs';
 import { valueAt } from '../src/timeline/evaluate.ts';
 
@@ -35,4 +36,16 @@ test('looks match the Python values', () => { assert.deepEqual(LOOKS, animation.
 test('overlong animations share the item length', () => {
   const look = animatedLook({ preset: 'fade', duration: 3 }, { preset: 'fade', duration: 3 }, 1, 2);
   assert.equal(look.opacity, 1);
+});
+
+test('the key colour matches the export, in limited-range BT.709', () => {
+  const [u, v] = keyChroma('#00b140');
+  assert.equal(Math.round(u * 255), 96);
+  assert.equal(Math.round(v * 255), 55);
+});
+
+test('blue screens use blue spill removal, and picked colours become hex', () => {
+  assert.equal(keyKind('#00b140'), 1);
+  assert.equal(keyKind('#0047bb'), 2);
+  assert.equal(toHex([0, 177.4, 64]), '#00b140');
 });

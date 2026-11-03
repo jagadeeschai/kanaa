@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 API, OUTPUT, WORK = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 WIDTH, HEIGHT, FPS = 1280, 720, 30
@@ -45,6 +46,24 @@ def make_logo():
     return upload(path)
 
 
+def make_screens():
+    """A soft-edged subject on green, with the shadows and noise a real screen has."""
+    picture = WORK / 'screen.png'
+    rows, columns = np.mgrid[0:HEIGHT, 0:WIDTH].astype(float)
+    shade = rows / HEIGHT
+    screen = np.stack([8 + 12 * shade, 190 - 45 * shade, 70 - 14 * shade], axis=2)
+    subject = np.clip((190 - np.hypot(columns - WIDTH / 2, rows - HEIGHT / 2)) / 6, 0, 1)[..., None]
+    Image.fromarray((screen * (1 - subject) + np.array([235, 200, 170]) * subject).astype(np.uint8)).save(picture)
+    video = WORK / 'screen.mp4'
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-loop', '1', '-i', str(picture), '-t', '4', '-r', '30', '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p', '-c:v', 'libx264', '-crf', '16', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', str(video)], check=True)
+    ids = upload(picture), upload(video)
+    for _ in range(90):
+        if call(f'/api/photos/{ids[1]}/assets').get('status') == 'ready':
+            return ids
+        time.sleep(1)
+    sys.exit('The green screen clip never became ready.')
+
+
 def make_sources():
     pictures = []
     for name, pattern in (('a', 'gradients=s=1280x720:c0=red:c1=blue:x0=0:y0=0:x1=1280:y1=720:n=2'), ('b', 'gradients=s=1280x720:c0=yellow:c1=teal:x0=1280:y0=0:x1=0:y1=720:n=2')):
@@ -62,7 +81,7 @@ def keys(*points, ease='easeInOut'):
     return [{'t': t, 'v': v, 'ease': ease} for t, v in points]
 
 
-def build(first, second, logo):
+def build(first, second, logo, screen_image, screen_video):
     clips, texts, samples, t = [], [], [], 0.0
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -102,6 +121,13 @@ def build(first, second, logo):
     for at in (0.5, 1.5, 2, 3.5):
         samples.append({'name': f'logo {at}', 't': t + at})
     t += 2 * SECONDS
+    # Chroma key on an overlay, on a picture and a compressed video, with a blue screen setting too.
+    overlays = [overlay]
+    for name, media, chroma in (('key picture', screen_image, {}), ('key video', screen_video, {}), ('key tight', screen_video, {'similarity': 0.03, 'softness': 0.02}), ('key wide', screen_image, {'similarity': 0.2, 'softness': 0.2, 'spill': 1})):
+        clips.append(clip(name.replace(' ', '-') + '-under', second, t))
+        overlays.append({'id': name.replace(' ', '-'), 'media_id': media, 'start': t, 'in': 0, 'out': SECONDS, 'chroma': {'color': '#00b140', 'similarity': 0.08, 'softness': 0.06, 'spill': 0.5, **chroma}})
+        samples.append({'name': name, 't': t + 1})
+        t += SECONDS
     # Blend modes, with the project at the six-layer limit.
     blends = ['multiply', 'screen', 'overlay', 'darken']
     extra_layers = []
@@ -120,18 +146,19 @@ def build(first, second, logo):
         samples.append({'name': f'text rest {preset}', 't': t + 1})
         samples.append({'name': f'text exit {preset} 0.5', 't': t + SECONDS - ANIMATION * 0.5})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': [overlay]}, *extra_layers, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
 
 
 def main():
     WORK.mkdir(parents=True, exist_ok=True)
     first, second = make_sources()
     logo = make_logo()
+    screen_image, screen_video = make_screens()
     cover = WORK / 'cover.mp4'
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', str(cover)], check=True)
     cover_id = upload(cover)
     project = call('/api/projects', {'name': 'Golden frames', 'kind': 'edit', 'media_id': cover_id, 'media_ids': [cover_id]})
-    timeline, samples = build(first, second, logo)
+    timeline, samples = build(first, second, logo, screen_image, screen_video)
     call(f"/api/projects/{project['id']}/recipe", {'recipe': timeline}, 'PUT')
     job = call(f"/api/projects/{project['id']}/export", timeline)['job_id']
     while (status := call(f'/api/jobs/{job}/status'))['status'] not in ('done', 'failed', 'cancelled'):
