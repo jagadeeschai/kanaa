@@ -1357,3 +1357,43 @@ class Cutout(QuickEffects):
         with self.assertRaises(ValueError):
             self.render(data, 'no-mask.mp4')
 
+
+class Captions(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def stack(self, highlight='#ffd400', words=None):
+        grey = self.root / 'grey-captions.png'
+        Image.new('RGB', (640, 360), (60, 60, 60)).save(grey)
+        self.facts[90] = MediaFacts(path=grey, media_type='image', width=640, height=360)
+        caption = {'id': 'c1', 'start': 0.5, 'length': 1.5, 'words': words or [{'w': 'ONE', 's': 0}, {'w': 'TWO', 's': 0.5}, {'w': 'THREE', 's': 1.0}]}
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 90, 'start': 0, 'in': 0, 'out': 2.5}]},
+                                                  {'id': 'subs', 'kind': 'captions', 'highlight': highlight, 'size': 60, 'items': [caption]}]}
+
+    def yellow(self, frame):
+        """Pixels of the highlight colour: bright red and green, little blue."""
+        return int(((frame[:, :, 0] > 200) & (frame[:, :, 1] > 170) & (frame[:, :, 2] < 90)).sum())
+
+    def white(self, frame):
+        return int(((frame[:, :, 0] > 220) & (frame[:, :, 1] > 220) & (frame[:, :, 2] > 220)).sum())
+
+    def test_the_spoken_word_lights_up_and_moves_along(self):
+        path = self.render(self.stack(), 'captions.mp4')
+        before, first, second, after = (self.frame(path, number, (640, 360)) for number in (5, 20, 35, 70))
+        self.assertEqual(self.white(before) + self.yellow(before), 0)
+        self.assertGreater(self.yellow(first), 50)
+        self.assertGreater(self.white(first), 50)
+        self.assertGreater(self.yellow(second), 50)
+        # A different word is lit: the yellow moves to the right of where it was.
+        columns = lambda frame: np.nonzero(((frame[:, :, 0] > 200) & (frame[:, :, 1] > 170) & (frame[:, :, 2] < 90)).any(axis=0))[0].mean()
+        self.assertGreater(columns(second), columns(first))
+        self.assertEqual(self.white(after) + self.yellow(after), 0)
+
+    def test_without_highlight_every_word_is_plain(self):
+        frame = self.frame(self.render(self.stack(highlight=None), 'plain.mp4'), 35, (640, 360))
+        self.assertEqual(self.yellow(frame), 0)
+        self.assertGreater(self.white(frame), 100)
+
+    def test_words_must_stay_inside_their_caption(self):
+        with self.assertRaises(ValidationError):
+            Timeline.model_validate(self.stack(words=[{'w': 'late', 's': 2}]))
+

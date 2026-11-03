@@ -417,6 +417,13 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Auto captions (done)
+Text tab, Captions: words per caption (1 to 4) and Add captions. It uses the Words tab's transcripts of the main track, transcribing any clip that has none first, and cuts lines at pauses over 0.6 s, at sentence ends, at commas once a line has two words, and at 24 letters (`timeline/captions.ts`). Captions are their own layer kind, on top of everything, with one look for all: style, position, size, colour, and an optional colour for the word being spoken. Selecting a caption lets you retype it; the same number of words keeps each word's timing. Export writes every caption state to one ASS file and draws it with one `ass` filter, since a long talk has too many captions to add one by one; `write_lyrics` gained `marks` to colour the lit word. The preview shows the same states as images from `/api/caption-image`, fetched three at a time, nearest the playhead first. Golden samples (Tamil and English, lit words): 1.3 to 2.0/255. A spoken test clip (macOS `say`) was captioned in 9 seconds including transcription.
+
+Limits: captions come from the main track only; cutting words afterwards leaves them stale until made again; no per-caption styling or animation; Whisper's spelling of names needs fixing by hand.
+
+The Text tab is now three even sections (Titles, Captions, Hide something), each a heading, one line of help and a two-column grid where wide actions span both columns.
+
 ### Cut out the person (done)
 Background in Framing: Keep, Blur or Remove, for any video clip; on a title, "Put behind the person". `native/person_mask.swift` runs Apple's Vision person segmentation (accurate quality, a sequence handler for steadiness) on this Mac's Neural Engine; `cutout_service.py` compiles it once with `swiftc` (Apple's command line tools) into `data/bin`, pipes frames through it, and keeps a person mask at up to 1280 px with the clip's prepared files, about 9 frames a second. From the mask: Remove gets a VP9 see-through preview copy (the browser plays its transparency, but drops the colour under it), and export applies the mask to the full video with `alphamerge`; Blur gets a portrait copy, blurred under the mask and used like a steadied one. "Put behind the person" adds a silent cut-out copy of the main clip on a "Person" layer right after the title's layer. Steady, backwards and cut-out combine, each copy made from the one before.
 

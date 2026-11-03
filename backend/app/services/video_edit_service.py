@@ -132,7 +132,8 @@ def check_disk_space(folder: Path, duration: float, quality: str = '720p') -> No
         raise ValueError(f'Not enough disk space: this export needs about {needed / 1e9:.1f} GB and {free / 1e9:.1f} GB is free.')
 
 
-def write_lyrics(path: Path, edit: VideoEditRequest, source: Path, size: tuple[int, int] | None = None) -> None:
+def write_lyrics(path: Path, edit: VideoEditRequest, source: Path, size: tuple[int, int] | None = None, marks: list[int | None] | None = None, mark_color: str | None = None) -> None:
+    """`marks` colours one word of each cue in `mark_color`, for captions that light up the word being spoken."""
     canvas = size or canvas_size(edit)
     if canvas:
         width, height = canvas
@@ -173,9 +174,16 @@ Style: Lyrics,{DEFAULT_LYRIC_FONT[0]},{font_size * DEFAULT_LYRIC_FONT[1]},{ass_c
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
-    for cue in edit.lyrics:
+    marked = '&H00{2}{1}{0}'.format(*(mark_color.lstrip('#')[index:index + 2] for index in (0, 2, 4))) if mark_color else None
+    for number, cue in enumerate(edit.lyrics):
         # Treat pasted lyrics as text, never as ASS override commands.
         text = cue.text.replace('\\', '＼').replace('{', '｛').replace('}', '｝').replace('\r', '').replace('\n', r'\N')
+        mark = marks[number] if marks and marked else None
+        if mark is not None:
+            words = text.split(' ')
+            if 0 <= mark < len(words):
+                words[mark] = rf'{{\1c{marked}}}{words[mark]}{{\1c{ass_color}}}'
+                text = ' '.join(words)
         family, scale = lyric_font_for(cue.text)
         font = rf'{{\fn{family}\fs{font_size * scale}{blur}}}'
         effect = ''

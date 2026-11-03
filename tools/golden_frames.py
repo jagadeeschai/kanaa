@@ -231,7 +231,12 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         for at in (0.5, 1, 1.6):
             samples.append({'name': f'{name} {at}', 't': t + at})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}, *([{'id': 'person-title', 'kind': 'text', 'items': person_texts}] if person_texts else []), *person_layers]}, samples
+    # Captions on top of everything, with the spoken word lit, in Tamil and English.
+    captions = {'id': 'subs', 'kind': 'captions', 'style': 'outline', 'position': 'bottom', 'color': '#ffffff', 'highlight': '#ffd400', 'size': 56, 'items': [
+        {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},
+        {'id': 'cap2', 'start': 3.0, 'length': 1.8, 'words': [{'w': 'Light', 's': 0}, {'w': 'each', 's': 0.5}, {'w': 'word', 's': 1.1}]}]}
+    samples += [{'name': f'caption {at}', 't': at} for at in (1.2, 1.9, 3.2, 3.7, 4.4)]
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}, *([{'id': 'person-title', 'kind': 'text', 'items': person_texts}] if person_texts else []), *person_layers, captions]}, samples
 
 
 def main():

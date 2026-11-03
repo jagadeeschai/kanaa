@@ -61,6 +61,11 @@ export const fetchTextImage = async (text: unknown, format: unknown) => {
   if (!response.ok) throw new Error('This text could not be drawn.');
   return URL.createObjectURL(await response.blob());
 };
+export const fetchCaptionImage = async (caption: unknown, layer: unknown, lit: number | null, format: unknown) => {
+  const response = await fetch('/api/caption-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caption, layer, lit, format }) });
+  if (!response.ok) throw new Error('This caption could not be drawn.');
+  return URL.createObjectURL(await response.blob());
+};
 export const previewRenderUrl = (id: number) => `/api/projects/${id}/preview-render`;
 export const startPreviewRender = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(previewRenderUrl(id), { method: 'POST', body: JSON.stringify(timeline) });
 export const setMediaFolder = (id: number, folder: string | null) => requestJson<{ folder: string | null }>(`/api/photos/${id}`, { method: 'PATCH', body: JSON.stringify({ folder }) });

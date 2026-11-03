@@ -21,7 +21,7 @@ from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import value_at, Adjust, Animation, BlurBox, BlurLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import value_at, Adjust, Animation, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -227,13 +227,28 @@ def sound_steps(item: Clip | Sound) -> list[str]:
     return [*steps, f'adelay={round(item.start * 1000)}:all=1']
 
 
-def render_text_image(item: Text, fmt: Format, target: Path) -> None:
-    """Text goes through libass once, so preview and export share the same letters."""
-    edit = VideoEditRequest(canvas='original', lyric_style=item.style, lyric_size=max(20, item.size), lyric_position=item.position,
-                            lyric_color=item.color, lyrics=[{'start': 0, 'end': 1, 'text': item.text}])
+def caption_states(item: Caption, highlight: bool) -> list[tuple[float, float, int | None]]:
+    """Each moment a caption looks different: (start, end, lit word), in its own seconds. Matches captionStates in model.ts."""
+    if not highlight:
+        return [(0.0, item.length, None)]
+    times = [0.0, *(word.s for word in item.words[1:]), item.length]
+    return [(times[number], times[number + 1], number) for number in range(len(item.words)) if times[number + 1] > times[number]]
+
+
+def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
+    return VideoEditRequest(canvas='original', lyric_style=layer.style, lyric_size=layer.size, lyric_position=layer.position, lyric_color=layer.color, lyrics=cues)
+
+
+def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None) -> None:
+    """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
+    if layer is not None:
+        edit, marks = caption_edit(layer, [{'start': 0, 'end': 1, 'text': item.text}]), [lit]
+    else:
+        edit, marks = VideoEditRequest(canvas='original', lyric_style=item.style, lyric_size=max(20, item.size), lyric_position=item.position,
+                                       lyric_color=item.color, lyrics=[{'start': 0, 'end': 1, 'text': item.text}]), None
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
-        write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height))
+        write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height), marks=marks, mark_color=layer.highlight if layer else None)
         (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
         result = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black@0:s={fmt.width}x{fmt.height}:r=30:d=0.5,format=rgba',
                                  '-vf', 'ass=filename=lyrics.ass:shaping=complex:fontsdir=fonts:alpha=1', '-frames:v', '1', '-update', '1', str(target)],
@@ -517,6 +532,24 @@ class Builder:
             base = f'{name}_out'
         return base
 
+    def add_caption_layer(self, layer: CaptionLayer, position: int, base: str) -> str:
+        """Every caption in one subtitle file, drawn in one step: a long talk has hundreds, too many to add one by one."""
+        cues, marks = [], []
+        for item in sorted(layer.items, key=lambda caption: caption.start):
+            for start, end, lit in caption_states(item, bool(layer.highlight)):
+                cues.append({'start': item.start + start, 'end': item.start + end, 'text': item.text})
+                marks.append(lit)
+        if not cues:
+            return base
+        name = f'captions-{position}.ass'
+        write_lyrics(self.folder / name, caption_edit(layer, cues), Path('/dev/null'), size=(self.fmt.width, self.fmt.height), marks=marks, mark_color=layer.highlight)
+        fonts = self.folder / 'fonts'
+        if not fonts.exists():
+            fonts.symlink_to(LYRIC_FONTS_DIR)
+        output = f'cap{position}'
+        self.graph.append(f'[{base}]format=rgb24,ass=filename={name}:shaping=complex:fontsdir=fonts,format=gbrp[{output}]')
+        return output
+
     def add_audio_layer(self, layer) -> None:
         if layer.muted:
             return
@@ -556,6 +589,8 @@ class Builder:
                 current = self.add_text_layer(layer, position, current)
             elif layer.kind == 'blur':
                 current = self.add_blur_layer(layer, position, current)
+            elif layer.kind == 'captions':
+                current = self.add_caption_layer(layer, position, current)
             else:
                 self.add_audio_layer(layer)
         self.graph.append(f'[{current}]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[final]')

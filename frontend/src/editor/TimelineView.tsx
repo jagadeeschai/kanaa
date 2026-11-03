@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import { keyTimes } from '../timeline/keyframes';
-import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, type Clip, type BlurBox, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -131,6 +131,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       drawKeys(blur.id, blur.transform, blur.length, x, y + h);
     };
+    const drawCaption = (caption: Caption, row: number) => drawText({ id: caption.id, start: caption.start, length: caption.length, text: captionText(caption) } as TextItem, row);
     const drawText = (text: TextItem, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
       const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
@@ -209,6 +210,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         if (layer.kind === 'video') for (const clip of layer.items) drawOverlay(clip, row);
         else if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
         else if (layer.kind === 'blur') for (const blur of layer.items) drawBlur(blur, row);
+        else if (layer.kind === 'captions') for (const caption of layer.items) drawCaption(caption, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
         veil(layer.hidden, soundTop(row), SOUND_HEIGHT);
       });
@@ -348,7 +350,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
 }
 
 function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, onMove }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void }) {
-  const name = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : 'Sound';
+  const name = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
   return <div className="tl-head" style={{ top, height }} role="group" aria-label={`${name} layer`}>
     {height > SOUND_HEIGHT && <span>{name}</span>}
     <div>

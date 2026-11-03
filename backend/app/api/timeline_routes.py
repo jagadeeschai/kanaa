@@ -21,7 +21,7 @@ from app.services.stabilise_service import ensure_stable, request_stable, stable
 from app.services import cutout_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
-from app.services.timeline_schema import Format, Text, Timeline
+from app.services.timeline_schema import Caption, CaptionLayer, Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline, upgrade_edit_recipe
 from app.services.video_edit_service import check_disk_space, resolve_audio_asset
 from app.services.video_service import serve_file_with_ranges
@@ -252,6 +252,26 @@ def text_image(body: dict):
     if not target.is_file():
         folder.mkdir(parents=True, exist_ok=True)
         render_text_image(item, fmt, target)
+    return FileResponse(target, media_type='image/png')
+
+
+@router.post('/caption-image')
+def caption_image(body: dict):
+    """One caption in its layer's look, with word `lit` coloured, drawn by the export's own text code."""
+    try:
+        caption, fmt = Caption.model_validate(body['caption']), Format.model_validate(body['format'])
+        layer = CaptionLayer.model_validate({**body['layer'], 'kind': 'captions', 'id': 'look', 'items': []})
+        lit = body.get('lit')
+        lit = None if lit is None else int(lit)
+    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+        raise HTTPException(400, 'This caption is not valid.') from exc
+    look = [caption.text, lit, layer.style, layer.position, layer.color, layer.highlight, layer.size, fmt.width, fmt.height]
+    key = hashlib.sha256(json.dumps(look, ensure_ascii=False).encode()).hexdigest()[:32]
+    folder = settings.data_dir / 'cache' / 'text'
+    target = folder / f'caption-{key}.png'
+    if not target.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        render_text_image(Text(id='caption', start=0, length=1, text=caption.text), fmt, target, layer=layer, lit=lit)
     return FileResponse(target, media_type='image/png')
 
 

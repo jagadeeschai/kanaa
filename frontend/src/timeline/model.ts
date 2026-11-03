@@ -18,10 +18,16 @@ export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: bool
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
 export type BlurBox = { id: string; start: number; length: number; style: 'blur' | 'pixelate'; shape: 'oval' | 'box'; amount: number; width: number; height: number; transform: Transform };
 export type BlurLayer = { id: string; kind: 'blur'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
-export type TrackLayer = VideoLayer | TextLayer | BlurLayer | AudioLayer;
-export type TrackItem = TextItem | BlurBox | Sound | Clip;
+/** One caption line. `s` is each word's time from the caption's start. The layer holds the look. */
+export type CaptionWord = { w: string; s: number };
+export type Caption = { id: string; start: number; length: number; words: CaptionWord[] };
+export type CaptionLook = { style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; highlight: string | null; size: number };
+export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
+export const DEFAULT_CAPTION_LOOK: CaptionLook = { style: 'outline', position: 'bottom', color: '#ffffff', highlight: '#ffd400', size: 48 };
+export type TrackLayer = VideoLayer | TextLayer | CaptionLayer | BlurLayer | AudioLayer;
+export type TrackItem = TextItem | Caption | BlurBox | Sound | Clip;
 export type Format = { width: number; height: number; fps: number };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | BlurLayer)[]; normalize_audio?: boolean };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer)[]; normalize_audio?: boolean };
 export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; duration?: number | null; width?: number | null; height?: number | null };
 
 export const MIN_CLIP_SECONDS = 0.1;
@@ -48,13 +54,16 @@ export function mainLayer(timeline: Timeline): VideoLayer {
 export const audioLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is AudioLayer => layer.kind === 'audio');
 
 export const textLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is TextLayer => layer.kind === 'text');
+export const captionLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is CaptionLayer => layer.kind === 'captions');
 export const blurLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is BlurLayer => layer.kind === 'blur');
 /** The rows under the main track: text first, then blur boxes, overlays and sound. */
 export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...blurLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...captionLayers(timeline), ...textLayers(timeline), ...blurLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
 export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
 export const isClip = (item: TrackItem): item is Clip => 'media_id' in item && 'transform' in item;
 export const isBlur = (item: TrackItem): item is BlurBox => 'shape' in item;
+export const isCaption = (item: TrackItem): item is Caption => 'words' in item;
+export const captionText = (caption: Caption) => caption.words.map((word) => word.w).join(' ');
 
 export function findClip(timeline: Timeline, id: string | null): Clip | null {
   for (const layer of timeline.layers) {
@@ -81,6 +90,45 @@ export function findBlur(timeline: Timeline, id: string | null): { blur: BlurBox
     if (blur) return { blur, layer };
   }
   return null;
+}
+
+export function findCaption(timeline: Timeline, id: string | null): { caption: Caption; layer: CaptionLayer } | null {
+  for (const layer of captionLayers(timeline)) {
+    const caption = layer.items.find((item) => item.id === id);
+    if (caption) return { caption, layer };
+  }
+  return null;
+}
+
+/** Each moment a caption looks different: [start, end, lit word], in its own seconds. Matches caption_states in timeline_service.py. */
+export function captionStates(caption: Caption, highlight: boolean): [number, number, number | null][] {
+  if (!highlight) return [[0, caption.length, null]];
+  const times = [0, ...caption.words.slice(1).map((word) => word.s), caption.length];
+  return caption.words.map((_, index) => [times[index], times[index + 1], index] as [number, number, number]).filter(([start, end]) => end > start);
+}
+
+export function updateCaption(timeline: Timeline, id: string, changes: Partial<Caption>): Timeline {
+  const found = findCaption(timeline, id);
+  return found ? withItems(timeline, found.layer, found.layer.items.map((item) => (item.id === id ? { ...item, ...changes } : item))) : timeline;
+}
+
+export function removeCaption(timeline: Timeline, id: string): Timeline {
+  const found = findCaption(timeline, id);
+  if (!found) return timeline;
+  const items = found.layer.items.filter((item) => item.id !== id);
+  return items.length ? withItems(timeline, found.layer, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== found.layer.id) };
+}
+
+/** The look of every caption in the layer. */
+export function updateCaptionLook(timeline: Timeline, layerId: string, changes: Partial<CaptionLook>): Timeline {
+  return { ...timeline, layers: timeline.layers.map((layer) => (layer.id === layerId && layer.kind === 'captions' ? { ...layer, ...changes } : layer)) };
+}
+
+/** Replaces all captions, keeping the look the person chose. A new layer goes on top of everything. */
+export function setCaptions(timeline: Timeline, items: Caption[], layerId: string): Timeline {
+  const existing = captionLayers(timeline)[0];
+  if (existing) return items.length ? withItems(timeline, existing, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== existing.id) };
+  return items.length ? { ...timeline, layers: [...timeline.layers, { ...DEFAULT_CAPTION_LOOK, id: layerId, kind: 'captions', name: 'Captions', items }] } : timeline;
 }
 
 export function findSound(timeline: Timeline, id: string | null): { sound: Sound; layer: AudioLayer } | null {
@@ -130,6 +178,7 @@ export function normalizeTimeline(timeline: Timeline): Timeline {
   const layers = timeline.layers.map((layer) => {
     if (layer.kind === 'audio') return { ...layer, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
     if (layer.kind === 'text') return { ...layer, items: layer.items.map((item) => ({ ...item, transform: { ...REST_TRANSFORM, ...item.transform } })) };
+    if (layer.kind === 'captions') return { ...DEFAULT_CAPTION_LOOK, ...layer };
     if (layer.kind === 'blur') return { ...layer, items: layer.items.map((item) => ({ ...DEFAULT_BLUR, ...item, transform: { ...DEFAULT_BLUR.transform, ...item.transform } })) };
     if (layer.kind !== 'video') return layer;
     let cursor = 0;
@@ -457,7 +506,8 @@ export function updateText(timeline: Timeline, id: string, changes: Partial<Text
 /** `at` is the wanted timeline time of that edge. Works on text and blur boxes. */
 export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at: number): Timeline {
   const blur = findBlur(timeline, id);
-  const found: { text: TextItem | BlurBox; layer: TextLayer | BlurLayer } | null = findText(timeline, id) ?? (blur && { text: blur.blur, layer: blur.layer });
+  const caption = findCaption(timeline, id);
+  const found: { text: TextItem | BlurBox | Caption; layer: TextLayer | BlurLayer | CaptionLayer } | null = findText(timeline, id) ?? (blur && { text: blur.blur, layer: blur.layer }) ?? (caption && { text: caption.caption, layer: caption.layer });
   if (!found) return timeline;
   const { text, layer } = found;
   const set = (changes: { start?: number; length: number }) => withItems(timeline, layer, (layer.items as TrackItem[]).map((item) => (item.id === id ? { ...item, ...changes } as TrackItem : item)));
@@ -466,10 +516,18 @@ export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at:
   if (edge === 'in') {
     const earliest = others.filter((item) => item.start < text.start).reduce((last, item) => Math.max(last, item.start + item.length), 0);
     const start = round(Math.min(Math.max(at, earliest), end - MIN_CLIP_SECONDS));
-    return set({ start, length: round(end - start), ...(text.transform ? { transform: shiftKeys(text.transform, -(start - text.start)) } : {}) });
+    const shift = start - text.start;
+    return set({ start, length: round(end - start), ...('transform' in text && text.transform ? { transform: shiftKeys(text.transform, -shift) } : {}), ...('words' in text ? { words: keepWords(text.words, shift, end - start) } : {}) });
   }
   const after = others.filter((item) => item.start >= end - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
-  return set({ length: round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start) });
+  const length = round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start);
+  return set({ length, ...('words' in text ? { words: keepWords(text.words, 0, length) } : {}) });
+}
+
+/** A caption's words after its start moves by `shift`: each stays on its moment, and none falls outside. */
+function keepWords(words: CaptionWord[], shift: number, length: number): CaptionWord[] {
+  const kept = words.map((word) => ({ ...word, s: round(Math.max(0, word.s - shift)) }));
+  return kept.map((word) => ({ ...word, s: Math.min(word.s, round(length - MIN_CLIP_SECONDS / 2)) }));
 }
 
 export const BLUR_SECONDS = 3;
@@ -547,7 +605,7 @@ export function removeMedia(timeline: Timeline, mediaId: number): Timeline {
   const main = mainLayer(timeline);
   const cleared = withClips(timeline, main.items.filter((clip) => clip.media_id !== mediaId));
   const layers = cleared.layers.flatMap((layer) => {
-    if (layer.id === main.id || layer.kind === 'text' || layer.kind === 'blur') return [layer];
+    if (layer.id === main.id || layer.kind === 'text' || layer.kind === 'blur' || layer.kind === 'captions') return [layer];
     const items = (layer.items as (Clip | Sound)[]).filter((item) => item.media_id !== mediaId);
     return items.length ? [{ ...layer, items } as Timeline['layers'][number]] : [];
   });

@@ -4,7 +4,8 @@ import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
-import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { litWord } from '../timeline/captions';
+import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
@@ -106,6 +107,7 @@ export class PlaybackEngine {
   readonly mixer = new AudioMixer();
   private soundUrl: (sound: Sound) => string | undefined = () => undefined;
   private textUrl: (text: TextItem) => string | undefined = () => undefined;
+  private captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined;
   private stopAt = Infinity;
   private gl: WebGL2RenderingContext;
   private backdrop!: WebGLTexture;
@@ -179,9 +181,10 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
     this.timeline = timeline;
     this.textUrl = textUrl;
+    this.captionUrl = captionUrl;
     this.sources = sources;
     this.soundUrl = soundUrl;
     const { width, height } = timeline.format;
@@ -450,6 +453,27 @@ export class PlaybackEngine {
     this.drawClip(layer, clip, { look: animatedLook(opensWithTransition ? null : clip.enter, closesWithTransition ? null : clip.exit, this.time - clip.start, clipLength(clip)) });
   }
 
+  /** The caption on now, with the word being spoken lit. Drawn from the export's own text images. */
+  private drawCaptions(layer: CaptionLayer) {
+    const { gl, uniforms } = this;
+    const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
+    if (!item) return;
+    const url = this.captionUrl(layer, item, layer.highlight ? litWord(item, this.time - item.start) : null);
+    const image = url && this.imageTexture(url);
+    if (!image || !image.ready) return;
+    gl.bindTexture(gl.TEXTURE_2D, image.texture);
+    gl.uniform4f(uniforms.box, 0.5, 0.5, 1, 1);
+    gl.uniform1f(uniforms.turn, 0);
+    gl.uniform1i(uniforms.keyType, 0);
+    gl.uniform1f(uniforms.opacity, 1);
+    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
+    gl.uniform3f(uniforms.tint, 1, 1, 1);
+    gl.uniform1f(uniforms.blur, 0);
+    gl.uniform1i(uniforms.rotation, 0);
+    gl.uniform2f(uniforms.flip, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
   private drawText(layer: TextLayer) {
     const { gl, uniforms } = this;
     const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
@@ -507,6 +531,7 @@ export class PlaybackEngine {
       if (layer.kind === 'video') this.drawLayer(layer);
       else if (layer.kind === 'text') this.drawText(layer);
       else if (layer.kind === 'blur') this.drawBlur(layer);
+      else if (layer.kind === 'captions') this.drawCaptions(layer);
     }
   }
 

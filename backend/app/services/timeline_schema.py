@@ -6,7 +6,7 @@ from typing import Annotated, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 MAX_LAYERS = 6  # Phase 1: live preview stays smooth up to 6 video layers.
-MAX_ITEMS = 500
+MAX_ITEMS = 2000  # Captions on a long talk add up.
 Ease = Literal['linear', 'easeOut', 'easeInOut']
 
 
@@ -145,6 +145,33 @@ class Text(Strict):
         return self.length_
 
 
+class CaptionWord(Strict):
+    w: str = Field(min_length=1, max_length=80)
+    s: float = Field(ge=0)  # Seconds from the caption's start.
+
+
+class Caption(Strict):
+    """One caption line: its words and when each is spoken. The layer holds the look."""
+    id: str = Field(min_length=1, max_length=64)
+    start: float = Field(ge=0)
+    length_: float = Field(gt=0, alias='length')
+    words: List[CaptionWord] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode='after')
+    def ordered(self):
+        if any(b.s < a.s for a, b in zip(self.words, self.words[1:])) or self.words[-1].s >= self.length_:
+            raise ValueError('Caption words must be in order and inside the caption.')
+        return self
+
+    @property
+    def length(self) -> float:
+        return self.length_
+
+    @property
+    def text(self) -> str:
+        return ' '.join(word.w for word in self.words)
+
+
 class BlurBox(Strict):
     """Hides part of the picture under it. Width and height are shares of the frame, before the transform's scale."""
     id: str = Field(min_length=1, max_length=64)
@@ -217,12 +244,22 @@ class BlurLayer(LayerBase):
     items: List[BlurBox] = Field(default_factory=list)
 
 
+class CaptionLayer(LayerBase):
+    kind: Literal['captions']
+    style: Literal['outline', 'shadow', 'band'] = 'outline'
+    position: Literal['top', 'center', 'bottom'] = 'bottom'
+    color: str = Field(default='#ffffff', pattern=r'^#[0-9a-fA-F]{6}$')
+    highlight: Optional[str] = Field(default='#ffd400', pattern=r'^#[0-9a-fA-F]{6}$')  # The word being spoken, or None.
+    size: int = Field(default=48, ge=20, le=100)
+    items: List[Caption] = Field(default_factory=list)
+
+
 class AudioLayer(LayerBase):
     kind: Literal['audio']
     items: List[Sound] = Field(default_factory=list)
 
 
-Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, AudioLayer], Field(discriminator='kind')]
+Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, CaptionLayer, AudioLayer], Field(discriminator='kind')]
 
 
 class Timeline(Strict):

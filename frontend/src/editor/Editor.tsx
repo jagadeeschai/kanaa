@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Captions, Check, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -19,6 +19,7 @@ import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
+import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 
@@ -40,6 +41,7 @@ const CORNERS: { id: Corner; label: string }[] = [{ id: 'top-left', label: 'Top 
 const FIT_MARGIN = 48;
 const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
+const CAPTION_FETCHES = 3;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }];
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
@@ -113,6 +115,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
   const [faceJob, setFaceJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
   const [faceNote, setFaceNote] = useState('');
+  const [captionWords, setCaptionWords] = useState(DEFAULT_CAPTION_OPTIONS.words);
+  const [captionsWaiting, setCaptionsWaiting] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
   const [deleting, setDeleting] = useState<Photo | null>(null);
@@ -172,6 +176,34 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, TEXT_TYPE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [timeline]);
+  // Captions: one image per caption and lit word, drawn by the server like titles, fetched a few at a time.
+  const captionImages = useRef(new Map<string, string | 'loading'>());
+  const captionKey = (layer: CaptionLayer, caption: Caption, lit: number | null, format: Format) => JSON.stringify([captionText(caption), lit, layer.style, layer.position, layer.color, layer.highlight, layer.size, format.width, format.height]);
+  const captionUrl = useCallback((layer: CaptionLayer, caption: Caption, lit: number | null) => {
+    const found = timelineRef.current && captionImages.current.get(captionKey(layer, caption, lit, timelineRef.current.format));
+    return found && found !== 'loading' ? found : undefined;
+  }, []);
+  useEffect(() => {
+    if (!timeline) return;
+    let stopped = false;
+    const timer = setTimeout(() => {
+      const wanted = captionLayers(timeline).flatMap((layer) => layer.items.flatMap((caption) => captionStates(caption, Boolean(layer.highlight)).map(([, , lit]) => ({ layer, caption, lit }))))
+        .filter(({ layer, caption, lit }) => !captionImages.current.has(captionKey(layer, caption, lit, timeline.format)));
+      // Nearest the playhead first, so what is on screen shows up soonest.
+      wanted.sort((a, b) => Math.abs(a.caption.start - playhead.current) - Math.abs(b.caption.start - playhead.current));
+      const next = async () => {
+        const job = wanted.shift();
+        if (!job || stopped) return;
+        const key = captionKey(job.layer, job.caption, job.lit, timeline.format);
+        captionImages.current.set(key, 'loading');
+        const look = { style: job.layer.style, position: job.layer.position, color: job.layer.color, highlight: job.layer.highlight, size: job.layer.size };
+        try { captionImages.current.set(key, await fetchCaptionImage(job.caption, look, job.lit, timeline.format)); redrawText(); } catch { captionImages.current.delete(key); }
+        await next();
+      };
+      for (let lane = 0; lane < CAPTION_FETCHES; lane += 1) void next();
+    }, TEXT_TYPE_DELAY_MS);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [timeline, playhead]);
   const soundUrl = useCallback((sound: Sound) => {
     if (sound.asset_id) return songUrl(sound.asset_id);
     const item = sound.media_id === undefined ? undefined : mediaById.get(sound.media_id);
@@ -226,7 +258,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (!timeline) return;
     const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
-    if (!flat) { engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl); return; }
+    if (!flat) { engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl, captionUrl); return; }
     // The rendered copy plays as one clip, so nothing else has to keep up.
     const length = duration(timeline);
     const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');
@@ -352,6 +384,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
+  const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
   const blurLocal = selectedBlur ? Math.max(0, Math.min(now - selectedBlur.start, selectedBlur.length)) : 0;
   const updateSelectedBlur = (changes: Partial<BlurBox>, group?: string) => { if (timeline && selectedBlur) change(updateBlur(timeline, selectedBlur.id, changes), group); };
   const addBlurBox = (style: BlurBox['style'], at?: [number, number]) => {
@@ -437,7 +470,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     { label: 'In', value: sound.in, fps, onChange: (t) => change(trimSound(timeline, sound.id, 'in', t)) },
     { label: 'Out', value: sound.out, fps, onChange: (t) => change(trimSound(timeline, sound.id, 'out', t)) },
   ] : []);
-  const textTiming = (text: TextItem | BlurBox): TimeFieldProps[] => (timeline ? [
+  const textTiming = (text: TextItem | BlurBox | Caption): TimeFieldProps[] => (timeline ? [
     { label: 'Start', value: text.start, fps, onChange: (t) => change(moveItem(timeline, text.id, t)) },
     { label: 'Duration', value: text.length, fps, onChange: (t) => change(trimText(timeline, text.id, 'out', text.start + t)) },
     { label: 'End', value: text.start + text.length, fps, onChange: (t) => change(trimText(timeline, text.id, 'out', t)) },
@@ -497,9 +530,19 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (next !== timeline) change(next);
     setWordSelection(new Set());
   }, [timeline, tokens, change]);
+  /** Captions from the main track's speech. Clips not transcribed yet are transcribed first, then the captions follow. */
+  const makeCaptions = useCallback(() => {
+    if (!timeline) return;
+    if (missingWords.length) { setCaptionsWaiting(true); if (!wordJob) void transcribeClips(); return; }
+    setCaptionsWaiting(false);
+    const items = buildCaptions(mainClips, (id) => transcripts[`${id}:${language}`], newId, { ...DEFAULT_CAPTION_OPTIONS, words: captionWords });
+    if (!items.length) { setError('No speech was found in the main track to caption.'); return; }
+    change(setCaptions(timeline, items, newId()));
+  }, [timeline, missingWords.length, wordJob, mainClips, transcripts, language, captionWords, change]);
+  useEffect(() => { if (captionsWaiting && !wordJob && !missingWords.length) makeCaptions(); }, [captionsWaiting, wordJob, missingWords.length, makeCaptions]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
-    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : removeClip(timeline, selectedId));
+    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, change]);
   const addMedia = (item: Photo) => {
@@ -769,7 +812,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const overlays = overlayLayers(timeline);
     const stack = overlays.findIndex((entry) => entry.id === layer.id);
     if (stack >= 0) items.push({ label: 'Bring forward', disabled: stack === overlays.length - 1, onSelect: () => change(reorderLayer(timeline, layer.id, 'forward')) }, { label: 'Send back', disabled: stack === 0, onSelect: () => change(reorderLayer(timeline, layer.id, 'back')) });
-    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
+    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
     setMenu({ ...place, items });
   };
   const total = timeline ? duration(timeline) : 0;
@@ -821,12 +864,22 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
-        {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div>
-          <h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
-          <div className="ed-titles" role="group" aria-label="Hide something"><button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button><button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button></div>
-          {faceJob ? <><div className="ed-progress"><i style={{ width: `${faceJob.progress}%` }}/></div><p className="ed-tip">Finding faces… {faceJob.progress}%</p><button className="ed-button wide" onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
-            : <button className="ed-button wide" disabled={!total} onClick={() => { void blurFaces(); }} title="Finds every face in the clip at the playhead and blurs each one"><ScanFace size={14}/>Blur faces</button>}
-          {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</>}
+        {leftTab === 'text' && <>
+          <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Adds a title at the playhead.</p>
+            <div className="ed-add-grid">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div></section>
+          <section className="ed-add" aria-label="Captions"><h3 className="ed-sub">Captions</h3><p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
+            <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
+            {captionsWaiting && wordJob ? <><div className="ed-progress"><i style={{ width: `${wordJob.progress}%` }}/></div><p className="ed-tip">Listening to your video… {wordJob.progress}%. The captions follow.</p></>
+              : <button className="ed-button wide" disabled={!total} onClick={makeCaptions}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}</section>
+          <section className="ed-add" aria-label="Hide something"><h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
+            <div className="ed-add-grid">
+              <button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button>
+              <button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button>
+              {faceJob ? <div className="ed-add-span"><div className="ed-progress"><i style={{ width: `${faceJob.progress}%` }}/></div><p className="ed-tip">Finding faces… {faceJob.progress}%</p><button className="ed-button wide" onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></div>
+                : <button className="ed-button ed-add-span" disabled={!total} onClick={() => { void blurFaces(); }} title="Finds every face in the clip at the playhead and blurs each one"><ScanFace size={14}/>Blur faces</button>}
+            </div>
+            {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>
+        </>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}
       </aside>
@@ -854,6 +907,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       </main>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
       <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+        : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
+          onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
+          onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
         : selectedText ? <TextInspector text={selectedText} onBehind={() => { const next = putBehindPerson(timeline!, selectedText.id, [newId(), newId()]); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else change(next); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
@@ -867,7 +923,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     <div className="ed-lower"><div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
       <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
-      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
       <button className="ed-button ed-hide-small" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
       <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
@@ -1089,6 +1145,27 @@ function FollowPanel({ blur, drawing, job, busy, note, following, size, onSize, 
     <button className={`ed-button wide ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{following ? 'Follow something else' : 'Follow something'}</button>
     {following && <div className="ed-pair"><button className="ed-button" disabled={busy} onClick={onContinue}>Continue from here</button><button className="ed-button" disabled={busy} onClick={onStop}>Stop following</button></div>}
     {note && <p className="ed-tip" role="status">{note}</p>}
+  </>;
+}
+
+function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll }: { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void }) {
+  const [draft, setDraft] = useState(captionText(caption));
+  useEffect(() => setDraft(captionText(caption)), [caption.id]);
+  return <>
+    <Group title="This caption" startOpen>
+      <textarea className="ed-text" aria-label="Caption text" lang="ta" value={draft} maxLength={300} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onText(event.target.value); }}/>
+      <p className="ed-tip">Fix a word by typing. Keep the same number of words to keep each word's timing.</p>
+      <Timing fields={timing}/>
+    </Group>
+    <Group title="All captions" startOpen>
+      <Chips label="Caption style" options={[{ id: 'outline' as const, label: 'Outline' }, { id: 'shadow' as const, label: 'Shadow' }, { id: 'band' as const, label: 'Band' }]} value={layer.style} onPick={(style) => onLook({ style })}/>
+      <Chips label="Caption position" options={[{ id: 'top' as const, label: 'Top' }, { id: 'center' as const, label: 'Middle' }, { id: 'bottom' as const, label: 'Bottom' }]} value={layer.position} onPick={(position) => onLook({ position })}/>
+      <ValueSlider label="Size" value={layer.size} min={20} max={100} step={1} defaultValue={48} onChange={(size, group) => onLook({ size: Math.round(size) }, group)}/>
+      <label className="ed-color"><span>Colour</span><input type="color" aria-label="Caption colour" value={layer.color} onChange={(event) => onLook({ color: event.target.value }, `caption-colour-${layer.id}`)}/></label>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(layer.highlight)} onChange={(event) => onLook({ highlight: event.target.checked ? '#ffd400' : null })}/><span>Light up each word as it's spoken</span></label>
+      {layer.highlight && <label className="ed-color"><span>Lit word</span><input type="color" aria-label="Lit word colour" value={layer.highlight} onChange={(event) => onLook({ highlight: event.target.value }, `caption-lit-${layer.id}`)}/></label>}
+      <button className="ed-button wide" onClick={onRemoveAll}><Trash2 size={14}/>Remove all captions</button>
+    </Group>
   </>;
 }
 
