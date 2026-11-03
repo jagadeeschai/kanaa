@@ -27,8 +27,8 @@ export function DeleteMediaDialog({ item, onClose, onDeleted }: { item: Photo; o
     setBusy(true);
     try { await deleteMedia(item.id); onDeleted(); onClose(); } catch (problem) { setError((problem as Error).message); setBusy(false); }
   };
-  return <Dialog title="Delete from Motion?" onClose={onClose}>
-    <p className="dialog-description">“{item.filename}” will be permanently removed from Motion. This can't be undone. The original file you imported from stays where it is.</p>
+  return <Dialog title="Delete from Kanaa?" onClose={onClose}>
+    <p className="dialog-description">“{item.filename}” will be permanently removed from Kanaa. This can't be undone. The original file you imported from stays where it is.</p>
     {error && <p role="alert" className="studio-error">{error}</p>}
     <footer><button className="secondary" onClick={onClose}>Cancel</button><button className="danger" disabled={busy || Boolean(error)} onClick={() => { void remove(); }}>Delete</button></footer>
   </Dialog>;

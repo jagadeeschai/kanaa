@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 for program in python3 node npm ffmpeg ffprobe; do
-  command -v "$program" >/dev/null || { echo "Install $program before starting WideAngle Motion."; exit 1; }
+  command -v "$program" >/dev/null || { echo "Install $program before starting Kanaa."; exit 1; }
 done
 if [ ! -x backend/.venv/bin/python ]; then
   python3 -m venv backend/.venv
@@ -25,5 +25,5 @@ motion_backend_pid=$!
 motion_frontend_pid=$!
 cleanup() { kill "$motion_backend_pid" "$motion_frontend_pid" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
-printf '\nWideAngle Motion: http://localhost:5190\nPress Ctrl+C to stop.\n\n'
+printf '\nKanaa: http://localhost:5190\nPress Ctrl+C to stop.\n\n'
 wait "$motion_backend_pid" "$motion_frontend_pid"

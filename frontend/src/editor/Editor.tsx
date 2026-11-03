@@ -61,7 +61,7 @@ const isTyping = (target: EventTarget | null) => target instanceof HTMLElement &
 const buttonTakesSpace = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('button') !== null;
 /** Without this, Space after clicking a media tile would add the clip again instead of playing. */
 const releaseClickedButton = (event: React.MouseEvent) => { if (event.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur(); };
-const RESTART_MESSAGE = 'Motion was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
+const RESTART_MESSAGE = 'Kanaa was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
 export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
@@ -525,7 +525,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setMenu({ x: event.clientX, y: event.clientY, items: [
       { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }, { label: 'Move to folder…', onSelect: () => setFiling(item) },
       ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
-      'divider', { label: 'Delete from Motion…', danger: true, onSelect: () => setDeleting(item) },
+      'divider', { label: 'Delete from Kanaa…', danger: true, onSelect: () => setDeleting(item) },
     ] });
   };
   const openItemMenu = (id: string | null, t: number, x: number, y: number) => {
@@ -731,7 +731,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
     <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
     <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
     <h2>Voice and music</h2>
-    {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Motion folder, then restart Motion.</p>
+    {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Kanaa folder, then restart Kanaa.</p>
       : job ? <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Separating… {job.progress}%. This can take a few minutes, and you can keep editing.</p><button className="ed-button wide" onClick={onCancelStems}>Cancel</button></>
         : <div className="ed-stack">
           <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('music')}>Remove vocals</button>

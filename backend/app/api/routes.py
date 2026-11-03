@@ -29,7 +29,7 @@ from app.services.asset_service import request_assets
 
 @router.get('/health')
 def health():
-    return {'status': 'ok', 'app': 'WideAngle Motion', 'ffmpeg': bool(shutil.which('ffmpeg'))}
+    return {'status': 'ok', 'app': 'Kanaa', 'ffmpeg': bool(shutil.which('ffmpeg'))}
 
 
 @router.post('/media')

@@ -150,7 +150,7 @@ def start_stems(source: dict):
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from exc
     if not stems_available():
-        raise HTTPException(400, f'Voice separation is not installed. Run {INSTALL_COMMAND} in the Motion folder, then restart Motion.')
+        raise HTTPException(400, f'Voice separation is not installed. Run {INSTALL_COMMAND} in the Kanaa folder, then restart Kanaa.')
 
     def run(should_cancel):
         update_job(job_id, status='running', phase='Separating voice and music', progress=0)

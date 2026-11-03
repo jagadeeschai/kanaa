@@ -1,4 +1,4 @@
-// Runs Motion's backend from this project's folder and shows it in its own window.
+// Runs Kanaa's backend from this project's folder and shows it in its own window.
 const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -9,7 +9,7 @@ const PORT = process.env.MOTION_PORT ?? '8010';
 const ADDRESS = `http://127.0.0.1:${PORT}`;
 const START_SECONDS = 40;
 const STOP_MS = 4000;
-const LOADING = `data:text/html,<body style="background:%230e0c14;color:%23b9b4cc;font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0">Starting WideAngle Motion…</body>`;
+const LOADING = `data:text/html,<body style="background:%230e0c14;color:%23b9b4cc;font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0">Starting Kanaa…</body>`;
 const BUSY = new Set(['queued', 'running', 'cancelling']);
 
 let backend = null;
@@ -23,7 +23,7 @@ function startBackend() {
   const logs = app.getPath('logs');
   fs.mkdirSync(logs, { recursive: true });
   const log = fs.openSync(path.join(logs, 'backend.log'), 'a');
-  // Apps opened from the Dock don't get the terminal's PATH, and Motion needs ffmpeg.
+  // Apps opened from the Dock don't get the terminal's PATH, and Kanaa needs ffmpeg.
   const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}` };
   backend = spawn(path.join(ROOT, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', PORT, '--timeout-graceful-shutdown', '3'],
     { cwd: path.join(ROOT, 'backend'), env, stdio: ['ignore', log, log] });
@@ -41,7 +41,7 @@ async function waitForBackend() {
 }
 
 async function open() {
-  window = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'WideAngle Motion', backgroundColor: '#0e0c14' });
+  window = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'Kanaa', backgroundColor: '#0e0c14' });
   window.loadURL(LOADING);
   window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(ADDRESS)) event.preventDefault(); });
@@ -52,13 +52,13 @@ async function open() {
     // Only an older Motion from the terminal answers the API without the built page.
     const page = await reach(`${ADDRESS}/`);
     if (!page?.ok) {
-      dialog.showErrorBox('Motion is already running', 'Motion is running in a terminal. Press Ctrl+C there, then open this app again.');
+      dialog.showErrorBox('Kanaa is already running', 'An older copy of Kanaa is running. Quit it, or press Ctrl+C in its terminal, Press Ctrl+C there, then open this app again.');
       confirmedQuit = true; app.quit(); return;
     }
   } else {
     startBackend();
     if (!(await waitForBackend())) {
-      dialog.showErrorBox('Motion could not start', `Details are in ${path.join(app.getPath('logs'), 'backend.log')}`);
+      dialog.showErrorBox('Kanaa could not start', `Details are in ${path.join(app.getPath('logs'), 'backend.log')}`);
       confirmedQuit = true; app.quit(); return;
     }
   }
@@ -79,6 +79,8 @@ function confirmClose(event) {
   })();
 }
 
+// Keeps the theme and panel layout saved before the app was renamed.
+app.setPath('userData', path.join(app.getPath('appData'), 'WideAngle Motion'));
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
 app.on('before-quit', (event) => {

@@ -1,10 +1,10 @@
-# WideAngle Motion
+# Kanaa (கனா)
 
-A video editor and lyric video creator that runs on your own Mac.
+Kanaa means "dream" in Tamil. It's a video editor and lyric video creator that runs on your own Mac.
 
 ## Mac app
 
-Run `desktop/build.sh` once. It installs `WideAngle Motion.app` in Applications.
+Run `desktop/build.sh` once. It installs `Kanaa.app` in Applications.
 The app runs this folder's code and keeps projects in `backend/.data`, so keep the
 folder where it is. Run `desktop/build.sh` again after pulling new code.
 
@@ -22,7 +22,7 @@ local computer. First launch installs dependencies if needed. Ctrl+C stops them.
 ## Workflow
 
 1. Choose Video Editor or Lyric Video from Studio.
-2. Name a project and drop in your media. Import copies stay in Motion's own store.
+2. Name a project and drop in your media. Import copies stay in Kanaa's own store.
 3. Edit and preview. Each project autosaves independently, even with the same source.
 4. Export to MP4. Progress and cancellation are available in Exports.
 5. Open the result and download it. Projects can be renamed, duplicated, or deleted.
@@ -51,9 +51,6 @@ silently migrated from Photos. Import any source media you want to use here.
 Environment overrides: `WIDEANGLE_MOTION_DATA_DIR`, `WIDEANGLE_MOTION_MODEL_CACHE`,
 `WIDEANGLE_MOTION_LYRIC_MODEL` (default `small`).
 
-The Photos shortcut points to `http://localhost:5188/wideangle/`; it is a navigation
-link, not a runtime dependency. Motion works when Photos is stopped or removed.
-
 ## Development and checks
 
 ```sh
@@ -80,12 +77,12 @@ Paste lyrics and open **Create images from lyrics**:
 
 The provider uses [OpenAI's Images generation API](https://developers.openai.com/api/reference/resources/images/methods/generate).
 The default model is `gpt-image-2.5-flare`; model and compatible API URL are editable.
-`OPENAI_API_KEY` can be supplied to the server, or a key can be saved in Motion's
+`OPENAI_API_KEY` can be supplied to the server, or a key can be saved in Kanaa's
 local `.data/ai-settings.json` (owner-only permissions). Keys are never returned by
 settings reads or stored in project recipes. Environment keys take precedence.
 
 Generation sends included lyrics/prompts to the chosen provider and uses its API
-credits. This is the optional online part of Motion. Each scene is submitted once;
+credits. This is the optional online part of Kanaa. Each scene is submitted once;
 retrying failures does not regenerate successful images. Cancellation stops remaining
 scenes and closes an in-flight local request; a request already accepted by the
 provider may still be charged. Generated images remain in Media and in the saved

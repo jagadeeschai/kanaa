@@ -16,7 +16,7 @@ async def lifespan(app):
     recover_scene_jobs()
     yield
 
-app = FastAPI(title='WideAngle Motion', lifespan=lifespan)
+app = FastAPI(title='Kanaa', lifespan=lifespan)
 app.include_router(router, prefix='/api')
 
 app.include_router(ai_router, prefix="/api")

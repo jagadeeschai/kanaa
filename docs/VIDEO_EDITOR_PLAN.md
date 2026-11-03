@@ -436,7 +436,9 @@ For later. This is an important feature, and it comes after the editing work.
 **Known behaviour to decide:** changing a main clip's speed moves later clips, but sounds and text stay put, which can break lyric sync.
 
 ## Mac app
-`desktop/build.sh` builds `WideAngle Motion.app` and installs it in Applications. It's Electron 33 with `desktop/main.cjs` inside, chosen because Chromium is the engine every phase was tested on. FastAPI serves `frontend/dist`.
+The product is named Kanaa (கனா, "dream"). The folder, `WIDEANGLE_MOTION_*` settings and saved data keep the old name, so existing projects and setups keep working.
+
+`desktop/build.sh` builds `Kanaa.app` and installs it in Applications. It's Electron 33 with `desktop/main.cjs` inside, chosen because Chromium is the engine every phase was tested on. FastAPI serves `frontend/dist`.
 
 - The app runs this folder's code and data, so it only works on this Mac and the folder must stay put. Rerun `build.sh` after code changes.
 - It's signed ad hoc. Sharing it needs an Apple Developer ID, notarization, and bundled Python, ffmpeg and models.

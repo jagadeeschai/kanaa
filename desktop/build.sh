@@ -1,6 +1,6 @@
 #!/bin/bash
-# Builds WideAngle Motion.app for this Mac and installs it in Applications.
-# The app is Electron's own, with Motion's small launcher inside. Nothing here needs npm.
+# Builds Kanaa.app for this Mac and installs it in Applications.
+# The app is Electron's own, with Kanaa's small launcher inside. Nothing here needs npm.
 set -euo pipefail
 ELECTRON=33.4.11
 ARCHIVE="electron-v$ELECTRON-darwin-arm64.zip"
@@ -9,7 +9,7 @@ CACHE="$HOME/Library/Caches/wideangle-motion"
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 OUT="$ROOT/desktop/dist"
-APP="$OUT/WideAngle Motion.app"
+APP="$OUT/Kanaa.app"
 
 npm --prefix frontend run build
 
@@ -37,11 +37,11 @@ mv "$OUT/icon.icns" "$RESOURCES/electron.icns"
 rm -rf "$OUT/icon.iconset"
 
 PLIST="$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Set :CFBundleName WideAngle Motion' -c 'Set :CFBundleDisplayName WideAngle Motion' -c 'Set :CFBundleIdentifier com.wideangle.motion' -c "Set :CFBundleShortVersionString 1.0.0" -c 'Set :CFBundleVersion 1' "$PLIST"
+/usr/libexec/PlistBuddy -c 'Set :CFBundleName Kanaa' -c 'Set :CFBundleDisplayName Kanaa' -c 'Set :CFBundleIdentifier com.kanaa.app' -c "Set :CFBundleShortVersionString 1.0.0" -c 'Set :CFBundleVersion 1' "$PLIST"
 codesign --force --deep --sign - "$APP"
 
 if [ "${1:-}" != "--no-install" ]; then
-  rm -rf "/Applications/WideAngle Motion.app"
-  ditto "$APP" "/Applications/WideAngle Motion.app"
+  rm -rf "/Applications/Kanaa.app" "/Applications/WideAngle Motion.app"
+  ditto "$APP" "/Applications/Kanaa.app"
   echo "Installed in Applications."
 fi

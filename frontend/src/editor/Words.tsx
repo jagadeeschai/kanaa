@@ -43,7 +43,7 @@ export function WordsPanel({ tokens, clips, language, onLanguage, missing, busy,
     <label className="ed-words-language"><span>Spoken language</span><select value={language} disabled={Boolean(busy)} onChange={(event) => onLanguage(event.target.value)}>{LANGUAGES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     {busy ? <><p className="ed-tip">{busy}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>
       : missing > 0 ? <button className="ed-primary wide" onClick={onTranscribe}>Transcribe {missing} clip{missing === 1 ? '' : 's'}</button> : null}
-    {!tokens.length && !busy && <p className="ed-tip">{missing ? 'Motion listens to your video on this Mac and writes out the words. Nothing is uploaded.' : clips.length ? 'No speech found in your clips.' : 'Add a video to the timeline first.'}</p>}
+    {!tokens.length && !busy && <p className="ed-tip">{missing ? 'Kanaa listens to your video on this Mac and writes out the words. Nothing is uploaded.' : clips.length ? 'No speech found in your clips.' : 'Add a video to the timeline first.'}</p>}
     {tokens.length > 0 && <>
       <div className="ed-words-bar">{selection.size > 0
         ? <button className="ed-primary" disabled={locked} onClick={() => onCut(selection)}><Scissors size={14}/>Cut {selection.size === 1 ? 'selection' : `${selection.size} items`}</button>

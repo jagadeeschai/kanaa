@@ -1,6 +1,6 @@
 {
-  "name": "wideangle-motion-desktop",
-  "productName": "WideAngle Motion",
+  "name": "kanaa-desktop",
+  "productName": "Kanaa",
   "version": "1.0.0",
   "private": true,
   "main": "main.cjs"

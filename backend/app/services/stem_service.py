@@ -54,7 +54,7 @@ def run_demucs(source: Path, output: Path, device: str, on_progress: Callable[[i
 def separate(source: Path, on_progress: Callable[[int], None], should_cancel: Callable[[], bool]) -> dict[str, str]:
     """Returns audio asset ids for each stem. Results are kept, so a song is only separated once."""
     if not stems_available():
-        raise ValueError(f'Voice separation is not installed. Run {INSTALL_COMMAND} in the Motion folder, then restart Motion.')
+        raise ValueError(f'Voice separation is not installed. Run {INSTALL_COMMAND} in the Kanaa folder, then restart Kanaa.')
     key = content_key(source)
     ids = {stem: stem_id(key, stem) for stem in STEM_FILES}
     directory = settings.data_dir / 'video_audio'
