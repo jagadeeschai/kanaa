@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, render_queue_service, stem_service
+from app.services import asset_service, render_queue_service, stem_service, transcript_service
 from app.services.animation import LOOKS, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -777,7 +777,32 @@ class Assets(Clips):
         self.assertTrue(asset_service.folder_for('new').exists())
 
 
+class Transcripts(unittest.TestCase):
+    def test_words_are_trimmed_and_always_move_forward(self):
+        words = [{'word': ' Hello', 'start': 0.0, 'end': 0.4}, {'word': ' ', 'start': 0.4, 'end': 0.5}, {'word': 'there', 'start': 0.3, 'end': 0.8}, {'word': 'lost', 'start': 0.9, 'end': 0.9}]
+        self.assertEqual(transcript_service.clean_words(words), [{'w': 'Hello', 's': 0.0, 'e': 0.4}, {'w': 'there', 's': 0.4, 'e': 0.8}])
+
+
 class Api(Clips):
+    def add_video(self):
+        with open(self.root / 'red.mp4', 'rb') as file:
+            return self.client.post('/api/media', files={'file': ('talk.mp4', file.read())}).json()
+
+    def test_transcript_is_saved_and_kept_per_language(self):
+        media = self.add_video()
+        self.assertIsNone(self.client.get(f"/api/photos/{media['id']}/words?language=ta").json()['words'])
+        target = transcript_service.transcript_file(Path(media['absolute_path']), 'ta')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps([{'w': 'வணக்கம்', 's': 0, 'e': 0.5}]), encoding='utf-8')
+        self.assertEqual(self.client.get(f"/api/photos/{media['id']}/words?language=ta").json()['words'][0]['w'], 'வணக்கம்')
+        self.assertIsNone(self.client.get(f"/api/photos/{media['id']}/words?language=en").json()['words'])
+
+    def test_transcripts_refuse_photos_and_unknown_languages(self):
+        media = self.add_media()
+        self.assertEqual(self.client.get(f"/api/photos/{media['id']}/words").status_code, 400)
+        video = self.add_video()
+        self.assertEqual(self.client.post(f"/api/photos/{video['id']}/words?language=xx").status_code, 400)
+
     def add_media(self, name='clip.png'):
         picture = io.BytesIO()
         Image.new('RGB', (64, 64), (10, 20, 30)).save(picture, 'PNG')

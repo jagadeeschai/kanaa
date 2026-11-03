@@ -399,11 +399,28 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 ## What could make Motion unique as a video editor
 Not started. Rivals' weaknesses here are guesses, not tested. Ranked for ordinary video editing.
 
-1. **Edit by words.** Local transcript of a talking video, in Tamil or English. Delete a sentence and its video goes too. Each change is a normal timeline edit, so Undo works.
+1. **Edit by words.** Built, see below.
 2. **First cut from a folder.** Drop in a day's clips and get a rough edit to refine, using local speech, sound and beat analysis, with no upload.
 3. **One edit, every format.** Keep one project and give each format (9:16, 16:9, 1:1) its own framing and titles, exported together.
 4. **What you see is what you export.** Keep the golden-frame test as a promise: preview and export match, with no watermark, account or upload.
 5. **Saved versions.** Name a point in a project, try another cut, and compare or return to it.
+
+**Next editing features:** chroma key on overlay clips, with a colour picker on the preview and strength and edge softness. The preview shader and export must use the same formula, and it needs golden samples before it's called done.
+
+### Edit by words (done)
+`transcript_service.py` runs Whisper on this Mac and stores words with the clip's prepared files, per language. The Words tab in the editor shows the main track as text. Cuts go through `timeline/words.ts`, so each is a normal timeline change and one Undo.
+
+| Check | Result |
+|---|---|
+| English, 32 words, synthetic voice | 32 exact, 1.8 seconds for 11 seconds |
+| Tamil, 26 words, synthetic voice | 21 exact, 96% of letters, 3.7 seconds for 12 seconds |
+| Export after cutting a word, a phrase and a Tamil word | Exactly the expected length, phrase and Tamil word gone |
+
+For speech, Whisper runs one pass at temperature 0 with beam 1. On Tamil that was 14 times faster than the default fallback, with the same word count.
+
+**Known limit:** Whisper's word edges can be off in fast, joined speech. Cutting "beautiful" left a fragment heard as "Abful", because Whisper gave the word 0.22 seconds. Snapping to quiet points and sharing time by word length were tried. Neither clearly helped, and word length was worse on Tamil, so neither shipped. Scoring cuts by comparing transcripts wasn't sensitive enough, so a better measure is needed before trying again.
+
+**Not yet proven:** real human speech, especially Tamil, and long videos. Titles, overlays and separate sounds don't move when words are cut.
 
 ## Lyric video backlog
 For later. This is an important feature, and it comes after the editing work.

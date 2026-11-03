@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Check, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
@@ -10,6 +10,8 @@ import { cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SEC
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
+import { buildTokens, cutTokens, type Word } from '../timeline/words';
+import { WordsPanel } from './Words';
 import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
@@ -78,7 +80,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
-  const [leftTab, setLeftTab] = useState<'media' | 'text' | 'audio'>('media');
+  const [leftTab, setLeftTab] = useState<'media' | 'text' | 'audio' | 'words'>('media');
+  const [language, setLanguage] = useState(() => { try { return localStorage.getItem('wa.wordsLanguage') ?? 'auto'; } catch { return 'auto'; } });
+  const [transcripts, setTranscripts] = useState<Record<string, Word[]>>({});
+  const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
+  const [wordSelection, setWordSelection] = useState<Set<string>>(new Set());
   const [showingHelp, setShowingHelp] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
@@ -385,6 +391,46 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const next = findSound(timeline, selectedId) ? splitSound(timeline, selectedId!, playhead.current, newId()) : splitClip(timeline, playhead.current, newId());
     if (next !== timeline) change(next);
   }, [timeline, selectedId, playhead, change]);
+  const mainClips = useMemo(() => (timeline ? mainLayer(timeline).items : []), [timeline]);
+  const spokenIds = useMemo(() => [...new Set(mainClips.map((clip) => clip.media_id))].filter((id) => mediaById.get(id)?.media_type === 'video'), [mainClips, mediaById]);
+  const missingWords = spokenIds.filter((id) => !transcripts[`${id}:${language}`]);
+  const tokens = useMemo(() => buildTokens(mainClips, (id) => transcripts[`${id}:${language}`]), [mainClips, transcripts, language]);
+  useEffect(() => {
+    let stopped = false;
+    for (const id of spokenIds) {
+      if (transcripts[`${id}:${language}`]) continue;
+      void getWords(id, language).then(({ words }) => { if (words && !stopped) setTranscripts((current) => ({ ...current, [`${id}:${language}`]: words })); }).catch(() => {});
+    }
+    return () => { stopped = true; };
+  }, [spokenIds.join(','), language]);
+  useEffect(() => {
+    if (!wordJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(wordJob.id);
+        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'This clip could not be transcribed.'); setWordJob(null); return; }
+        if (status.status !== 'done') { setWordJob({ ...wordJob, progress: status.progress }); return; }
+        const { words } = await getWords(wordJob.mediaId, language);
+        setTranscripts((current) => ({ ...current, [`${wordJob.mediaId}:${language}`]: words ?? [] }));
+        const [next, ...rest] = wordJob.left;
+        if (next === undefined) { setWordJob(null); return; }
+        const { job_id } = await startWords(next, language);
+        setWordJob({ mediaId: next, id: job_id, progress: 0, left: rest });
+      } catch (problem) { setError((problem as Error).message); setWordJob(null); }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [wordJob, language]);
+  const transcribeClips = async () => {
+    const [first, ...rest] = missingWords;
+    if (first === undefined) return;
+    try { const { job_id } = await startWords(first, language); setWordJob({ mediaId: first, id: job_id, progress: 0, left: rest }); } catch (problem) { setError((problem as Error).message); }
+  };
+  const cutWords = useCallback((keys: Set<string>) => {
+    if (!timeline || mainLayer(timeline).locked) return;
+    const next = cutTokens(timeline, tokens, keys, newId);
+    if (next !== timeline) change(next);
+    setWordSelection(new Set());
+  }, [timeline, tokens, change]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : removeClip(timeline, selectedId));
@@ -436,13 +482,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         case 's': split(); break;
         case 'i': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'in', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
         case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'out', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
-        case 'Delete': case 'Backspace': event.preventDefault(); removeSelected(); break;
+        case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
+        case 'Escape': setWordSelection(new Set()); break;
         default: break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, showingHelp, menu, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [timeline, exporting, choosingFormat, showingHelp, menu, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -541,7 +588,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
-        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'text', 'audio'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{tab === 'media' ? 'Media' : tab === 'text' ? 'Text' : 'Audio'}</button>)}</div>
+        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
           <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
         {leftTab === 'media' && <>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -551,6 +598,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}
+        {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
+          busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection}
+          onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
         {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div></>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}

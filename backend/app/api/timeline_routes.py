@@ -14,6 +14,7 @@ from app.services.job_service import update_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
+from app.services.transcript_service import LANGUAGES, PHASE, saved_words, transcribe
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline, upgrade_edit_recipe
@@ -87,6 +88,36 @@ def song_peaks(asset_id: str):
         folder.mkdir(parents=True, exist_ok=True)
         make_peaks(MediaFacts(path=path, media_type='audio', has_audio=True), target)
     return json.loads(target.read_text())
+
+
+def transcript_source(identifier: int, language: str) -> Path:
+    if language not in LANGUAGES:
+        raise HTTPException(400, 'Choose a language from the list.')
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos have speech to transcribe.')
+    return Path(row['absolute_path'])
+
+
+@router.get('/photos/{identifier}/words')
+def get_words(identifier: int, language: str = 'auto'):
+    return {'words': saved_words(transcript_source(identifier, language), language)}
+
+
+@router.post('/photos/{identifier}/words')
+def start_words(identifier: int, language: str = 'auto'):
+    source = transcript_source(identifier, language)
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase=PHASE, progress=1)
+        words = transcribe(source, language, lambda progress: update_job(job_id, progress=min(99, progress), phase=PHASE), should_cancel)
+        return {'progress': 100, 'phase': 'Transcribed', 'word_count': len(words)}
+
+    job_id = enqueue_render('transcript', 'Transcribe speech', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
 
 
 @router.post('/text-image')

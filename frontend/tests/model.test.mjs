@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
+import { buildTokens, cutSource, cutTokens } from '../src/timeline/words.ts';
 import { formatTime, parseTime, parseValue } from '../src/timeline/values.ts';
 import { setSpeed, removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
@@ -354,4 +355,66 @@ test('speed keeps motion on the same footage and stops at a neighbour', () => {
   const next = addSound(addSound(withClip(), song('a', 0, 4), 'l1'), song('b', 4), 'l1');
   assert.equal(findSound(setSpeed(next, 'a', 0.25), 'a').sound.speed, 1);
   assert.equal(findSound(setSpeed(next, 'a', 2), 'a').sound.speed, 2);
+});
+
+const talking = () => insertClip(emptyTimeline({ width: 1080, height: 1920, fps: 30 }), { ...newClip({ ...facts, duration: 12 }, 'c') });
+const speech = [{ w: 'one', s: 1, e: 1.5 }, { w: 'two', s: 1.6, e: 2 }, { w: 'three', s: 4, e: 4.5 }, { w: 'four', s: 4.6, e: 5 }];
+const tokensOf = (timeline) => buildTokens(mainLayer(timeline).items, () => speech);
+const pick = (tokens, ...texts) => new Set(tokens.filter((token) => texts.includes(token.text)).map((token) => token.key));
+let ids = 0; const id = () => `new${(ids += 1)}`;
+
+test('tokens hold words in order, with long pauses between them', () => {
+  const tokens = tokensOf(talking());
+  assert.deepEqual(tokens.map((token) => token.text ?? 'pause'), ['pause', 'one', 'two', 'pause', 'three', 'four', 'pause']);
+  assert.equal(tokens[3].from, 2);
+  assert.equal(tokens[3].to, 4);
+});
+
+test('cutting a word from the middle closes the gap and keeps the rest of the speech', () => {
+  const start = talking();
+  const cut = cutTokens(start, tokensOf(start), pick(tokensOf(start), 'two'), id);
+  assert.deepEqual(tokensOf(cut).filter((token) => token.text).map((token) => token.text), ['one', 'three', 'four']);
+  const clips = mainLayer(cut).items;
+  assert.equal(clips.length, 2);
+  assert.ok(Math.abs(clips[0].out - 1.56) < 1e-6);
+  assert.ok(Math.abs(clips[1].in - 2.04) < 1e-6);
+  assert.equal(clips[1].start, clips[0].out);
+});
+
+test('neighbouring words make one cut, and a cut never eats the next word', () => {
+  const start = talking();
+  const cut = cutTokens(start, tokensOf(start), pick(tokensOf(start), 'three', 'four'), id);
+  assert.equal(mainLayer(cut).items.length, 2);
+  const one = cutTokens(start, tokensOf(start), pick(tokensOf(start), 'one'), id);
+  assert.ok(tokensOf(one).some((token) => token.text === 'two' && token.from === 1.6));
+});
+
+test('cutting several separate words happens in one change, from the end backward', () => {
+  const start = talking();
+  const cut = cutTokens(start, tokensOf(start), pick(tokensOf(start), 'one', 'four'), id);
+  assert.deepEqual(tokensOf(cut).filter((token) => token.text).map((token) => token.text), ['two', 'three']);
+  assert.equal(mainLayer(cut).items.length, 3);
+});
+
+test('a pause shortens and keeps a small breath', () => {
+  const start = talking();
+  const tokens = tokensOf(start);
+  const cut = cutTokens(start, tokens, new Set([tokens[3].key]), id);
+  const clips = mainLayer(cut).items;
+  assert.ok(Math.abs(clips[0].out - 2.15) < 1e-6);
+  assert.ok(Math.abs(clips[1].in - 3.85) < 1e-6);
+});
+
+test('a cut at either end trims, and cutting everything removes the clip', () => {
+  const start = talking();
+  assert.equal(mainLayer(cutSource(start, 'c', 0, 3, 'n')).items[0].in, 3);
+  assert.equal(mainLayer(cutSource(start, 'c', 9, 12, 'n')).items[0].out, 9);
+  assert.equal(mainLayer(cutSource(start, 'c', 0, 12, 'n')).items.length, 0);
+});
+
+test('word times follow speed and trimmed clips', () => {
+  const clip = { ...newClip({ ...facts, duration: 12 }, 'c'), speed: 2, in: 1, start: 3 };
+  const tokens = buildTokens([clip], () => speech);
+  assert.equal(tokens.filter((token) => token.text)[0].from, 1);
+  assert.equal(tokens.some((token) => token.text === 'gone'), false);
 });
