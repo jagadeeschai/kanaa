@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Check, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, requestReversed, reversedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
@@ -44,6 +44,12 @@ const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade',
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
+/** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
+const preparedWant = (clip: Clip): [boolean, boolean] | null => {
+  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null;
+  return steady || backwards ? [steady, backwards] : null;
+};
+const preparedKey = (id: number, steady: boolean, backwards: boolean) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}`;
 const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
 const TITLES: { label: string; text: Omit<TextItem, 'id' | 'start' | 'length'> }[] = [
   { label: 'Big title', text: { text: 'Your title', style: 'outline', position: 'center', color: '#ffffff', size: 72, enter: { preset: 'pop', duration: 0.5 }, exit: { preset: 'fade', duration: 0.4 } } },
@@ -83,7 +89,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState<'saved' | 'saving' | 'failed'>('saved');
   const [ready, setReady] = useState<Record<number, boolean>>({});
-  const [reversedReady, setReversedReady] = useState<Record<number, boolean>>({});
+  const [preparedReady, setPreparedReady] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -140,10 +146,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!item) return undefined;
     const size = { width: item.width || 1920, height: item.height || 1080 };
     if (item.media_type !== 'video') return { url: photoImageUrl(id), kind: 'image', ...size };
-    // Until its reversed copy is ready, a reversed clip previews forwards.
-    if (clip?.reverse && clip.freeze == null && reversedReady[id]) return { url: reversedProxyUrl(id), kind: 'video', ...size, duration: item.duration, reversed: true };
+    // Until its prepared copy is ready, a steadied or reversed clip previews the original.
+    const want = clip && preparedWant(clip);
+    if (want && preparedReady[preparedKey(id, ...want)]) return { url: preparedProxyUrl(id, ...want), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
     return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size, duration: item.duration };
-  }, [mediaById, ready, reversedReady]);
+  }, [mediaById, ready, preparedReady]);
 
   const textImages = useRef(new Map<string, string | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
@@ -239,21 +246,25 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     return () => clearTimeout(timer);
   }, [renderJob, projectId]);
 
-  const reversedMedia = useMemo(() => [...new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.filter((clip) => clip.reverse && clip.freeze == null).map((clip) => clip.media_id) : [])) : [])].join(','), [timeline]);
+  const preparedNeeded = useMemo(() => [...new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.flatMap((clip) => {
+    const want = mediaById.get(clip.media_id)?.media_type === 'video' && preparedWant(clip);
+    return want ? [preparedKey(clip.media_id, ...want)] : [];
+  }) : [])) : [])].join(','), [timeline, mediaById]);
   useEffect(() => {
-    const ids = reversedMedia ? reversedMedia.split(',').map(Number).filter((id) => !reversedReady[id]) : [];
-    if (!ids.length) return;
+    const keys = preparedNeeded ? preparedNeeded.split(',').filter((key) => !preparedReady[key]) : [];
+    if (!keys.length) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
-      for (const id of ids) {
-        try { if ((await requestReversed(id)).status === 'ready' && !stopped) setReversedReady((current) => ({ ...current, [id]: true })); } catch { /* Tried again below. */ }
+      for (const key of keys) {
+        const [id, steady, backwards] = key.split(':');
+        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1')).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch { /* Tried again below. */ }
       }
       if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
     };
     void check();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [reversedMedia, reversedReady]);
+  }, [preparedNeeded, preparedReady]);
 
   const usedMedia = useMemo(() => [...new Set(timeline ? [...timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
 
@@ -848,7 +859,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} reverseReady={Boolean(reversedReady[selected.media_id])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Shortcuts and layout</button></div>}</aside>
     </div>
@@ -970,7 +981,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, reverseReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; reverseReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -993,6 +1004,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       <h3 className="ed-sub">Blend</h3>
       <Chips label="Blend" options={BLENDS} value={overlay.blend ?? 'normal'} onPick={(blend) => onLayer({ blend })}/>
     </>}
+    {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
     <div className="ed-pair">
       <button className="ed-icon" aria-label="Rotate left" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 270) % 360) as Adjust['rotation'] })}><RotateCcw size={16}/></button>
       <button className="ed-icon" aria-label="Rotate right" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 90) % 360) as Adjust['rotation'] })}><RotateCw size={16}/></button>
@@ -1036,7 +1048,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     </Group>
     {clip.freeze != null && <Group title="Frozen frame" startOpen><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
     {source?.kind === 'video' && clip.freeze == null && <Group title="Speed and sound" changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0 || Boolean(clip.reverse)}>
-      {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !reverseReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
+      {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
       <ValueSlider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
       <h3 className="ed-sub">Sound</h3>
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>

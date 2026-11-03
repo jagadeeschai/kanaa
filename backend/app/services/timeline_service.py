@@ -36,6 +36,8 @@ MAX_SUPERSAMPLE = 4
 MIN_WORK_SCALE = 0.1
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
+# A source's prepared copy: (media id, steadied, reversed) to the copy's facts.
+Prepared = Callable[[int, bool, bool], MediaFacts]
 BLUR_REACH = 0.04  # A blur box's strength at 1, as a share of the frame height. Matches timeline/blur.ts.
 BLUR_FEATHER = 0.12
 BLOCK_REACH = 0.06
@@ -233,8 +235,8 @@ def render_text_image(item: Text, fmt: Format, target: Path) -> None:
 
 
 class Builder:
-    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, backwards: Callable[[int], MediaFacts] | None = None):
-        self.timeline, self.media, self.audio_asset, self.folder, self.backwards = timeline, media, audio_asset, folder, backwards
+    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None):
+        self.timeline, self.media, self.audio_asset, self.folder, self.prepared = timeline, media, audio_asset, folder, prepared
         self.fmt = timeline.format
         self.args: list[str] = []
         self.graph: list[str] = []
@@ -368,12 +370,15 @@ class Builder:
             facts = sound_facts = self.media(clip.media_id)
             source_in = clip.in_
             frozen = clip.freeze is not None and facts.media_type == 'video'
-            if clip.reverse and facts.media_type == 'video' and not frozen:
-                if self.backwards is None:
-                    raise ValueError('A reversed clip needs its reversed copy.')
-                # The reversed copy runs from the source's end, so in..out maps to the mirrored stretch.
-                source_in = max(0.0, (facts.duration or clip.out) - clip.out)
-                facts = self.backwards(clip.media_id)
+            steady = clip.stabilise and facts.media_type == 'video'
+            backwards = clip.reverse and facts.media_type == 'video' and not frozen
+            if steady or backwards:
+                if self.prepared is None:
+                    raise ValueError('A steadied or reversed clip needs its prepared copy.')
+                if backwards:
+                    # The reversed copy runs from the source's end, so in..out maps to the mirrored stretch.
+                    source_in = max(0.0, (facts.duration or clip.out) - clip.out)
+                facts = self.prepared(clip.media_id, steady, backwards)
             head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
             if not head:
                 if joined_label:
@@ -529,10 +534,10 @@ class Builder:
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
-def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, backwards: Callable[[int], MediaFacts] | None = None) -> Compiled:
+def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None) -> Compiled:
     if timeline.duration <= 0:
         raise ValueError('Add a clip to the timeline first.')
-    return Builder(timeline, media, audio_asset, folder, backwards).build()
+    return Builder(timeline, media, audio_asset, folder, prepared).build()
 
 
 def video_inputs(compiled: Compiled) -> int:
@@ -571,7 +576,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, backwards: Callable[[int], MediaFacts] | None = None) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -579,7 +584,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
-        compiled = compile_timeline(timeline, media, audio_asset, folder, backwards)
+        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared)
         (folder / 'graph.txt').write_text(compiled.graph, encoding='utf-8')
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.

@@ -67,8 +67,9 @@ export const setMediaFolder = (id: number, folder: string | null) => requestJson
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });
-export const requestReversed = (id: number) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/reversed`, { method: 'POST' });
-export const reversedProxyUrl = (id: number) => `/api/photos/${id}/reversed-proxy`;
+/** A steadied and/or reversed copy of a video, made once on the server. */
+export const requestPrepared = (id: number, steady: boolean, backwards: boolean) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}`, { method: 'POST' });
+export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}`;
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;

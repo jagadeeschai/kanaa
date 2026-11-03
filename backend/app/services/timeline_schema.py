@@ -105,6 +105,7 @@ class Clip(Strict):
     chroma: Optional[Chroma] = None
     freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
     reverse: bool = False  # Plays in..out backwards, without sound.
+    stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
 
     @model_validator(mode='after')
     def valid_range(self):

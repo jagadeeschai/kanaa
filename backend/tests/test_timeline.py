@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, face_service, reverse_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -1173,8 +1173,11 @@ class QuickEffects(Clips):
     def stack(self, *clips):
         return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': f'c{number}', 'media_id': 60, **clip} for number, clip in enumerate(clips)]}]}
 
-    def backwards(self, media_id):
-        return reverse_service.ensure_reversed(self.facts[media_id])
+    def prepared(self, media_id, steady, backwards):
+        facts = self.facts[media_id]
+        if steady:
+            facts = stabilise_service.ensure_stable(facts)
+        return reverse_service.ensure_reversed(facts) if backwards else facts
 
     def test_freeze_holds_one_frame_and_is_silent(self):
         path = self.render(self.stack({'start': 0, 'in': 0, 'out': 1}, {'start': 1, 'in': 0, 'out': 1, 'freeze': 1.5, 'muted': False}), 'freeze.mp4')
@@ -1183,7 +1186,7 @@ class QuickEffects(Clips):
         self.assertGreater(self.tone(path, 0.2, 0.6)[1], 0.05)
 
     def test_reverse_plays_in_to_out_backwards(self):
-        path = self.render(self.stack({'start': 0, 'in': 1, 'out': 3, 'reverse': True}), 'reverse.mp4', backwards=self.backwards)
+        path = self.render(self.stack({'start': 0, 'in': 1, 'out': 3, 'reverse': True}), 'reverse.mp4', prepared=self.prepared)
         shown = [self.source_frame(path, number) for number in (0, 30, 59)]
         for got, want in zip(shown, (89, 59, 30)):
             self.assertAlmostEqual(got, want, delta=1)
@@ -1213,4 +1216,58 @@ class QuickEffects(Clips):
         self.assertGreater(detail(10), 60)
         self.assertLess(detail(60), 25)
         self.assertGreater(detail(110), 60)
+
+
+class Steady(Clips):
+    """A slow pan across a detailed picture, with random hand shake on every frame."""
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        rng = np.random.default_rng(7)
+        scene = (rng.random((60, 110, 3)) * 255).astype(np.uint8).repeat(8, 0).repeat(8, 1)
+        cls.shake = rng.normal(0, 6, (90, 2))
+        frames = [scene[int(40 + dy):int(40 + dy) + 360, int(60 + number * 1 + dx):int(60 + number * 1 + dx) + 640] for number, (dx, dy) in enumerate(cls.shake)]
+        shaky = cls.root / 'shaky.mp4'
+        process = subprocess.Popen([FFMPEG, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '640x360', '-r', '30', '-i', '-', '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', str(shaky)], stdin=subprocess.PIPE)
+        process.communicate(b''.join(np.ascontiguousarray(frame).tobytes() for frame in frames))
+        cls.facts[70] = probe_video(shaky)
+
+    def setUp(self):
+        super().setUp()
+        self.data = patch.object(settings, 'data_dir', self.out / 'data')
+        self.data.start()
+
+    def tearDown(self):
+        self.data.stop()
+        super().tearDown()
+
+    def jitter(self, path):
+        """How far each frame jumps from the last, beyond the smooth pan, in pixels."""
+        import cv2
+        raw = subprocess.run([FFMPEG, '-v', 'error', '-i', str(path), '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], capture_output=True, check=True).stdout
+        frames = np.frombuffer(raw, np.uint8).reshape(-1, 360, 640).astype(np.float32)
+        steps = np.array([cv2.phaseCorrelate(a[60:300, 100:540], b[60:300, 100:540])[0] for a, b in zip(frames, frames[1:])])
+        return float(np.abs(steps - np.median(steps, axis=0)).mean()), len(frames)
+
+    def test_steadying_removes_most_of_the_shake_and_keeps_every_frame(self):
+        steady = stabilise_service.ensure_stable(self.facts[70])
+        before, count = self.jitter(self.facts[70].path)
+        after, steady_count = self.jitter(steady.path)
+        self.assertGreater(before, 4)
+        self.assertLess(after, before * 0.4)
+        self.assertEqual(steady_count, count)
+        self.assertTrue(stabilise_service.is_ready(self.facts[70].path))
+
+    def test_export_uses_the_steady_copy_and_can_reverse_it(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 70, 'start': 0, 'in': 0, 'out': 3, 'stabilise': True}]}]}
+        prepared = lambda media_id, steady, backwards: QuickEffects.prepared(self, media_id, steady, backwards)
+        path = self.render(data, 'steady.mp4', prepared=prepared)
+        self.assertLess(self.jitter(path)[0], self.jitter(self.facts[70].path)[0] * 0.4)
+        data['layers'][0]['items'][0]['reverse'] = True
+        self.render(data, 'steady-back.mp4', prepared=prepared)
+        self.assertTrue(reverse_service.is_ready(stabilise_service.stable_files(self.facts[70].path)[0]))
+        with self.assertRaises(ValueError):
+            self.render(data, 'unprepared.mp4')
 

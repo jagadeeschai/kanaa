@@ -82,7 +82,7 @@ def make_motion():
                     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', str(path)], check=True)
     media = upload(path)
     for _ in range(180):
-        if call(f'/api/photos/{media}/assets').get('status') == 'ready' and call(f'/api/photos/{media}/reversed', {}).get('status') == 'ready':
+        if call(f'/api/photos/{media}/assets').get('status') == 'ready' and call(f'/api/photos/{media}/prepared?backwards=true', {}).get('status') == 'ready' and call(f'/api/photos/{media}/prepared?steady=true', {}).get('status') == 'ready':
             return media
         time.sleep(1)
     sys.exit('The moving clip never became ready.')
@@ -159,6 +159,9 @@ def build(first, second, logo, screen_image, screen_video, detail, motion):
     clips.append({'id': 'backwards', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 3.5, 'reverse': True})
     samples += [{'name': f'reverse {at}', 't': t + at} for at in (0.2, 1.5, 2.8)]
     t += 3
+    clips.append({'id': 'steadied', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 2.5, 'stabilise': True})
+    samples += [{'name': f'steady {at}', 't': t + at} for at in (0.3, 1.7)]
+    t += 2
     # Blur boxes over a detailed picture: both styles, both shapes, a moving one and a big strong one.
     hides = []
     for name, extra in (('blur oval', {}), ('pixelate box', {'style': 'pixelate', 'shape': 'box'}), ('pixelate strong', {'style': 'pixelate', 'amount': 1, 'width': 0.6}),

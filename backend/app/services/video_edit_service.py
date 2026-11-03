@@ -336,8 +336,8 @@ def render_video_copy(source: Path, target: Path, edit: VideoEditRequest, durati
                     process.stdout.close()
 
 
-def run_cancellable(args: list[str], should_cancel: Callable[[], bool]) -> subprocess.CompletedProcess:
-    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+def run_cancellable(args: list[str], should_cancel: Callable[[], bool], cwd: Path | None = None) -> subprocess.CompletedProcess:
+    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, cwd=cwd)
     stop_process_when(process, should_cancel)
     _, stderr = process.communicate()
     if should_cancel():

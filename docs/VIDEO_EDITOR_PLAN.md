@@ -417,6 +417,9 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Steady shaky video (done)
+A checkbox in Framing for any video clip. `stabilise_service.py` runs ffmpeg's vid.stab in two passes (detect with shakiness 6, then transform with 20 frames of smoothing and an automatic zoom so moving edges stay hidden) and keeps a steady copy plus its proxy with the clip's prepared files. The motion file uses vid.stab's text format: this build can't read back its own binary one ("Cannot parse localmotion"). Export always uses the steady copy (`prepared_copy` in `timeline_routes.py`); the preview shows the original until the copy is ready. Steady and backwards together reverse the steady copy. A synthetic hand-held pan went from 6.75 px of frame-to-frame shake to 0.12 px with every frame kept; golden samples 2.1 to 3.1/255. Not yet tried on real phone footage, rolling shutter wobble or very fast pans.
+
 ### Quick effects (done)
 - **Freeze frame** (toolbar, or right-click a main clip): splits the clip at the playhead and puts a 2-second `freeze` clip between, holding that source frame, silent. Export reads exactly one frame and holds it.
 - **Play backwards** (main track, Speed and sound): `reverse_service.py` makes a reversed copy once, in 2-second pieces so memory stays small, plus its proxy; export always uses it, and the preview plays forwards until it is ready. Reversed clips are silent. Splitting and trimming a reversed clip move the far end of its source.
