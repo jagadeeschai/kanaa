@@ -1,7 +1,7 @@
 """The editing timeline, version 2. One document drives preview and export."""
 from __future__ import annotations
 
-from typing import Annotated, Dict, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -89,6 +89,19 @@ class RampPoint(Strict):
     v: float = Field(ge=0.05, le=10)  # Relative speed; a ramp is scaled to average 1.
 
 
+class ShapeMask(Strict):
+    """Only the part of the frame inside `points` shows, with a soft edge. Points are 0 to 1 across and down the frame."""
+    points: List[Tuple[float, float]] = Field(min_length=3, max_length=200)
+    feather: float = Field(default=0.004, ge=0, le=0.05)  # Of the frame height.
+
+    @field_validator('points')
+    @classmethod
+    def inside(cls, points):
+        if any(not (-0.1 <= x <= 1.1 and -0.1 <= y <= 1.1) for x, y in points):
+            raise ValueError('A shape must stay on the frame.')
+        return points
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -114,6 +127,7 @@ class Clip(Strict):
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
+    shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
     @model_validator(mode='after')
     def valid_range(self):

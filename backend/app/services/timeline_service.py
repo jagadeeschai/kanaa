@@ -21,7 +21,7 @@ from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import value_at, Adjust, Animation, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -116,6 +116,22 @@ def blur_filters(item: BlurBox, fmt: Format) -> str:
         columns, rows = blur_grid(item.amount, fmt.width, fmt.height)
         return f'scale={columns}:{rows}:flags=area,scale={fmt.width}:{fmt.height}:flags=neighbor'
     return f'gblur=sigma={item.amount * BLUR_REACH * fmt.height:.3f}:steps=3'
+
+
+SHAPE_SUPERSAMPLE = 4  # Drawn larger, then shrunk, so a hard edge is smooth even with no feather.
+
+
+def write_shape_mask(mask: ShapeMask, width: int, height: int, target: Path) -> None:
+    """White inside the shape, clear outside, with a soft edge. The preview uses this same picture."""
+    from PIL import ImageDraw, ImageFilter
+    big = Image.new('L', (width * SHAPE_SUPERSAMPLE, height * SHAPE_SUPERSAMPLE), 0)
+    ImageDraw.Draw(big).polygon([(x * width * SHAPE_SUPERSAMPLE, y * height * SHAPE_SUPERSAMPLE) for x, y in mask.points], fill=255)
+    alpha = big.resize((width, height), Image.LANCZOS)
+    if mask.feather:
+        alpha = alpha.filter(ImageFilter.GaussianBlur(mask.feather * height))
+    picture = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    picture.putalpha(alpha)
+    picture.save(target)
 
 
 def write_blur_mask(item: BlurBox, fmt: Format, target: Path) -> None:
@@ -458,6 +474,8 @@ class Builder:
             else:
                 self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label)
+            if clip.shape_mask:
+                shown = self.shape(shown, clip.shape_mask, frames, label)
             if head:
                 merged = f'x{position}_{number}'
                 self.graph.append(f'[{joined_label}][{shown}]xfade=transition={XFADE_NAMES[clip.transition_in.kind]}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
@@ -481,6 +499,17 @@ class Builder:
         if layer.blend != 'normal':
             return self.blended(base, joined, position, layer.blend)
         return self.overlay(base, joined, position, '0', '0')
+
+    def shape(self, label: str, mask: ShapeMask, frames: int, name: str) -> str:
+        """Keeps only the frame inside the shape: its own transparency times the shape's, so nothing outside the picture appears."""
+        fps = self.fmt.fps
+        picture = self.folder / f'{name}-shape.png'
+        write_shape_mask(mask, self.fmt.width, self.fmt.height, picture)
+        index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(picture))
+        self.graph += [f'[{label}]split=2[{name}_body][{name}_own]', f'[{name}_own]alphaextract[{name}_alpha]',
+                       f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB,alphaextract[{name}_shape]',
+                       f'[{name}_alpha][{name}_shape]blend=all_mode=multiply[{name}_both]', f'[{name}_body][{name}_both]alphamerge[{name}_shaped]']
+        return f'{name}_shaped'
 
     def whip_blur(self, label: str, first: int, frames: int, total: int) -> str:
         """A sideways blur that peaks halfway through the slide, so the cut reads as a fast camera pan."""

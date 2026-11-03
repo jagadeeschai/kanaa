@@ -178,7 +178,7 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
     clips.append({'id': 'ramped', 'media_id': motion, 'start': t, 'in': 0.2, 'out': 3.8, 'speed': 1.2, 'ramp': hero})
     samples += [{'name': f'ramp {at}', 't': t + at} for at in (0.4, 1.2, 1.6, 2.1, 2.8)]
     t += 3
-    person_layers, person_texts = [], []
+    person_layers, person_texts, fronts = [], [], []
     if person:
         # A real person, cut out over another picture, with the background blurred, and in front of a title.
         clips.append(clip('person-under', first, t))
@@ -190,9 +190,16 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         t += SECONDS
         clips.append({'id': 'behind', 'media_id': person, 'start': t, 'in': 1, 'out': 3})
         person_texts.append({'id': 'behind-title', 'start': t, 'length': SECONDS, 'text': 'BEHIND', 'style': 'outline', 'position': 'center', 'size': 100})
-        person_layers.append({'id': 'person-front', 'kind': 'video', 'items': [{'id': 'front', 'media_id': person, 'start': t, 'in': 1, 'out': 3, 'cutout': 'remove', 'muted': True}]})
+        fronts.append({'id': 'front', 'media_id': person, 'start': t, 'in': 1, 'out': 3, 'cutout': 'remove', 'muted': True})
         samples += [{'name': f'person behind {at}', 't': t + at} for at in (0.3, 1.5)]
         t += SECONDS
+    # A title behind a drawn ridge: the part below the line is a copy of the picture in front of the title.
+    ridge = [[0, 0.62], [0.25, 0.5], [0.45, 0.58], [0.7, 0.42], [1, 0.55], [1, 1], [0, 1]]
+    clips.append(clip('ridge-under', detail, t))
+    texts.append({'id': 'ridge-title', 'start': t, 'length': SECONDS, 'text': 'MOUNTAINS', 'style': 'outline', 'position': 'center', 'size': 100, 'enter': {'preset': 'slide-up', 'duration': 1}})
+    fronts.append({'id': 'ridge-front', 'media_id': detail, 'start': t, 'in': 0, 'out': SECONDS, 'muted': True, 'shape_mask': {'points': ridge, 'feather': 0.004}})
+    samples += [{'name': f'behind ridge {at}', 't': t + at} for at in (0.4, 1.5)]
+    t += SECONDS
     clips.append({'id': 'steadied', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 2.5, 'stabilise': True})
     samples += [{'name': f'steady {at}', 't': t + at} for at in (0.3, 1.7)]
     t += 2
@@ -205,8 +212,7 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         samples.append({'name': name, 't': t + 1})
         t += SECONDS
     # Blend modes, with the project at the six-layer limit.
-    # Six video layers at most: the person in front of a title needs one, so darken sits out when it's there.
-    blends = ['multiply', 'screen', 'overlay'] + ([] if person else ['darken'])
+    blends = ['multiply', 'screen', 'overlay']  # Six video layers at most: the layer in front of titles needs one.
     extra_layers = []
     for number, mode in enumerate(blends):
         clips.append(clip(f'base{number}', first, t))
@@ -236,7 +242,7 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},
         {'id': 'cap2', 'start': 3.0, 'length': 1.8, 'words': [{'w': 'Light', 's': 0}, {'w': 'each', 's': 0.5}, {'w': 'word', 's': 1.1}]}]}
     samples += [{'name': f'caption {at}', 't': at} for at in (1.2, 1.9, 3.2, 3.7, 4.4)]
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}, *([{'id': 'person-title', 'kind': 'text', 'items': person_texts}] if person_texts else []), *person_layers, captions]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}, *([{'id': 'person-title', 'kind': 'text', 'items': person_texts}] if person_texts else []), *person_layers, {'id': 'fronts', 'kind': 'video', 'items': fronts}, captions]}, samples
 
 
 def main():

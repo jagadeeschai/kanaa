@@ -79,6 +79,11 @@ export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean
 const voiceQuery = (source: { media_id?: number; asset_id?: string }) => (source.asset_id ? `asset_id=${source.asset_id}` : `media_id=${source.media_id}`);
 export const requestCleanVoice = (source: { media_id?: number; asset_id?: string }) => requestJson<{ status: 'ready' | 'preparing' }>(`/api/clean-voice?${voiceQuery(source)}`, { method: 'POST' });
 export const cleanVoiceUrl = (source: { media_id?: number; asset_id?: string }) => `/api/clean-voice?${voiceQuery(source)}`;
+export const fetchShapeMask = async (mask: unknown, format: unknown) => {
+  const response = await fetch('/api/shape-mask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mask, format }) });
+  if (!response.ok) throw new Error('This shape could not be drawn.');
+  return URL.createObjectURL(await response.blob());
+};
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;

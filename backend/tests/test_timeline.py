@@ -1438,3 +1438,26 @@ class CleanVoice(QuickEffects):
         with self.assertRaises(ValueError):
             self.render(data, 'no-copy.mp4')
 
+
+class BehindShape(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def test_the_title_hides_behind_the_drawn_part_only(self):
+        scene = self.root / 'hills.png'
+        Image.new('RGB', (640, 360), (40, 90, 50)).save(scene)
+        self.facts[97] = MediaFacts(path=scene, media_type='image', width=640, height=360)
+        title = {'id': 't', 'start': 0, 'length': 1, 'text': 'MOUNTAINS', 'style': 'shadow', 'position': 'center', 'size': 90, 'color': '#ffffff'}
+        front = {'id': 'f', 'media_id': 97, 'start': 0, 'in': 0, 'out': 1, 'muted': True, 'shape_mask': {'points': [[0, 0], [0.5, 0], [0.5, 1], [0, 1]], 'feather': 0}}
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 97, 'start': 0, 'in': 0, 'out': 1}]},
+                                                  {'id': 'words', 'kind': 'text', 'items': [title]}, {'id': 'front', 'kind': 'video', 'items': [front]}]}
+        frame = self.frame(self.render(data, 'behind.mp4'), 10, (640, 360))
+        white = (frame > 200).all(axis=2)
+        self.assertEqual(int(white[:, :310].sum()), 0, 'hidden on the left, behind the drawn part')
+        self.assertGreater(int(white[:, 330:].sum()), 200, 'seen on the right')
+        for got, want in zip(frame[180, 100], (40, 90, 50)):
+            self.assertAlmostEqual(int(got), want, delta=8)
+
+    def test_a_shape_must_stay_on_the_frame(self):
+        with self.assertRaises(ValidationError):
+            Timeline.model_validate({'layers': [{'id': 'v', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 1, 'start': 0, 'out': 1, 'shape_mask': {'points': [[0, 0], [3, 0], [0, 1]]}}]}]})
+

@@ -21,8 +21,8 @@ from app.services.stabilise_service import ensure_stable, request_stable, stable
 from app.services import cutout_service, voice_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
-from app.services.timeline_schema import Caption, CaptionLayer, Format, Text, Timeline
-from app.services.timeline_service import render_text_image, render_timeline, upgrade_edit_recipe
+from app.services.timeline_schema import Caption, CaptionLayer, Format, ShapeMask, Text, Timeline
+from app.services.timeline_service import write_shape_mask, render_text_image, render_timeline, upgrade_edit_recipe
 from app.services.video_edit_service import check_disk_space, resolve_audio_asset
 from app.services.video_service import serve_file_with_ranges
 from app.db.database import get_connection
@@ -281,6 +281,22 @@ def clean_voice_file(request: Request, media_id: int | None = None, asset_id: st
     if not target.is_file():
         raise HTTPException(404, 'The cleaned sound is still being made.')
     return serve_file_with_ranges(target, 'audio/flac', request)
+
+
+@router.post('/shape-mask')
+def shape_mask(body: dict):
+    """The export's own shape mask as a picture, so the preview's edge is the same."""
+    try:
+        mask, fmt = ShapeMask.model_validate(body['mask']), Format.model_validate(body['format'])
+    except (KeyError, ValidationError) as exc:
+        raise HTTPException(400, 'This shape is not valid.') from exc
+    key = hashlib.sha256(json.dumps([mask.points, mask.feather, fmt.width, fmt.height]).encode()).hexdigest()[:32]
+    folder = settings.data_dir / 'cache' / 'shapes'
+    target = folder / f'{key}.png'
+    if not target.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        write_shape_mask(mask, fmt.width, fmt.height, target)
+    return FileResponse(target, media_type='image/png')
 
 
 @router.post('/caption-image')

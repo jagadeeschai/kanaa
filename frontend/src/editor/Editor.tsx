@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Captions, Check, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Captions, Check, Mountain, PenTool, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { groundShape, putBehindShape, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -47,6 +47,8 @@ const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade',
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
+const SHAPE_FEATHER = 0.004;
+const SHAPE_CLOSE = 0.03; // Clicking this near the first point closes an outline.
 /** Which cleaned copy a clip or sound plays: one per song, or per video. */
 const voiceKey = (item: { media_id?: number; asset_id?: string }) => (item.asset_id ? `a:${item.asset_id}` : `m:${item.media_id}`);
 /** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
@@ -121,6 +123,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [captionWords, setCaptionWords] = useState(DEFAULT_CAPTION_OPTIONS.words);
   const [captionsWaiting, setCaptionsWaiting] = useState(false);
   const [pauseLength, setPauseLength] = useState(0.7);
+  const [shaping, setShaping] = useState<{ textId: string; mode: 'ground' | 'outline'; points: [number, number][] } | null>(null);
   const [removeFillers, setRemoveFillers] = useState(true);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
@@ -209,6 +212,22 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, TEXT_TYPE_DELAY_MS);
     return () => { stopped = true; clearTimeout(timer); };
   }, [timeline, playhead]);
+  // Shape masks: the server draws each once, the same picture the export uses.
+  const shapeImages = useRef(new Map<string, string | 'loading'>());
+  useEffect(() => {
+    if (!timeline) return;
+    const masks = timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.flatMap((clip) => (clip.shape_mask ? [clip.shape_mask] : [])) : []));
+    for (const mask of masks) {
+      const key = JSON.stringify([mask, timeline.format.width, timeline.format.height]);
+      if (shapeImages.current.has(key)) continue;
+      shapeImages.current.set(key, 'loading');
+      void fetchShapeMask(mask, timeline.format).then((url) => { shapeImages.current.set(key, url); redrawText(); }).catch((problem: Error) => { shapeImages.current.delete(key); setError(problem.message); });
+    }
+    if (engineRef.current) engineRef.current.shapeUrl = (mask: ShapeMask) => {
+      const found = timelineRef.current && shapeImages.current.get(JSON.stringify([mask, timelineRef.current.format.width, timelineRef.current.format.height]));
+      return found && found !== 'loading' ? found : undefined;
+    };
+  }, [timeline]);
   const soundUrl = useCallback((sound: Sound) => {
     // Until its cleaned copy is ready, a sound with Clean voice plays as recorded.
     if (sound.clean_voice && cleanReady[voiceKey(sound)]) return cleanVoiceUrl(sound);
@@ -570,6 +589,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(setCaptions(timeline, items, newId()));
   }, [timeline, missingWords.length, wordJob, mainClips, transcripts, language, captionWords, change]);
   useEffect(() => { if (captionsWaiting && !wordJob && !missingWords.length) makeCaptions(); }, [captionsWaiting, wordJob, missingWords.length, makeCaptions]);
+  /** Puts the title behind what was drawn: a line along the ground or mountains, or the outline of a shape. */
+  const finishShape = () => {
+    if (!timeline || !shaping) return;
+    const enough = shaping.mode === 'ground' ? shaping.points.length >= 2 : shaping.points.length >= 3;
+    if (!enough) { setError(shaping.mode === 'ground' ? 'Click at least two points along the top of the ground.' : 'Click at least three points around the shape.'); return; }
+    const mask: ShapeMask = { points: shaping.mode === 'ground' ? groundShape(shaping.points) : shaping.points, feather: SHAPE_FEATHER };
+    const next = putBehindShape(timeline, shaping.textId, mask, [newId(), newId()]);
+    setShaping(null);
+    if (next === timeline) setError('Put the title over a video clip or picture on the main track first.'); else change(next);
+  };
   /** Cuts every chosen pause and filler at once. Captions, if any, are made again from what's left, in the same Undo. */
   const removePauses = useCallback(() => {
     if (!timeline || mainLayer(timeline).locked || !tidy.keys.size) return;
@@ -611,6 +640,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
       if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
       if (event.key === 'Escape' && drawing) { setDrawing(null); return; }
+      if (shaping && event.key === 'Escape') { setShaping(null); return; }
+      if (shaping && event.key === 'Enter') { event.preventDefault(); finishShape(); return; }
+      if (shaping && event.key === 'Backspace') { event.preventDefault(); setShaping({ ...shaping, points: shaping.points.slice(0, -1) }); return; }
       if (isTyping(event.target) || !timeline || exporting || choosingFormat || showingHelp || menu) return;
       if (event.key === ' ' && buttonTakesSpace(event.target)) return;
       // Arrows on a focused slider change the slider, not the playhead.
@@ -637,7 +669,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
@@ -929,6 +961,18 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           {selectedText && !selectedLayer?.locked && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
           {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
           {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
+          {shaping && <svg className="ed-shape" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label={shaping.mode === 'ground' ? 'Click along the top of the ground' : 'Click around the shape'}
+            onPointerDown={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const point: [number, number] = [Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)), Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))];
+              const first = shaping.points[0];
+              if (shaping.mode === 'outline' && first && shaping.points.length >= 3 && Math.hypot(point[0] - first[0], point[1] - first[1]) < SHAPE_CLOSE) { finishShape(); return; }
+              setShaping({ ...shaping, points: [...shaping.points, point] });
+            }}>
+            {shaping.points.length > 0 && (() => { const shape = shaping.mode === 'ground' && shaping.points.length >= 2 ? groundShape(shaping.points) : shaping.points; return <polygon points={shape.map(([x, y]) => `${x},${y}`).join(' ')} className={shaping.mode === 'ground' || shaping.points.length >= 3 ? 'fill' : ''}/>; })()}
+            {shaping.points.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="0.008" className={index === 0 && shaping.mode === 'outline' ? 'first' : ''}/>)}
+          </svg>}
+          {shaping && <div className="ed-pick-note ed-shape-note" role="status">{shaping.mode === 'ground' ? 'Click along the top of the mountain or ground, left to right.' : 'Click around what should stay in front. Click the first point to close.'} Enter finishes, Backspace undoes a point, Esc cancels.</div>}
           {drawing && <div className="ed-draw" aria-label="Drag a box around what to follow" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
             onPointerMove={(event) => { const from = drawStart.current; const to = frameAt(event); if (from) setDrawing((state) => state && { ...state, from, to }); }} onPointerUp={finishDrawing}>
             <div className="ed-pick-note" role="status">Drag a box around what to follow. Esc cancels.</div>
@@ -949,7 +993,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} onBehind={() => { const next = putBehindPerson(timeline!, selectedText.id, [newId(), newId()]); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else change(next); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={() => { const next = putBehindPerson(timeline!, selectedText.id, [newId(), newId()]); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else change(next); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -1020,7 +1064,7 @@ function AnimationPicker({ label, value, onChange, onShow }: { label: string; va
   </>;
 }
 
-function TextInspector({ text, onBehind, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onBehind: () => void; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onBehind: () => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   return <>
     <h2>Text</h2>
     <textarea className="ed-text" aria-label="Text" lang="ta" value={text.text} maxLength={500} rows={3} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
@@ -1035,7 +1079,13 @@ function TextInspector({ text, onBehind, timing, local, onSeekLocal, onPause, fo
     <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
     <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
     <p className="ed-tip">Drag the title in the preview to move it.</p>
-    <button className="ed-button wide" onClick={onBehind} title="The person in the video stays in front of this title"><Layers size={14}/>Put behind the person</button>
+    <h3 className="ed-sub">Put the title behind…</h3>
+    <div className="ed-add-grid">
+      <button className="ed-button ed-add-span" onClick={onBehind} title="The person in the video stays in front of this title"><Layers size={14}/>The person</button>
+      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill or the ground. Everything below stays in front."><Mountain size={14}/>Mountains</button>
+      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or object. It stays in front of the title."><PenTool size={14}/>A shape</button>
+    </div>
+    <p className="ed-tip">Pick Slide up as its Enter animation to make it rise from behind. The shape stays still, so it suits a still or tripod shot.</p>
     <Group title="Motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0}>
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>

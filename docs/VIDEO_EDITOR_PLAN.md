@@ -417,6 +417,11 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Title behind mountains or a shape (done)
+On a title, "Put the title behind…": The person, Mountains, or A shape. Mountains: click along the top of the ridge or ground, and everything below the line (out to both edges) is in front (`groundShape`). A shape: click around a building, tree or object, and click the first point or press Enter to close. Backspace removes a point, Esc cancels. Either way a silent copy of the main clip goes on an "In front" layer right after the title's layer, with a `shape_mask` that keeps only that part of the frame. Export multiplies the copy's own transparency by the mask picture; the preview samples the very same picture from `/api/shape-mask` (drawn 4x larger then shrunk, with a 0.4% soft edge). Golden samples: 2.0/255. With Slide up as the title's Enter animation, it rises from behind the ridge.
+
+Limits: the shape stays still, so the camera must too (a moving shot would need the shape to follow, via the tracker); the shape can't be edited after drawing, only removed and drawn again; the darken blend no longer has its own golden sample, as the project hit the six-layer limit.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

@@ -5,7 +5,7 @@ import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
-import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
@@ -35,7 +35,7 @@ void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill;
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
   if (keyType > 0) {
@@ -91,6 +91,8 @@ void main(){
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
   float a = alpha * opacity;
+  // A drawn shape keeps only part of the frame. The picture has the frame's top at its first row.
+  if (useShape == 1) a *= texture(shapeTex, vec2(gl_FragCoord.x / viewport.x, 1. - gl_FragCoord.y / viewport.y)).a;
   if (blendMode > 0) {
     vec3 b = texture(backdrop, gl_FragCoord.xy / vec2(textureSize(backdrop, 0))).rgb;
     if (blendMode == 1) rgb = b * rgb;
@@ -108,6 +110,8 @@ export class PlaybackEngine {
   private soundUrl: (sound: Sound) => string | undefined = () => undefined;
   /** The cleaned sound of a video, once it is ready. */
   cleanVoice: (mediaId: number) => string | undefined = () => undefined;
+  /** The picture of a clip's drawn shape, once it is ready. */
+  shapeUrl: (mask: ShapeMask) => string | undefined = () => undefined;
   private textUrl: (text: TextItem) => string | undefined = () => undefined;
   private captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined;
   private stopAt = Infinity;
@@ -148,7 +152,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -368,7 +372,17 @@ export class PlaybackEngine {
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
     gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
     gl.uniform2f(uniforms.flip, clip.adjust.flip_horizontal ? 1 : 0, clip.adjust.flip_vertical ? 1 : 0);
+    const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
+    const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
+    // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
+    if (clip.shape_mask && !shape?.ready) { if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (shape) {
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
+    }
+    gl.uniform1i(uniforms.useShape, shape ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
   }
 

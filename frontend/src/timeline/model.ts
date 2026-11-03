@@ -6,7 +6,9 @@ import { valueAt } from './evaluate.ts';
 import { rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; clean_voice?: boolean };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; clean_voice?: boolean; shape_mask?: ShapeMask | null };
+/** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
+export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number; clean_voice?: boolean };
@@ -289,12 +291,27 @@ export function updateClip(timeline: Timeline, id: string, changes: Partial<Clip
  * The copy is silent and follows the main clip's timing; later edits to the main clip don't change it.
  */
 export function putBehindPerson(timeline: Timeline, textId: string, ids: [string, string]): Timeline {
+  return putInFront(timeline, textId, { cutout: 'remove' }, ids, 'Person');
+}
+
+/** Puts a title behind part of the scene: a copy of the main clip under it, showing only `mask`, just above the title. */
+export function putBehindShape(timeline: Timeline, textId: string, mask: ShapeMask, ids: [string, string]): Timeline {
+  return putInFront(timeline, textId, { shape_mask: mask }, ids, 'In front');
+}
+
+function putInFront(timeline: Timeline, textId: string, changes: Partial<Clip>, ids: [string, string], name: string): Timeline {
   const found = findText(timeline, textId);
   const clip = found && mainLayer(timeline).items.find((item) => found.text.start >= item.start && found.text.start < item.start + clipLength(item));
   if (!found || !clip || timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) return timeline;
-  const person: Clip = { ...clip, id: ids[0], cutout: 'remove', muted: true, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
+  const copy: Clip = { ...clip, id: ids[0], ...changes, muted: true, clean_voice: false, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
   const after = timeline.layers.indexOf(found.layer) + 1;
-  return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name: 'Person', items: [person] }, ...timeline.layers.slice(after)] };
+  return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name, items: [copy] }, ...timeline.layers.slice(after)] };
+}
+
+/** A shape from points clicked along the top of the ground or a mountain: everything below the line, out to both edges. */
+export function groundShape(points: [number, number][]): [number, number][] {
+  const line = [...points].sort((a, b) => a[0] - b[0]);
+  return [[0, line[0][1]], ...line, [1, line[line.length - 1][1]], [1, 1], [0, 1]];
 }
 
 /** The I and O keys: cut the clip's start or end at `local`. A ramped clip is split there, so the rest keeps its exact timing. */

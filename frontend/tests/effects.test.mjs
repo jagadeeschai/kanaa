@@ -84,3 +84,15 @@ test('putting a title behind the person adds a silent cut-out copy just above th
   assert.deepEqual([person.cutout, person.muted, person.start, person.in, person.out], ['remove', true, 0, 1, 5]);
   assert.equal(putBehindPerson(emptyTimeline(format), 't', ['p', 'l']).layers.length, 1);
 });
+
+test('a line along the mountains becomes everything below it, and the title goes behind it', async () => {
+  const { addText, groundShape, putBehindShape } = await import('../src/timeline/model.ts');
+  assert.deepEqual(groundShape([[0.7, 0.4], [0.2, 0.6]]), [[0, 0.6], [0.2, 0.6], [0.7, 0.4], [1, 0.4], [1, 1], [0, 1]]);
+  let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
+  timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Hills', style: 'band', position: 'center', color: '#ffffff', size: 60 }, 'words');
+  const mask = { points: groundShape([[0, 0.5], [1, 0.6]]), feather: 0.004 };
+  const behind = putBehindShape(timeline, 't', mask, ['f', 'front']);
+  assert.deepEqual(behind.layers.map((layer) => layer.id), ['main', 'words', 'front']);
+  const front = behind.layers[2].items[0];
+  assert.deepEqual([front.shape_mask, front.muted, front.cutout ?? null], [mask, true, null]);
+});
