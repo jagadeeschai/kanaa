@@ -18,7 +18,7 @@ from app.services.transcript_service import LANGUAGES, PHASE, saved_words, trans
 from app.services.face_service import find_faces
 from app.services.reverse_service import ensure_reversed, request_reversed, reversed_files
 from app.services.stabilise_service import ensure_stable, request_stable, stable_files
-from app.services import cutout_service
+from app.services import cutout_service, voice_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Caption, CaptionLayer, Format, Text, Timeline
@@ -255,6 +255,34 @@ def text_image(body: dict):
     return FileResponse(target, media_type='image/png')
 
 
+def voice_source(media_id: int | None, asset_id: str | None) -> tuple[Path, str]:
+    try:
+        if asset_id:
+            return resolve_audio_asset(asset_id), 'this song'
+        row = get_media(int(media_id))
+        return Path(row['absolute_path']), row['filename']
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a sound to clean.') from exc
+
+
+@router.post('/clean-voice')
+def request_clean_voice(media_id: int | None = None, asset_id: str | None = None):
+    """Starts cleaning a sound's voice if needed. Ready, or preparing with a job to watch."""
+    path, label = voice_source(media_id, asset_id)
+    try:
+        return voice_service.request_clean(path, label)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get('/clean-voice')
+def clean_voice_file(request: Request, media_id: int | None = None, asset_id: str | None = None):
+    target = voice_service.clean_file(voice_source(media_id, asset_id)[0])
+    if not target.is_file():
+        raise HTTPException(404, 'The cleaned sound is still being made.')
+    return serve_file_with_ranges(target, 'audio/flac', request)
+
+
 @router.post('/caption-image')
 def caption_image(body: dict):
     """One caption in its layer's look, with word `lit` coloured, drawn by the export's own text code."""
@@ -339,7 +367,7 @@ def preview_render(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
             fresh.replace(target)
             return {'progress': 100, 'preview_ready': True}
         finally:
@@ -375,7 +403,7 @@ def export_project(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
             output = index_media(target, f"{row['name']}.mp4", exported=True)
             return {'progress': 100, 'output_photo_id': output['id']}
         except Exception:

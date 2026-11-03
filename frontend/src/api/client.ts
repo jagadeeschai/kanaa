@@ -75,6 +75,10 @@ export const startFaces = (id: number, body: { start: number; end: number }) => 
 /** A steadied and/or reversed copy of a video, made once on the server. */
 export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${cutout}`, { method: 'POST' });
 export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${cutout}`;
+/** The cleaned copy of a clip's or song's sound, made once on the server. */
+const voiceQuery = (source: { media_id?: number; asset_id?: string }) => (source.asset_id ? `asset_id=${source.asset_id}` : `media_id=${source.media_id}`);
+export const requestCleanVoice = (source: { media_id?: number; asset_id?: string }) => requestJson<{ status: 'ready' | 'preparing' }>(`/api/clean-voice?${voiceQuery(source)}`, { method: 'POST' });
+export const cleanVoiceUrl = (source: { media_id?: number; asset_id?: string }) => `/api/clean-voice?${voiceQuery(source)}`;
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;

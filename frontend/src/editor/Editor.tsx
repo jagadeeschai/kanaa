@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Captions, Check, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
@@ -47,6 +47,8 @@ const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade',
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
+/** Which cleaned copy a clip or sound plays: one per song, or per video. */
+const voiceKey = (item: { media_id?: number; asset_id?: string }) => (item.asset_id ? `a:${item.asset_id}` : `m:${item.media_id}`);
 /** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
 const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
   const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = clip.cutout ?? '';
@@ -93,6 +95,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [saved, setSaved] = useState<'saved' | 'saving' | 'failed'>('saved');
   const [ready, setReady] = useState<Record<number, boolean>>({});
   const [preparedReady, setPreparedReady] = useState<Record<string, boolean>>({});
+  const [cleanReady, setCleanReady] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -207,10 +210,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     return () => { stopped = true; clearTimeout(timer); };
   }, [timeline, playhead]);
   const soundUrl = useCallback((sound: Sound) => {
+    // Until its cleaned copy is ready, a sound with Clean voice plays as recorded.
+    if (sound.clean_voice && cleanReady[voiceKey(sound)]) return cleanVoiceUrl(sound);
     if (sound.asset_id) return songUrl(sound.asset_id);
     const item = sound.media_id === undefined ? undefined : mediaById.get(sound.media_id);
     return item ? (ready[item.id] ? clipProxyUrl(item.id) : photoVideoUrl(item.id)) : undefined;
-  }, [mediaById, ready]);
+  }, [mediaById, ready, cleanReady]);
   const soundPeaks = useCallback((sound: Sound) => {
     if (sound.media_id !== undefined) return visuals.current.get(sound.media_id)?.peaks;
     const peaks = songPeaks.current.get(sound.asset_id ?? '');
@@ -300,6 +305,26 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     void check();
     return () => { stopped = true; clearTimeout(timer); };
   }, [preparedNeeded, preparedReady]);
+
+  // Clean voice: each sound source that needs a cleaned copy asks for it until it is ready.
+  const voicesNeeded = useMemo(() => [...new Set(timeline ? timeline.layers.flatMap((layer) => (layer.items as (Clip | Sound)[]).filter((item) => 'clean_voice' in item && item.clean_voice && (layer.kind === 'audio' || layer.kind === 'video'))
+    .map((item) => voiceKey(item as Sound))) : [])].join(','), [timeline]);
+  useEffect(() => {
+    const keys = voicesNeeded ? voicesNeeded.split(',').filter((key) => !cleanReady[key]) : [];
+    if (!keys.length) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      for (const key of keys) {
+        const source = key.startsWith('a:') ? { asset_id: key.slice(2) } : { media_id: Number(key.slice(2)) };
+        try { if ((await requestCleanVoice(source)).status === 'ready' && !stopped) setCleanReady((current) => ({ ...current, [key]: true })); } catch (problem) { if (!stopped) setError((problem as Error).message); }
+      }
+      if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
+    };
+    void check();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [voicesNeeded, cleanReady]);
+  useEffect(() => { if (engineRef.current) engineRef.current.cleanVoice = (id) => (cleanReady[`m:${id}`] ? cleanVoiceUrl({ media_id: id }) : undefined); }, [cleanReady]);
 
   const usedMedia = useMemo(() => [...new Set(timeline ? [...timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.map((clip) => clip.media_id) : [])), ...audioLayers(timeline).flatMap((layer) => layer.items.flatMap((sound) => sound.media_id ?? []))] : [])].join(','), [timeline]);
 
@@ -1039,6 +1064,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
     <Timing fields={timing}/>
     <SoundControls item={sound} length={soundLength(sound)} onChange={onChange}/>
     <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
+    <label className="ed-check"><input type="checkbox" checked={Boolean(sound.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
     <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
     <h2>Voice and music</h2>
     {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Kanaa folder, then restart Kanaa.</p>
@@ -1131,6 +1157,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">Sound is off during a speed ramp. Slow parts look smoothest in footage filmed at 60 or 120 frames a second.</p></>}
       <h3 className="ed-sub">Sound</h3>
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(clip.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
       <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
       {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
     </Group>}

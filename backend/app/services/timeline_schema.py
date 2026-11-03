@@ -113,6 +113,7 @@ class Clip(Strict):
     stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
+    clean_voice: bool = False  # Its sound plays from the cleaned copy.
 
     @model_validator(mode='after')
     def valid_range(self):
@@ -205,6 +206,7 @@ class Sound(Strict):
     duck: bool = False  # Dips under the timeline's other sound.
     name: str = Field(default='', max_length=120)
     source_length: Optional[float] = Field(default=None, gt=0)  # Limits trimming in the editor.
+    clean_voice: bool = False  # Plays from the cleaned copy.
 
     @model_validator(mode='after')
     def one_source(self):

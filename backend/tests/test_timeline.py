@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, cutout_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, cutout_service, voice_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -1396,4 +1396,45 @@ class Captions(Clips):
     def test_words_must_stay_inside_their_caption(self):
         with self.assertRaises(ValidationError):
             Timeline.model_validate(self.stack(words=[{'w': 'late', 's': 2}]))
+
+
+@unittest.skipUnless(shutil.which('say'), "needs the Mac's voice")
+class CleanVoice(QuickEffects):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        speech = cls.root / 'speech.aiff'
+        subprocess.run(['say', '-o', str(speech), 'Hello there. [[slnc 1200]] This is a test of clean voice. [[slnc 1200]] Thank you.'], check=True)
+        noisy = cls.root / 'noisy-talk.mp4'
+        run('-f', 'lavfi', '-i', 'color=c=gray:s=320x240:r=30:d=7', '-i', str(speech), '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.05:d=7',
+            '-filter_complex', '[1:a]aresample=48000,apad[v];[2:a]aresample=48000[n];[v][n]amix=inputs=2:normalize=0,atrim=end=6.5[a]', '-map', '0:v', '-map', '[a]', '-t', '6.5',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-b:a', '192k', str(noisy))
+        cls.facts[95] = probe_video(noisy)
+        cls.speech = speech
+
+    def samples(self, path):
+        raw = subprocess.run([FFMPEG, '-v', 'error', '-i', str(path), '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'], capture_output=True, check=True).stdout
+        return np.frombuffer(raw, np.float32).astype(float)
+
+    def test_noise_goes_down_the_voice_stays_and_nothing_moves(self):
+        data = {'format': {'width': 320, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 95, 'start': 0, 'in': 0, 'out': 6.5}]}]}
+        before = self.samples(self.render(data, 'before.mp4'))
+        data['layers'][0]['items'][0]['clean_voice'] = True
+        after = self.samples(self.render(data, 'after.mp4', voices=voice_service.ensure_clean))
+        voice = self.samples(self.speech)
+        voice = np.pad(voice, (0, max(0, len(before) - len(voice))))[:len(before)]
+        frames = len(before) // 800
+        level = lambda x: np.sqrt((x[:frames * 800].reshape(frames, 800) ** 2).mean(axis=1)) + 1e-9
+        talk, quiet = level(voice) > 0.02, level(voice) < 0.0005
+        db = lambda x, where: 20 * np.log10(np.sqrt((level(x)[where] ** 2).mean()))
+        self.assertGreater(db(before, quiet) - db(after, quiet), 12, 'the gaps between words are much quieter')
+        self.assertLess(abs(db(after, talk) - db(before, talk)), 6, 'the voice keeps its level')
+        corr = np.fft.irfft(np.fft.rfft(before, 2 ** 18) * np.conj(np.fft.rfft(after, 2 ** 18)))
+        lag = int(np.argmax(np.concatenate([corr[-800:], corr[:800]]))) - 800
+        self.assertLessEqual(abs(lag), 16, f'in sync with the picture: {lag} samples at 16 kHz')
+
+    def test_without_its_cleaned_copy_the_clip_is_refused(self):
+        data = {'format': {'width': 320, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 95, 'start': 0, 'in': 0, 'out': 6.5, 'clean_voice': True}]}]}
+        with self.assertRaises(ValueError):
+            self.render(data, 'no-copy.mp4')
 

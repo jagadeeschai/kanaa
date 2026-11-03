@@ -106,6 +106,8 @@ void main(){
 export class PlaybackEngine {
   readonly mixer = new AudioMixer();
   private soundUrl: (sound: Sound) => string | undefined = () => undefined;
+  /** The cleaned sound of a video, once it is ready. */
+  cleanVoice: (mediaId: number) => string | undefined = () => undefined;
   private textUrl: (text: TextItem) => string | undefined = () => undefined;
   private captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined;
   private stopAt = Infinity;
@@ -264,7 +266,9 @@ export class PlaybackEngine {
         const at = this.sourceTime(item, t, !crossing);
         if (slot.clipId !== item.id || !this.playing) this.load(slot, item, source.url, at);
         slot.video.muted = false;
-        if (this.playing) this.mixer.setVideoGain(slot.video, item === clip ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
+        // A clip with Clean voice is heard from its cleaned copy, played by the mixer, so the video itself stays silent.
+        const cleaned = Boolean(item.clean_voice && this.cleanVoice(item.media_id));
+        if (this.playing) this.mixer.setVideoGain(slot.video, item === clip && !cleaned ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
         // While playing, keepInStep owns the rate. Setting it here too would undo each nudge.
         if (slot.video.paused) slot.video.playbackRate = Math.min(16, Math.max(0.0625, this.rateAt(item, t) * this.rate));
         const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;
@@ -545,7 +549,13 @@ export class PlaybackEngine {
   }
 
   private syncSound() {
-    if (this.timeline) this.mixer.sync(this.timeline, this.time, this.playing, this.rate, this.soundUrl);
+    if (!this.timeline) return;
+    // Clips with Clean voice join the mix as sounds at their own place and speed, from their cleaned copies.
+    const voices: Sound[] = this.videoLayers().flatMap((layer) => layer.items.filter((clip) => clip.clean_voice && clip.freeze == null && !clip.reverse && !clip.ramp && this.cleanVoice(clip.media_id)).map((clip) => ({
+      id: `${clip.id}:voice`, media_id: clip.media_id, start: clip.start, in: clip.in, out: clip.out, speed: clip.speed, volume: clip.volume, muted: clip.muted || Boolean(layer.muted),
+      fade_in: clip.fade_in, fade_out: clip.fade_out, duck: false, name: '', clean_voice: true })));
+    const timeline = voices.length ? { ...this.timeline, layers: [...this.timeline.layers, { id: 'clean-voices', kind: 'audio' as const, items: voices }] } : this.timeline;
+    this.mixer.sync(timeline, this.time, this.playing, this.rate, (sound) => (sound.id.endsWith(':voice') && sound.media_id !== undefined ? this.cleanVoice(sound.media_id) : this.soundUrl(sound)));
   }
 
   /** While picking a colour, this clip shows unkeyed, so the colour under the click is its own. */

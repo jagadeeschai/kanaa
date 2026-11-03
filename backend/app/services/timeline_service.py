@@ -259,8 +259,8 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
 
 
 class Builder:
-    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None):
-        self.timeline, self.media, self.audio_asset, self.folder, self.prepared, self.masks = timeline, media, audio_asset, folder, prepared, masks
+    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None):
+        self.timeline, self.media, self.audio_asset, self.folder, self.prepared, self.masks, self.voices = timeline, media, audio_asset, folder, prepared, masks, voices
         self.fmt = timeline.format
         self.args: list[str] = []
         self.graph: list[str] = []
@@ -300,7 +300,13 @@ class Builder:
         # A frozen or reversed clip is silent, in the preview too.
         if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0 or clip.freeze is not None or clip.reverse or clip.ramp:
             return
-        self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
+        self.add_audio_track(self.voice(facts.path) if clip.clean_voice else facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
+
+    def voice(self, path: Path) -> Path:
+        """The cleaned copy of a sound, which lines up with the original sample for sample."""
+        if self.voices is None:
+            raise ValueError('A clip with Clean voice needs its cleaned copy.')
+        return self.voices(path)
 
     def transition_frames(self, clips: list[Clip]) -> list[int]:
         """For each clip, the frames either side of its opening cut. Matches transitionHalf in model.ts."""
@@ -563,7 +569,7 @@ class Builder:
                 path = facts.path
             else:
                 path = self.audio_asset(sound.asset_id)
-            self.add_audio_track(path, sound.in_, sound.out - sound.in_, sound_steps(sound), sound.duck)
+            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, sound_steps(sound), sound.duck)
 
     def bus(self, labels: list[str], total: float) -> str:
         # normalize=0 keeps each track's level.
@@ -599,10 +605,10 @@ class Builder:
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
-def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None) -> Compiled:
+def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> Compiled:
     if timeline.duration <= 0:
         raise ValueError('Add a clip to the timeline first.')
-    return Builder(timeline, media, audio_asset, folder, prepared, masks).build()
+    return Builder(timeline, media, audio_asset, folder, prepared, masks, voices).build()
 
 
 def video_inputs(compiled: Compiled) -> int:
@@ -641,7 +647,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -649,7 +655,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
-        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks)
+        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks, voices)
         (folder / 'graph.txt').write_text(compiled.graph, encoding='utf-8')
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.

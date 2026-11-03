@@ -417,6 +417,13 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Clean voice (done)
+A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
+
+Chosen by measurement on a real voice (an 11-second public speech clip, kept out of the repo) with added hiss and fan noise: the built-in filter brought the voice closest to the clean recording (spectral distance 20.6 to 16.8 dB with hiss, 25.9 to 17.2 with a fan) at full level. RNNoise (`arnndn`) turned the voice down about 6 dB and left more noise, and a compressor after it only made speech quieter, so neither is used.
+
+Limits: it lowers steady noise (fans, AC, hiss, hum, traffic), not other voices, music or sudden sounds; very loud noise under the voice remains; not tried on the user's own recordings yet.
+
 ### Remove pauses (done)
 A panel at the top of the Words tab: pauses longer than 0.4, 0.7 or 1 second, and optionally fillers ("um", "uh", "hmm", and Tamil and Hindi equivalents, compared without case or punctuation; `isFiller` in `timeline/words.ts`). It says how many it will take out and how much shorter the video gets, computed from the same cut plan (`cutRuns`) the cut uses, so the promise matches. One click cuts them all through `cutTokens`, keeping a short breath at each pause; existing captions are made again from what is left, in the same Undo. A spoken test clip with two long silences and an "um" went from 8.88 to 3.35 seconds (5.5 promised) with every word kept.
 
