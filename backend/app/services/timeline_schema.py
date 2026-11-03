@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 MAX_LAYERS = 6  # Phase 1: live preview stays smooth up to 6 video layers.
 MAX_ITEMS = 2000  # Captions on a long talk add up.
+FONT_NAME = r'^[A-Za-z0-9 ]{1,40}$'  # A font family name, which can't carry ASS formatting.
 Ease = Literal['linear', 'easeOut', 'easeInOut']
 
 
@@ -162,10 +163,12 @@ class Text(Strict):
     subtitle_spacing: int = Field(default=0, ge=0, le=30)  # Letter spacing, in points at 720 wide.
     align: Literal['left', 'center', 'right'] = 'center'
     band_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # The box behind a band title.
+    font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For English and other Latin lines.
+    tamil_font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For Tamil lines.
 
     @property
     def designed(self) -> bool:
-        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font)
 
     @property
     def length(self) -> float:

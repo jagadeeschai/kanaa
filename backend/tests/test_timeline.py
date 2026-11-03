@@ -1495,6 +1495,26 @@ class TitleTemplates(unittest.TestCase):
         self.assertLess(columns(left).max(), 320)
         self.assertGreater(columns(right).min(), 320)
 
+    def test_fonts_change_their_own_script_only(self):
+        plain = self.draw(text='Dream கனவு', subtitle='கனவு', style='shadow')
+        english = self.draw(text='Dream கனவு', subtitle='கனவு', style='shadow', font='Georgia')
+        tamil = self.draw(text='Dream கனவு', subtitle='கனவு', style='shadow', tamil_font='Arima')
+        self.assertFalse((plain == english).all(), 'an English font changes the English line')
+        self.assertFalse((plain == tamil).all(), 'a Tamil font changes the Tamil line')
+        tamil_only = self.draw(text='கனவு வணக்கம்', style='shadow', align='left')
+        self.assertTrue((tamil_only == self.draw(text='கனவு வணக்கம்', style='shadow', align='left', font='Georgia')).all(), 'Tamil text ignores the English font')
+
+    def test_font_names_cannot_carry_formatting(self):
+        from app.services.timeline_schema import Text
+        with self.assertRaises(ValidationError):
+            Text(id='t', start=0, length=1, text='x', font='Futura}{\\fs300')
+
+    def test_every_bundled_tamil_font_is_found(self):
+        bundled = self.draw(text='கனவு', style='shadow', tamil_font='Noto Sans Tamil')
+        for family in ('Arima', 'Kavivanar', 'Baloo Thambi 2', 'Catamaran', 'Pavanam', 'Hind Madurai'):
+            with self.subTest(family=family):
+                self.assertFalse((self.draw(text='கனவு', style='shadow', tamil_font=family) == bundled).all())
+
     def test_typed_text_cannot_become_formatting(self):
         picture = self.draw(text='{\\fs200}A', subtitle='{\\c&H0000FF&}b', style='shadow')
         self.assertLess(self.rows(picture)[1] - self.rows(picture)[0], 200)

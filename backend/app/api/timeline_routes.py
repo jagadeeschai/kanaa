@@ -23,7 +23,7 @@ from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Caption, CaptionLayer, Format, ShapeMask, Text, Timeline
 from app.services.timeline_service import write_shape_mask, render_text_image, render_timeline, upgrade_edit_recipe
-from app.services.video_edit_service import check_disk_space, resolve_audio_asset
+from app.services.video_edit_service import LYRIC_FONTS_DIR, check_disk_space, resolve_audio_asset
 from app.services.video_service import serve_file_with_ranges
 from app.db.database import get_connection
 
@@ -245,7 +245,7 @@ def text_image(body: dict):
         item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
     except (KeyError, ValidationError) as exc:
         raise HTTPException(400, 'This text is not valid.') from exc
-    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'align', 'band_color')}
+    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'align', 'band_color', 'font', 'tamil_font')}
     key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
     folder = settings.data_dir / 'cache' / 'text'
     target = folder / f'{key}.png'
@@ -281,6 +281,15 @@ def clean_voice_file(request: Request, media_id: int | None = None, asset_id: st
     if not target.is_file():
         raise HTTPException(404, 'The cleaned sound is still being made.')
     return serve_file_with_ranges(target, 'audio/flac', request)
+
+
+@router.get('/fonts/{name}')
+def font_file(name: str):
+    """A bundled font, so the editor can show each font's name in itself."""
+    target = LYRIC_FONTS_DIR / name
+    if not name.endswith('.ttf') or '/' in name or not target.is_file():
+        raise HTTPException(404, 'No such font.')
+    return FileResponse(target, media_type='font/ttf')
 
 
 @router.post('/shape-mask')

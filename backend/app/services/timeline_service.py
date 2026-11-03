@@ -243,6 +243,7 @@ def sound_steps(item: Clip | Sound) -> list[str]:
     return [*steps, f'adelay={round(item.start * 1000)}:all=1']
 
 
+TAMIL_FONT = 'Noto Sans Tamil'
 SUBTITLE_SHARE = 0.55  # A subtitle's size when none is set, as a share of the title's.
 
 
@@ -254,6 +255,23 @@ def ass_colour(hex_colour: str, alpha: int = 0) -> str:
 def ass_text(text: str) -> str:
     """Typed text stays text, never an ASS override."""
     return text.replace('\\', '＼').replace('{', '｛').replace('}', '｝').replace('\r', '').replace('\n', r'\N')
+
+
+def script_runs(text: str) -> list[str]:
+    """The text cut where it changes between Tamil and anything else, so each part gets its own font. Spaces stay with the part before."""
+    runs: list[str] = []
+    kind = None
+    for char in text:
+        tamil = 0x0B80 <= ord(char) <= 0x0BFF
+        if char.isspace() or (runs and tamil == kind):
+            if runs:
+                runs[-1] += char
+            else:
+                runs.append(char)
+            continue
+        runs.append(char)
+        kind = tamil
+    return runs or [text]
 
 
 def write_title(path: Path, item: Text, fmt: Format) -> None:
@@ -275,10 +293,23 @@ def write_title(path: Path, item: Text, fmt: Format) -> None:
     alignment = row + {'left': 0, 'center': 1, 'right': 2}[item.align]
     margin, side = round(height * 0.08), round(width * 0.055)
 
+    def font_for(run: str) -> tuple[str, float]:
+        # The chosen fonts replace the bundled one for their script; other scripts keep theirs.
+        family, scale = lyric_font_for(run)
+        if family == TAMIL_FONT:
+            return item.tamil_font or family, scale
+        if family == DEFAULT_LYRIC_FONT[0] and item.font:
+            return item.font, scale
+        return family, scale
+
     def line(text: str, size: float, colour: str, spacing: int = 0) -> str:
-        family, scale = lyric_font_for(text)
-        # Every line sets its own spacing: override tags carry on past a line break.
-        return rf'{{\fn{family}\fs{size * scale}\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}{ass_text(text)}'
+        # Every line sets its own spacing and colour: override tags carry on past a line break.
+        head = rf'{{\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}'
+        pieces = []
+        for run in script_runs(text):
+            family, scale = font_for(run)
+            pieces.append(rf'{{\fn{family}\fs{size * scale}}}{ass_text(run)}')
+        return head + ''.join(pieces)
 
     lines = [line(item.text, title_size, item.color)]
     if item.subtitle:

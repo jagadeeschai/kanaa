@@ -417,6 +417,12 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Fonts (done)
+Titles have an English font and a Tamil font, picked from buttons that show each font in itself. English fonts are this Mac's own (Futura, Gill Sans, Optima, DIN Condensed, Impact, Didot, Bodoni, Baskerville, Georgia, Rockwell, American Typewriter, Copperplate, Snell Roundhand, SignPainter, Marker Felt, Noteworthy, Chalkduster); libass reaches them through Core Text, so nothing is downloaded. Avenir Next was left out: libass picks a slanted face of it. Tamil fonts are bundled from Google Fonts (SIL OFL, licences beside them): Hind Madurai, Catamaran, Baloo Thambi 2, Arima, Pavanam, Kavivanar, plus Noto Sans Tamil. Arima, Catamaran and Baloo Thambi 2 ship as variable fonts, which libass can't select from a folder, so fixed bold copies were made with fontTools (`varLib.instancer wght=700`). `write_title` cuts each line into Tamil and other runs (`script_runs`), so "Dream கனவு" gets both fonts. Font names are checked so they can't carry ASS formatting. The templates now use fonts too.
+
+### Steadier person masks (fix)
+On real footage Vision's mask wobbles: patches go half see-through and an arm drops out for a frame, so a title behind the person flickers through. `Steadier` in `cutout_service.py` takes the middle value of each mask pixel over 5 frames (centred, so nothing lags) and firms the inside (48 and below clear, 200 and above solid). On the user's 17-second clip, pixels flipping on and straight back went from 373 to 34 a frame. Masks are now version 2 file names, so old ones are made again.
+
 ### Title templates (done)
 Ten templates in the Text tab, each shown as a picture the server draws: Cinematic, Name card, Festival, Chapter, Quote, Location, Bold reel, Minimal, News, End card (`timeline/templates.ts`). Titles gained a subtitle (its own size, colour, letter spacing, above or below), left, centre or right alignment, and a band colour. `write_title` in `timeline_service.py` draws them as one block, each line in its script's font; a title using none of the new options still goes through `write_lyrics` exactly as before. "Save as my style" keeps a look under My styles (up to 12, stored on this Mac). The title settings are now grouped: Words, Look, Subtitle, Animation.
 

@@ -19,7 +19,7 @@ import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
-import { lookOf, MAX_SAVED, savedStyles, saveStyles, TEMPLATES, type Template } from '../timeline/templates';
+import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
@@ -163,7 +163,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const textImages = useRef(new Map<string, string | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
-  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.align ?? 'center', text.band_color ?? null, format.width, format.height]);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem) => {
     const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format));
     return found && found !== 'loading' ? found : undefined;
@@ -1080,6 +1080,21 @@ function AnimationPicker({ label, value, onChange, onShow }: { label: string; va
   </>;
 }
 
+/** Bundled Tamil fonts load from Kanaa itself, so each button shows its font. English ones are already on the Mac. */
+let fontsLoaded = false;
+function loadBundledFonts() {
+  if (fontsLoaded) return;
+  fontsLoaded = true;
+  const rules = TAMIL_FONTS.filter((font) => font.file).map((font) => `@font-face{font-family:"${font.family}";src:url("/api/fonts/${font.file}") format("truetype");font-display:swap}`).join('');
+  const style = document.createElement('style'); style.textContent = rules; document.head.appendChild(style);
+}
+
+function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fonts: FontChoice[]; value: string; sample: string; onPick: (family: string) => void }) {
+  useEffect(loadBundledFonts, []);
+  return <><h3 className="ed-sub">{label}</h3><div className="ed-fonts" role="group" aria-label={label}>{fonts.map((font) => <button key={font.family} className={value === font.family ? 'on' : ''} aria-pressed={value === font.family} title={font.label} onClick={() => onPick(font.family)}>
+    <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
+}
+
 function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onSaveStyle: () => void; onBehind: () => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   return <>
     <Group title="Words" startOpen>
@@ -1091,6 +1106,8 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
       <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
       <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
       <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
+      <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
+      <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
       <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
       {text.style === 'band' && <label className="ed-color"><span>Band colour</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
