@@ -1,4 +1,5 @@
 import { valueAt, type Keyframe, type Transform } from './evaluate.ts';
+import { localAt } from './ramp.ts';
 import { clipLength, DEFAULT_BLUR, fittedSize, MIN_CLIP_SECONDS, type BlurBox, type Clip, type Format, type Timeline, type VideoLayer } from './model.ts';
 
 /** One tracked frame: source seconds, then the box's centre and size, 0 to 1 of the source picture. */
@@ -62,7 +63,7 @@ export function videoAt(timeline: Timeline, t: number, isVideo: (mediaId: number
 
 /** A blur box that sits on one found face for as long as it is in the clip, and grows and shrinks with it. */
 export function blurForFace(path: TrackPoint[], under: Clip, source: Size, format: Format, id: string): BlurBox | null {
-  const timeOf = (seconds: number) => under.start + (seconds - under.in) / under.speed;
+  const timeOf = (seconds: number) => under.start + localAt(under, seconds);
   const inside = path.filter(([seconds]) => timeOf(seconds) >= under.start - SAME_TIME && timeOf(seconds) <= under.start + clipLength(under) + SAME_TIME);
   if (!inside.length) return null;
   const start = round(timeOf(inside[0][0]), 3);
@@ -113,7 +114,7 @@ export type FollowOptions = { size: boolean; drawnAt: number; from?: number };
  */
 export function followPath(item: Follower, under: Clip, source: Size, format: Format, points: TrackPoint[], { size, drawnAt, from = 0 }: FollowOptions): Transform {
   const placed = points.map(([seconds, u, v, w, h]) => {
-    const t = under.start + (seconds - under.in) / under.speed;
+    const t = under.start + localAt(under, seconds);
     const local = t - item.start;
     const [x, y] = sourceToFrame(under, source, format, t - under.start, u, v);
     const [left, top] = sourceToFrame(under, source, format, t - under.start, u - w / 2, v - h / 2);

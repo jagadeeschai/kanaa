@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.api.schemas import VideoEditRequest
+from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
@@ -38,6 +39,7 @@ LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social pla
 MAX_ATEMPO_STEP = 2.0
 # A source's prepared copy: (media id, steadied, reversed) to the copy's facts.
 Prepared = Callable[[int, bool, bool], MediaFacts]
+RAMP_MARGIN = 2.0  # Seconds.
 BLUR_REACH = 0.04  # A blur box's strength at 1, as a share of the frame height. Matches timeline/blur.ts.
 BLUR_FEATHER = 0.12
 BLOCK_REACH = 0.06
@@ -158,11 +160,13 @@ def color_filter(facts: MediaFacts) -> str:
     return HDR_TO_BT709 if facts.is_hdr else TAG_BT709
 
 
-def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0) -> str:
+def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None) -> str:
     """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame."""
     W, H = canvas
     steps = [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1', *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
-    if clip.speed != 1:
+    if timing:
+        steps.append(f"setpts='{timing}'")
+    elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
               f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1']
@@ -274,7 +278,7 @@ class Builder:
 
     def add_clip_audio(self, clip: Clip, facts: MediaFacts, layer_muted: bool) -> None:
         # A frozen or reversed clip is silent, in the preview too.
-        if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0 or clip.freeze is not None or clip.reverse:
+        if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0 or clip.freeze is not None or clip.reverse or clip.ramp:
             return
         self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
 
@@ -393,19 +397,27 @@ class Builder:
             base_frames = self.frames(clip.length)
             frames = base_frames + head + tail
             # The extra frames come from the source when it has them. Otherwise the first or last frame is held.
-            wanted = source_in - head * clip.speed / fps
-            held = max(0, math.ceil(-wanted * fps / clip.speed)) if facts.media_type != 'image' else 0
+            # A ramp's first speed carries on into a transition's extra frames, as in the preview.
+            lead_rate = clip.speed * (ramp_segments(clip.ramp)[0].r0 if clip.ramp else 1)
+            wanted = source_in - head * lead_rate / fps
+            held = max(0, math.ceil(-wanted * fps / lead_rate)) if facts.media_type != 'image' else 0
             if frozen:
                 # One frame in, held for every frame out, transitions included.
                 held = head
                 index = self.add_input('-ss', f'{max(0, clip.freeze - 0.25 / fps):.6f}', '-t', f'{1 / fps:.6f}', '-i', str(facts.path))  # A quarter frame early, so rounding can't pick the next one.
             else:
-                index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps)
+                # A ramp can play faster than average at the end, so it reads a little more than it needs.
+                index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps + (RAMP_MARGIN if clip.ramp else 0))
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             scale = supersample(clip.transform, enter, exit_, facts, self.fmt)
             canvas = (round(self.fmt.width * scale / 2) * 2, round(self.fmt.height * scale / 2) * 2)
             label = f'c{position}_{number}'
-            self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held)}[{label}]')
+            timing = None
+            if clip.ramp and not frozen and facts.media_type == 'video':
+                # Each source frame moves to the moment the ramp shows it, then fps= keeps the nearest frame for each output frame.
+                share = f'((T+{max(0, wanted) - source_in:.6f})/{clip.out - clip.in_:.6f})'
+                timing = f'({ramp_time_expression(clip.ramp, share)}*{clip.length:.6f}+{(head - held) / fps:.6f})/TB'
+            self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label)
             if head:
                 merged = f'x{position}_{number}'

@@ -417,6 +417,11 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Speed ramps (done)
+Presets in Speed and sound: Hero, Bullet, Montage, Speed up, Slow down, with a small curve and the playhead on it. A ramp is relative speed at points through the clip's time, scaled to average 1, so the clip keeps its length and the speed slider becomes the overall speed (`timeline/ramp.ts`, `services/ramp.py`; the two are checked against each other). Export moves each source frame with an exact `setpts` expression (the inverse of the piecewise-quadratic share) and `fps=` keeps the nearest frame. The preview follows the curve by changing the video's playback rate as it plays (drift under 20 ms in testing). Splitting a ramped clip keeps every moment in place; I and O split there too. Freeze, tracking and face finding use the ramp-aware `sourceAt`/`localAt`. Golden samples 2.0 to 2.7/255.
+
+Limits: sound is off on a ramped clip (atempo can't change speed smoothly); slow parts repeat frames unless the footage has more frames (60 or 120 fps); dragging a ramped clip's edge stretches its curve over the new range; no custom curve editing yet.
+
 ### Steady shaky video (done)
 A checkbox in Framing for any video clip. `stabilise_service.py` runs ffmpeg's vid.stab in two passes (detect with shakiness 6, then transform with 20 frames of smoothing and an automatic zoom so moving edges stay hidden) and keeps a steady copy plus its proxy with the clip's prepared files. The motion file uses vid.stab's text format: this build can't read back its own binary one ("Cannot parse localmotion"). Export always uses the steady copy (`prepared_copy` in `timeline_routes.py`); the preview shows the original until the copy is ready. Steady and backwards together reverse the steady copy. A synthetic hand-held pan went from 6.75 px of frame-to-frame shake to 0.12 px with every frame kept; golden samples 2.1 to 3.1/255. Not yet tried on real phone footage, rolling shutter wobble or very fast pans.
 

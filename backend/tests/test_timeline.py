@@ -1271,3 +1271,27 @@ class Steady(Clips):
         with self.assertRaises(ValueError):
             self.render(data, 'unprepared.mp4')
 
+
+class SpeedRamps(QuickEffects):
+    HERO = [{'t': 0, 'v': 1.6}, {'t': 0.35, 'v': 1.6}, {'t': 0.45, 'v': 0.3}, {'t': 0.6, 'v': 0.3}, {'t': 0.7, 'v': 1.6}, {'t': 1, 'v': 1.6}]
+
+    def test_each_frame_shows_the_moment_the_ramp_gives(self):
+        from app.services.ramp import ramp_share
+        from app.services.timeline_schema import RampPoint
+        ramp = [RampPoint(**point) for point in self.HERO]
+        path = self.render(self.stack({'start': 0, 'in': 0.5, 'out': 3.5, 'ramp': self.HERO}), 'ramp.mp4')
+        self.assertEqual(self.frame_count(path), 90)
+        for number in (0, 10, 30, 45, 55, 70, 89):
+            want = round((0.5 + ramp_share(ramp, number / 90) * 3) * 30)
+            self.assertAlmostEqual(self.source_frame(path, number), want, delta=1, msg=f'frame {number}')
+        self.assertFalse(has_stream(path, 'audio'))
+
+    def test_a_ramp_keeps_the_clip_length_and_carries_into_a_transition(self):
+        data = self.stack({'start': 0, 'in': 0, 'out': 2}, {'start': 2, 'in': 1, 'out': 3, 'speed': 0.5, 'ramp': self.HERO, 'transition_in': {'kind': 'crossfade', 'duration': 0.6}})
+        path = self.render(data, 'ramp-cross.mp4')
+        self.assertEqual(self.frame_count(path), 180)
+
+    def test_a_ramp_must_cover_the_whole_clip(self):
+        with self.assertRaises(ValidationError):
+            Timeline.model_validate(self.stack({'start': 0, 'in': 0, 'out': 2, 'ramp': [{'t': 0, 'v': 1}, {'t': 0.5, 'v': 2}]}))
+

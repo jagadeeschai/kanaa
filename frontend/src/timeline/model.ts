@@ -3,9 +3,10 @@ import type { Chroma } from './chroma';
 import type { Transform } from './evaluate';
 import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
 import { valueAt } from './evaluate.ts';
+import { rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
@@ -175,7 +176,7 @@ export function freezeFrame(timeline: Timeline, t: number, ids: [string, string]
   const clip = clips.find((item) => t >= item.start && t < item.start + clipLength(item));
   if (!clip || clip.freeze != null) return timeline;
   const local = t - clip.start;
-  const frame = round(clip.reverse ? clip.out - local * clip.speed : clip.in + local * clip.speed);
+  const frame = round(sourceAt(clip, local));
   const still: Clip = { ...clip, id: ids[0], in: 0, out: seconds, speed: 1, freeze: frame, reverse: false, muted: true, fade_in: 0, fade_out: 0, enter: null, exit: null, transition_in: null,
     transform: { x: valueAt(clip.transform, 'x', local), y: valueAt(clip.transform, 'y', local), scale: valueAt(clip.transform, 'scale', local), opacity: valueAt(clip.transform, 'opacity', local), rotation: valueAt(clip.transform, 'rotation', local) } };
   const split = splitClip(timeline, t, ids[1]);
@@ -190,10 +191,19 @@ export function splitClip(timeline: Timeline, t: number, newId: string): Timelin
   if (index < 0) return timeline;
   const clip = clips[index];
   // A reversed clip shows its source's end first, so its first half is the source's later part.
-  const cut = round(clip.reverse ? clip.out - (t - clip.start) * clip.speed : clip.in + (t - clip.start) * clip.speed);
+  const local = t - clip.start;
+  const cut = round(sourceAt(clip, local));
   const next = [...clips];
-  const [before, after] = splitKeys(clip.transform, t - clip.start);
-  const [first, second] = clip.reverse ? [{ in: cut }, { out: cut }] : [{ out: cut }, { in: cut }];
+  const [before, after] = splitKeys(clip.transform, local);
+  const [first, second]: Partial<Clip>[] = clip.reverse ? [{ in: cut }, { out: cut }] : [{ out: cut }, { in: cut }];
+  if (clip.ramp) {
+    // Each half keeps its part of the curve, at the speed that keeps every moment where it was.
+    const share = local / clipLength(clip);
+    const played = rampShare(clip.ramp, share) * (clip.out - clip.in);
+    const [early, late] = splitRamp(clip.ramp, share);
+    Object.assign(first, { ramp: early, speed: round(played / local) });
+    Object.assign(second, { ramp: late, speed: round((clip.out - clip.in - played) / (clipLength(clip) - local)) });
+  }
   next.splice(index, 1, { ...clip, ...first, transform: before, exit: null, fade_out: 0 }, { ...clip, ...second, id: newId, transform: after, enter: null, fade_in: 0, transition_in: null });
   return withClips(timeline, next);
 }
@@ -223,6 +233,17 @@ export function updateClip(timeline: Timeline, id: string, changes: Partial<Clip
   const overlay = overlayHolding(timeline, id);
   if (overlay) return withItems(timeline, overlay, overlay.items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
   return withClips(timeline, mainLayer(timeline).items.map((clip) => (clip.id === id ? { ...clip, ...changes } : clip)));
+}
+
+/** The I and O keys: cut the clip's start or end at `local`. A ramped clip is split there, so the rest keeps its exact timing. */
+export function trimAtPlayhead(timeline: Timeline, clip: Clip, edge: 'in' | 'out', local: number, newId: () => string, source?: SourceFacts): Timeline {
+  if (clip.ramp) {
+    const id = newId();
+    const split = splitClip(timeline, clip.start + local, id);
+    return split === timeline ? timeline : removeClip(split, edge === 'in' ? clip.id : id);
+  }
+  const into = clip.reverse ? clip.out - sourceAt(clip, local) : sourceAt(clip, local) - clip.in;
+  return trimClip(timeline, clip.id, edge, clip.in + into, source);
 }
 
 /** Pulls a time to the nearest snap point when one is within reach. */

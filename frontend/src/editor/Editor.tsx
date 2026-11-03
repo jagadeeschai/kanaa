@@ -6,7 +6,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { freezeFrame, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { freezeFrame, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -19,6 +19,7 @@ import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
+import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
@@ -547,8 +548,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         case 'ArrowLeft': event.preventDefault(); engine?.pause(); seek(playhead.current - frame * (event.shiftKey ? 10 : 1)); break;
         case 'ArrowRight': event.preventDefault(); engine?.pause(); seek(playhead.current + frame * (event.shiftKey ? 10 : 1)); break;
         case 's': split(); break;
-        case 'i': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'in', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
-        case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimClip(timeline, item.id, 'out', item.in + (playhead.current - item.start) * item.speed, facts(item.media_id))); break; }
+        case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
         case 'Escape': setWordSelection(new Set()); break;
         default: break;
@@ -663,11 +663,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!under || !source) return;
     const sourceBox = boxInSource(under, source, timeline.format, t - under.start, box);
     if (!sourceBox) { setError('Draw the box on the video itself.'); return; }
-    const toSource = (time: number) => under.in + (time - under.start) * under.speed;
+    const toSource = (time: number) => sourceAt(under, time - under.start);
     const first = mode === 'continue' ? t : Math.max(followTarget.start, under.start);
     const last = Math.min(followTarget.start + followTarget.length, under.start + clipLength(under));
     try {
-      const { job_id } = await startTracking(under.media_id, { at: toSource(t), start: toSource(first), end: toSource(last), box: sourceBox });
+      const { job_id } = await startTracking(under.media_id, { at: toSource(t), start: Math.min(toSource(first), toSource(last)), end: Math.max(toSource(first), toSource(last)), box: sourceBox });
       const drawnAt = t - followTarget.start;
       setFollowJob({ itemId: followTarget.id, underId: under.id, jobId: job_id, progress: 0, drawnAt, from: mode === 'continue' ? drawnAt : 0, size: followSize, place: selectedBlur ? box : null });
     } catch (problem) { setError((problem as Error).message); }
@@ -712,7 +712,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }
     const followed = followPath({ start: item.start, length: item.length, transform }, under, source, current.format, track.points, { size: job.size, drawnAt: job.drawnAt, from: job.from });
     change(clip ? updateClip(current, clip.id, { transform: followed }) : blur ? updateBlur(current, blur.id, { ...placed, transform: followed }) : updateText(current, text!.id, { transform: followed }));
-    const timeOf = (point: TrackPoint) => under.start + (point[0] - under.in) / under.speed;
+    const timeOf = (point: TrackPoint) => under.start + localAt(under, point[0]);
     const lost = track.lost_after ? `Lost it at ${timecode(timeOf(track.points[track.points.length - 1]))}. Move the playhead there, then choose Continue from here.`
       : track.lost_before ? `Lost it before ${timecode(timeOf(track.points[0]))}. It stays still until then.` : '';
     setFollowNote({ itemId: job.itemId, text: lost || 'Following. Play it back to check, and drag any keyframe that is off.' });
@@ -1049,13 +1049,28 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     {clip.freeze != null && <Group title="Frozen frame" startOpen><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
     {source?.kind === 'video' && clip.freeze == null && <Group title="Speed and sound" changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0 || Boolean(clip.reverse)}>
       {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
-      <ValueSlider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
+      <ValueSlider label={clip.ramp ? 'Overall speed' : 'Speed'} value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
+      <h3 className="ed-sub">Speed ramp</h3>
+      <Chips label="Speed ramp" options={RAMP_CHOICES} value={rampName(clip.ramp)} onPick={(id) => onChange({ ramp: id === 'off' ? null : RAMPS[id] })}/>
+      {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">Sound is off during a speed ramp. Slow parts look smoothest in footage filmed at 60 or 120 frames a second.</p></>}
       <h3 className="ed-sub">Sound</h3>
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
       <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
       {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
     </Group>}
   </>;
+}
+
+const RAMP_CHOICES: { id: RampName | 'off'; label: string }[] = [{ id: 'off', label: 'Off' }, { id: 'hero', label: 'Hero' }, { id: 'bullet', label: 'Bullet' }, { id: 'montage', label: 'Montage' }, { id: 'speed-up', label: 'Speed up' }, { id: 'slow-down', label: 'Slow down' }];
+/** Which preset a ramp is, if any. A split leaves each half with its own part of the curve, shown as none. */
+const rampName = (ramp?: RampPoint[] | null): RampName | 'off' | null => (!ramp ? 'off' : (Object.keys(RAMPS) as RampName[]).find((name) => JSON.stringify(RAMPS[name]) === JSON.stringify(ramp)) ?? null);
+
+/** The ramp's speed through the clip, with the playhead on it. Higher is faster. */
+function RampCurve({ ramp, at }: { ramp: RampPoint[]; at: number }) {
+  const samples = Array.from({ length: 61 }, (_, index) => rampSpeed(ramp, index / 60));
+  const top = Math.max(...samples) * 1.1;
+  const line = samples.map((value, index) => `${index === 0 ? 'M' : 'L'}${(index / 60) * 200},${56 - (value / top) * 52}`).join(' ');
+  return <svg className="ed-ramp" viewBox="0 0 200 60" role="img" aria-label="Speed through the clip"><path d={`${line} L200,60 L0,60 Z`} className="fill"/><path d={line} className="line"/><line x1={at * 200} x2={at * 200} y1="0" y2="60" className="head"/></svg>;
 }
 
 function FollowPanel({ blur, drawing, job, busy, note, following, size, onSize, onStart, onContinue, onCancel, onStop }: { blur: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;

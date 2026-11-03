@@ -52,7 +52,7 @@ export class AudioMixer {
 
   clipGain(clip: Clip, t: number, layerMuted: boolean) {
     const length = (clip.out - clip.in) / clip.speed;
-    return clip.muted || layerMuted || clip.freeze != null || clip.reverse ? 0 : clip.volume * fadeGain(clip, t - clip.start, length);
+    return clip.muted || layerMuted || clip.freeze != null || clip.reverse || clip.ramp ? 0 : clip.volume * fadeGain(clip, t - clip.start, length);
   }
 
   private player(sound: Sound, url: string): Player {

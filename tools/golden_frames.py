@@ -159,6 +159,10 @@ def build(first, second, logo, screen_image, screen_video, detail, motion):
     clips.append({'id': 'backwards', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 3.5, 'reverse': True})
     samples += [{'name': f'reverse {at}', 't': t + at} for at in (0.2, 1.5, 2.8)]
     t += 3
+    hero = [{'t': 0, 'v': 1.6}, {'t': 0.35, 'v': 1.6}, {'t': 0.45, 'v': 0.3}, {'t': 0.6, 'v': 0.3}, {'t': 0.7, 'v': 1.6}, {'t': 1, 'v': 1.6}]
+    clips.append({'id': 'ramped', 'media_id': motion, 'start': t, 'in': 0.2, 'out': 3.8, 'speed': 1.2, 'ramp': hero})
+    samples += [{'name': f'ramp {at}', 't': t + at} for at in (0.4, 1.2, 1.6, 2.1, 2.8)]
+    t += 3
     clips.append({'id': 'steadied', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 2.5, 'stabilise': True})
     samples += [{'name': f'steady {at}', 't': t + at} for at in (0.3, 1.7)]
     t += 2

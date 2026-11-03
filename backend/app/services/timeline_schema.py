@@ -84,6 +84,11 @@ class Chroma(Strict):
     spill: float = Field(default=0.5, ge=0, le=1)
 
 
+class RampPoint(Strict):
+    t: float = Field(ge=0, le=1)  # Through the clip's time.
+    v: float = Field(ge=0.05, le=10)  # Relative speed; a ramp is scaled to average 1.
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -91,7 +96,7 @@ class Clip(Strict):
     start: float = Field(ge=0)
     in_: float = Field(default=0, ge=0, alias='in')
     out: float = Field(gt=0)
-    speed: float = Field(default=1, ge=0.25, le=4)
+    speed: float = Field(default=1, ge=0.05, le=20)  # Wider than the slider: halves of a split ramp need it.
     volume: float = Field(default=1, ge=0, le=2)
     muted: bool = False
     fade_in: float = Field(default=0, ge=0)
@@ -106,11 +111,14 @@ class Clip(Strict):
     freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
     reverse: bool = False  # Plays in..out backwards, without sound.
     stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
+    ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
 
     @model_validator(mode='after')
     def valid_range(self):
         if self.out <= self.in_:
             raise ValueError('A clip must end after it starts.')
+        if self.ramp is not None and (len(self.ramp) < 2 or self.ramp[0].t != 0 or self.ramp[-1].t != 1 or any(b.t <= a.t for a, b in zip(self.ramp, self.ramp[1:]))):
+            raise ValueError('A speed ramp must run from the start of the clip to its end.')
         return self
 
     @property

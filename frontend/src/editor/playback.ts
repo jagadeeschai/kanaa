@@ -3,6 +3,7 @@ import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
+import { rampShare, rampSpeed } from '../timeline/ramp';
 import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
@@ -221,11 +222,17 @@ export class PlaybackEngine {
   private sourceTime(clip: Clip, t: number, inside = true) {
     if (clip.freeze != null) return clip.freeze;
     const local = t - clip.start;
-    const into = (inside ? Math.max(0, Math.min(local, clipLength(clip) - 0.001)) : local) * clip.speed;
+    const at = inside ? Math.max(0, Math.min(local, clipLength(clip) - 0.001)) : local;
+    const into = clip.ramp ? rampShare(clip.ramp, at / clipLength(clip)) * (clip.out - clip.in) : at * clip.speed;
     const source = this.sources(clip.media_id, clip);
     // The reversed copy runs from the source's end, so in..out is the mirrored stretch of it.
     if (source?.reversed) return Math.max(0, (source.duration ?? clip.out) - clip.out + into);
     return Math.max(0, clip.in + into);
+  }
+
+  /** How fast the source plays at `t`: the clip's speed, shaped by its ramp. */
+  private rateAt(clip: Clip, t: number) {
+    return clip.speed * (clip.ramp ? rampSpeed(clip.ramp, Math.min(1, Math.max(0, (t - clip.start) / clipLength(clip)))) : 1);
   }
 
   private load(slot: Slot, clip: Clip, url: string, at: number) {
@@ -253,7 +260,7 @@ export class PlaybackEngine {
         slot.video.muted = false;
         if (this.playing) this.mixer.setVideoGain(slot.video, item === clip ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
         // While playing, keepInStep owns the rate. Setting it here too would undo each nudge.
-        if (slot.video.paused) slot.video.playbackRate = item.speed * this.rate;
+        if (slot.video.paused) slot.video.playbackRate = Math.min(16, Math.max(0.0625, this.rateAt(item, t) * this.rate));
         const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;
         const still = item.freeze != null;
         if (this.playing && slot.video.paused && !finished && !still) void slot.video.play().catch(() => {});
@@ -553,7 +560,7 @@ export class PlaybackEngine {
         if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) { slot.video.currentTime = at; this.struggled(); }
         else {
           const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift)) : 0;
-          const wanted = item.speed * this.rate * (1 + nudge);
+          const wanted = Math.min(16, Math.max(0.0625, this.rateAt(item, this.time) * this.rate * (1 + nudge)));
           if (Math.abs(slot.video.playbackRate - wanted) > 0.001) slot.video.playbackRate = wanted;
         }
       }

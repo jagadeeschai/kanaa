@@ -13,7 +13,7 @@ const SHORTEST_PIECE = 0.1;
 export function buildTokens(clips: Clip[], wordsFor: (mediaId: number) => Word[] | undefined): Token[] {
   const tokens: Token[] = [];
   // A frozen or reversed clip has no speech to read.
-  for (const clip of [...clips].filter((item) => item.freeze == null && !item.reverse).sort((a, b) => a.start - b.start)) {
+  for (const clip of [...clips].filter((item) => item.freeze == null && !item.reverse && !item.ramp).sort((a, b) => a.start - b.start)) {
     const words = (wordsFor(clip.media_id) ?? []).filter((word) => { const middle = (word.s + word.e) / 2; return middle >= clip.in && middle < clip.out; });
     let cursor = clip.in;
     const pause = (end: number) => { if (end - cursor >= MIN_PAUSE_SECONDS) tokens.push({ key: `${clip.id}:p${cursor}`, clipId: clip.id, from: cursor, to: end }); };
