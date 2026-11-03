@@ -396,14 +396,25 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 - Folders are one name per file, in `photos.folder`. A file sits in one folder at a time.
 - "Remove from this video" only edits the timeline. "Delete from Motion" removes Motion's copy, and is refused while any project or generated scene uses the file. If only a project's cover uses it, the cover moves to something else in that project.
 
-## What could make Motion unique
-Not started. Rivals' weaknesses here are guesses, not tested.
+## What could make Motion unique as a video editor
+Not started. Rivals' weaknesses here are guesses, not tested. Ranked for ordinary video editing.
 
-1. **Trustworthy Tamil lyrics.** Paste the real lyrics, align them, and flag doubtful lines. Alignment beats transcription: Whisper matched 28% of the words on one song.
-2. **Karaoke maker.** One click for the instrumental plus a letter-by-letter wipe, with an adjustable guide vocal.
-3. **Dual-script lyrics.** A Tamil line with an editable romanized line on shared timing, for listeners who speak Tamil but read it less easily.
-4. **Private until release.** A visible "nothing left this Mac" indicator for unreleased songs. AI scenes stay an explicit opt-in that says what is sent.
-5. **One song, every format.** From one project, export a 9:16 chorus, a 16:9 full video and a 1:1 version, reusing the sync.
+1. **Edit by words.** Local transcript of a talking video, in Tamil or English. Delete a sentence and its video goes too. Each change is a normal timeline edit, so Undo works.
+2. **First cut from a folder.** Drop in a day's clips and get a rough edit to refine, using local speech, sound and beat analysis, with no upload.
+3. **One edit, every format.** Keep one project and give each format (9:16, 16:9, 1:1) its own framing and titles, exported together.
+4. **What you see is what you export.** Keep the golden-frame test as a promise: preview and export match, with no watermark, account or upload.
+5. **Saved versions.** Name a point in a project, try another cut, and compare or return to it.
+
+## Lyric video backlog
+For later. This is an important feature, and it comes after the editing work.
+
+- Text styles: static text as well as lyric text, with more styles.
+- Colourful template animations.
+- Trustworthy lyrics: paste the real lyrics, align them, and flag doubtful lines. Whisper matched 28% of the words on one song, so alignment beats transcription.
+- Karaoke maker: instrumental plus a letter-by-letter wipe, with an adjustable guide vocal.
+- Dual-script lyrics: a Tamil line with an editable romanized line on shared timing.
+- Private until release: a visible "nothing left this Mac" indicator. AI scenes stay an explicit opt-in that says what is sent.
+- One song, every format: a 9:16 chorus, a 16:9 full video and a 1:1 version, reusing the sync.
 
 **Known behaviour to decide:** changing a main clip's speed moves later clips, but sounds and text stay put, which can break lyric sync.
 
