@@ -3,7 +3,7 @@ import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
-import { clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
@@ -418,15 +418,20 @@ export class PlaybackEngine {
     const image = this.imageTexture(url);
     if (!image.ready) return;
     gl.bindTexture(gl.TEXTURE_2D, image.texture);
-    const look = animatedLook(item.enter, item.exit, this.time - item.start, item.length);
+    const local = this.time - item.start;
+    const look = animatedLook(item.enter, item.exit, local, item.length);
     const { width, height } = this.timeline!.format;
-    gl.uniform4f(uniforms.box, 0.5 + look.dx, 0.5 + look.dy, look.scale, look.scale);
-    gl.uniform1f(uniforms.turn, 0);
+    // The title's own move first, then its animation moves that whole frame, as the export's pose() does.
+    const transform = item.transform ?? REST_TRANSFORM;
+    const size = valueAt(transform, 'scale', local) * look.scale;
+    gl.uniform4f(uniforms.box, 0.5 + look.dx + (valueAt(transform, 'x', local) - 0.5) * look.scale, 0.5 + look.dy + (valueAt(transform, 'y', local) - 0.5) * look.scale, size, size);
+    gl.uniform1f(uniforms.turn, (valueAt(transform, 'rotation', local) * Math.PI) / 180);
+    gl.uniform2f(uniforms.frame, width, height);
     gl.uniform1i(uniforms.keyType, 0);
-    gl.uniform1f(uniforms.opacity, look.opacity);
+    gl.uniform1f(uniforms.opacity, look.opacity * Math.max(0, Math.min(1, valueAt(transform, 'opacity', local))));
     gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
     gl.uniform3f(uniforms.tint, 1, 1, 1);
-    gl.uniform1f(uniforms.blur, look.blur / look.scale);
+    gl.uniform1f(uniforms.blur, look.blur / size);
     gl.uniform2f(uniforms.blurAspect, height / width, 1);
     gl.uniform1i(uniforms.rotation, 0);
     gl.uniform2f(uniforms.flip, 0, 0);

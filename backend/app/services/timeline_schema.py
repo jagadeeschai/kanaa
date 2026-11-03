@@ -126,6 +126,7 @@ class Text(Strict):
     size: int = Field(default=44, ge=12, le=100)
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
+    transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.
 
     @property
     def length(self) -> float:

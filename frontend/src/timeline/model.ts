@@ -9,7 +9,9 @@ export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' 
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
-export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null };
+/** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
+export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform };
+export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
 export type BlurBox = { id: string; start: number; length: number; style: 'blur' | 'pixelate'; shape: 'oval' | 'box'; amount: number; width: number; height: number; transform: Transform };
@@ -125,6 +127,7 @@ export const MUSIC_VOLUME = 0.6;
 export function normalizeTimeline(timeline: Timeline): Timeline {
   const layers = timeline.layers.map((layer) => {
     if (layer.kind === 'audio') return { ...layer, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
+    if (layer.kind === 'text') return { ...layer, items: layer.items.map((item) => ({ ...item, transform: { ...REST_TRANSFORM, ...item.transform } })) };
     if (layer.kind === 'blur') return { ...layer, items: layer.items.map((item) => ({ ...DEFAULT_BLUR, ...item, transform: { ...DEFAULT_BLUR.transform, ...item.transform } })) };
     if (layer.kind !== 'video') return layer;
     let cursor = 0;
@@ -404,7 +407,7 @@ export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at:
   if (edge === 'in') {
     const earliest = others.filter((item) => item.start < text.start).reduce((last, item) => Math.max(last, item.start + item.length), 0);
     const start = round(Math.min(Math.max(at, earliest), end - MIN_CLIP_SECONDS));
-    return set({ start, length: round(end - start), ...('shape' in text ? { transform: shiftKeys(text.transform, -(start - text.start)) } : {}) });
+    return set({ start, length: round(end - start), ...(text.transform ? { transform: shiftKeys(text.transform, -(start - text.start)) } : {}) });
   }
   const after = others.filter((item) => item.start >= end - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
   return set({ length: round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start) });

@@ -432,7 +432,7 @@ class Builder:
             index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(image))
             label, output = f'text{position}_{number}', f't{position}_{number}'
             self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
-            shown = self.pose(label, Transform(), item.enter, item.exit, item.length, frames, 1, 0, label)
+            shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
             late = f'{label}_late'
             self.graph.append(f'[{shown}]tpad=start={round(item.start * fps)}:color=black@0[{late}]')
             self.graph.append(f'[{base}][{late}]overlay=format=gbrp:eof_action=pass[{output}]')

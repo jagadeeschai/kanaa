@@ -413,7 +413,9 @@ Any clip can have a `chroma` setting: colour, strength (similarity), edge softne
 
 Blur boxes are a new `blur` layer kind, above video and below text: Blur or Pixelate, Oval or Box, strength, width and height, with position and size keyframes. Export blurs (`gblur`) or blocks (`scale` area then neighbour) the frame so far and keeps the shape through a feathered mask posed by `pose()`; the mask is padded clear before and after, as a mask that ended would repeat its last frame. Golden samples: blur about 2/255, pixelate about 4 (block edges on a checkerboard), 1.24 across all 168. A synthetic 6-second test follows within 9 px in a 1080-wide frame.
 
-Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Text items can't follow yet, as titles have no free position. Faces aren't found automatically; you draw the box.
+Titles have a transform too: it moves the whole title from where its Top, Middle or Bottom position puts it, under its enter and exit animations, so titles can be dragged in the preview, keyframed and made to follow. Older titles load with a resting transform. Golden samples for a moved and a moving title: about 1.5/255.
+
+Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
 ### Edit by words (done)
 `transcript_service.py` runs Whisper on this Mac and stores words with the clip's prepared files, per language. The Words tab in the editor shows the main track as text. Cuts go through `timeline/words.ts`, so each is a normal timeline change and one Undo.

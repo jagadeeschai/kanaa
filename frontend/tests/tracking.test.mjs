@@ -97,3 +97,12 @@ test('a blur box saved with only some values gets the rest', () => {
   assert.equal(blur.style, 'blur');
   assert.deepEqual([blur.transform.x, blur.transform.y, blur.transform.scale], [0.3, 0.5, 1]);
 });
+
+test('titles load with a resting transform, and trimming their start keeps their motion on time', () => {
+  const loaded = normalizeTimeline({ version: 2, format, layers: [{ id: 'main', kind: 'video', magnetic: true, items: [] }, { id: 't', kind: 'text', items: [{ id: 'x', start: 1, length: 3, text: 'Hi', style: 'band', position: 'bottom', color: '#ffffff', size: 40, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, keyframes: { x: [{ t: 0, v: 0.2 }, { t: 2, v: 0.6 }] } } }] }] });
+  assert.equal(loaded.layers[1].items[0].transform.rotation, 0);
+  const trimmed = trimText(loaded, 'x', 'in', 2).layers[1].items[0];
+  close(valueAt(trimmed.transform, 'x', 0), 0.4, 'same position one second in');
+  const plain = normalizeTimeline({ version: 2, format, layers: [{ id: 'main', kind: 'video', magnetic: true, items: [] }, { id: 't', kind: 'text', items: [{ id: 'y', start: 0, length: 1, text: 'Hi', style: 'band', position: 'top', color: '#ffffff', size: 40 }] }] });
+  assert.deepEqual(plain.layers[1].items[0].transform, { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 });
+});

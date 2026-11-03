@@ -6,7 +6,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -323,6 +323,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(addBlur(timeline, blur, newId()));
     setSelectedId(blur.id);
   };
+  const textLocal = selectedText ? Math.max(0, Math.min(now - selectedText.start, selectedText.length)) : 0;
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) change(updateText(timeline, selectedText.id, changes), group); };
   const addTitle = (title: typeof TITLES[number]) => {
     if (!timeline) return;
@@ -517,7 +518,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
-    : selectedBlur ? { transform: selectedBlur.transform, local: blurLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedBlur({ transform }, group) } : null;
+    : selectedBlur ? { transform: selectedBlur.transform, local: blurLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedBlur({ transform }, group) }
+    : selectedText ? { transform: selectedText.transform ?? REST_TRANSFORM, local: textLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedText({ transform }, group) } : null;
   const startPicking = () => { if (selected) { engineRef.current?.pause(); engineRef.current?.showUnkeyed(selected.id); setPickingKey(true); } };
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (pickingKey && selected) {
@@ -541,7 +543,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   // Follow movement: the item's position (and size) become keys from a box tracked in the video under it.
   const followTarget = selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline) ? { id: selected.id, start: selected.start, length: clipLength(selected), transform: selected.transform }
-    : selectedBlur ? { id: selectedBlur.id, start: selectedBlur.start, length: selectedBlur.length, transform: selectedBlur.transform } : null;
+    : selectedBlur ? { id: selectedBlur.id, start: selectedBlur.start, length: selectedBlur.length, transform: selectedBlur.transform }
+    : selectedText ? { id: selectedText.id, start: selectedText.start, length: selectedText.length, transform: selectedText.transform ?? REST_TRANSFORM } : null;
   const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
   const startDrawing = (mode: 'start' | 'continue') => {
     if (!timeline || !followTarget) return;
@@ -604,8 +607,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const source = under && sourceFor(under.media_id);
     const clip = current && findClip(current, job.itemId);
     const blur = current && findBlur(current, job.itemId)?.blur;
-    if (!current || !under || !source || (!clip && !blur) || !track.points.length) return;
-    const item = clip ? { start: clip.start, length: clipLength(clip), transform: clip.transform } : { ...blur!, transform: blur!.transform };
+    const text = current && findText(current, job.itemId)?.text;
+    if (!current || !under || !source || (!clip && !blur && !text) || !track.points.length) return;
+    const item = clip ? { start: clip.start, length: clipLength(clip), transform: clip.transform } : blur ? { ...blur, transform: blur.transform } : { ...text!, transform: text!.transform ?? REST_TRANSFORM };
     let { transform } = item;
     let placed: Partial<BlurBox> = {};
     if (blur && job.place) {
@@ -616,7 +620,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (job.from === 0) placed = { width: Math.max(0.02, Math.min(1, w / scale)), height: Math.max(0.02, Math.min(1, h / scale)) };
     }
     const followed = followPath({ start: item.start, length: item.length, transform }, under, source, current.format, track.points, { size: job.size, drawnAt: job.drawnAt, from: job.from });
-    change(clip ? updateClip(current, clip.id, { transform: followed }) : updateBlur(current, blur!.id, { ...placed, transform: followed }));
+    change(clip ? updateClip(current, clip.id, { transform: followed }) : blur ? updateBlur(current, blur.id, { ...placed, transform: followed }) : updateText(current, text!.id, { transform: followed }));
     const timeOf = (point: TrackPoint) => under.start + (point[0] - under.in) / under.speed;
     const lost = track.lost_after ? `Lost it at ${timecode(timeOf(track.points[track.points.length - 1]))}. Move the playhead there, then choose Continue from here.`
       : track.lost_before ? `Lost it before ${timecode(timeOf(track.points[0]))}. It stays still until then.` : '';
@@ -693,7 +697,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const isEmpty = timeline && !mainLayer(timeline).items.length;
 const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
     following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => startDrawing('start')} onContinue={() => startDrawing('continue')}
-    onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); setFollowNote(null); }}/>;
+    onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
   return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     <header className="ed-top">
       <button className="ed-icon" onClick={onClose} aria-label="Back to projects"><ArrowLeft size={18}/></button>
@@ -736,6 +740,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
+          {selectedText && !selectedLayer?.locked && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
           {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
           {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
           {drawing && <div className="ed-draw" aria-label="Drag a box around what to follow" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
@@ -755,7 +760,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
       <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} timing={textTiming(selectedText)} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -825,7 +830,7 @@ function AnimationPicker({ label, value, onChange, onShow }: { label: string; va
   </>;
 }
 
-function TextInspector({ text, timing, onChange, onEnter, onExit }: { text: TextItem; timing: TimeFieldProps[]; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   return <>
     <h2>Text</h2>
     <textarea className="ed-text" aria-label="Text" lang="ta" value={text.text} maxLength={500} rows={3} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
@@ -839,6 +844,11 @@ function TextInspector({ text, timing, onChange, onEnter, onExit }: { text: Text
     <label className="ed-color"><span>Color</span><input type="color" aria-label="Text color" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
     <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
     <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
+    <p className="ed-tip">Drag the title in the preview to move it.</p>
+    <Group title="Motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0}>
+      <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
+    </Group>
+    <Group title="Follow movement" startOpen={Boolean(text.transform?.keyframes?.x?.length)}>{follow}</Group>
   </>;
 }
 

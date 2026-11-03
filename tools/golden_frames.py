@@ -164,6 +164,14 @@ def build(first, second, logo, screen_image, screen_video, detail):
         samples.append({'name': f'text rest {preset}', 't': t + 1})
         samples.append({'name': f'text exit {preset} 0.5', 't': t + SECONDS - ANIMATION * 0.5})
         t += SECONDS
+    # Titles moved and animated by their own transform, under their enter animation.
+    for name, transform, enter in (('title moved', {'x': 0.3, 'y': 0.4, 'scale': 0.7, 'rotation': 10}, None),
+                                   ('title moving', {'keyframes': {'x': keys((0, 0.3), (2, 0.7)), 'y': keys((0, 0.6), (2, 0.4)), 'scale': keys((0, 0.6), (2, 1.3))}}, {'preset': 'slide-up', 'duration': 1})):
+        clips.append(clip(name.replace(' ', '-') + '-under', first, t))
+        texts.append({'id': name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'text': 'தமிழ் வாழ்க', 'style': 'outline', 'position': 'center', 'size': 60, 'enter': enter, 'transform': transform})
+        for at in (0.5, 1, 1.6):
+            samples.append({'name': f'{name} {at}', 't': t + at})
+        t += SECONDS
     return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
 
 

@@ -147,6 +147,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
+      if (text.transform) drawKeys(text.id, text.transform, text.length, x, y + h);
     };
     const drawKeys = (id: string, transform: Clip['transform'], length: number, x: number, bottom: number) => {
       if (id !== props.current.selectedId) return;

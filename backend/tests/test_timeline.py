@@ -1053,3 +1053,24 @@ class Tracking(unittest.TestCase):
         with self.assertRaises(JobCancelled):
             tracking_service.track(self.root / 'moving.mp4', (320, 180), 0, (0.2, 0.5, 0.1, 0.2), 0, 2, lambda progress: None, lambda: True)
 
+
+class MovingTitles(Clips):
+    def test_title_follows_its_own_keyframes(self):
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        title = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIIIIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff',
+                 'transform': {'keyframes': {'x': [{'t': 0, 'v': 0.25}, {'t': 2, 'v': 0.75}]}}}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [title]}]}
+        path = self.render(data, 'title.mp4')
+        centres = []
+        for number in (3, 30, 57):
+            frame = self.frame(path, number, (640, 360)).astype(int)
+            columns = np.nonzero(frame[:, :, 0].max(axis=0) > 200)[0]
+            centres.append((columns.min() + columns.max()) / 2 / 640)
+        for got, want in zip(centres, (0.25 + 0.5 * 3 / 60, 0.5, 0.25 + 0.5 * 57 / 60)):
+            self.assertAlmostEqual(got, want, delta=0.03)
+
+    def test_old_titles_without_a_transform_still_load(self):
+        Timeline.model_validate({'layers': [{'id': 'w', 'kind': 'text', 'items': [{'id': 't', 'start': 0, 'length': 1, 'text': 'Hi'}]}]})
+
