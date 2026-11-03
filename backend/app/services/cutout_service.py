@@ -12,6 +12,8 @@ import logging
 import shutil
 import subprocess
 import threading
+
+import numpy as np
 from pathlib import Path
 from typing import Callable
 
@@ -25,10 +27,13 @@ from app.services.video_edit_service import BT709_OUTPUT_ARGS, HDR_TO_BT709, SD_
 
 logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'person_mask.swift'
-MASK = 'person-mask.mp4'
-SEE_THROUGH = 'person-cut.webm'
-PORTRAIT = 'portrait.mp4'
-PORTRAIT_PROXY = 'portrait-proxy.mp4'
+# Version 2 masks are steadied over time; older ones are left behind and made again.
+MASK = 'person-mask-2.mp4'
+SEE_THROUGH = 'person-cut-2.webm'
+PORTRAIT = 'portrait-2.mp4'
+PORTRAIT_PROXY = 'portrait-proxy-2.mp4'
+STEADY_RADIUS = 2  # Frames either side.
+FIRM_LOW, FIRM_HIGH = 48, 200  # Below is clear, above is solid, between is the soft edge.
 MASK_SIDE = 1280  # The mask's long side. The export scales it to the full frame, softly.
 PREVIEW_SIDE = 720
 PORTRAIT_BLUR = 0.015  # Of the frame height: a strong portrait-mode look.
@@ -73,6 +78,45 @@ def files(source: Path) -> dict[str, Path]:
     return {name: folder / name for name in (MASK, SEE_THROUGH, PORTRAIT, PORTRAIT_PROXY)}
 
 
+class Steadier:
+    """Vision's mask wobbles on real footage: a patch goes see-through or an arm drops out for a frame, and a title
+    behind the person shows through for that frame. Each mask frame becomes the middle value of its neighbours, which
+    removes one- and two-frame dropouts without lagging, and the inside is firmed up so it can't half-vanish."""
+
+    def __init__(self, radius: int = STEADY_RADIUS):
+        self.radius = radius
+        self.window: list[np.ndarray] = []
+        self.sent = 0
+        self.seen = 0
+
+    def firm(self, mask: np.ndarray) -> np.ndarray:
+        return np.clip((mask.astype(np.int32) - FIRM_LOW) * 255 // (FIRM_HIGH - FIRM_LOW), 0, 255).astype(np.uint8)
+
+    def middle(self, index: int) -> np.ndarray:
+        # The window holds frames from `self.seen - len(window)`; ends repeat the nearest frame.
+        first = self.seen - len(self.window)
+        picks = [self.window[min(max(index + offset, first), self.seen - 1) - first] for offset in range(-self.radius, self.radius + 1)]
+        return self.firm(np.median(np.stack(picks), axis=0).astype(np.uint8))
+
+    def push(self, mask: np.ndarray) -> list[np.ndarray]:
+        self.window.append(mask)
+        self.seen += 1
+        out = []
+        while self.sent + self.radius < self.seen:
+            out.append(self.middle(self.sent))
+            self.sent += 1
+        while len(self.window) > 2 * self.radius + 1:
+            self.window.pop(0)
+        return out
+
+    def finish(self) -> list[np.ndarray]:
+        out = []
+        while self.sent < self.seen:
+            out.append(self.middle(self.sent))
+            self.sent += 1
+        return out
+
+
 def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None) -> None:
     """Every frame, in order, through the finder, at the video's own frame rate so the mask lines up frame for frame."""
     target = files(facts.path)[MASK]
@@ -94,11 +138,17 @@ def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_canc
         stop_process_when(process, should_cancel)
     try:
         frame, done = width * height, 0
+        steady = Steadier()
         while chunk := find.stdout.read(frame):
-            encode.stdin.write(chunk)
+            if len(chunk) < frame:
+                break
+            for ready in steady.push(np.frombuffer(chunk, np.uint8).reshape(height, width)):
+                encode.stdin.write(ready.tobytes())
             done += 1
             if done % 10 == 0:
                 on_progress(min(95, done * 95 // total))
+        for ready in steady.finish():
+            encode.stdin.write(ready.tobytes())
         encode.stdin.close()
         codes = [process.wait() for process in processes]
         if should_cancel():
