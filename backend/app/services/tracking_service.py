@@ -69,7 +69,7 @@ def follow(pictures: Iterator[np.ndarray], box: tuple[float, float, float, float
             pictures.close()  # Stops reading the video as soon as the subject is lost.
 
 
-def smooth(boxes: list[tuple[float, float, float, float]], keep: int) -> list[tuple[float, float, float, float]]:
+def smooth(boxes: list[tuple[float, float, float, float]], keep: int | None = None) -> list[tuple[float, float, float, float]]:
     """A short centred average takes out the tracker's frame-to-frame shake. Box `keep` is the one the person drew, and stays exactly."""
     if len(boxes) < SMOOTH_FRAMES:
         return boxes
@@ -78,15 +78,21 @@ def smooth(boxes: list[tuple[float, float, float, float]], keep: int) -> list[tu
     padded = np.concatenate([np.repeat(values[:1], half, axis=0), values, np.repeat(values[-1:], half, axis=0)])
     kernel = np.ones(SMOOTH_FRAMES) / SMOOTH_FRAMES
     smoothed = np.stack([np.convolve(padded[:, column], kernel, mode='valid') for column in range(4)], axis=1)
-    smoothed[keep] = values[keep]
+    if keep is not None:
+        smoothed[keep] = values[keep]
     return [tuple(row) for row in smoothed.tolist()]
+
+
+def work_size(source_size: tuple[int, int]) -> tuple[int, int]:
+    """The source's shape, with its long side at WORK_WIDTH."""
+    w, h = source_size
+    return (WORK_WIDTH, max(2, round(WORK_WIDTH * h / w / 2) * 2)) if w >= h else (max(2, round(WORK_WIDTH * w / h / 2) * 2), WORK_WIDTH)
 
 
 def track(source: Path, source_size: tuple[int, int], at: float, box: tuple[float, float, float, float], start: float, end: float,
           on_progress: Callable[[int], None], should_cancel: Callable[[], bool]) -> dict:
     """Tracks forward to `end` and back to `start`, all in source seconds. Each point is [seconds, x, y, width, height]."""
-    w, h = source_size
-    size = (WORK_WIDTH, max(2, round(WORK_WIDTH * h / w / 2) * 2)) if w >= h else (max(2, round(WORK_WIDTH * w / h / 2) * 2), WORK_WIDTH)
+    size = work_size(source_size)
     box = (box[0], box[1], max(MIN_BOX, box[2]), max(MIN_BOX, box[3]))
     origin, first, last = round(at * FPS), round(start * FPS), max(round(at * FPS), round(end * FPS) - 1)
     first = min(first, origin)

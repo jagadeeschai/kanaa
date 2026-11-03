@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, face_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -1073,4 +1073,68 @@ class MovingTitles(Clips):
 
     def test_old_titles_without_a_transform_still_load(self):
         Timeline.model_validate({'layers': [{'id': 'w', 'kind': 'text', 'items': [{'id': 't', 'start': 0, 'length': 1, 'text': 'Hi'}]}]})
+
+
+class Faces(unittest.TestCase):
+    """The linking, gaps and limits, with a stand-in detector. The real detector is checked by hand on real faces."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(tempfile.mkdtemp())
+        cls.video = cls.root / 'blank.mp4'
+        run('-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=2', '-pix_fmt', 'yuv420p', str(cls.video))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def find(self, seen):
+        count = [0]
+
+        def factory(size):
+            def detect(picture):
+                count[0] += 1
+                return seen(count[0] - 1)
+            return detect
+        return face_service.find_faces(self.video, (320, 180), 0, 2, lambda progress: None, lambda: False, detector_factory=factory)
+
+    def test_two_people_stay_apart_and_a_gap_is_filled(self):
+        def seen(frame):
+            faces = []
+            if not 20 <= frame < 26:  # Hidden for six frames.
+                faces.append(((0.2 + frame * 0.005, 0.5, 0.1, 0.15), 0.9))
+            faces.append(((0.8, 0.3 + frame * 0.003, 0.08, 0.12), 0.8))
+            return faces
+        result = self.find(seen)
+        self.assertEqual(len(result['faces']), 2)
+        moving = next(path for path in result['faces'] if path[0][1] < 0.5)
+        self.assertEqual(len(moving), 60)
+        self.assertAlmostEqual(moving[23][1], 0.2 + 23 * 0.005, delta=0.003)
+        self.assertAlmostEqual(moving[23][3], 0.1 * face_service.PAD_WIDTH, delta=0.002)
+
+    def test_brief_sightings_are_dropped_and_faces_are_capped(self):
+        def seen(frame):
+            flicker = [((0.5, 0.5, 0.1, 0.1), 0.7)] if frame < 3 else []
+            crowd = [((0.04 + number * 0.07, 0.8, 0.03, 0.05), 0.9) for number in range(14)]
+            return flicker + crowd
+        result = self.find(seen)
+        self.assertEqual(len(result['faces']), face_service.MAX_FACES)
+        self.assertEqual(result['more'], 2)
+
+    def test_a_half_hidden_face_keeps_its_blur_size(self):
+        result = self.find(lambda frame: [((0.5, 0.5, 0.05 if 25 <= frame < 35 else 0.1, 0.15), 0.9)])
+        widths = [point[3] for point in result['faces'][0]]
+        self.assertGreaterEqual(min(widths), 0.1 * face_service.MIN_SIZE_SHARE * face_service.PAD_WIDTH - 0.004)
+
+    def test_a_wrong_download_is_refused(self):
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+        with tempfile.TemporaryDirectory() as folder, patch.object(settings, 'model_cache_dir', Path(folder)), patch('urllib.request.urlopen', lambda *a, **k: Response(b'not a model')):
+            with self.assertRaises(RuntimeError):
+                face_service.model_path()
+            self.assertFalse((Path(folder) / 'face' / face_service.MODEL_NAME).exists())
 

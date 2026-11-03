@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Crosshair, EyeOff, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Check, Crosshair, EyeOff, ScanFace, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
@@ -18,7 +18,7 @@ import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
-import { boxInSource, followPath, unfollow, videoUnder, type TrackPoint } from '../timeline/tracking';
+import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -99,6 +99,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [followSize, setFollowSize] = useState(false);
   const [followJob, setFollowJob] = useState<FollowJob | null>(null);
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
+  const [faceJob, setFaceJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
+  const [faceNote, setFaceNote] = useState('');
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
   const [deleting, setDeleting] = useState<Photo | null>(null);
@@ -546,6 +548,40 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     : selectedBlur ? { id: selectedBlur.id, start: selectedBlur.start, length: selectedBlur.length, transform: selectedBlur.transform }
     : selectedText ? { id: selectedText.id, start: selectedText.start, length: selectedText.length, transform: selectedText.transform ?? REST_TRANSFORM } : null;
   const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
+  // Blur faces: every face in the clip at the playhead gets its own blur box that follows it.
+  const blurFaces = async () => {
+    if (!timeline) return;
+    engineRef.current?.pause();
+    const clip = videoAt(timeline, playhead.current, isVideo);
+    if (!clip) { setError('Move the playhead onto a video first.'); return; }
+    setFaceNote('');
+    try {
+      const { job_id } = await startFaces(clip.media_id, { start: clip.in, end: clip.out });
+      setFaceJob({ jobId: job_id, clipId: clip.id, progress: 0 });
+    } catch (problem) { setError((problem as Error).message); }
+  };
+  useEffect(() => {
+    if (!faceJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(faceJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; faces?: TrackPoint[][]; more?: number };
+        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not look for faces.'); setFaceJob(null); return; }
+        if (status.status !== 'done' || !status.faces) { setFaceJob({ ...faceJob, progress: status.progress }); return; }
+        setFaceJob(null);
+        const current = timelineRef.current;
+        const clip = current && findClip(current, faceJob.clipId);
+        const source = clip && sourceFor(clip.media_id);
+        if (!current || !clip || !source) return;
+        const boxes = status.faces.map((path) => blurForFace(path, clip, source, current.format, newId())).filter((box): box is BlurBox => Boolean(box));
+        if (!boxes.length) { setFaceNote('No faces found in this clip. You can still add a blur box and draw around a face to follow it.'); return; }
+        change(boxes.reduce((next, box) => addBlur(next, box, newId()), current));
+        setSelectedId(boxes[0].id);
+        const more = status.more ? ` ${status.more} smaller ${status.more === 1 ? 'face was' : 'faces were'} left out; add blur boxes for them by hand.` : '';
+        setFaceNote(`Blurred ${boxes.length} ${boxes.length === 1 ? 'face' : 'faces'}. Play it back to check: each has its own blur box, so delete any face you want to show.${more}`);
+      } catch (problem) { setError((problem as Error).message); setFaceJob(null); }
+    }, 700);
+    return () => clearTimeout(timer);
+  });
   const startDrawing = (mode: 'start' | 'continue') => {
     if (!timeline || !followTarget) return;
     engineRef.current?.pause();
@@ -642,7 +678,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
-    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) });
+    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { setLeftTab('text'); updateLayout({ mediaOpen: true }); void blurFaces(); } });
     setMenu({ x: event.clientX, y: event.clientY, items });
   };
   const openMediaMenu = (event: React.MouseEvent, item: Photo) => {
@@ -731,7 +767,10 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
         {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div>
           <h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
-          <div className="ed-titles" role="group" aria-label="Hide something"><button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button><button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button></div></>}
+          <div className="ed-titles" role="group" aria-label="Hide something"><button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button><button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button></div>
+          {faceJob ? <><div className="ed-progress"><i style={{ width: `${faceJob.progress}%` }}/></div><p className="ed-tip">Finding faces… {faceJob.progress}%</p><button className="ed-button wide" onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
+            : <button className="ed-button wide" disabled={!total} onClick={() => { void blurFaces(); }} title="Finds every face in the clip at the playhead and blurs each one"><ScanFace size={14}/>Blur faces</button>}
+          {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}
       </aside>

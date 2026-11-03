@@ -15,6 +15,7 @@ from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
 from app.services.transcript_service import LANGUAGES, PHASE, saved_words, transcribe
+from app.services.face_service import find_faces
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Format, Text, Timeline
@@ -147,6 +148,34 @@ def start_tracking(identifier: int, body: dict):
         return {'progress': 100, 'phase': 'Followed', 'track': result}
 
     job_id = enqueue_render('tracking', 'Follow something in the video', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/faces')
+def start_faces(identifier: int, body: dict):
+    """Every face between `start` and `end`, source seconds, each as a path a blur box can follow."""
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos can be searched for faces.')
+    try:
+        start, end = float(body['start']), float(body['end'])
+        if not 0 <= start < end:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a part of a video to search.') from exc
+    facts = media_facts(identifier)
+    key = content_key(facts.path)
+    source = folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Finding faces', progress=0)
+        result = find_faces(source, (facts.width or 1920, facts.height or 1080), start, end, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        return {'progress': 100, 'phase': 'Found faces', **result}
+
+    job_id = enqueue_render('faces', 'Find faces to blur', run, total=100)
     ready.set()
     return {'job_id': job_id}
 

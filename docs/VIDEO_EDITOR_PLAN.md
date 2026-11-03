@@ -417,6 +417,11 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Blur faces (done)
+"Blur faces" (Text tab, or right-click the preview) searches the clip at the playhead. `face_service.py` runs OpenCV's YuNet detector (`face_detection_yunet_2023mar.onnx`, 232 KB, MIT, from the OpenCV model zoo; fetched once into `backend/.models/face` and checked against its SHA-256) on every frame at 640 wide, about 1 second per 4 seconds of video. Sightings are joined into people by distance, gaps up to half a second are filled, sightings shorter than 8 frames are dropped, and at most 12 people are blurred, the biggest first. For privacy, boxes are padded past hairline and chin and never shrink below 90% of the person's usual size when half hidden. Each person becomes one oval blur box with position and size keys (`blurForFace` in `timeline/tracking.ts`), in one Undo.
+
+Tested on a clip made from a public-domain NASA portrait: two people, one briefly covered, overlapping at the end; both found, speeds within 1%, and the export blurs each face throughout. Not yet tried on real footage with profiles, crowds, low light or fast motion; check the result before posting.
+
 ### Edit by words (done)
 `transcript_service.py` runs Whisper on this Mac and stores words with the clip's prepared files, per language. The Words tab in the editor shows the main track as text. Cuts go through `timeline/words.ts`, so each is a normal timeline change and one Undo.
 

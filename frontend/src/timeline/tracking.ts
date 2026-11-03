@@ -1,5 +1,5 @@
 import { valueAt, type Keyframe, type Transform } from './evaluate.ts';
-import { clipLength, fittedSize, type Clip, type Format, type Timeline, type VideoLayer } from './model.ts';
+import { clipLength, DEFAULT_BLUR, fittedSize, MIN_CLIP_SECONDS, type BlurBox, type Clip, type Format, type Timeline, type VideoLayer } from './model.ts';
 
 /** One tracked frame: source seconds, then the box's centre and size, 0 to 1 of the source picture. */
 export type TrackPoint = [number, number, number, number, number];
@@ -7,6 +7,7 @@ export type Follower = { start: number; length: number; transform: Transform };
 type Size = { width: number; height: number };
 
 const SAME_TIME = 1e-4;
+const SIZE_TOLERANCE = 0.005; // Half a percent of size: finer steps are tracker shake, not movement.
 const round = (value: number, places = 5) => Math.round(value * 10 ** places) / 10 ** places;
 
 /** Where a clip shows a source point, as 0 to 1 of the frame. The preview shader's geometry, run forwards. */
@@ -47,6 +48,33 @@ export function videoUnder(timeline: Timeline, itemId: string, t: number, isVide
     if (clip) return clip;
   }
   return null;
+}
+
+/** The topmost visible video clip at `t`, the one people are looking at. */
+export function videoAt(timeline: Timeline, t: number, isVideo: (mediaId: number) => boolean): Clip | null {
+  for (const layer of [...timeline.layers].reverse()) {
+    if (layer.kind !== 'video' || layer.hidden) continue;
+    const clip = (layer as VideoLayer).items.find((item) => t >= item.start - SAME_TIME && t < item.start + clipLength(item) && isVideo(item.media_id));
+    if (clip) return clip;
+  }
+  return null;
+}
+
+/** A blur box that sits on one found face for as long as it is in the clip, and grows and shrinks with it. */
+export function blurForFace(path: TrackPoint[], under: Clip, source: Size, format: Format, id: string): BlurBox | null {
+  const timeOf = (seconds: number) => under.start + (seconds - under.in) / under.speed;
+  const inside = path.filter(([seconds]) => timeOf(seconds) >= under.start - SAME_TIME && timeOf(seconds) <= under.start + clipLength(under) + SAME_TIME);
+  if (!inside.length) return null;
+  const start = round(timeOf(inside[0][0]), 3);
+  const length = round(Math.max(MIN_CLIP_SECONDS, timeOf(inside[inside.length - 1][0]) - start + 1 / format.fps), 3);
+  const [seconds, u, v, w, h] = inside[0];
+  const local = timeOf(seconds) - under.start;
+  const [x, y] = sourceToFrame(under, source, format, local, u, v);
+  const [left, top] = sourceToFrame(under, source, format, local, u - w / 2, v - h / 2);
+  const [right, bottom] = sourceToFrame(under, source, format, local, u + w / 2, v + h / 2);
+  const item = { start, length, transform: { ...DEFAULT_BLUR.transform, x, y } };
+  return { ...DEFAULT_BLUR, id, start, length, width: Math.min(1, Math.max(0.02, Math.abs(right - left))), height: Math.min(1, Math.max(0.02, Math.abs(bottom - top))),
+    transform: followPath(item, under, source, format, inside, { size: true, drawnAt: 0 }) };
 }
 
 /** A box drawn on the frame, as the source box under it: centre and size, 0 to 1. */
@@ -106,7 +134,7 @@ export function followPath(item: Follower, under: Clip, source: Size, format: Fo
   };
   merge('x', curve(placed.map((point) => [point.local, point.x + offsetX]), 0.5 / format.width));
   merge('y', curve(placed.map((point) => [point.local, point.y + offsetY]), 0.5 / format.height));
-  if (size) merge('scale', curve(placed.map((point) => [point.local, (baseScale * point.extent) / origin.extent]), 0.002, 0.01, 8));
+  if (size) merge('scale', curve(placed.map((point) => [point.local, (baseScale * point.extent) / origin.extent]), SIZE_TOLERANCE, 0.01, 8));
   return { ...item.transform, keyframes };
 }
 

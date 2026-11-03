@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boxInSource, followPath, frameToSource, simplify, sourceToFrame, unfollow, videoUnder } from '../src/timeline/tracking.ts';
+import { blurForFace, videoAt, boxInSource, followPath, frameToSource, simplify, sourceToFrame, unfollow, videoUnder } from '../src/timeline/tracking.ts';
 import { blurGrid } from '../src/timeline/blur.ts';
 import { addBlur, addOverlay, normalizeTimeline, emptyTimeline, insertClip, newClip, trackLayers, trimText } from '../src/timeline/model.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
@@ -105,4 +105,20 @@ test('titles load with a resting transform, and trimming their start keeps their
   close(valueAt(trimmed.transform, 'x', 0), 0.4, 'same position one second in');
   const plain = normalizeTimeline({ version: 2, format, layers: [{ id: 'main', kind: 'video', magnetic: true, items: [] }, { id: 't', kind: 'text', items: [{ id: 'y', start: 0, length: 1, text: 'Hi', style: 'band', position: 'top', color: '#ffffff', size: 40 }] }] });
   assert.deepEqual(plain.layers[1].items[0].transform, { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 });
+});
+
+test('a found face becomes a blur box on the face, for the part of it inside the clip', () => {
+  const under = video('main', { start: 2, in: 1, out: 4 });
+  const path = Array.from({ length: 121 }, (_, index) => { const seconds = index / 30; return [seconds, 0.3 + seconds * 0.05, 0.5, 0.1, 0.2 + seconds * 0.02]; });
+  const blur = blurForFace(path, under, source, format, 'f');
+  close(blur.start, 2, 'starts where the clip shows second 1');
+  assert.ok(Math.abs(blur.length - (3 + 1 / 30)) < 0.001, 'until the clip ends');
+  const [x, y] = sourceToFrame(under, source, format, 1, 0.3 + 2 * 0.05, 0.5);
+  close(valueAt(blur.transform, 'x', 1), x, 'on the face a second in');
+  close(valueAt(blur.transform, 'y', 1), y, 'and at its height');
+  assert.ok(valueAt(blur.transform, 'scale', 2.9) > 1.1, 'grows as the face does');
+  assert.equal(blur.shape, 'oval');
+  let timeline = insertClip(emptyTimeline(format), video('a'));
+  assert.equal(videoAt(timeline, 1, () => true).id, 'a');
+  assert.equal(videoAt(timeline, 1, () => false), null);
 });
