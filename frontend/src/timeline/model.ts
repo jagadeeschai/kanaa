@@ -11,10 +11,13 @@ export type Sound = { id: string; asset_id?: string; media_id?: number; start: n
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
-export type TrackLayer = VideoLayer | TextLayer | AudioLayer;
-export type TrackItem = TextItem | Sound | Clip;
+/** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
+export type BlurBox = { id: string; start: number; length: number; style: 'blur' | 'pixelate'; shape: 'oval' | 'box'; amount: number; width: number; height: number; transform: Transform };
+export type BlurLayer = { id: string; kind: 'blur'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
+export type TrackLayer = VideoLayer | TextLayer | BlurLayer | AudioLayer;
+export type TrackItem = TextItem | BlurBox | Sound | Clip;
 export type Format = { width: number; height: number; fps: number };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer)[]; normalize_audio?: boolean };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | BlurLayer)[]; normalize_audio?: boolean };
 export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; duration?: number | null; width?: number | null; height?: number | null };
 
 export const MIN_CLIP_SECONDS = 0.1;
@@ -41,11 +44,13 @@ export function mainLayer(timeline: Timeline): VideoLayer {
 export const audioLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is AudioLayer => layer.kind === 'audio');
 
 export const textLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is TextLayer => layer.kind === 'text');
-/** The rows under the main track: text first, then sound. */
+export const blurLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is BlurLayer => layer.kind === 'blur');
+/** The rows under the main track: text first, then blur boxes, overlays and sound. */
 export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...textLayers(timeline), ...blurLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
 export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
-export const isClip = (item: TrackItem): item is Clip => 'transform' in item;
+export const isClip = (item: TrackItem): item is Clip => 'media_id' in item && 'transform' in item;
+export const isBlur = (item: TrackItem): item is BlurBox => 'shape' in item;
 
 export function findClip(timeline: Timeline, id: string | null): Clip | null {
   for (const layer of timeline.layers) {
@@ -62,6 +67,14 @@ export function findText(timeline: Timeline, id: string | null): { text: TextIte
   for (const layer of textLayers(timeline)) {
     const text = layer.items.find((item) => item.id === id);
     if (text) return { text, layer };
+  }
+  return null;
+}
+
+export function findBlur(timeline: Timeline, id: string | null): { blur: BlurBox; layer: BlurLayer } | null {
+  for (const layer of blurLayers(timeline)) {
+    const blur = layer.items.find((item) => item.id === id);
+    if (blur) return { blur, layer };
   }
   return null;
 }
@@ -112,6 +125,7 @@ export const MUSIC_VOLUME = 0.6;
 export function normalizeTimeline(timeline: Timeline): Timeline {
   const layers = timeline.layers.map((layer) => {
     if (layer.kind === 'audio') return { ...layer, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
+    if (layer.kind === 'blur') return { ...layer, items: layer.items.map((item) => ({ ...DEFAULT_BLUR, ...item, transform: { ...DEFAULT_BLUR.transform, ...item.transform } })) };
     if (layer.kind !== 'video') return layer;
     let cursor = 0;
     const items = layer.items.map((item) => {
@@ -378,20 +392,45 @@ export function updateText(timeline: Timeline, id: string, changes: Partial<Text
   return found ? withItems(timeline, found.layer, found.layer.items.map((item) => item.id === id ? { ...item, ...changes } : item)) : timeline;
 }
 
-/** `at` is the wanted timeline time of that edge. */
+/** `at` is the wanted timeline time of that edge. Works on text and blur boxes. */
 export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at: number): Timeline {
-  const found = findText(timeline, id);
+  const blur = findBlur(timeline, id);
+  const found: { text: TextItem | BlurBox; layer: TextLayer | BlurLayer } | null = findText(timeline, id) ?? (blur && { text: blur.blur, layer: blur.layer });
   if (!found) return timeline;
   const { text, layer } = found;
+  const set = (changes: { start?: number; length: number }) => withItems(timeline, layer, (layer.items as TrackItem[]).map((item) => (item.id === id ? { ...item, ...changes } as TrackItem : item)));
   const others = layer.items.filter((item) => item.id !== id);
   const end = text.start + text.length;
   if (edge === 'in') {
     const earliest = others.filter((item) => item.start < text.start).reduce((last, item) => Math.max(last, item.start + item.length), 0);
     const start = round(Math.min(Math.max(at, earliest), end - MIN_CLIP_SECONDS));
-    return updateText(timeline, id, { start, length: round(end - start) });
+    return set({ start, length: round(end - start), ...('shape' in text ? { transform: shiftKeys(text.transform, -(start - text.start)) } : {}) });
   }
   const after = others.filter((item) => item.start >= end - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
-  return updateText(timeline, id, { length: round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start) });
+  return set({ length: round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start) });
+}
+
+export const BLUR_SECONDS = 3;
+export const DEFAULT_BLUR: Omit<BlurBox, 'id' | 'start' | 'length'> = { style: 'blur', shape: 'oval', amount: 0.6, width: 0.2, height: 0.2, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 } };
+
+/** Above every video layer and below text, so titles stay sharp. */
+export function addBlur(timeline: Timeline, blur: BlurBox, layerId: string): Timeline {
+  const free = blurLayers(timeline).find((layer) => layer.items.every((item) => item.start + item.length <= blur.start + 1e-6 || blur.start + blur.length <= item.start + 1e-6));
+  if (free) return withItems(timeline, free, [...free.items, blur]);
+  const after = timeline.layers.reduce((last, layer, index) => (layer.kind === 'video' || layer.kind === 'blur' ? index : last), 0) + 1;
+  return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: layerId, kind: 'blur', name: 'Blur', items: [blur] }, ...timeline.layers.slice(after)] };
+}
+
+export function updateBlur(timeline: Timeline, id: string, changes: Partial<BlurBox>): Timeline {
+  const found = findBlur(timeline, id);
+  return found ? withItems(timeline, found.layer, found.layer.items.map((item) => (item.id === id ? { ...item, ...changes } : item))) : timeline;
+}
+
+export function removeBlur(timeline: Timeline, id: string): Timeline {
+  const found = findBlur(timeline, id);
+  if (!found) return timeline;
+  const items = found.layer.items.filter((item) => item.id !== id);
+  return items.length ? withItems(timeline, found.layer, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== found.layer.id) };
 }
 
 /** Half the frames of the transition opening `clip`, or 0. Matches transition_frames in timeline_service.py. */
@@ -435,6 +474,8 @@ export function duplicateItem(timeline: Timeline, id: string, newId: string, lay
   if (clip) return addOverlay(timeline, { ...clip, id: newId, start: round(clip.start + clipLength(clip)) }, layerId);
   const sound = findSound(timeline, id)?.sound;
   if (sound) return addSound(timeline, { ...sound, id: newId, start: round(sound.start + soundLength(sound)) }, layerId);
+  const blur = findBlur(timeline, id)?.blur;
+  if (blur) return addBlur(timeline, { ...blur, id: newId, start: round(blur.start + blur.length) }, layerId);
   const text = findText(timeline, id)?.text;
   return text ? addText(timeline, { ...text, id: newId, start: round(text.start + text.length) }, layerId) : timeline;
 }
@@ -444,7 +485,7 @@ export function removeMedia(timeline: Timeline, mediaId: number): Timeline {
   const main = mainLayer(timeline);
   const cleared = withClips(timeline, main.items.filter((clip) => clip.media_id !== mediaId));
   const layers = cleared.layers.flatMap((layer) => {
-    if (layer.id === main.id || layer.kind === 'text') return [layer];
+    if (layer.id === main.id || layer.kind === 'text' || layer.kind === 'blur') return [layer];
     const items = (layer.items as (Clip | Sound)[]).filter((item) => item.media_id !== mediaId);
     return items.length ? [{ ...layer, items } as Timeline['layers'][number]] : [];
   });

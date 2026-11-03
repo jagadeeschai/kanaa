@@ -64,6 +64,16 @@ def make_screens():
     sys.exit('The green screen clip never became ready.')
 
 
+def make_detail():
+    """Coloured squares and fine lines, so a blur or blocks change every part of the box."""
+    rows, columns = np.mgrid[0:HEIGHT, 0:WIDTH]
+    picture = np.stack([(columns // 40 % 2) * 200 + 30, (rows // 40 % 2) * 180 + 40, ((columns + rows) // 25 % 3) * 100], axis=2)
+    picture[:, ::6] = 255
+    path = WORK / 'detail.png'
+    Image.fromarray(picture.astype(np.uint8)).save(path)
+    return upload(path)
+
+
 def make_sources():
     pictures = []
     for name, pattern in (('a', 'gradients=s=1280x720:c0=red:c1=blue:x0=0:y0=0:x1=1280:y1=720:n=2'), ('b', 'gradients=s=1280x720:c0=yellow:c1=teal:x0=1280:y0=0:x1=0:y1=720:n=2')):
@@ -81,7 +91,7 @@ def keys(*points, ease='easeInOut'):
     return [{'t': t, 'v': v, 'ease': ease} for t, v in points]
 
 
-def build(first, second, logo, screen_image, screen_video):
+def build(first, second, logo, screen_image, screen_video, detail):
     clips, texts, samples, t = [], [], [], 0.0
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -128,6 +138,14 @@ def build(first, second, logo, screen_image, screen_video):
         overlays.append({'id': name.replace(' ', '-'), 'media_id': media, 'start': t, 'in': 0, 'out': SECONDS, 'chroma': {'color': '#00b140', 'similarity': 0.08, 'softness': 0.06, 'spill': 0.5, **chroma}})
         samples.append({'name': name, 't': t + 1})
         t += SECONDS
+    # Blur boxes over a detailed picture: both styles, both shapes, a moving one and a big strong one.
+    hides = []
+    for name, extra in (('blur oval', {}), ('pixelate box', {'style': 'pixelate', 'shape': 'box'}), ('pixelate strong', {'style': 'pixelate', 'amount': 1, 'width': 0.6}),
+                        ('blur moving', {'transform': {'keyframes': {'x': keys((0, 0.3), (2, 0.7)), 'scale': keys((0, 0.8), (2, 1.6))}}}), ('blur strong', {'amount': 1, 'width': 0.5, 'height': 0.3})):
+        clips.append(clip(name.replace(' ', '-') + '-under', detail, t))
+        hides.append({'id': name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'style': 'blur', 'shape': 'oval', 'amount': 0.6, 'width': 0.3, 'height': 0.4, **extra})
+        samples.append({'name': name, 't': t + 1})
+        t += SECONDS
     # Blend modes, with the project at the six-layer limit.
     blends = ['multiply', 'screen', 'overlay', 'darken']
     extra_layers = []
@@ -146,7 +164,7 @@ def build(first, second, logo, screen_image, screen_video):
         samples.append({'name': f'text rest {preset}', 't': t + 1})
         samples.append({'name': f'text exit {preset} 0.5', 't': t + SECONDS - ANIMATION * 0.5})
         t += SECONDS
-    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
+    return {'version': 2, 'format': {'width': WIDTH, 'height': HEIGHT, 'fps': FPS}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': clips}, {'id': 'over', 'kind': 'video', 'items': overlays}, *extra_layers, {'id': 'hide', 'kind': 'blur', 'items': hides}, {'id': 'words', 'kind': 'text', 'items': texts}]}, samples
 
 
 def main():
@@ -158,7 +176,7 @@ def main():
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', str(cover)], check=True)
     cover_id = upload(cover)
     project = call('/api/projects', {'name': 'Golden frames', 'kind': 'edit', 'media_id': cover_id, 'media_ids': [cover_id]})
-    timeline, samples = build(first, second, logo, screen_image, screen_video)
+    timeline, samples = build(first, second, logo, screen_image, screen_video, make_detail())
     call(f"/api/projects/{project['id']}/recipe", {'recipe': timeline}, 'PUT')
     job = call(f"/api/projects/{project['id']}/export", timeline)['job_id']
     while (status := call(f'/api/jobs/{job}/status'))['status'] not in ('done', 'failed', 'cancelled'):

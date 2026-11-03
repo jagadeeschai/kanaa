@@ -13,7 +13,7 @@ const SLIDERS: Record<Exclude<Control, 'position'>, { label: string; property: A
 };
 const LABELS: Record<Control, string> = { position: 'Position', scale: 'Size', rotation: 'Rotation', opacity: 'Opacity' };
 
-type PanelProps = { transform: Transform; local: number; length: number; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void; onGestureStart: () => void };
+type PanelProps = { transform: Transform; local: number; length: number; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void; onGestureStart: () => void; controls?: Control[] };
 
 function Stopwatch({ control, transform, local, length, onChange, onSeek }: PanelProps & { control: Control }) {
   const animated = isAnimated(transform, control);
@@ -33,13 +33,13 @@ function Stopwatch({ control, transform, local, length, onChange, onSeek }: Pane
 }
 
 export function MotionPanel(props: PanelProps) {
-  const { transform, local, onChange, onGestureStart } = props;
+  const { transform, local, onChange, onGestureStart, controls = ['position', 'scale', 'rotation', 'opacity'] } = props;
   const animated = (['position', 'scale', 'rotation', 'opacity'] as Control[]).filter((control) => isAnimated(transform, control));
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;
   return <>
     <div className="ed-motion"><span>Position</span><Stopwatch {...props} control="position"/></div>
     {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a keyframe.</p>}
-    {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).map((control) => {
+    {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).filter((control) => controls.includes(control)).map((control) => {
       const slider = SLIDERS[control];
       const value = valueAt(transform, slider.property, local);
       return <ValueSlider key={control} label={slider.label} value={value} min={slider.min} max={slider.max} step={slider.step} defaultValue={slider.rest} unit={slider.unit} factor={slider.factor} onGestureStart={onGestureStart}

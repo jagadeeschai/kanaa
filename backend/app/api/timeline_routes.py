@@ -15,6 +15,7 @@ from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
 from app.services.transcript_service import LANGUAGES, PHASE, saved_words, transcribe
+from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline, upgrade_edit_recipe
@@ -116,6 +117,36 @@ def start_words(identifier: int, language: str = 'auto'):
         return {'progress': 100, 'phase': 'Transcribed', 'word_count': len(words)}
 
     job_id = enqueue_render('transcript', 'Transcribe speech', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/track')
+def start_tracking(identifier: int, body: dict):
+    """Follows a box from `at` forward to `end` and back to `start`, all in source seconds. The box is centre and size, 0 to 1."""
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos have movement to follow.')
+    try:
+        at, start, end = (float(body[key]) for key in ('at', 'start', 'end'))
+        box = tuple(float(value) for value in body['box'])
+        if len(box) != 4 or not (0 <= box[0] <= 1 and 0 <= box[1] <= 1 and 0 < box[2] <= 1 and 0 < box[3] <= 1) or not 0 <= start <= at <= end:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Draw a box around something in the video first.') from exc
+    facts = media_facts(identifier)
+    key = content_key(facts.path)
+    # The proxy is quicker to read and already upright and in standard colour. The original works too.
+    source = folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Following', progress=0)
+        result = track(source, (facts.width or 1920, facts.height or 1080), at, box, start, end, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        return {'progress': 100, 'phase': 'Followed', 'track': result}
+
+    job_id = enqueue_render('tracking', 'Follow something in the video', run, total=100)
     ready.set()
     return {'job_id': job_id}
 

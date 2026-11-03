@@ -2,7 +2,8 @@ import { animatedLook, LOOKS, REST, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
-import { clipLength, duration, fittedSize, transitionHalf, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
+import { clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
@@ -30,7 +31,7 @@ void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint;
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid;
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
   if (keyType > 0) {
@@ -43,7 +44,29 @@ vec4 pick(vec2 at){
   }
   c.rgb*=c.a; return c;
 }
+// A blur box: the picture under it, blurred or in blocks, inside a soft oval or box. Matches blur_filters in timeline_service.py.
+vec4 hidden(){
+  vec2 size = vec2(textureSize(backdrop, 0));
+  vec2 at = gl_FragCoord.xy / size;
+  vec3 rgb = vec3(0.);
+  if (hideMode == 1) {
+    float total = 0.;
+    for (int i = 0; i < 64; i++) {
+      float r = sqrt((float(i) + .5) / 64.) * 2.5; float a = float(i) * 2.399963;
+      float w = exp(-.5 * r * r); rgb += texture(backdrop, at + vec2(cos(a), sin(a)) * r * hideAmount * vec2(size.y / size.x, 1.)).rgb * w; total += w;
+    }
+    rgb /= total;
+  } else {
+    vec2 cell = floor(vec2(at.x, 1. - at.y) * pixelGrid);
+    for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) { vec2 f = (cell + (vec2(i, j) + .5) / 4.) / pixelGrid; rgb += texture(backdrop, vec2(f.x, 1. - f.y)).rgb; }
+    rgb /= 16.;
+  }
+  vec2 d = uv * 2. - 1.;
+  float a = clamp((1. - (hideShape == 0 ? length(d) : max(abs(d.x), abs(d.y)))) / ${BLUR_FEATHER}, 0., 1.) * opacity;
+  return vec4(rgb * a, a);
+}
 void main(){
+  if (hideMode > 0) { color = hidden(); return; }
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
   vec4 c = pick(s);
@@ -117,7 +140,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -355,17 +378,20 @@ export class PlaybackEngine {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
 
+  /** The shader needs what is under the layer so far. */
+  private copyBackdrop() {
+    const { gl, uniforms } = this;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.backdrop);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(uniforms.backdrop, 1);
+  }
+
   private drawLayer(layer: VideoLayer) {
     const { gl, uniforms } = this;
     const mode = BLEND_NUMBERS[layer.blend ?? 'normal'];
-    if (mode) {
-      // The shader needs what is under the layer so far.
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.backdrop);
-      gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.uniform1i(uniforms.backdrop, 1);
-    }
+    if (mode) this.copyBackdrop();
     gl.uniform1i(uniforms.blendMode, mode);
     this.drawLayerClips(layer);
     gl.uniform1i(uniforms.blendMode, 0);
@@ -407,6 +433,25 @@ export class PlaybackEngine {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
+  private drawBlur(layer: BlurLayer) {
+    const { gl, uniforms } = this;
+    const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
+    if (!item) return;
+    const local = this.time - item.start;
+    const scale = valueAt(item.transform, 'scale', local);
+    this.copyBackdrop();
+    gl.uniform4f(uniforms.box, valueAt(item.transform, 'x', local), valueAt(item.transform, 'y', local), item.width * scale, item.height * scale);
+    gl.uniform1f(uniforms.turn, 0);
+    gl.uniform2f(uniforms.frame, this.timeline!.format.width, this.timeline!.format.height);
+    gl.uniform1f(uniforms.opacity, 1);
+    gl.uniform1i(uniforms.hideMode, item.style === 'pixelate' ? 2 : 1);
+    gl.uniform1i(uniforms.hideShape, item.shape === 'oval' ? 0 : 1);
+    gl.uniform1f(uniforms.hideAmount, item.amount * BLUR_REACH);
+    gl.uniform2f(uniforms.pixelGrid, ...blurGrid(item.amount, this.timeline!.format));
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1i(uniforms.hideMode, 0);
+  }
+
   private draw() {
     const { gl } = this;
     gl.clearColor(0, 0, 0, 1);
@@ -416,6 +461,7 @@ export class PlaybackEngine {
       if (layer.hidden) continue;
       if (layer.kind === 'video') this.drawLayer(layer);
       else if (layer.kind === 'text') this.drawText(layer);
+      else if (layer.kind === 'blur') this.drawBlur(layer);
     }
   }
 

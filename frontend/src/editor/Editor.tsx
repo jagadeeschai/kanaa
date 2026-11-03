@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Check, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Check, Crosshair, EyeOff, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -18,6 +18,7 @@ import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
+import { boxInSource, followPath, unfollow, videoUnder, type TrackPoint } from '../timeline/tracking';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -48,6 +49,10 @@ const TITLES: { label: string; text: Omit<TextItem, 'id' | 'start' | 'length'> }
 ];
 type StemChoice = 'music' | 'vocals' | 'both';
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
+type Box = [number, number, number, number];
+/** `drawnAt` and `from` are the item's own seconds. A blur box drawn fresh is first placed on the drawn box. */
+type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; drawnAt: number; from: number; size: boolean; place: Box | null };
+const MIN_DRAWN_BOX = 0.015;
 
 function reducer(state: History<Timeline | null>, action: Action): History<Timeline | null> {
   if (action.type === 'load') return startHistory(action.timeline);
@@ -89,6 +94,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [showingHelp, setShowingHelp] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pickingKey, setPickingKey] = useState(false);
+  const [drawing, setDrawing] = useState<{ mode: 'start' | 'continue'; from?: [number, number]; to?: [number, number] } | null>(null);
+  const drawStart = useRef<[number, number] | null>(null); // Pointer events can arrive before a re-render, so the corner is kept here too.
+  const [followSize, setFollowSize] = useState(false);
+  const [followJob, setFollowJob] = useState<FollowJob | null>(null);
+  const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
   const [deleting, setDeleting] = useState<Photo | null>(null);
@@ -304,6 +314,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } catch (problem) { setError((problem as Error).message); }
   };
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
+  const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
+  const blurLocal = selectedBlur ? Math.max(0, Math.min(now - selectedBlur.start, selectedBlur.length)) : 0;
+  const updateSelectedBlur = (changes: Partial<BlurBox>, group?: string) => { if (timeline && selectedBlur) change(updateBlur(timeline, selectedBlur.id, changes), group); };
+  const addBlurBox = (style: BlurBox['style'], at?: [number, number]) => {
+    if (!timeline) return;
+    const blur: BlurBox = { ...DEFAULT_BLUR, style, id: newId(), start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: BLUR_SECONDS, transform: { ...DEFAULT_BLUR.transform, ...(at ? { x: at[0], y: at[1] } : {}) } };
+    change(addBlur(timeline, blur, newId()));
+    setSelectedId(blur.id);
+  };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) change(updateText(timeline, selectedText.id, changes), group); };
   const addTitle = (title: typeof TITLES[number]) => {
     if (!timeline) return;
@@ -380,7 +399,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     { label: 'In', value: sound.in, fps, onChange: (t) => change(trimSound(timeline, sound.id, 'in', t)) },
     { label: 'Out', value: sound.out, fps, onChange: (t) => change(trimSound(timeline, sound.id, 'out', t)) },
   ] : []);
-  const textTiming = (text: TextItem): TimeFieldProps[] => (timeline ? [
+  const textTiming = (text: TextItem | BlurBox): TimeFieldProps[] => (timeline ? [
     { label: 'Start', value: text.start, fps, onChange: (t) => change(moveItem(timeline, text.id, t)) },
     { label: 'Duration', value: text.length, fps, onChange: (t) => change(trimText(timeline, text.id, 'out', text.start + t)) },
     { label: 'End', value: text.start + text.length, fps, onChange: (t) => change(trimText(timeline, text.id, 'out', t)) },
@@ -436,7 +455,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline, tokens, change]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
-    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : removeClip(timeline, selectedId));
+    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, change]);
   const addMedia = (item: Photo) => {
@@ -466,6 +485,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
       if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
+      if (event.key === 'Escape' && drawing) { setDrawing(null); return; }
       if (isTyping(event.target) || !timeline || exporting || choosingFormat || showingHelp || menu) return;
       if (event.key === ' ' && buttonTakesSpace(event.target)) return;
       // Arrows on a focused slider change the slider, not the playhead.
@@ -493,9 +513,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
+  const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
+    : selectedBlur ? { transform: selectedBlur.transform, local: blurLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedBlur({ transform }, group) } : null;
   const startPicking = () => { if (selected) { engineRef.current?.pause(); engineRef.current?.showUnkeyed(selected.id); setPickingKey(true); } };
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (pickingKey && selected) {
@@ -505,16 +527,100 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       stopPicking();
       return;
     }
-    if (!selected || selectedLayer?.locked || event.button !== 0 || event.ctrlKey) return;
+    if (!moving || selectedLayer?.locked || event.button !== 0 || event.ctrlKey) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(selected.transform, 'x', local), clipY: valueAt(selected.transform, 'y', local), group: `move-${Date.now()}` };
+    dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(moving.transform, 'x', moving.local), clipY: valueAt(moving.transform, 'y', moving.local), group: `move-${Date.now()}` };
   };
   const previewMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragPreview.current;
-    if (!drag || !selected) return;
+    if (!drag || !moving) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const moved = writeValue(selected.transform, 'x', local, drag.clipX + (event.clientX - drag.x) / rect.width);
-    updateSelected({ transform: writeValue(moved, 'y', local, drag.clipY + (event.clientY - drag.y) / rect.height) }, drag.group);
+    const moved = writeValue(moving.transform, 'x', moving.local, drag.clipX + (event.clientX - drag.x) / rect.width);
+    moving.update(writeValue(moved, 'y', moving.local, drag.clipY + (event.clientY - drag.y) / rect.height), drag.group);
+  };
+
+  // Follow movement: the item's position (and size) become keys from a box tracked in the video under it.
+  const followTarget = selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline) ? { id: selected.id, start: selected.start, length: clipLength(selected), transform: selected.transform }
+    : selectedBlur ? { id: selectedBlur.id, start: selectedBlur.start, length: selectedBlur.length, transform: selectedBlur.transform } : null;
+  const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
+  const startDrawing = (mode: 'start' | 'continue') => {
+    if (!timeline || !followTarget) return;
+    engineRef.current?.pause();
+    const t = playhead.current;
+    if (t < followTarget.start || t >= followTarget.start + followTarget.length) { setError('Move the playhead onto the selected item first.'); return; }
+    if (!videoUnder(timeline, followTarget.id, t, isVideo)) { setError('There is no video under this item at the playhead to follow.'); return; }
+    setFollowNote(null);
+    setDrawing({ mode });
+  };
+  const frameAt = (event: React.PointerEvent<HTMLElement>): [number, number] => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)), Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))];
+  };
+  const drawnBox = (state: typeof drawing): Box | null => {
+    if (!state?.from || !state.to) return null;
+    const [x0, y0] = state.from; const [x1, y1] = state.to;
+    return [(x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0)];
+  };
+  const startFollowing = async (box: Box, mode: 'start' | 'continue') => {
+    if (!timeline || !followTarget) return;
+    const t = playhead.current;
+    const under = videoUnder(timeline, followTarget.id, t, isVideo);
+    const source = under && sourceFor(under.media_id);
+    if (!under || !source) return;
+    const sourceBox = boxInSource(under, source, timeline.format, t - under.start, box);
+    if (!sourceBox) { setError('Draw the box on the video itself.'); return; }
+    const toSource = (time: number) => under.in + (time - under.start) * under.speed;
+    const first = mode === 'continue' ? t : Math.max(followTarget.start, under.start);
+    const last = Math.min(followTarget.start + followTarget.length, under.start + clipLength(under));
+    try {
+      const { job_id } = await startTracking(under.media_id, { at: toSource(t), start: toSource(first), end: toSource(last), box: sourceBox });
+      const drawnAt = t - followTarget.start;
+      setFollowJob({ itemId: followTarget.id, underId: under.id, jobId: job_id, progress: 0, drawnAt, from: mode === 'continue' ? drawnAt : 0, size: followSize, place: selectedBlur ? box : null });
+    } catch (problem) { setError((problem as Error).message); }
+  };
+  const finishDrawing = (event: React.PointerEvent<HTMLElement>) => {
+    const box = drawnBox({ mode: 'start', from: drawStart.current ?? undefined, to: frameAt(event) });
+    const mode = drawing?.mode ?? 'start';
+    drawStart.current = null;
+    setDrawing(null);
+    if (box && box[2] > MIN_DRAWN_BOX && box[3] > MIN_DRAWN_BOX) void startFollowing(box, mode);
+  };
+  useEffect(() => {
+    if (!followJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(followJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; track?: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean } };
+        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not follow that.'); setFollowJob(null); return; }
+        if (status.status !== 'done' || !status.track) { setFollowJob({ ...followJob, progress: status.progress }); return; }
+        setFollowJob(null);
+        applyFollow(followJob, status.track);
+      } catch (problem) { setError((problem as Error).message); setFollowJob(null); }
+    }, 600);
+    return () => clearTimeout(timer);
+  });
+  const applyFollow = (job: FollowJob, track: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean }) => {
+    const current = timelineRef.current;
+    const under = current && findClip(current, job.underId);
+    const source = under && sourceFor(under.media_id);
+    const clip = current && findClip(current, job.itemId);
+    const blur = current && findBlur(current, job.itemId)?.blur;
+    if (!current || !under || !source || (!clip && !blur) || !track.points.length) return;
+    const item = clip ? { start: clip.start, length: clipLength(clip), transform: clip.transform } : { ...blur!, transform: blur!.transform };
+    let { transform } = item;
+    let placed: Partial<BlurBox> = {};
+    if (blur && job.place) {
+      // A blur box sits right on what was drawn, so it covers that, not the spot it was in before.
+      const [x, y, w, h] = job.place;
+      const scale = job.from > 0 ? valueAt(transform, 'scale', job.drawnAt) : 1;
+      transform = writeValue(writeValue(job.from > 0 ? transform : { ...transform, scale: 1, keyframes: { ...transform.keyframes, x: undefined, y: undefined, ...(job.size ? { scale: undefined } : {}) } }, 'x', job.drawnAt, x), 'y', job.drawnAt, y);
+      if (job.from === 0) placed = { width: Math.max(0.02, Math.min(1, w / scale)), height: Math.max(0.02, Math.min(1, h / scale)) };
+    }
+    const followed = followPath({ start: item.start, length: item.length, transform }, under, source, current.format, track.points, { size: job.size, drawnAt: job.drawnAt, from: job.from });
+    change(clip ? updateClip(current, clip.id, { transform: followed }) : updateBlur(current, blur!.id, { ...placed, transform: followed }));
+    const timeOf = (point: TrackPoint) => under.start + (point[0] - under.in) / under.speed;
+    const lost = track.lost_after ? `Lost it at ${timecode(timeOf(track.points[track.points.length - 1]))}. Move the playhead there, then choose Continue from here.`
+      : track.lost_before ? `Lost it before ${timecode(timeOf(track.points[0]))}. It stays still until then.` : '';
+    setFollowNote({ itemId: job.itemId, text: lost || 'Following. Play it back to check, and drag any keyframe that is off.' });
   };
 
   const generalItems = (): MenuItem[] => [
@@ -530,6 +636,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const openPreviewMenu = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
+    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) });
     setMenu({ x: event.clientX, y: event.clientY, items });
   };
   const openMediaMenu = (event: React.MouseEvent, item: Photo) => {
@@ -564,7 +673,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const overlays = overlayLayers(timeline);
     const stack = overlays.findIndex((entry) => entry.id === layer.id);
     if (stack >= 0) items.push({ label: 'Bring forward', disabled: stack === overlays.length - 1, onSelect: () => change(reorderLayer(timeline, layer.id, 'forward')) }, { label: 'Send back', disabled: stack === 0, onSelect: () => change(reorderLayer(timeline, layer.id, 'back')) });
-    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
+    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
     setMenu({ ...place, items });
   };
   const total = timeline ? duration(timeline) : 0;
@@ -582,6 +691,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '32px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '32px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && !mainLayer(timeline).items.length;
+const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
+    following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => startDrawing('start')} onContinue={() => startDrawing('continue')}
+    onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); setFollowNote(null); }}/>;
   return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     <header className="ed-top">
       <button className="ed-icon" onClick={onClose} aria-label="Back to projects"><ArrowLeft size={18}/></button>
@@ -613,7 +725,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
-        {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div></>}
+        {leftTab === 'text' && <><p className="ed-tip">Adds a title at the playhead.</p><div className="ed-titles" role="group" aria-label="Add a title">{TITLES.map((title) => <button key={title.label} className="ed-button" onClick={() => addTitle(title)}><Type size={13}/>{title.label}</button>)}</div>
+          <h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
+          <div className="ed-titles" role="group" aria-label="Hide something"><button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button><button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button></div></>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}
       </aside>
@@ -622,7 +736,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
+          {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
           {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
+          {drawing && <div className="ed-draw" aria-label="Drag a box around what to follow" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
+            onPointerMove={(event) => { const from = drawStart.current; const to = frameAt(event); if (from) setDrawing((state) => state && { ...state, from, to }); }} onPointerUp={finishDrawing}>
+            <div className="ed-pick-note" role="status">Drag a box around what to follow. Esc cancels.</div>
+            {(() => { const box = drawnBox(drawing); return box && <i style={{ left: `${(box[0] - box[2] / 2) * 100}%`, top: `${(box[1] - box[3] / 2) * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }}/>; })()}
+          </div>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
           {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick a video in the Media panel</span></div>}
         </div>
@@ -634,18 +754,19 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       </main>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
       <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+        : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
         : selectedText ? <TextInspector text={selectedText} timing={textTiming(selectedText)} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Shortcuts and layout</button></div>}</aside>
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
     <div className="ed-lower"><div className="ed-tools">
       <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       <div className="ed-spacer"/>
       <button className="ed-button ed-hide-small" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
       <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
@@ -754,7 +875,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
   </>;
 }
 
-function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -785,6 +906,7 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     <Group title="Motion" startOpen={Object.keys(clip.transform.keyframes ?? {}).length > 0} changed={Object.keys(clip.transform.keyframes ?? {}).length > 0}>
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
+    {follow && <Group title="Follow movement" startOpen={Boolean(clip.transform.keyframes?.x?.length)}>{follow}</Group>}
     <Group title="Remove background" startOpen={Boolean(clip.chroma)} changed={Boolean(clip.chroma)}>
     {clip.chroma ? <>
       <div className="ed-key-color"><label><span className="ed-key-swatch" style={{ background: clip.chroma.color }}/><input type="color" aria-label="Colour to remove" value={clip.chroma.color} onChange={(event) => onChange({ chroma: { ...clip.chroma!, color: event.target.value } }, `key-colour-${clip.id}`)}/></label>
@@ -821,6 +943,36 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
       <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
       {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
     </Group>}
+  </>;
+}
+
+function FollowPanel({ blur, drawing, job, busy, note, following, size, onSize, onStart, onContinue, onCancel, onStop }: { blur: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
+  onSize: (on: boolean) => void; onStart: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
+  if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Following… {job.progress}%</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
+  return <>
+    <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : blur ? 'Put the playhead on a frame where the face or plate is clear, then draw a box around it.' : 'Put the playhead where the subject is clear, place this item where it should sit, then draw a box around the subject.'}</p>
+    <label className="ed-check"><input type="checkbox" checked={size} onChange={(event) => onSize(event.target.checked)}/><span>Follow its size too<small>Grows and shrinks as the subject comes closer or moves away.</small></span></label>
+    <button className={`ed-button wide ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{following ? 'Follow something else' : 'Follow something'}</button>
+    {following && <div className="ed-pair"><button className="ed-button" disabled={busy} onClick={onContinue}>Continue from here</button><button className="ed-button" disabled={busy} onClick={onStop}>Stop following</button></div>}
+    {note && <p className="ed-tip" role="status">{note}</p>}
+  </>;
+}
+
+function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, follow }: { blur: BlurBox; timing: TimeFieldProps[]; local: number; onChange: (changes: Partial<BlurBox>, group?: string) => void; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode }) {
+  return <>
+    <Group title="Timing" startOpen><Timing fields={timing}/></Group>
+    <Group title="Hide" startOpen>
+      <Chips label="Style" options={[{ id: 'blur' as const, label: 'Blur' }, { id: 'pixelate' as const, label: 'Pixelate' }]} value={blur.style} onPick={(style) => onChange({ style })}/>
+      <Chips label="Shape" options={[{ id: 'oval' as const, label: 'Oval' }, { id: 'box' as const, label: 'Box' }]} value={blur.shape} onPick={(shape) => onChange({ shape })}/>
+      <ValueSlider label="Strength" value={blur.amount} min={0.05} max={1} step={0.01} defaultValue={DEFAULT_BLUR.amount} unit="%" factor={100} onChange={(amount, group) => onChange({ amount }, group)}/>
+      <ValueSlider label="Width" value={blur.width} min={0.02} max={1} step={0.005} defaultValue={DEFAULT_BLUR.width} unit="%" factor={100} decimals={1} onChange={(width, group) => onChange({ width }, group)}/>
+      <ValueSlider label="Height" value={blur.height} min={0.02} max={1} step={0.005} defaultValue={DEFAULT_BLUR.height} unit="%" factor={100} decimals={1} onChange={(height, group) => onChange({ height }, group)}/>
+      <p className="ed-tip">Drag the box in the preview to move it.</p>
+    </Group>
+    <Group title="Follow movement" startOpen>{follow}</Group>
+    <Group title="Motion" changed={Object.keys(blur.transform.keyframes ?? {}).length > 0}>
+      <MotionPanel transform={blur.transform} local={local} length={blur.length} controls={['position', 'scale']} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
+    </Group>
   </>;
 }
 

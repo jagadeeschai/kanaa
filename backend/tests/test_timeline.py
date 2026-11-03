@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -18,7 +19,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, render_queue_service, stem_service, transcript_service
+from app.services import asset_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -958,3 +959,97 @@ class Api(Clips):
         self.assertIn('overlap', response.json()['detail'])
         self.assertEqual(self.client.post(f"/api/projects/{project['id']}/export", json={'layers': []}).status_code, 400)
         self.assertEqual(self.client.get('/api/photos/999/assets').status_code, 404)
+
+
+class BlurBoxes(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Fine stripes: blurring or blocking flattens them, so what changed is easy to measure.
+        stripes = np.zeros((360, 640, 3), np.uint8)
+        stripes[:, ::4] = 255
+        stripes[:, 1::4] = 255
+        path = cls.root / 'stripes.png'
+        Image.fromarray(stripes).save(path)
+        cls.facts[40] = MediaFacts(path=path, media_type='image', width=640, height=360)
+
+    def stack(self, blur):
+        box = {'id': 'b', 'start': 0.5, 'length': 1, 'width': 0.3, 'height': 0.4, **blur}
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 40, 'start': 0, 'in': 0, 'out': 2}]},
+                                                  {'id': 'hide', 'kind': 'blur', 'items': [box]}]}
+
+    def detail(self, frame, x, y):
+        patch = frame[y - 10:y + 10, x - 10:x + 10].astype(float)
+        return patch.std()
+
+    def test_only_the_box_and_its_time_are_hidden(self):
+        for style in ('blur', 'pixelate'):
+            with self.subTest(style=style):
+                path = self.render(self.stack({'style': style}), f'{style}.mp4')
+                before, during, after = (self.frame(path, number, (640, 360)) for number in (5, 30, 55))
+                self.assertGreater(self.detail(before, 320, 180), 60)
+                self.assertGreater(self.detail(after, 320, 180), 60)
+                self.assertLess(self.detail(during, 320, 180), 25)
+                self.assertGreater(self.detail(during, 60, 60), 60)
+
+    def test_box_follows_its_keyframes(self):
+        moving = {'transform': {'x': 0.25, 'y': 0.5, 'keyframes': {'x': [{'t': 0, 'v': 0.25}, {'t': 1, 'v': 0.75}]}}}
+        frame = self.frame(self.render(self.stack(moving), 'moving.mp4'), 30, (640, 360))
+        # Half a second into the box, the box is centred at 0.5 of the frame and gone from where it started.
+        self.assertLess(self.detail(frame, 320, 180), 25)
+        self.assertGreater(self.detail(frame, 160, 180), 60)
+
+
+class Tracking(unittest.TestCase):
+    """A patterned disc crosses a noisy background. Halfway through the second clip it is gone."""
+
+    @staticmethod
+    def centres(frame):
+        return 60 + frame * 2.0, 90 + 30 * math.sin(frame / 15)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(tempfile.mkdtemp())
+        rng = np.random.default_rng(3)
+        background = (rng.random((45, 80, 3)) * 200).astype(np.uint8).repeat(4, 0).repeat(4, 1)
+        rows, columns = np.mgrid[0:180, 0:320]
+        for name, vanish in (('moving.mp4', None), ('vanishing.mp4', 30)):
+            frames = []
+            for frame in range(60):
+                picture = background.copy()
+                if vanish is None or frame < vanish:
+                    x, y = cls.centres(frame)
+                    distance = np.hypot(columns - x, rows - y)
+                    picture[distance < 18] = (240, 240, 40)
+                    picture[distance < 8] = (200, 30, 30)
+                frames.append(picture)
+            process = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '320x180', '-r', '30', '-i', '-', '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', str(cls.root / name)], stdin=subprocess.PIPE)
+            process.communicate(b''.join(picture.tobytes() for picture in frames))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def track(self, name, at):
+        x, y = self.centres(round(at * 30))
+        return tracking_service.track(self.root / name, (320, 180), at, (x / 320, y / 180, 40 / 320, 40 / 180), 0, 2, lambda progress: None, lambda: False)
+
+    def test_follows_both_ways_from_the_drawn_frame(self):
+        result = self.track('moving.mp4', 1.0)
+        self.assertFalse(result['lost_before'] or result['lost_after'])
+        self.assertEqual(len(result['points']), 60)
+        for seconds, x, y, *_ in result['points']:
+            want_x, want_y = self.centres(round(seconds * 30))
+            self.assertLess(math.hypot(x * 320 - want_x, y * 180 - want_y), 4, seconds)
+
+    def test_stops_where_the_subject_is_lost(self):
+        result = self.track('vanishing.mp4', 0.5)
+        self.assertTrue(result['lost_after'])
+        self.assertLessEqual(result['points'][-1][0], 1.1)
+
+    def test_cancel_stops_tracking(self):
+        with self.assertRaises(JobCancelled):
+            tracking_service.track(self.root / 'moving.mp4', (320, 180), 0, (0.2, 0.5, 0.1, 0.2), 0, 2, lambda progress: None, lambda: True)
+

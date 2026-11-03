@@ -132,6 +132,23 @@ class Text(Strict):
         return self.length_
 
 
+class BlurBox(Strict):
+    """Hides part of the picture under it. Width and height are shares of the frame, before the transform's scale."""
+    id: str = Field(min_length=1, max_length=64)
+    start: float = Field(ge=0)
+    length_: float = Field(gt=0, alias='length')
+    style: Literal['blur', 'pixelate'] = 'blur'
+    shape: Literal['oval', 'box'] = 'oval'
+    amount: float = Field(default=0.6, ge=0.05, le=1)
+    width: float = Field(default=0.2, ge=0.02, le=1)
+    height: float = Field(default=0.2, ge=0.02, le=1)
+    transform: Transform = Field(default_factory=Transform)
+
+    @property
+    def length(self) -> float:
+        return self.length_
+
+
 class Sound(Strict):
     """Audio on an audio layer: an uploaded song, or the sound of a media item."""
     id: str = Field(min_length=1, max_length=64)
@@ -182,12 +199,17 @@ class TextLayer(LayerBase):
     items: List[Text] = Field(default_factory=list)
 
 
+class BlurLayer(LayerBase):
+    kind: Literal['blur']
+    items: List[BlurBox] = Field(default_factory=list)
+
+
 class AudioLayer(LayerBase):
     kind: Literal['audio']
     items: List[Sound] = Field(default_factory=list)
 
 
-Layer = Annotated[Union[VideoLayer, TextLayer, AudioLayer], Field(discriminator='kind')]
+Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, AudioLayer], Field(discriminator='kind')]
 
 
 class Timeline(Strict):

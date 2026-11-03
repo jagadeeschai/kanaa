@@ -13,11 +13,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
+from PIL import Image
+
 from app.api.schemas import VideoEditRequest
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import value_at, Adjust, Animation, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import value_at, Adjust, Animation, BlurBox, BlurLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -33,6 +36,9 @@ MAX_SUPERSAMPLE = 4
 MIN_WORK_SCALE = 0.1
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
+BLUR_REACH = 0.04  # A blur box's strength at 1, as a share of the frame height. Matches timeline/blur.ts.
+BLUR_FEATHER = 0.12
+BLOCK_REACH = 0.06
 MIN_ATEMPO_STEP = 0.5
 
 
@@ -92,6 +98,34 @@ def chroma_filters(chroma: Chroma, image: bool) -> list[str]:
         kind = 'blue' if blue > green else 'green'
         steps.append(f'despill=type={kind}:mix=0.5:expand=0:red=0:green={-chroma.spill if kind == "green" else 0}:blue={-chroma.spill if kind == "blue" else 0}:brightness=0:alpha=0')
     return steps
+
+
+def blur_grid(amount: float, width: int, height: int) -> tuple[int, int]:
+    """Columns and rows of blocks when pixelating. Shares of the frame, so every export size gets the same blocks."""
+    rows = max(2, round(1 / (max(0.05, amount) * BLOCK_REACH)))
+    return max(2, round(rows * width / height)), rows
+
+
+def blur_filters(item: BlurBox, fmt: Format) -> str:
+    """The whole frame blurred or in blocks. The mask then keeps only the box. Matches hidden() in the preview shader."""
+    if item.style == 'pixelate':
+        columns, rows = blur_grid(item.amount, fmt.width, fmt.height)
+        return f'scale={columns}:{rows}:flags=area,scale={fmt.width}:{fmt.height}:flags=neighbor'
+    return f'gblur=sigma={item.amount * BLUR_REACH * fmt.height:.3f}:steps=3'
+
+
+def write_blur_mask(item: BlurBox, fmt: Format, target: Path) -> None:
+    """A full frame, clear except a soft oval or box in the middle, sized for a scale of 1."""
+    W, H = fmt.width, fmt.height
+    box_w, box_h = item.width * W, item.height * H
+    columns = (np.arange(W) + 0.5 - (W - box_w) / 2) / box_w * 2 - 1
+    rows = (np.arange(H) + 0.5 - (H - box_h) / 2) / box_h * 2 - 1
+    x, y = np.meshgrid(columns, rows)
+    distance = np.hypot(x, y) if item.shape == 'oval' else np.maximum(np.abs(x), np.abs(y))
+    alpha = np.clip((1 - distance) / BLUR_FEATHER, 0, 1)
+    picture = np.full((H, W, 4), 255, np.uint8)
+    picture[..., 3] = np.round(alpha * 255).astype(np.uint8)
+    Image.fromarray(picture, 'RGBA').save(target)
 
 
 def picture_filters(adjust: Adjust, look: str) -> list[str]:
@@ -405,6 +439,24 @@ class Builder:
             base = output
         return base
 
+    def add_blur_layer(self, layer: BlurLayer, position: int, base: str) -> str:
+        fps = self.fmt.fps
+        for number, item in enumerate(sorted(layer.items, key=lambda box: box.start)):
+            name = f'blur{position}_{number}'
+            mask = self.folder / f'{name}.png'
+            write_blur_mask(item, self.fmt, mask)
+            frames = self.frames(item.length)
+            index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(mask))
+            self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{name}_m]')
+            shown = self.pose(f'{name}_m', item.transform, None, None, item.length, frames, 1, 0, f'{name}_m')
+            start = round(item.start * fps)
+            # Clear frames before and after: a mask that simply ended would have its last frame repeated.
+            self.graph += [f'[{shown}]tpad=start={start}:stop={max(0, self.total_frames - start - frames)}:stop_mode=add:color=black@0,alphaextract[{name}_alpha]',
+                           f'[{base}]split=2[{name}_keep][{name}_src]', f'[{name}_src]{blur_filters(item, self.fmt)},format=gbrap[{name}_fx]',
+                           f'[{name}_fx][{name}_alpha]alphamerge[{name}_shaped]', f'[{name}_keep][{name}_shaped]overlay=format=gbrp:eof_action=pass[{name}_out]']
+            base = f'{name}_out'
+        return base
+
     def add_audio_layer(self, layer) -> None:
         if layer.muted:
             return
@@ -442,6 +494,8 @@ class Builder:
                 current = self.add_video_layer(layer, position, current)
             elif layer.kind == 'text':
                 current = self.add_text_layer(layer, position, current)
+            elif layer.kind == 'blur':
+                current = self.add_blur_layer(layer, position, current)
             else:
                 self.add_audio_layer(layer)
         self.graph.append(f'[{current}]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[final]')
