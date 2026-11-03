@@ -72,7 +72,7 @@ class Animation(Strict):
 
 
 class Transition(Strict):
-    kind: Literal['crossfade', 'wipe', 'slide', 'zoom']
+    kind: Literal['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip']
     duration: float = Field(default=0.6, ge=0.1, le=2)
 
 
@@ -103,6 +103,8 @@ class Clip(Strict):
     transition_in: Optional[Transition] = None
     look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
     chroma: Optional[Chroma] = None
+    freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
+    reverse: bool = False  # Plays in..out backwards, without sound.
 
     @model_validator(mode='after')
     def valid_range(self):

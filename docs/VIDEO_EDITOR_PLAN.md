@@ -417,6 +417,15 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Quick effects (done)
+- **Freeze frame** (toolbar, or right-click a main clip): splits the clip at the playhead and puts a 2-second `freeze` clip between, holding that source frame, silent. Export reads exactly one frame and holds it.
+- **Play backwards** (main track, Speed and sound): `reverse_service.py` makes a reversed copy once, in 2-second pieces so memory stays small, plus its proxy; export always uses it, and the preview plays forwards until it is ready. Reversed clips are silent. Splitting and trimming a reversed clip move the far end of its source.
+- **Quick moves** (Motion): Push in, Pull out, Punch in here, Shake here (`timeline/presets.ts`), written as ordinary keyframes.
+- **Transitions**: Flash and Dip to black use ffmpeg's `fadewhite`/`fadeblack`; their weights were measured and are matched by `dipWeights`. Whip is a slide plus a sideways blur peaking halfway.
+- **Split screen** (overlay Framing): side by side or top and bottom, each clip whole in its half, with bars when shapes differ.
+
+Golden samples: flash and dip 0.8 to 2.5/255, freeze 2.2, reverse 1.8 to 2.7, whip about 4 (the preview's sideways blur is an approximation). Glitch was left out: no matching preview yet. Possible later: reverse and freeze on overlays, filling each half of a split screen with cropping.
+
 ### Blur faces (done)
 "Blur faces" (Text tab, or right-click the preview) searches the clip at the playhead. `face_service.py` runs OpenCV's YuNet detector (`face_detection_yunet_2023mar.onnx`, 232 KB, MIT, from the OpenCV model zoo; fetched once into `backend/.models/face` and checked against its SHA-256) on every frame at 640 wide, about 1 second per 4 seconds of video. Sightings are joined into people by distance, gaps up to half a second are filled, sightings shorter than 8 frames are dropped, and at most 12 people are blurred, the biggest first. For privacy, boxes are padded past hairline and chin and never shrink below 90% of the person's usual size when half hidden. Each person becomes one oval blur box with position and size keys (`blurForFace` in `timeline/tracking.ts`), in one Undo.
 

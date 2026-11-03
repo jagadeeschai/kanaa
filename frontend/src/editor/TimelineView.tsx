@@ -53,7 +53,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         const tileWidth = (h * 0.72) * (filmstrip.tile_width / filmstrip.tile_height);
         for (let left = 0; left < width; left += tileWidth) {
           if (x + left > host.scrollLeft + host.clientWidth || x + left + tileWidth < host.scrollLeft) continue;
-          const sourceTime = clip.in + (left / width) * (clip.out - clip.in);
+          const sourceTime = clip.freeze ?? (clip.reverse ? clip.out - (left / width) * (clip.out - clip.in) : clip.in + (left / width) * (clip.out - clip.in));
           const span = (props.current.source(clip.media_id)?.duration ?? clip.out) || 1;
           const tile = Math.min(filmstrip.tiles - 1, Math.floor((sourceTime / span) * filmstrip.tiles));
           context.drawImage(filmstrip.image, tile * filmstrip.tile_width, 0, filmstrip.tile_width, filmstrip.tile_height, x + left, y, tileWidth, h * 0.72);

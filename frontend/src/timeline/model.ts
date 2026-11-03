@@ -2,9 +2,10 @@ import type { Animation, LookName, Transition } from './animation';
 import type { Chroma } from './chroma';
 import type { Transform } from './evaluate';
 import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
+import { valueAt } from './evaluate.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number };
@@ -168,15 +169,32 @@ export function moveClip(timeline: Timeline, id: string, index: number): Timelin
   return withClips(timeline, clips);
 }
 
+/** Holds the frame at `t` for `seconds`, between the two halves of the clip there. */
+export function freezeFrame(timeline: Timeline, t: number, ids: [string, string], seconds = 2): Timeline {
+  const clips = mainLayer(timeline).items;
+  const clip = clips.find((item) => t >= item.start && t < item.start + clipLength(item));
+  if (!clip || clip.freeze != null) return timeline;
+  const local = t - clip.start;
+  const frame = round(clip.reverse ? clip.out - local * clip.speed : clip.in + local * clip.speed);
+  const still: Clip = { ...clip, id: ids[0], in: 0, out: seconds, speed: 1, freeze: frame, reverse: false, muted: true, fade_in: 0, fade_out: 0, enter: null, exit: null, transition_in: null,
+    transform: { x: valueAt(clip.transform, 'x', local), y: valueAt(clip.transform, 'y', local), scale: valueAt(clip.transform, 'scale', local), opacity: valueAt(clip.transform, 'opacity', local), rotation: valueAt(clip.transform, 'rotation', local) } };
+  const split = splitClip(timeline, t, ids[1]);
+  const after = mainLayer(split).items.findIndex((item) => item.id === ids[1]);
+  const index = after >= 0 ? after : mainLayer(split).items.findIndex((item) => item.id === clip.id);
+  return insertClip(split, still, index);
+}
+
 export function splitClip(timeline: Timeline, t: number, newId: string): Timeline {
   const clips = mainLayer(timeline).items;
   const index = clips.findIndex((clip) => t > clip.start + MIN_CLIP_SECONDS / clip.speed && t < clip.start + clipLength(clip) - MIN_CLIP_SECONDS / clip.speed);
   if (index < 0) return timeline;
   const clip = clips[index];
-  const cut = round(clip.in + (t - clip.start) * clip.speed);
+  // A reversed clip shows its source's end first, so its first half is the source's later part.
+  const cut = round(clip.reverse ? clip.out - (t - clip.start) * clip.speed : clip.in + (t - clip.start) * clip.speed);
   const next = [...clips];
   const [before, after] = splitKeys(clip.transform, t - clip.start);
-  next.splice(index, 1, { ...clip, out: cut, transform: before, exit: null, fade_out: 0 }, { ...clip, id: newId, in: cut, transform: after, enter: null, fade_in: 0, transition_in: null });
+  const [first, second] = clip.reverse ? [{ in: cut }, { out: cut }] : [{ out: cut }, { in: cut }];
+  next.splice(index, 1, { ...clip, ...first, transform: before, exit: null, fade_out: 0 }, { ...clip, ...second, id: newId, transform: after, enter: null, fade_in: 0, transition_in: null });
   return withClips(timeline, next);
 }
 
@@ -184,7 +202,14 @@ export function splitClip(timeline: Timeline, t: number, newId: string): Timelin
 export function trimClip(timeline: Timeline, id: string, edge: 'in' | 'out', seconds: number, source?: SourceFacts): Timeline {
   const clips = mainLayer(timeline).items.map((clip) => {
     if (clip.id !== id) return clip;
-    const end = source?.media_type === 'image' ? MAX_PHOTO_SECONDS : source?.duration ?? clip.out;
+    const end = source?.media_type === 'image' || clip.freeze != null ? MAX_PHOTO_SECONDS : source?.duration ?? clip.out;
+    if (clip.reverse) {
+      // Its start on the timeline shows the source's end, so each edge moves the other end of the source.
+      const delta = seconds - (edge === 'in' ? clip.in : clip.out);
+      if (edge === 'out') return { ...clip, in: round(Math.max(0, Math.min(clip.out - MIN_CLIP_SECONDS, clip.in - delta))) };
+      const out = round(Math.min(end, Math.max(clip.in + MIN_CLIP_SECONDS, clip.out - delta)));
+      return { ...clip, out, transform: shiftKeys(clip.transform, -(clip.out - out) / clip.speed) };
+    }
     if (edge === 'in') {
       const next = round(Math.max(0, Math.min(seconds, clip.out - MIN_CLIP_SECONDS)));
       return { ...clip, in: next, transform: shiftKeys(clip.transform, -(next - clip.in) / clip.speed) };

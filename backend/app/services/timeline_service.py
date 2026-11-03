@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.api.schemas import VideoEditRequest
-from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, XFADE_NAMES, look_at, offset_expression, scale_expression
+from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import value_at, Adjust, Animation, BlurBox, BlurLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
@@ -233,8 +233,8 @@ def render_text_image(item: Text, fmt: Format, target: Path) -> None:
 
 
 class Builder:
-    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path):
-        self.timeline, self.media, self.audio_asset, self.folder = timeline, media, audio_asset, folder
+    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, backwards: Callable[[int], MediaFacts] | None = None):
+        self.timeline, self.media, self.audio_asset, self.folder, self.backwards = timeline, media, audio_asset, folder, backwards
         self.fmt = timeline.format
         self.args: list[str] = []
         self.graph: list[str] = []
@@ -271,7 +271,8 @@ class Builder:
         return self.add_input('-ss', f'{source_start:.6f}', '-t', f'{seconds:.6f}', '-i', str(facts.path))
 
     def add_clip_audio(self, clip: Clip, facts: MediaFacts, layer_muted: bool) -> None:
-        if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0:
+        # A frozen or reversed clip is silent, in the preview too.
+        if clip.muted or layer_muted or not facts.has_audio or clip.volume == 0 or clip.freeze is not None or clip.reverse:
             return
         self.add_audio_track(facts.path, clip.in_, clip.out - clip.in_, sound_steps(clip))
 
@@ -364,7 +365,15 @@ class Builder:
         cursor = 0  # In frames, so rounding can't accumulate down a long timeline.
         joined_label, joined_frames = None, 0
         for number, clip in enumerate(clips):
-            facts = self.media(clip.media_id)
+            facts = sound_facts = self.media(clip.media_id)
+            source_in = clip.in_
+            frozen = clip.freeze is not None and facts.media_type == 'video'
+            if clip.reverse and facts.media_type == 'video' and not frozen:
+                if self.backwards is None:
+                    raise ValueError('A reversed clip needs its reversed copy.')
+                # The reversed copy runs from the source's end, so in..out maps to the mirrored stretch.
+                source_in = max(0.0, (facts.duration or clip.out) - clip.out)
+                facts = self.backwards(clip.media_id)
             head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
             if not head:
                 if joined_label:
@@ -379,9 +388,14 @@ class Builder:
             base_frames = self.frames(clip.length)
             frames = base_frames + head + tail
             # The extra frames come from the source when it has them. Otherwise the first or last frame is held.
-            wanted = clip.in_ - head * clip.speed / fps
+            wanted = source_in - head * clip.speed / fps
             held = max(0, math.ceil(-wanted * fps / clip.speed)) if facts.media_type != 'image' else 0
-            index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps)
+            if frozen:
+                # One frame in, held for every frame out, transitions included.
+                held = head
+                index = self.add_input('-ss', f'{max(0, clip.freeze - 0.25 / fps):.6f}', '-t', f'{1 / fps:.6f}', '-i', str(facts.path))  # A quarter frame early, so rounding can't pick the next one.
+            else:
+                index = self.clip_input(clip, facts, max(0, wanted), (frames - held) * clip.speed / fps)
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             scale = supersample(clip.transform, enter, exit_, facts, self.fmt)
             canvas = (round(self.fmt.width * scale / 2) * 2, round(self.fmt.height * scale / 2) * 2)
@@ -391,13 +405,15 @@ class Builder:
             if head:
                 merged = f'x{position}_{number}'
                 self.graph.append(f'[{joined_label}][{shown}]xfade=transition={XFADE_NAMES[clip.transition_in.kind]}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
+                if clip.transition_in.kind == 'whip':
+                    merged = self.whip_blur(merged, joined_frames - 2 * head, 2 * head, joined_frames + frames - 2 * head)
                 joined_label, joined_frames = merged, joined_frames + frames - 2 * head
             elif tail:
                 joined_label, joined_frames = shown, frames
             else:
                 segments.append(f'[{shown}]')
             cursor += base_frames
-            self.add_clip_audio(clip, facts, layer.muted)
+            self.add_clip_audio(clip, sound_facts, layer.muted)
         if joined_label:
             segments.append(f'[{joined_label}]')
         if cursor < self.total_frames:
@@ -409,6 +425,15 @@ class Builder:
         if layer.blend != 'normal':
             return self.blended(base, joined, position, layer.blend)
         return self.overlay(base, joined, position, '0', '0')
+
+    def whip_blur(self, label: str, first: int, frames: int, total: int) -> str:
+        """A sideways blur that peaks halfway through the slide, so the cut reads as a fast camera pan."""
+        fps = self.fmt.fps
+        lines = [f'{frame / fps:.6f} gblur@{label}w sigma {WHIP_BLUR * self.fmt.height * math.sin(math.pi * min(1, max(0, (frame - first + 0.5) / frames))) if first <= frame < first + frames else 0:.3f};' for frame in range(total)]
+        (self.folder / f'{label}-w.cmd').write_text('\n'.join(lines), encoding='utf-8')
+        blurred = f'{label}_whip'
+        self.graph.append(f'[{label}]sendcmd=f={label}-w.cmd,gblur@{label}w=sigma=0:sigmaV=0:steps=3[{blurred}]')
+        return blurred
 
     def blended(self, base: str, top: str, position: int, mode: str) -> str:
         """Blend the color, then let the layer's own alpha decide how much of that shows. Matches the preview shader."""
@@ -504,10 +529,10 @@ class Builder:
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
-def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path) -> Compiled:
+def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, backwards: Callable[[int], MediaFacts] | None = None) -> Compiled:
     if timeline.duration <= 0:
         raise ValueError('Add a clip to the timeline first.')
-    return Builder(timeline, media, audio_asset, folder).build()
+    return Builder(timeline, media, audio_asset, folder, backwards).build()
 
 
 def video_inputs(compiled: Compiled) -> int:
@@ -546,7 +571,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, backwards: Callable[[int], MediaFacts] | None = None) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -554,7 +579,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
-        compiled = compile_timeline(timeline, media, audio_asset, folder)
+        compiled = compile_timeline(timeline, media, audio_asset, folder, backwards)
         (folder / 'graph.txt').write_text(compiled.graph, encoding='utf-8')
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.

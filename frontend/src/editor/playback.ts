@@ -1,15 +1,16 @@
-import { animatedLook, LOOKS, REST, type Look } from '../timeline/animation';
+import { animatedLook, dipWeights, LOOKS, REST, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
-export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number };
+/** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
+export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
 type LayerSlots = { slots: [Slot, Slot] };
 type Crossing = { before: Clip; after: Clip; p: number };
-type Pose = { look?: Look; opacity?: number; scale?: number };
+type Pose = { look?: Look; opacity?: number; scale?: number; sideways?: boolean };
 
 const DRIFT_RESEEK_SECONDS = 0.25;
 const DRIFT_NUDGE_SECONDS = 0.02;
@@ -31,7 +32,7 @@ void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid;
+uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill;
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
   if (keyType > 0) {
@@ -66,6 +67,7 @@ vec4 hidden(){
   return vec4(rgb * a, a);
 }
 void main(){
+  if (fill.a > 0.) { color = vec4(fill.rgb * fill.a, fill.a); return; }
   if (hideMode > 0) { color = hidden(); return; }
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
@@ -114,7 +116,7 @@ export class PlaybackEngine {
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
   private timeline: Timeline | null = null;
-  private sources: (mediaId: number) => PlaybackSource | undefined = () => undefined;
+  private sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined = () => undefined;
   private time = 0;
   private rate = 1;
   private clockStart = 0;
@@ -140,7 +142,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -175,7 +177,7 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined) {
     this.timeline = timeline;
     this.textUrl = textUrl;
     this.sources = sources;
@@ -217,8 +219,13 @@ export class PlaybackEngine {
   }
 
   private sourceTime(clip: Clip, t: number, inside = true) {
+    if (clip.freeze != null) return clip.freeze;
     const local = t - clip.start;
-    return Math.max(0, clip.in + (inside ? Math.max(0, Math.min(local, clipLength(clip) - 0.001)) : local) * clip.speed);
+    const into = (inside ? Math.max(0, Math.min(local, clipLength(clip) - 0.001)) : local) * clip.speed;
+    const source = this.sources(clip.media_id, clip);
+    // The reversed copy runs from the source's end, so in..out is the mirrored stretch of it.
+    if (source?.reversed) return Math.max(0, (source.duration ?? clip.out) - clip.out + into);
+    return Math.max(0, clip.in + into);
   }
 
   private load(slot: Slot, clip: Clip, url: string, at: number) {
@@ -236,7 +243,7 @@ export class PlaybackEngine {
       const wanted = crossing ? [crossing.before, crossing.after] : clip ? [clip] : [];
       const used: Slot[] = [];
       for (const item of wanted) {
-        const source = this.sources(item.media_id);
+        const source = this.sources(item.media_id, item);
         if (source?.kind === 'image') this.imageTexture(source.url);
         if (source?.kind !== 'video') continue;
         const slot = slots.find((entry) => entry.clipId === item.id) ?? slots.find((entry) => !used.includes(entry) && !wanted.some((other) => other.id === entry.clipId) && entry.clipId !== next?.id) ?? slots.find((entry) => !used.includes(entry))!;
@@ -248,16 +255,18 @@ export class PlaybackEngine {
         // While playing, keepInStep owns the rate. Setting it here too would undo each nudge.
         if (slot.video.paused) slot.video.playbackRate = item.speed * this.rate;
         const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;
-        if (this.playing && slot.video.paused && !finished) void slot.video.play().catch(() => {});
-        if (!this.playing && !slot.video.paused) slot.video.pause();
+        const still = item.freeze != null;
+        if (this.playing && slot.video.paused && !finished && !still) void slot.video.play().catch(() => {});
+        if ((!this.playing || still) && !slot.video.paused) slot.video.pause();
+        if (still && this.playing && Math.abs(slot.video.currentTime - at) > 0.02) slot.video.currentTime = at;
       }
       const spare = slots.find((entry) => !used.includes(entry));
       if (spare && !spare.video.paused) spare.video.pause();
-      const nextSource = next && this.sources(next.media_id);
+      const nextSource = next && this.sources(next.media_id, next);
       if (spare && next && nextSource?.kind === 'video' && spare.clipId !== next.id) {
         spare.video.muted = true;
         const half = clip ? transitionHalf(clip, next, this.timeline!.format.fps) / this.timeline!.format.fps : 0;
-        this.load(spare, next, nextSource.url, Math.max(0, next.in - half * next.speed));
+        this.load(spare, next, nextSource.url, Math.max(0, this.sourceTime(next, next.start - half, false)));
       }
     }
   }
@@ -301,10 +310,10 @@ export class PlaybackEngine {
     return true;
   }
 
-  private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1 }: Pose) {
+  private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1, sideways = false }: Pose) {
     const { gl, uniforms } = this;
     const { format } = this.timeline!;
-    const source = this.sources(clip.media_id);
+    const source = this.sources(clip.media_id, clip);
     if (!source || !this.bindClip(layer, clip, source)) return;
     const local = this.time - clip.start;
     const frame = look.scale * zoom;
@@ -339,7 +348,7 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.saturation, clip.adjust.saturation * saturation);
     gl.uniform3f(uniforms.tint, red, green, blue);
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
-    gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), 1);
+    gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
     gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
     gl.uniform2f(uniforms.flip, clip.adjust.flip_horizontal ? 1 : 0, clip.adjust.flip_vertical ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -360,9 +369,20 @@ export class PlaybackEngine {
       gl.disable(gl.SCISSOR_TEST);
       return;
     }
-    if (kind === 'slide') {
-      this.drawClip(layer, before, { look: { ...REST, dx: -p } });
-      this.drawClip(layer, after, { look: { ...REST, dx: remaining } });
+    if (kind === 'slide' || kind === 'whip') {
+      // A whip is a slide with a sideways blur that peaks halfway, as the export blurs the joined frames.
+      const blur = kind === 'whip' ? WHIP_BLUR * Math.sin(Math.PI * p) : 0;
+      this.drawClip(layer, before, { look: { ...REST, dx: -p, blur }, sideways: true });
+      this.drawClip(layer, after, { look: { ...REST, dx: remaining, blur }, sideways: true });
+      return;
+    }
+    if (kind === 'flash' || kind === 'dip') {
+      const [old, fresh, colour] = dipWeights(p);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      this.drawClip(layer, before, { opacity: old });
+      this.drawClip(layer, after, { opacity: fresh });
+      if (kind === 'flash') this.drawFill([1, 1, 1], colour);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       return;
     }
     // Two weights that add to one, on black, as xfade mixes them.
@@ -386,6 +406,16 @@ export class PlaybackEngine {
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(uniforms.backdrop, 1);
+  }
+
+  /** A flat colour over the whole frame, `amount` strong. */
+  private drawFill([red, green, blue]: [number, number, number], amount: number) {
+    const { gl, uniforms } = this;
+    gl.uniform4f(uniforms.box, 0.5, 0.5, 1, 1);
+    gl.uniform1f(uniforms.turn, 0);
+    gl.uniform4f(uniforms.fill, red, green, blue, amount);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform4f(uniforms.fill, 0, 0, 0, 0);
   }
 
   private drawLayer(layer: VideoLayer) {

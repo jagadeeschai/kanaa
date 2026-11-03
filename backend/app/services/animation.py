@@ -6,7 +6,8 @@ import math
 MAX_BLUR = 0.03  # Of the frame height.
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
 OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3}
-XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin'}
+XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft'}
+WHIP_BLUR = 0.05  # Peak horizontal blur of a whip, as a share of the frame height. Matches animation.ts.
 # Red, green and blue gain, contrast, saturation.
 LOOKS = {'none': (1, 1, 1, 1, 1), 'warm': (1.08, 1, 0.9, 1.02, 1.05), 'cool': (0.92, 1, 1.1, 1.02, 1), 'mono': (1, 1, 1, 1.1, 0),
          'vivid': (1, 1, 1, 1.1, 1.35), 'film': (1.03, 1, 0.96, 0.88, 0.85)}

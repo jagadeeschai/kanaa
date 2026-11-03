@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, face_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, face_service, reverse_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -1137,4 +1137,80 @@ class Faces(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 face_service.model_path()
             self.assertFalse((Path(folder) / 'face' / face_service.MODEL_NAME).exists())
+
+
+class QuickEffects(Clips):
+    """A clip that gets brighter every frame, with a tone, so a frame's brightness says which moment it came from."""
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        ramp = cls.root / 'ramp.mp4'
+        run('-f', 'lavfi', '-i', 'color=c=black:s=320x180:r=30:d=4', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=4',
+            '-vf', "geq=lum='min(235,16+N*2)':cb=128:cr=128", '-c:v', 'libx264', '-preset', 'ultrafast', '-qp', '0', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', str(ramp))
+        cls.facts[60] = probe_video(ramp)
+
+    def setUp(self):
+        super().setUp()
+        self.data = patch.object(settings, 'data_dir', self.out / 'data')
+        self.data.start()
+
+    def tearDown(self):
+        self.data.stop()
+        super().tearDown()
+
+    def level(self, path, number, size=(640, 360)):
+        return self.frame(path, number, size)[size[1] // 2, size[0] // 2, 0]
+
+    def source_frame(self, path, number):
+        """Which source frame an exported frame shows, from its brightness."""
+        if not hasattr(self, 'levels'):
+            raw = subprocess.run([FFMPEG, '-v', 'error', '-i', str(self.facts[60].path), '-vf', 'scale=in_color_matrix=bt709:in_range=tv', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+            self.levels = np.frombuffer(raw, np.uint8).reshape(-1, 180, 320, 3)[:, 90, 160, 0].astype(int)
+        return int(np.argmin(np.abs(self.levels - self.level(path, number))))
+
+    def stack(self, *clips):
+        return {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': f'c{number}', 'media_id': 60, **clip} for number, clip in enumerate(clips)]}]}
+
+    def backwards(self, media_id):
+        return reverse_service.ensure_reversed(self.facts[media_id])
+
+    def test_freeze_holds_one_frame_and_is_silent(self):
+        path = self.render(self.stack({'start': 0, 'in': 0, 'out': 1}, {'start': 1, 'in': 0, 'out': 1, 'freeze': 1.5, 'muted': False}), 'freeze.mp4')
+        self.assertEqual([self.source_frame(path, number) for number in (35, 45, 58)], [45, 45, 45])
+        self.assertLess(self.tone(path, 1.2, 0.6)[1], 0.01)
+        self.assertGreater(self.tone(path, 0.2, 0.6)[1], 0.05)
+
+    def test_reverse_plays_in_to_out_backwards(self):
+        path = self.render(self.stack({'start': 0, 'in': 1, 'out': 3, 'reverse': True}), 'reverse.mp4', backwards=self.backwards)
+        shown = [self.source_frame(path, number) for number in (0, 30, 59)]
+        for got, want in zip(shown, (89, 59, 30)):
+            self.assertAlmostEqual(got, want, delta=1)
+        self.assertFalse(has_stream(path, 'audio'))
+        self.assertTrue(reverse_service.is_ready(self.facts[60].path))
+
+    def test_reverse_needs_its_copy(self):
+        with self.assertRaises(ValueError):
+            self.render(self.stack({'start': 0, 'in': 1, 'out': 3, 'reverse': True}), 'no-copy.mp4')
+
+    def test_flash_goes_white_and_dip_goes_black_in_the_middle(self):
+        for kind, check in (('flash', lambda level: self.assertGreater(level, 200)), ('dip', lambda level: self.assertLess(level, 60))):
+            with self.subTest(kind=kind):
+                path = self.render(self.stack({'start': 0, 'in': 0, 'out': 2}, {'start': 2, 'in': 2, 'out': 4, 'transition_in': {'kind': kind, 'duration': 1}}), f'{kind}.mp4')
+                check(self.level(path, 54))
+
+    def test_whip_blurs_sideways_only_during_the_slide(self):
+        bars = self.root / 'bars.png'
+        picture = np.zeros((180, 320, 3), np.uint8)
+        picture[:, ::8] = 255
+        Image.fromarray(picture).save(bars)
+        self.facts[61] = MediaFacts(path=bars, media_type='image', width=320, height=180)
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [
+            {'id': 'a', 'media_id': 61, 'start': 0, 'in': 0, 'out': 2}, {'id': 'b', 'media_id': 61, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'kind': 'whip', 'duration': 1}}]}]}
+        path = self.render(data, 'whip.mp4')
+        detail = lambda number: self.frame(path, number, (640, 360))[180, 80:560, 0].std()
+        self.assertGreater(detail(10), 60)
+        self.assertLess(detail(60), 25)
+        self.assertGreater(detail(110), 60)
 

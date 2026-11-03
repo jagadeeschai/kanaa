@@ -16,6 +16,7 @@ from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
 from app.services.transcript_service import LANGUAGES, PHASE, saved_words, transcribe
 from app.services.face_service import find_faces
+from app.services.reverse_service import ensure_reversed, request_reversed, reversed_files
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Format, Text, Timeline
@@ -66,6 +67,23 @@ def asset_path(identifier: int, name: str) -> Path:
 @router.get('/photos/{identifier}/proxy')
 def proxy(identifier: int, request: Request):
     return serve_file_with_ranges(asset_path(identifier, 'proxy.mp4'), 'video/mp4', request)
+
+
+@router.post('/photos/{identifier}/reversed')
+def reversed_copy(identifier: int):
+    """Starts making the reversed copy if needed. Ready, or preparing with a job to watch."""
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos can play backwards.')
+    return request_reversed(media_facts(identifier), row['filename'])
+
+
+@router.get('/photos/{identifier}/reversed-proxy')
+def reversed_proxy(identifier: int, request: Request):
+    target = reversed_files(Path(get_media(identifier)['absolute_path']))[1]
+    if not target.is_file():
+        raise HTTPException(404, 'The reversed copy is still being made.')
+    return serve_file_with_ranges(target, 'video/mp4', request)
 
 
 @router.get('/photos/{identifier}/filmstrip')
@@ -261,7 +279,7 @@ def preview_render(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True)
+            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, backwards=lambda media_id: ensure_reversed(media_facts(media_id), should_cancel))
             fresh.replace(target)
             return {'progress': 100, 'preview_ready': True}
         finally:
@@ -297,7 +315,7 @@ def export_project(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel)
+            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, backwards=lambda media_id: ensure_reversed(media_facts(media_id), should_cancel))
             output = index_media(target, f"{row['name']}.mp4", exported=True)
             return {'progress': 100, 'output_photo_id': output['id']}
         except Exception:

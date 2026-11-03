@@ -19,7 +19,7 @@ API, OUTPUT, WORK = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 WIDTH, HEIGHT, FPS = 1280, 720, 30
 GRID = (64, 36)
 PRESETS = ['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce']
-TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom']
+TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip']
 LOOKS = ['warm', 'cool', 'mono', 'vivid', 'film']
 ANIMATION = 0.6
 SECONDS = 2.0
@@ -74,6 +74,20 @@ def make_detail():
     return upload(path)
 
 
+def make_motion():
+    """Four seconds where every frame differs: a box crosses a gradient that brightens. Waits for its proxy and reversed copy."""
+    path = WORK / 'motion.mp4'
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'gradients=s={WIDTH}x{HEIGHT}:c0=navy:c1=orange:x0=0:y0=0:x1={WIDTH}:y1={HEIGHT}:r={FPS}:d=4:speed=0.05',
+                    '-vf', f"drawbox=x='t*250':y=200:w=180:h=300:c=white:t=fill,drawbox=x=900:y='50+t*120':w=120:h=120:c=black:t=fill", '-c:v', 'libx264', '-crf', '14', '-pix_fmt', 'yuv420p',
+                    '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', str(path)], check=True)
+    media = upload(path)
+    for _ in range(180):
+        if call(f'/api/photos/{media}/assets').get('status') == 'ready' and call(f'/api/photos/{media}/reversed', {}).get('status') == 'ready':
+            return media
+        time.sleep(1)
+    sys.exit('The moving clip never became ready.')
+
+
 def make_sources():
     pictures = []
     for name, pattern in (('a', 'gradients=s=1280x720:c0=red:c1=blue:x0=0:y0=0:x1=1280:y1=720:n=2'), ('b', 'gradients=s=1280x720:c0=yellow:c1=teal:x0=1280:y0=0:x1=0:y1=720:n=2')):
@@ -91,7 +105,7 @@ def keys(*points, ease='easeInOut'):
     return [{'t': t, 'v': v, 'ease': ease} for t, v in points]
 
 
-def build(first, second, logo, screen_image, screen_video, detail):
+def build(first, second, logo, screen_image, screen_video, detail, motion):
     clips, texts, samples, t = [], [], [], 0.0
     for number, preset in enumerate(PRESETS):
         animation = {'preset': preset, 'duration': ANIMATION}
@@ -138,6 +152,13 @@ def build(first, second, logo, screen_image, screen_video, detail):
         overlays.append({'id': name.replace(' ', '-'), 'media_id': media, 'start': t, 'in': 0, 'out': SECONDS, 'chroma': {'color': '#00b140', 'similarity': 0.08, 'softness': 0.06, 'spill': 0.5, **chroma}})
         samples.append({'name': name, 't': t + 1})
         t += SECONDS
+    # A held frame, and a clip played backwards, on a clip where every frame differs.
+    clips.append(clip('frozen', motion, t, freeze=1.5))
+    samples += [{'name': 'freeze 0.5', 't': t + 0.5}, {'name': 'freeze 1.5', 't': t + 1.5}]
+    t += SECONDS
+    clips.append({'id': 'backwards', 'media_id': motion, 'start': t, 'in': 0.5, 'out': 3.5, 'reverse': True})
+    samples += [{'name': f'reverse {at}', 't': t + at} for at in (0.2, 1.5, 2.8)]
+    t += 3
     # Blur boxes over a detailed picture: both styles, both shapes, a moving one and a big strong one.
     hides = []
     for name, extra in (('blur oval', {}), ('pixelate box', {'style': 'pixelate', 'shape': 'box'}), ('pixelate strong', {'style': 'pixelate', 'amount': 1, 'width': 0.6}),
@@ -184,7 +205,7 @@ def main():
     subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', str(cover)], check=True)
     cover_id = upload(cover)
     project = call('/api/projects', {'name': 'Golden frames', 'kind': 'edit', 'media_id': cover_id, 'media_ids': [cover_id]})
-    timeline, samples = build(first, second, logo, screen_image, screen_video, make_detail())
+    timeline, samples = build(first, second, logo, screen_image, screen_video, make_detail(), make_motion())
     call(f"/api/projects/{project['id']}/recipe", {'recipe': timeline}, 'PUT')
     job = call(f"/api/projects/{project['id']}/export", timeline)['job_id']
     while (status := call(f'/api/jobs/{job}/status'))['status'] not in ('done', 'failed', 'cancelled'):

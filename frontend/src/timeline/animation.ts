@@ -1,12 +1,21 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce';
 export type Animation = { preset: Preset; duration: number };
-export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom';
+export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip';
 export type Transition = { kind: TransitionKind; duration: number };
 export type LookName = 'none' | 'warm' | 'cool' | 'mono' | 'vivid' | 'film';
 export type Look = { dx: number; dy: number; scale: number; opacity: number; blur: number };
 
 export const MAX_BLUR = 0.03;
+/** Peak sideways blur of a whip, as a share of the frame height. Matches WHIP_BLUR in animation.py. */
+export const WHIP_BLUR = 0.05;
+const smooth = (low: number, high: number, x: number) => { const t = Math.min(1, Math.max(0, (x - low) / (high - low))); return t * t * (3 - 2 * t); };
+
+/** How much of the old clip, the new one and the flash colour show, `p` of the way through. Measured from ffmpeg's fadewhite and fadeblack. */
+export function dipWeights(p: number): [number, number, number] {
+  const q = 1 - p; const before = smooth(0.8, 1, q); const after = smooth(0.2, 1, q);
+  return [q * before, (1 - q) * (1 - after), q * (1 - before) + (1 - q) * after];
+}
 const OPACITY_SPAN: Partial<Record<Preset, number>> = { fade: 1, zoom: 1, pop: 1 / 3, blur: 1, bounce: 1 / 3 };
 const SLIDES: Partial<Record<Preset, [number, number]>> = { 'slide-up': [0, 1], 'slide-down': [0, -1], 'slide-left': [1, 0], 'slide-right': [-1, 0] };
 export const LOOKS: Record<LookName, [number, number, number, number, number]> = { none: [1, 1, 1, 1, 1], warm: [1.08, 1, 0.9, 1.02, 1.05], cool: [0.92, 1, 1.1, 1.02, 1], mono: [1, 1, 1, 1.1, 0], vivid: [1, 1, 1, 1.1, 1.35], film: [1.03, 1, 0.96, 0.88, 0.85] };
