@@ -1,18 +1,19 @@
 import { useRef } from 'react';
+import { ValueSlider } from './controls';
 import { ChevronLeft, ChevronRight, Diamond, Timer } from 'lucide-react';
 import { valueAt, type AnimatedProperty, type Ease, type Transform } from '../timeline/evaluate';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, toggleAnimated, writeValue, type Control } from '../timeline/keyframes';
 
 const SAMPLES_PER_SECOND = 30;
 const EASES: { id: Ease; label: string }[] = [{ id: 'easeInOut', label: 'Smooth' }, { id: 'easeOut', label: 'Slow down' }, { id: 'linear', label: 'Steady' }];
-const SLIDERS: Record<Exclude<Control, 'position'>, { label: string; property: AnimatedProperty; min: number; max: number; step: number; shown: (value: number) => string; rest: number }> = {
-  scale: { label: 'Size', property: 'scale', min: 0.05, max: 4, step: 0.01, shown: (value) => `${Math.round(value * 100)}%`, rest: 1 },
-  rotation: { label: 'Rotation', property: 'rotation', min: -360, max: 360, step: 1, shown: (value) => `${Math.round(value)}°`, rest: 0 },
-  opacity: { label: 'Opacity', property: 'opacity', min: 0, max: 1, step: 0.01, shown: (value) => `${Math.round(value * 100)}%`, rest: 1 },
+const SLIDERS: Record<Exclude<Control, 'position'>, { label: string; property: AnimatedProperty; min: number; max: number; step: number; rest: number; unit: string; factor: number }> = {
+  scale: { label: 'Size', property: 'scale', min: 0.05, max: 8, step: 0.01, rest: 1, unit: '%', factor: 100 },
+  rotation: { label: 'Rotation', property: 'rotation', min: -360, max: 360, step: 1, rest: 0, unit: '°', factor: 1 },
+  opacity: { label: 'Opacity', property: 'opacity', min: 0, max: 1, step: 0.01, rest: 1, unit: '%', factor: 100 },
 };
 const LABELS: Record<Control, string> = { position: 'Position', scale: 'Size', rotation: 'Rotation', opacity: 'Opacity' };
 
-type PanelProps = { transform: Transform; local: number; length: number; id: string; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void };
+type PanelProps = { transform: Transform; local: number; length: number; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void; onGestureStart: () => void };
 
 function Stopwatch({ control, transform, local, length, onChange, onSeek }: PanelProps & { control: Control }) {
   const animated = isAnimated(transform, control);
@@ -32,7 +33,7 @@ function Stopwatch({ control, transform, local, length, onChange, onSeek }: Pane
 }
 
 export function MotionPanel(props: PanelProps) {
-  const { transform, local, id, onChange } = props;
+  const { transform, local, onChange, onGestureStart } = props;
   const animated = (['position', 'scale', 'rotation', 'opacity'] as Control[]).filter((control) => isAnimated(transform, control));
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;
   return <>
@@ -41,10 +42,8 @@ export function MotionPanel(props: PanelProps) {
     {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).map((control) => {
       const slider = SLIDERS[control];
       const value = valueAt(transform, slider.property, local);
-      return <div key={control} className="ed-motion-row">
-        <div className="ed-motion"><span>{slider.label}<em>{slider.shown(value)}</em></span><Stopwatch {...props} control={control}/></div>
-        <input type="range" aria-label={slider.label} style={{ '--fill': `${((value - slider.min) / (slider.max - slider.min)) * 100}%` } as React.CSSProperties} min={slider.min} max={slider.max} step={slider.step} value={value} onDoubleClick={() => onChange(writeValue(transform, slider.property, local, slider.rest))} onChange={(event) => onChange(writeValue(transform, slider.property, local, Number(event.target.value)), `${control}-${id}-${local}`)}/>
-      </div>;
+      return <ValueSlider key={control} label={slider.label} value={value} min={slider.min} max={slider.max} step={slider.step} defaultValue={slider.rest} unit={slider.unit} factor={slider.factor} onGestureStart={onGestureStart}
+        onChange={(next, group) => onChange(writeValue(transform, slider.property, local, next), group)} actions={<Stopwatch {...props} control={control}/>}/>;
     })}
     {ease && <div className="ed-chips" role="group" aria-label="Motion style">{EASES.map((option) => <button key={option.id} className={ease === option.id ? 'on' : ''} aria-pressed={ease === option.id} onClick={() => onChange(animated.reduce((next, control) => setEase(next, control, option.id), transform))}>{option.label}</button>)}</div>}
   </>;

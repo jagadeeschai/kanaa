@@ -87,3 +87,8 @@ export function splitKeys(transform: Transform, t: number): [Transform, Transfor
   });
   return [first, shiftKeys(transform, -t)];
 }
+
+/** A speed change squeezes or stretches the clip, so its motion must follow. */
+export function scaleKeys(transform: Transform, ratio: number): Transform {
+  return mapCurves(transform, (keys) => keys.map((key) => ({ ...key, t: round(key.t * ratio) })));
+}

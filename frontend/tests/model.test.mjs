@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, shiftKeys, splitKeys, toggleAnimated, writeValue } from '../src/timeline/keyframes.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
-import { removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { formatTime, parseTime, parseValue } from '../src/timeline/values.ts';
+import { setSpeed, removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -324,4 +325,33 @@ test('removing media clears it from every track, and keeps everything else', () 
   assert.equal(findClip(cleared, 'logo'), null);
   assert.equal(findSound(cleared, 's'), null);
   assert.equal(findSound(cleared, 'voice').sound.media_id, 2);
+});
+
+test('typed values accept units and commas, snap to the step, and stay in range', () => {
+  assert.equal(parseValue('150%', 100, 0, 2, 0.01), 1.5);
+  assert.equal(parseValue(' 1,5 s ', 1, 0, 5, 0.1), 1.5);
+  assert.equal(parseValue('1.5x', 1, 0.25, 4, 0.05), 1.5);
+  assert.equal(parseValue('−45°', 1, -360, 360, 1), -45);
+  assert.equal(parseValue('900', 100, 0, 2, 0.01), 2);
+  assert.equal(parseValue('hello', 100, 0, 2, 0.01), null);
+  assert.equal(parseValue('', 100, 0, 2, 0.01), null);
+});
+
+test('typed times read seconds or minutes, seconds and frames', () => {
+  assert.equal(parseTime('2.5', 30), 2.5);
+  assert.equal(parseTime('2.5s', 30), 2.5);
+  assert.equal(parseTime('1:02.15', 30), 62.5);
+  assert.equal(parseTime('0:03', 30), 3);
+  assert.equal(parseTime('nope', 30), null);
+  assert.equal(formatTime(62.5, 30), '1:02.15');
+  assert.equal(parseTime(formatTime(7.2, 25), 25), 7.2);
+});
+
+test('speed keeps motion on the same footage and stops at a neighbour', () => {
+  const clip = { ...newClip(facts, 'k'), transform: { ...moving() } };
+  const base = insertClip(emptyTimeline({ width: 1080, height: 1920, fps: 30 }), clip);
+  assert.equal(findClip(setSpeed(base, 'k', 2), 'k').transform.keyframes.x[1].t, 1);
+  const next = addSound(addSound(withClip(), song('a', 0, 4), 'l1'), song('b', 4), 'l1');
+  assert.equal(findSound(setSpeed(next, 'a', 0.25), 'a').sound.speed, 1);
+  assert.equal(findSound(setSpeed(next, 'a', 2), 'a').sound.speed, 2);
 });

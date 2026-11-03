@@ -396,6 +396,17 @@ Asked for after using Phase 7: adjustable panels, less flat, light and dark them
 - Folders are one name per file, in `photos.folder`. A file sits in one folder at a time.
 - "Remove from this video" only edits the timeline. "Delete from Motion" removes Motion's copy, and is refused while any project or generated scene uses the file. If only a project's cover uses it, the cover moves to something else in that project.
 
+## What could make Motion unique
+Not started. Rivals' weaknesses here are guesses, not tested.
+
+1. **Trustworthy Tamil lyrics.** Paste the real lyrics, align them, and flag doubtful lines. Alignment beats transcription: Whisper matched 28% of the words on one song.
+2. **Karaoke maker.** One click for the instrumental plus a letter-by-letter wipe, with an adjustable guide vocal.
+3. **Dual-script lyrics.** A Tamil line with an editable romanized line on shared timing, for listeners who speak Tamil but read it less easily.
+4. **Private until release.** A visible "nothing left this Mac" indicator for unreleased songs. AI scenes stay an explicit opt-in that says what is sent.
+5. **One song, every format.** From one project, export a 9:16 chorus, a 16:9 full video and a 1:1 version, reusing the sync.
+
+**Known behaviour to decide:** changing a main clip's speed moves later clips, but sounds and text stay put, which can break lyric sync.
+
 ## Mac app
 `desktop/build.sh` builds `WideAngle Motion.app` and installs it in Applications. It's Electron 33 with `desktop/main.cjs` inside, chosen because Chromium is the engine every phase was tested on. FastAPI serves `frontend/dist`.
 

@@ -1,6 +1,6 @@
 import type { Animation, LookName, Transition } from './animation';
 import type { Transform } from './evaluate';
-import { shiftKeys, splitKeys } from './keyframes.ts';
+import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
 export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName };
@@ -448,4 +448,20 @@ export function removeMedia(timeline: Timeline, mediaId: number): Timeline {
     return items.length ? [{ ...layer, items } as Timeline['layers'][number]] : [];
   });
   return { ...cleared, layers };
+}
+
+/** Changes speed. Items on free tracks stop at their neighbour, and clips keep their motion on the same footage. */
+export function setSpeed(timeline: Timeline, id: string, speed: number): Timeline {
+  const free = timedItem(timeline, id);
+  const clip = findClip(timeline, id);
+  const item = free?.item ?? clip;
+  if (!item) return timeline;
+  let next = speed;
+  if (free) {
+    const after = (free.layer.items as TrackItem[]).filter((entry) => entry.id !== id && entry.start >= item.start).reduce((first, entry) => Math.min(first, entry.start), Infinity);
+    if (Number.isFinite(after)) next = Math.max(next, (item.out - item.in) / (after - item.start));
+  }
+  next = Math.round(next * 1000) / 1000;
+  const changes = { speed: next, ...(clip ? { transform: scaleKeys(clip.transform, item.speed / next) } : {}) };
+  return free ? changeItem(timeline, id, changes) : updateClip(timeline, id, changes);
 }
