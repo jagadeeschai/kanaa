@@ -10,7 +10,7 @@ import { captionLayers, captionStates, captionText, findCaption, removeCaption, 
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
-import { buildTokens, cutTokens, type Word } from '../timeline/words';
+import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, type ThemeChoice } from './layout';
@@ -117,6 +117,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [faceNote, setFaceNote] = useState('');
   const [captionWords, setCaptionWords] = useState(DEFAULT_CAPTION_OPTIONS.words);
   const [captionsWaiting, setCaptionsWaiting] = useState(false);
+  const [pauseLength, setPauseLength] = useState(0.7);
+  const [removeFillers, setRemoveFillers] = useState(true);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
   const [deleting, setDeleting] = useState<Photo | null>(null);
@@ -494,6 +496,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const spokenIds = useMemo(() => [...new Set(mainClips.map((clip) => clip.media_id))].filter((id) => mediaById.get(id)?.media_type === 'video'), [mainClips, mediaById]);
   const missingWords = spokenIds.filter((id) => !transcripts[`${id}:${language}`]);
   const tokens = useMemo(() => buildTokens(mainClips, (id) => transcripts[`${id}:${language}`]), [mainClips, transcripts, language]);
+  // Remove pauses reads its own tokens, so its shortest pause can differ from the transcript's.
+  const tidyTokens = useMemo(() => buildTokens(mainClips, (id) => transcripts[`${id}:${language}`], pauseLength), [mainClips, transcripts, language, pauseLength]);
+  const tidy = useMemo(() => tidyUp(tidyTokens, mainClips, removeFillers), [tidyTokens, mainClips, removeFillers]);
   useEffect(() => {
     let stopped = false;
     for (const id of spokenIds) {
@@ -540,6 +545,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(setCaptions(timeline, items, newId()));
   }, [timeline, missingWords.length, wordJob, mainClips, transcripts, language, captionWords, change]);
   useEffect(() => { if (captionsWaiting && !wordJob && !missingWords.length) makeCaptions(); }, [captionsWaiting, wordJob, missingWords.length, makeCaptions]);
+  /** Cuts every chosen pause and filler at once. Captions, if any, are made again from what's left, in the same Undo. */
+  const removePauses = useCallback(() => {
+    if (!timeline || mainLayer(timeline).locked || !tidy.keys.size) return;
+    let next = cutTokens(timeline, tidyTokens, tidy.keys, newId);
+    if (captionLayers(next).length) next = setCaptions(next, buildCaptions(mainLayer(next).items, (id) => transcripts[`${id}:${language}`], newId, { ...DEFAULT_CAPTION_OPTIONS, words: captionWords }), newId());
+    change(next);
+    setWordSelection(new Set());
+  }, [timeline, tidy, tidyTokens, transcripts, language, captionWords, change]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
@@ -862,7 +875,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}
         {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
-          busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection}
+          busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
         {leftTab === 'text' && <>
           <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Adds a title at the playhead.</p>

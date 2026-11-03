@@ -417,6 +417,11 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Remove pauses (done)
+A panel at the top of the Words tab: pauses longer than 0.4, 0.7 or 1 second, and optionally fillers ("um", "uh", "hmm", and Tamil and Hindi equivalents, compared without case or punctuation; `isFiller` in `timeline/words.ts`). It says how many it will take out and how much shorter the video gets, computed from the same cut plan (`cutRuns`) the cut uses, so the promise matches. One click cuts them all through `cutTokens`, keeping a short breath at each pause; existing captions are made again from what is left, in the same Undo. A spoken test clip with two long silences and an "um" went from 8.88 to 3.35 seconds (5.5 promised) with every word kept.
+
+Limits: it relies on the transcript, so a pause only counts where Whisper found words on both sides (or the clip's start and end); fillers Whisper leaves out of the transcript can't be found; main track only.
+
 ### Auto captions (done)
 Text tab, Captions: words per caption (1 to 4) and Add captions. It uses the Words tab's transcripts of the main track, transcribing any clip that has none first, and cuts lines at pauses over 0.6 s, at sentence ends, at commas once a line has two words, and at 24 letters (`timeline/captions.ts`). Captions are their own layer kind, on top of everything, with one look for all: style, position, size, colour, and an optional colour for the word being spoken. Selecting a caption lets you retype it; the same number of words keeps each word's timing. Export writes every caption state to one ASS file and draws it with one `ass` filter, since a long talk has too many captions to add one by one; `write_lyrics` gained `marks` to colour the lit word. The preview shows the same states as images from `/api/caption-image`, fetched three at a time, nearest the playhead first. Golden samples (Tamil and English, lit words): 1.3 to 2.0/255. A spoken test clip (macOS `say`) was captioned in 9 seconds including transcription.
 

@@ -10,13 +10,13 @@ const WORD_MARGIN = 0.04;
 const SHORTEST_PIECE = 0.1;
 
 /** Every word still in the video, in timeline order. A word belongs to a clip when its middle is inside. */
-export function buildTokens(clips: Clip[], wordsFor: (mediaId: number) => Word[] | undefined): Token[] {
+export function buildTokens(clips: Clip[], wordsFor: (mediaId: number) => Word[] | undefined, minPause = MIN_PAUSE_SECONDS): Token[] {
   const tokens: Token[] = [];
   // A frozen or reversed clip has no speech to read.
   for (const clip of [...clips].filter((item) => item.freeze == null && !item.reverse && !item.ramp).sort((a, b) => a.start - b.start)) {
     const words = (wordsFor(clip.media_id) ?? []).filter((word) => { const middle = (word.s + word.e) / 2; return middle >= clip.in && middle < clip.out; });
     let cursor = clip.in;
-    const pause = (end: number) => { if (end - cursor >= MIN_PAUSE_SECONDS) tokens.push({ key: `${clip.id}:p${cursor}`, clipId: clip.id, from: cursor, to: end }); };
+    const pause = (end: number) => { if (end - cursor >= minPause) tokens.push({ key: `${clip.id}:p${cursor}`, clipId: clip.id, from: cursor, to: end }); };
     for (const word of words) {
       const from = Math.max(word.s, clip.in); const to = Math.min(word.e, clip.out);
       pause(from);
@@ -29,6 +29,29 @@ export function buildTokens(clips: Clip[], wordsFor: (mediaId: number) => Word[]
 }
 
 export const tokenTime = (clip: Clip, sourceTime: number) => clip.start + (sourceTime - clip.in) / clip.speed;
+
+/** Sounds that fill a gap rather than say something, in the languages Kanaa transcribes. Compared without punctuation or case. */
+const FILLERS = new Set(['um', 'umm', 'ummm', 'uh', 'uhh', 'uhm', 'er', 'erm', 'ah', 'ahh', 'hmm', 'hm', 'mm', 'mmm', 'mhm', 'ம்', 'ம்ம்', 'ம்ம', 'அ', 'ஆ', 'ஹ்ம்', 'उम्म', 'हम्म', 'अ']);
+export const isFiller = (text: string) => FILLERS.has(text.toLowerCase().replace(/[.,!?।…'"’]/g, '').trim());
+
+export type Tidy = { keys: Set<string>; pauses: number; fillers: number; seconds: number };
+
+/** What Remove pauses would cut: every pause in `tokens` (built with the wanted shortest pause), and filler words if asked. */
+export function tidyUp(tokens: Token[], clips: Clip[], fillers: boolean): Tidy {
+  const byId = new Map(clips.map((clip) => [clip.id, clip]));
+  const keys = new Set<string>(); let pauses = 0; let filled = 0;
+  for (const token of tokens) {
+    if (token.text ? !(fillers && isFiller(token.text)) : false) continue;
+    keys.add(token.key);
+    if (token.text) filled += 1; else pauses += 1;
+  }
+  // The same runs the cut will make, so the promise matches what happens.
+  const seconds = cutRuns(tokens, keys).reduce((sum, run) => {
+    const clip = byId.get(run.clipId);
+    return clip ? sum + Math.max(0, Math.min(clip.out, run.to) - Math.max(clip.in, run.from)) / clip.speed : sum;
+  }, 0);
+  return { keys, pauses, fillers: filled, seconds };
+}
 
 /** Takes a stretch of source time out of a clip. What follows closes up, like any cut on the main track. */
 export function cutSource(timeline: Timeline, clipId: string, from: number, to: number, newId: string): Timeline {
@@ -45,6 +68,15 @@ export function cutSource(timeline: Timeline, clipId: string, from: number, to: 
 
 /** Cuts selected tokens, joining neighbours into one cut. Works backward so earlier times stay true. */
 export function cutTokens(timeline: Timeline, tokens: Token[], chosen: Set<string>, makeId: () => string): Timeline {
+  return cutRuns(tokens, chosen).reverse().reduce((current, run) => {
+    const clip = mainLayer(current).items.find((item) => item.id === run.clipId);
+    if (!clip) return current;
+    return cutSource(current, run.clipId, Math.max(clip.in, run.from), Math.min(clip.out, run.to), makeId());
+  }, timeline);
+}
+
+/** The stretches of source time a cut takes out, neighbouring choices joined into one. */
+export function cutRuns(tokens: Token[], chosen: Set<string>): { clipId: string; from: number; to: number }[] {
   const runs: { clipId: string; from: number; to: number }[] = [];
   tokens.forEach((token, index) => {
     if (!chosen.has(token.key)) return;
@@ -57,11 +89,7 @@ export function cutTokens(timeline: Timeline, tokens: Token[], chosen: Set<strin
     if (last && last.clipId === token.clipId && chosen.has(before?.key ?? '')) last.to = end;
     else if (end > start) runs.push({ clipId: token.clipId, from: start, to: end });
   });
-  return runs.reverse().reduce((current, run) => {
-    const clip = mainLayer(current).items.find((item) => item.id === run.clipId);
-    if (!clip) return current;
-    return cutSource(current, run.clipId, Math.max(clip.in, run.from), Math.min(clip.out, run.to), makeId());
-  }, timeline);
+  return runs;
 }
 
 
