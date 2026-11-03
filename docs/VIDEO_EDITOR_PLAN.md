@@ -417,6 +417,11 @@ Titles have a transform too: it moves the whole title from where its Top, Middle
 
 Limits: tested on synthetic footage only. Fast motion blur, the subject leaving the frame or something passing in front loses the track (it says where). Faces aren't found automatically; you draw the box.
 
+### Title templates (done)
+Ten templates in the Text tab, each shown as a picture the server draws: Cinematic, Name card, Festival, Chapter, Quote, Location, Bold reel, Minimal, News, End card (`timeline/templates.ts`). Titles gained a subtitle (its own size, colour, letter spacing, above or below), left, centre or right alignment, and a band colour. `write_title` in `timeline_service.py` draws them as one block, each line in its script's font; a title using none of the new options still goes through `write_lyrics` exactly as before. "Save as my style" keeps a look under My styles (up to 12, stored on this Mac). The title settings are now grouped: Words, Look, Subtitle, Animation.
+
+Limits: one bundled font family (Noto Sans Bold and its Indic versions), so templates differ by size, colour, spacing and boxes rather than typeface; saved styles live in this Mac's app storage, not in projects.
+
 ### Title behind mountains or a shape (done)
 On a title, "Put the title behind…": The person, Mountains, or A shape. Mountains: click along the top of the ridge or ground, and everything below the line (out to both edges) is in front (`groundShape`). A shape: click around a building, tree or object, and click the first point or press Enter to close. Backspace removes a point, Esc cancels. Either way a silent copy of the main clip goes on an "In front" layer right after the title's layer, with a `shape_mask` that keeps only that part of the frame. Export multiplies the copy's own transparency by the mask picture; the preview samples the very same picture from `/api/shape-mask` (drawn 4x larger then shrunk, with a 0.4% soft edge). Golden samples: 2.0/255. With Slide up as the title's Enter animation, it rises from behind the ridge.
 

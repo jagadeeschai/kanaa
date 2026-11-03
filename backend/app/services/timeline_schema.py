@@ -154,6 +154,18 @@ class Text(Strict):
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
     transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.
+    # Template looks. A title using none of these is drawn exactly as before.
+    subtitle: Optional[str] = Field(default=None, max_length=200)
+    subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.
+    subtitle_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    subtitle_above: bool = False
+    subtitle_spacing: int = Field(default=0, ge=0, le=30)  # Letter spacing, in points at 720 wide.
+    align: Literal['left', 'center', 'right'] = 'center'
+    band_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # The box behind a band title.
+
+    @property
+    def designed(self) -> bool:
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None
 
     @property
     def length(self) -> float:

@@ -245,7 +245,7 @@ def text_image(body: dict):
         item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
     except (KeyError, ValidationError) as exc:
         raise HTTPException(400, 'This text is not valid.') from exc
-    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size')}
+    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'align', 'band_color')}
     key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
     folder = settings.data_dir / 'cache' / 'text'
     target = folder / f'{key}.png'

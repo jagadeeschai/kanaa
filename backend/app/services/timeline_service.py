@@ -23,7 +23,7 @@ from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
-    BT709_OUTPUT_ARGS, HDR_TO_BT709, LYRIC_FONTS_DIR, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
+    BT709_OUTPUT_ARGS, DEFAULT_LYRIC_FONT, HDR_TO_BT709, LYRIC_FONTS_DIR, ass_timestamp, lyric_font_for, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,6 +243,65 @@ def sound_steps(item: Clip | Sound) -> list[str]:
     return [*steps, f'adelay={round(item.start * 1000)}:all=1']
 
 
+SUBTITLE_SHARE = 0.55  # A subtitle's size when none is set, as a share of the title's.
+
+
+def ass_colour(hex_colour: str, alpha: int = 0) -> str:
+    red, green, blue = (hex_colour.lstrip('#')[index:index + 2] for index in (0, 2, 4))
+    return f'&H{alpha:02X}{blue}{green}{red}'
+
+
+def ass_text(text: str) -> str:
+    """Typed text stays text, never an ASS override."""
+    return text.replace('\\', '＼').replace('{', '｛').replace('}', '｝').replace('\r', '').replace('\n', r'\N')
+
+
+def write_title(path: Path, item: Text, fmt: Format) -> None:
+    """A template title: title and subtitle in one block, each line in its script's font, aligned and boxed as chosen.
+    Uses write_lyrics' sizes and borders, so a template's title line matches a plain title of the same size."""
+    width, height = fmt.width, fmt.height
+    unit = width / 720
+    title_size = max(20, item.size) * unit
+    sub_size = (item.subtitle_size or round(max(20, item.size) * SUBTITLE_SHARE)) * unit
+    border_style, outline, shadow, outline_colour, back_colour = {
+        'outline': (1, 2 * unit, 1 * unit, '&H00101010', '&H80000000'),
+        'shadow': (1, 3 * unit, 2 * unit, '&H00000000', '&H40000000'),
+        'band': (3, 12 * unit, 0, '&H70000000', '&H70000000'),
+    }[item.style]
+    if item.style == 'band' and item.band_color:
+        outline_colour = back_colour = ass_colour(item.band_color, 0x20)
+    blur = rf'\blur{3 * unit}' if item.style == 'shadow' else ''
+    row = {'top': 7, 'center': 4, 'bottom': 1}[item.position]
+    alignment = row + {'left': 0, 'center': 1, 'right': 2}[item.align]
+    margin, side = round(height * 0.08), round(width * 0.055)
+
+    def line(text: str, size: float, colour: str, spacing: int = 0) -> str:
+        family, scale = lyric_font_for(text)
+        # Every line sets its own spacing: override tags carry on past a line break.
+        return rf'{{\fn{family}\fs{size * scale}\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}{ass_text(text)}'
+
+    lines = [line(item.text, title_size, item.color)]
+    if item.subtitle:
+        sub = line(item.subtitle, sub_size, item.subtitle_color or item.color, item.subtitle_spacing)
+        lines = [sub, *lines] if item.subtitle_above else [*lines, sub]
+    family = DEFAULT_LYRIC_FONT[0]
+    path.write_text(f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,{family},{title_size},{ass_colour(item.color)},{ass_colour(item.color)},{outline_colour},{back_colour},-1,0,0,0,100,100,0,0,{border_style},{outline},{shadow},{alignment},{side},{side},{margin},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,{ass_timestamp(0)},{ass_timestamp(1)},Title,,0,0,0,,{r'\N'.join(lines)}
+""", encoding='utf-8')
+
+
 def caption_states(item: Caption, highlight: bool) -> list[tuple[float, float, int | None]]:
     """Each moment a caption looks different: (start, end, lit word), in its own seconds. Matches captionStates in model.ts."""
     if not highlight:
@@ -264,7 +323,10 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
                                        lyric_color=item.color, lyrics=[{'start': 0, 'end': 1, 'text': item.text}]), None
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
-        write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height), marks=marks, mark_color=layer.highlight if layer else None)
+        if layer is None and item.designed:
+            write_title(folder / 'lyrics.ass', item, fmt)
+        else:
+            write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height), marks=marks, mark_color=layer.highlight if layer else None)
         (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
         result = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black@0:s={fmt.width}x{fmt.height}:r=30:d=0.5,format=rgba',
                                  '-vf', 'ass=filename=lyrics.ass:shaping=complex:fontsdir=fonts:alpha=1', '-frames:v', '1', '-update', '1', str(target)],

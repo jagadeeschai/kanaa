@@ -27,7 +27,7 @@ from app.services.job_service import JobCancelled, get_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.timeline_schema import Chroma, Timeline, Transform, value_at
 from app.services.video_edit_service import resolve_audio_asset
-from app.services.timeline_service import atempo_chain, chroma_filters, property_expression, render_timeline, upgrade_edit_recipe
+from app.services.timeline_service import render_text_image, atempo_chain, chroma_filters, property_expression, render_timeline, upgrade_edit_recipe
 from app.services.video_service import _run_ffprobe
 
 FFMPEG = shutil.which('ffmpeg')
@@ -1460,4 +1460,42 @@ class BehindShape(Clips):
     def test_a_shape_must_stay_on_the_frame(self):
         with self.assertRaises(ValidationError):
             Timeline.model_validate({'layers': [{'id': 'v', 'kind': 'video', 'items': [{'id': 'c', 'media_id': 1, 'start': 0, 'out': 1, 'shape_mask': {'points': [[0, 0], [3, 0], [0, 1]]}}]}]})
+
+
+class TitleTemplates(unittest.TestCase):
+    def draw(self, **look):
+        from app.services.timeline_schema import Format, Text
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'title.png'
+            render_text_image(Text(id='t', start=0, length=1, **look), Format(width=640, height=360, fps=30), target)
+            return np.array(Image.open(target).convert('RGBA'))
+
+    def rows(self, picture):
+        lit = np.nonzero(picture[:, :, 3].max(axis=1) > 128)[0]
+        return lit.min(), lit.max()
+
+    def test_a_plain_title_draws_exactly_as_before(self):
+        from app.services.timeline_schema import Text
+        self.assertFalse(Text(id='t', start=0, length=1, text='Hi', subtitle_spacing=4).designed)
+        plain = self.draw(text='Hello', style='band', position='bottom', size=44)
+        again = self.draw(text='Hello', style='band', position='bottom', size=44, subtitle_spacing=4)
+        self.assertTrue((plain == again).all())
+
+    def test_a_subtitle_adds_a_smaller_second_line_in_its_own_colour(self):
+        alone = self.draw(text='TITLE', style='outline', position='center', size=60, align='left')
+        both = self.draw(text='TITLE', subtitle='small line', subtitle_color='#ff0000', style='outline', position='center', size=60, align='left')
+        self.assertGreater(self.rows(both)[1] - self.rows(both)[0], (self.rows(alone)[1] - self.rows(alone)[0]) * 1.4)
+        red = (both[:, :, 0] > 200) & (both[:, :, 1] < 60) & (both[:, :, 3] > 200)
+        self.assertGreater(int(red.sum()), 50)
+        self.assertLess(np.nonzero(red.any(axis=1))[0].min(), self.rows(both)[1] + 1)
+
+    def test_alignment_moves_the_block(self):
+        columns = lambda picture: np.nonzero(picture[:, :, 3].max(axis=0) > 128)[0]
+        left, right = self.draw(text='EDGE', align='left', style='shadow'), self.draw(text='EDGE', align='right', style='shadow')
+        self.assertLess(columns(left).max(), 320)
+        self.assertGreater(columns(right).min(), 320)
+
+    def test_typed_text_cannot_become_formatting(self):
+        picture = self.draw(text='{\\fs200}A', subtitle='{\\c&H0000FF&}b', style='shadow')
+        self.assertLess(self.rows(picture)[1] - self.rows(picture)[0], 200)
 
