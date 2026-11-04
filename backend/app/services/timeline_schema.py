@@ -90,6 +90,19 @@ class RampPoint(Strict):
     v: float = Field(ge=0.05, le=10)  # Relative speed; a ramp is scaled to average 1.
 
 
+class CutoutPick(Strict):
+    """Which of the people, or the objects, a cut-out keeps. Numbers are from the clip's list of them; None keeps them all."""
+    kind: Literal['people', 'objects']
+    ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=6)
+
+    @field_validator('ids')
+    @classmethod
+    def known(cls, ids):
+        if ids is not None and any(not 0 <= number < 6 for number in ids):
+            raise ValueError('Pick from the people or objects found.')
+        return sorted(set(ids)) if ids is not None else None
+
+
 class ShapeMask(Strict):
     """Only the part of the frame inside `points` shows, with a soft edge. Points are 0 to 1 across and down the frame."""
     points: List[Tuple[float, float]] = Field(min_length=3, max_length=200)
@@ -127,6 +140,7 @@ class Clip(Strict):
     stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
+    cutout_pick: Optional[CutoutPick] = None  # With remove: only these people, or these objects, stay.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
@@ -136,6 +150,8 @@ class Clip(Strict):
             raise ValueError('A clip must end after it starts.')
         if self.ramp is not None and (len(self.ramp) < 2 or self.ramp[0].t != 0 or self.ramp[-1].t != 1 or any(b.t <= a.t for a, b in zip(self.ramp, self.ramp[1:]))):
             raise ValueError('A speed ramp must run from the start of the clip to its end.')
+        if self.cutout_pick is not None and self.cutout != 'remove':
+            raise ValueError('Choosing who stays needs the background removed.')
         return self
 
     @property

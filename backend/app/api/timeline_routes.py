@@ -18,7 +18,7 @@ from app.services.transcript_service import LANGUAGES, PHASE, saved_words, trans
 from app.services.face_service import find_faces
 from app.services.reverse_service import ensure_reversed, request_reversed, reversed_files
 from app.services.stabilise_service import ensure_stable, request_stable, stable_files
-from app.services import cutout_service, voice_service
+from app.services import cutout_service, instance_service, voice_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Caption, CaptionLayer, Format, ShapeMask, Text, Timeline
@@ -86,24 +86,77 @@ def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait: bool
 CUTOUTS = {'', 'remove', 'blur'}
 
 
-@router.post('/photos/{identifier}/prepared')
-def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = ''):
-    """Starts making whatever copies a clip needs, one step at a time. Ready, or preparing with a job to watch."""
+def steady_and_reversed(identifier: int, steady: bool, backwards: bool) -> tuple[MediaFacts | None, dict]:
+    """The clip's steadied and/or reversed copy, once made: its facts, or None and the status of what is being made."""
     row = get_media(identifier)
-    if row['media_type'] != 'video' or cutout not in CUTOUTS:
-        raise HTTPException(400, 'Only videos can be steadied, reversed or cut out.')
     facts = media_facts(identifier)
     for wanted, request, ensure in ((steady, request_stable, ensure_stable), (backwards, request_reversed, ensure_reversed)):
         if not wanted:
             continue
         status = request(facts, row['filename'])
         if status['status'] != 'ready':
-            return status
+            return None, status
         facts = ensure(facts)
+    return facts, {'status': 'ready'}
+
+
+@router.post('/photos/{identifier}/prepared')
+def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = ''):
+    """Starts making whatever copies a clip needs, one step at a time. Ready, or preparing with a job to watch."""
+    row = get_media(identifier)
+    pick = instance_service.parse(cutout)
+    if row['media_type'] != 'video' or (cutout not in CUTOUTS and pick is None):
+        raise HTTPException(400, 'Only videos can be steadied, reversed or cut out.')
+    facts, status = steady_and_reversed(identifier, steady, backwards)
+    if facts is None:
+        return status
     try:
+        if pick:
+            return instance_service.request(facts, pick, row['filename'])
         return cutout_service.request_cutout(facts, cutout, row['filename']) if cutout else {'status': 'ready'}
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/photos/{identifier}/instances')
+def request_instances(identifier: int, kind: str = 'people', steady: bool = False, backwards: bool = False):
+    """Finds each person, or each object, in the clip, for choosing. Ready with the list, or preparing."""
+    row = get_media(identifier)
+    if row['media_type'] != 'video' or kind not in instance_service.KINDS:
+        raise HTTPException(400, 'Only videos have people or objects to find.')
+    facts, status = steady_and_reversed(identifier, steady, backwards)
+    if facts is None:
+        return status
+    try:
+        status = instance_service.request(facts, instance_service.Pick(kind, None), row['filename'], joined=False)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if status['status'] == 'ready':
+        status['tracks'] = instance_service.tracks(facts.path, kind) or []
+    return status
+
+
+@router.get('/photos/{identifier}/instances/picture')
+def instances_picture(identifier: int, kind: str = 'people', steady: bool = False, backwards: bool = False):
+    """The clip with each one found tinted and numbered."""
+    if kind not in instance_service.KINDS:
+        raise HTTPException(400, 'Unknown kind.')
+    base = prepared_base(identifier, steady, backwards)
+    target = instance_service.picture_path(base, kind)
+    if not target.is_file():
+        raise HTTPException(404, 'Still looking.')
+    return FileResponse(target, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+def prepared_base(identifier: int, steady: bool, backwards: bool) -> Path:
+    """The path of the steadied and/or reversed copy a cut-out is made from, which may not exist yet."""
+    base = Path(get_media(identifier)['absolute_path'])
+    for wanted, copies in ((steady, stable_files), (backwards, reversed_files)):
+        if wanted:
+            if not base.is_file():
+                raise HTTPException(404, 'This copy is still being made.')
+            base = copies(base)[0]
+    return base
 
 
 @router.get('/photos/{identifier}/prepared-proxy')
@@ -117,10 +170,11 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
         base, target = copies(base)
-    if cutout in ('remove', 'blur'):
+    pick = instance_service.parse(cutout)
+    if cutout in ('remove', 'blur') or pick:
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
-        target = cutout_service.files(base)[cutout_service.SEE_THROUGH if cutout == 'remove' else cutout_service.PORTRAIT_PROXY]
+        target = instance_service.pick_paths(base, pick)[1] if pick else cutout_service.files(base)[cutout_service.SEE_THROUGH if cutout == 'remove' else cutout_service.PORTRAIT_PROXY]
     if target is None or not target.is_file():
         raise HTTPException(404, 'This copy is still being made.')
     return serve_file_with_ranges(target, 'video/webm' if target.suffix == '.webm' else 'video/mp4', request)
@@ -392,7 +446,7 @@ def preview_render(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, fresh, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
             fresh.replace(target)
             return {'progress': 100, 'preview_ready': True}
         finally:
@@ -428,7 +482,7 @@ def export_project(identifier: int, timeline: dict):
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts: cutout_service.ensure_mask(facts, should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
             output = index_media(target, f"{row['name']}.mp4", exported=True)
             return {'progress': 100, 'output_photo_id': output['id']}
         except Exception:

@@ -43,10 +43,10 @@ _build = threading.Lock()
 _active: dict[str, str] = {}
 
 
-def helper() -> Path:
+def helper(source: Path = SOURCE) -> Path:
     """The compiled helper, rebuilt when its source changes."""
-    digest = hashlib.sha256(SOURCE.read_bytes()).hexdigest()[:12]
-    target = settings.data_dir / 'bin' / f'person_mask-{digest}'
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()[:12]
+    target = settings.data_dir / 'bin' / f'{source.stem}-{digest}'
     with _build:
         if target.is_file():
             return target
@@ -55,7 +55,7 @@ def helper() -> Path:
             raise RuntimeError(f"Finding people needs Apple's command line tools. Run {INSTALL_TOOLS} in Terminal, then try again.")
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix('.tmp')
-        result = subprocess.run([swiftc, '-O', str(SOURCE), '-o', str(temporary)], capture_output=True, text=True, timeout=600)
+        result = subprocess.run([swiftc, '-O', str(source), '-o', str(temporary)], capture_output=True, text=True, timeout=600)
         if result.returncode:
             logger.error('Could not build the person finder: %s', result.stderr[-1500:])
             raise RuntimeError('Could not set up person finding on this Mac. See the server log for details.')
@@ -96,6 +96,8 @@ class Steadier:
         # The window holds frames from `self.seen - len(window)`; ends repeat the nearest frame.
         first = self.seen - len(self.window)
         picks = [self.window[min(max(index + offset, first), self.seen - 1) - first] for offset in range(-self.radius, self.radius + 1)]
+        if all(pick is picks[0] for pick in picks):
+            return self.firm(picks[0])  # The same frame throughout, such as an empty one: no middle to find.
         return self.firm(np.median(np.stack(picks), axis=0).astype(np.uint8))
 
     def push(self, mask: np.ndarray) -> list[np.ndarray]:
@@ -165,18 +167,19 @@ def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_canc
         temporary.unlink(missing_ok=True)
 
 
-def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool]) -> None:
+def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None) -> None:
     """The preview copy for Remove: VP9 keeps the mask as transparency, which the preview can play directly."""
     paths = files(facts.path)
-    temporary = paths[SEE_THROUGH].with_suffix('.tmp.webm')
+    mask, target = mask or paths[MASK], target or paths[SEE_THROUGH]
+    temporary = target.with_suffix('.tmp.webm')
     graph = f"[0:v]{colour(facts)},scale=-2:{PREVIEW_SIDE},fps=30,format=yuva420p[video];[1:v]format=gray[shape];[shape][video]scale2ref[mask][scaled];[scaled][mask]alphamerge"
-    result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(paths[MASK]), '-filter_complex', graph, '-an',
+    result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(mask), '-filter_complex', graph, '-an',
                               '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-b:v', '3M', '-auto-alt-ref', '0', '-g', '15', str(temporary)], should_cancel)
     if result.returncode:
         temporary.unlink(missing_ok=True)
         logger.error('See-through copy failed for %s: %s', facts.path, result.stderr[-800:])
         raise RuntimeError('Could not prepare the cut-out preview.')
-    temporary.replace(paths[SEE_THROUGH])
+    temporary.replace(target)
 
 
 def make_portrait(facts: MediaFacts, should_cancel: Callable[[], bool]) -> None:

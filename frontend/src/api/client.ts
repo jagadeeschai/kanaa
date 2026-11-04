@@ -75,6 +75,10 @@ export const startFaces = (id: number, body: { start: number; end: number }) => 
 /** A steadied and/or reversed copy of a video, made once on the server. */
 export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${cutout}`, { method: 'POST' });
 export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${cutout}`;
+/** Each person, or object, found in a video, for choosing who stays in front of a title. */
+export type FoundOne = { id: number; label: number; colour: string; centre: [number, number] | null };
+export const requestInstances = (id: number, kind: 'people' | 'objects', steady: boolean, backwards: boolean) => requestJson<{ status: 'ready' | 'preparing'; progress?: number; tracks?: FoundOne[] }>(`/api/photos/${id}/instances?kind=${kind}&steady=${steady}&backwards=${backwards}`, { method: 'POST' });
+export const instancesPictureUrl = (id: number, kind: 'people' | 'objects', steady: boolean, backwards: boolean) => `/api/photos/${id}/instances/picture?kind=${kind}&steady=${steady}&backwards=${backwards}`;
 /** The cleaned copy of a clip's or song's sound, made once on the server. */
 const voiceQuery = (source: { media_id?: number; asset_id?: string }) => (source.asset_id ? `asset_id=${source.asset_id}` : `media_id=${source.media_id}`);
 export const requestCleanVoice = (source: { media_id?: number; asset_id?: string }) => requestJson<{ status: 'ready' | 'preparing' }>(`/api/clean-voice?${voiceQuery(source)}`, { method: 'POST' });

@@ -368,7 +368,7 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
 
 
 class Builder:
-    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None):
+    def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None):
         self.timeline, self.media, self.audio_asset, self.folder, self.prepared, self.masks, self.voices = timeline, media, audio_asset, folder, prepared, masks, voices
         self.fmt = timeline.format
         self.args: list[str] = []
@@ -560,7 +560,7 @@ class Builder:
                 timing = f'({ramp_time_expression(clip.ramp, share)}*{clip.length:.6f}+{(head - held) / fps:.6f})/TB'
             if cut:
                 # The mask is read over the same stretch as the video, frame for frame, and applied at the source's size.
-                mask = self.add_input(*reading, '-i', str(self.masks(facts)))
+                mask = self.add_input(*reading, '-i', str(self.masks(facts, clip.cutout_pick)))
                 self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray[{label}_shape]',
                                f'[{label}_shape][{label}_full]scale2ref=flags=bicubic[{label}_mask][{label}_sized]', f'[{label}_sized][{label}_mask]alphamerge[{label}_cut]',
                                f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True)}[{label}]']
@@ -727,7 +727,7 @@ class Builder:
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
 
 
-def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> Compiled:
+def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> Compiled:
     if timeline.duration <= 0:
         raise ValueError('Add a clip to the timeline first.')
     return Builder(timeline, media, audio_asset, folder, prepared, masks, voices).build()
@@ -769,7 +769,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:

@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.main import app
-from app.services import asset_service, cutout_service, voice_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
+from app.services import asset_service, cutout_service, instance_service, voice_service, face_service, reverse_service, stabilise_service, render_queue_service, stem_service, tracking_service, transcript_service
 from app.services.animation import LOOKS, chroma_yuv, look_at
 from app.services.asset_service import make_proxy
 from app.services.job_service import JobCancelled, get_job
@@ -45,6 +45,21 @@ while len(sys.stdin.buffer.read(width * height * 3)) == width * height * 3:
 FAKE_FINDER_FILE = Path(tempfile.gettempdir()) / 'kanaa-fake-person-finder.py'
 FAKE_FINDER_FILE.write_text(FAKE_FINDER_CODE)
 FAKE_FINDER = [sys.executable, str(FAKE_FINDER_FILE)]
+# Stands in for the Vision instance helper: two circles, left and right, sent in a different order each frame, as Vision does.
+FAKE_INSTANCES_CODE = '''
+import sys
+width, height = int(sys.argv[1]), int(sys.argv[2])
+def circle(cx):
+    return b''.join(bytes(255 if (x - cx) ** 2 + (y - height / 2) ** 2 < (height / 5) ** 2 else 0 for x in range(width)) for y in range(height))
+left, right = circle(width / 4), circle(width * 3 / 4)
+frame = 0
+while len(sys.stdin.buffer.read(width * height * 3)) == width * height * 3:
+    sys.stdout.buffer.write(bytes([2]) + (left + right if frame % 2 else right + left))
+    frame += 1
+'''
+FAKE_INSTANCES_FILE = Path(tempfile.gettempdir()) / 'kanaa-fake-instance-finder.py'
+FAKE_INSTANCES_FILE.write_text(FAKE_INSTANCES_CODE)
+FAKE_INSTANCES = [sys.executable, str(FAKE_INSTANCES_FILE)]
 
 
 def run(*args):
@@ -1329,7 +1344,11 @@ class Cutout(QuickEffects):
         Image.new('RGB', (640, 360), (220, 30, 30)).save(red)
         self.facts[81] = MediaFacts(path=red, media_type='image', width=640, height=360)
 
-    def masks(self, facts):
+    def masks(self, facts, choice=None):
+        pick = instance_service.from_choice(choice)
+        if pick and not (pick.kind == 'people' and pick.ids is None):
+            instance_service.prepare(facts, pick, lambda _: None, lambda: False, finder=FAKE_INSTANCES)
+            return instance_service.pick_paths(facts.path, pick)[0]
         cutout_service.prepare(facts, 'remove', lambda _: None, lambda: False, finder=FAKE_FINDER)
         return cutout_service.files(facts.path)[cutout_service.MASK]
 
@@ -1351,6 +1370,42 @@ class Cutout(QuickEffects):
         original = self.frame(self.facts[80].path, 20, (640, 360))
         self.assertGreater(self.detail(frame, 320, 180), self.detail(original, 320, 180) * 0.85)
         self.assertLess(self.detail(frame, 40, 40), self.detail(original, 40, 40) * 0.6)
+
+    def test_each_one_found_keeps_its_number_and_they_read_left_to_right(self):
+        facts = self.facts[80]
+        instance_service.prepare(facts, instance_service.Pick('people', None), lambda _: None, lambda: False, finder=FAKE_INSTANCES, joined=False)
+        found = instance_service.tracks(facts.path, 'people')
+        self.assertEqual([item['label'] for item in found], [1, 2])
+        self.assertLess(found[0]['centre'][0], 0.4)
+        self.assertGreater(found[1]['centre'][0], 0.6)
+        self.assertTrue(instance_service.picture_path(facts.path, 'people').is_file())
+        # Though the finder swaps their order every frame, each mask holds one circle throughout.
+        for item in found:
+            mask = self.frame(instance_service.track_path(facts.path, 'people', item['id']), 31, (640, 360))
+            here, there = (160, 480) if item['label'] == 1 else (480, 160)
+            self.assertGreater(int(mask[180, here].mean()), 200)
+            self.assertLess(int(mask[180, there].mean()), 30)
+
+    def test_only_the_chosen_one_stays_in_front(self):
+        facts = self.facts[80]
+        instance_service.prepare(facts, instance_service.Pick('people', None), lambda _: None, lambda: False, finder=FAKE_INSTANCES, joined=False)
+        right = instance_service.tracks(facts.path, 'people')[1]['id']
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'r', 'media_id': 81, 'start': 0, 'in': 0, 'out': 2}]},
+                                                  {'id': 'top', 'kind': 'video', 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'remove', 'cutout_pick': {'kind': 'people', 'ids': [right]}}]}]}
+        frame = self.frame(self.render(data, 'pick.mp4', masks=self.masks), 20, (640, 360))
+        self.assertGreater(self.detail(frame, 480, 180), 40)
+        # The other one is gone: plain red there, the layer underneath.
+        for got, want in zip(frame[165:195, 145:175].reshape(-1, 3).mean(axis=0), (220, 30, 30)):
+            self.assertAlmostEqual(float(got), want, delta=12)
+
+    def test_choosing_who_stays_needs_the_background_removed(self):
+        clip = {'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'blur', 'cutout_pick': {'kind': 'people', 'ids': [0]}}
+        with self.assertRaises(ValidationError):
+            Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [clip]}]})
+        self.assertEqual(instance_service.parse('people-2-0'), instance_service.Pick('people', (0, 2)))
+        self.assertEqual(instance_service.parse('objects-all'), instance_service.Pick('objects', None))
+        for wrong in ('people', 'people-', 'cars-1', 'people-9', 'people-x'):
+            self.assertIsNone(instance_service.parse(wrong))
 
     def test_without_its_mask_a_cut_out_clip_is_refused(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'remove'}]}]}

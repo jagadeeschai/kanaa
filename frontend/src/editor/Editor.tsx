@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Bookmark, Captions, Check, Mountain, PenTool, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { groundShape, putBehindShape, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { groundShape, putBehindShape, putBehindObject, cutoutToken, type CutoutPick, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -55,7 +55,7 @@ const SHAPE_CLOSE = 0.03; // Clicking this near the first point closes an outlin
 const voiceKey = (item: { media_id?: number; asset_id?: string }) => (item.asset_id ? `a:${item.asset_id}` : `m:${item.media_id}`);
 /** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
 const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
-  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = clip.cutout ?? '';
+  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = cutoutToken(clip);
   return steady || backwards || cutout ? [steady, backwards, cutout] : null;
 };
 const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
@@ -1009,7 +1009,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={() => { const next = putBehindPerson(timeline!, selectedText.id, [newId(), newId()]); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else change(next); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -1064,6 +1064,51 @@ function Timing({ fields }: { fields: TimeFieldProps[] }) {
   return <div className="ed-timing">{fields.map((field) => <TimeField key={field.label} {...field}/>)}</div>;
 }
 
+/** Who stays: everyone, or the people or objects chosen from a numbered picture of the clip. */
+function WhoStays({ clip, onChange }: { clip: Clip; onChange: (pick: CutoutPick | null) => void }) {
+  const kind = clip.cutout_pick?.kind ?? 'people';
+  const ids = clip.cutout_pick?.ids ?? null;
+  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null;
+  const [found, setFound] = useState<{ key: string; tracks: FoundOne[] | null; progress: number; problem?: string }>({ key: '', tracks: null, progress: 0 });
+  const key = `${clip.media_id}:${kind}:${steady}:${backwards}`;
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      try {
+        const status = await requestInstances(clip.media_id, kind, steady, backwards);
+        if (stopped) return;
+        setFound({ key, tracks: status.status === 'ready' ? status.tracks ?? [] : null, progress: status.progress ?? 0 });
+        if (status.status !== 'ready') timer = setTimeout(check, ASSET_POLL_MS);
+      } catch (problem) { if (!stopped) setFound({ key, tracks: null, progress: 0, problem: (problem as Error).message }); }
+    };
+    void check();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [key, clip.media_id, kind, steady, backwards]);
+  const tracks = found.key === key ? found.tracks : null;
+  const everyone = kind === 'people' ? 'Everyone' : 'All of them';
+  const toggle = (id: number) => {
+    const chosen = ids ?? [];
+    const next = chosen.includes(id) ? chosen.filter((other) => other !== id) : [...chosen, id];
+    onChange({ kind, ids: next.length ? next.sort((a, b) => a - b) : null });
+  };
+  return <div className="ed-who">
+    <span className="ed-who-title">Who stays in front</span>
+    <Chips label="Find" options={[{ id: 'people' as const, label: 'People' }, { id: 'objects' as const, label: 'Objects' }]} value={kind} onPick={(next) => onChange(next === 'people' ? null : { kind: next, ids: null })}/>
+    {found.key === key && found.problem ? <p className="ed-tip">{found.problem}</p>
+      : !tracks ? <p className="ed-tip">Finding each {kind === 'people' ? 'person' : 'object'}… {found.progress ? `${found.progress}%` : ''}</p>
+      : !tracks.length ? <p className="ed-tip">{kind === 'people' ? 'No people were found in this clip.' : 'No objects stood out in this clip. Try drawing around it instead.'}</p>
+      : <>
+        <img className="ed-who-picture" src={`${instancesPictureUrl(clip.media_id, kind, steady, backwards)}&v=${tracks.map((track) => track.id).join('-')}`} alt={`The clip with each ${kind === 'people' ? 'person' : 'object'} numbered`}/>
+        <div className="ed-chips" role="group" aria-label="Who stays in front">
+          <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => onChange(kind === 'people' ? null : { kind, ids: null })}>{everyone}</button>
+          {tracks.map((track) => <button key={track.id} className={ids?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(ids?.includes(track.id))} onClick={() => toggle(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
+        </div>
+        {tracks.length > 1 && <p className="ed-tip">The ones you choose stay in front of the title; the rest go behind it.</p>}
+      </>}
+  </div>;
+}
+
 function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
   return <div className="ed-chips" role="group" aria-label={label}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{option.label}</button>)}</div>;
 }
@@ -1095,7 +1140,7 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
     <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
 }
 
-function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onSaveStyle: () => void; onBehind: () => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onSaveStyle: () => void; onBehind: (what: 'person' | 'object') => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   return <>
     <Group title="Words" startOpen>
       <textarea className="ed-text" aria-label="Title" lang="ta" value={text.text} maxLength={500} rows={2} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
@@ -1126,11 +1171,12 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
     <p className="ed-tip">Drag the title in the preview to move it.</p>
     <h3 className="ed-sub">Put the title behind…</h3>
     <div className="ed-add-grid">
-      <button className="ed-button ed-add-span" onClick={onBehind} title="The person in the video stays in front of this title"><Layers size={14}/>The person</button>
-      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill or the ground. Everything below stays in front."><Mountain size={14}/>Mountains</button>
-      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or object. It stays in front of the title."><PenTool size={14}/>A shape</button>
+      <button className="ed-button" onClick={() => onBehind('person')} title="People in the video stay in front of this title. With several, choose who."><Users size={14}/>People</button>
+      <button className="ed-button" onClick={() => onBehind('object')} title="Found automatically: a car, a bus, an animal. Choose which stay in front."><Car size={14}/>An object</button>
+      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill, skyline or the ground. Everything below stays in front."><Mountain size={14}/>Skyline / ground</button>
+      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or anything still. It stays in front of the title."><PenTool size={14}/>Draw around it</button>
     </div>
-    <p className="ed-tip">Pick Slide up as its Enter animation to make it rise from behind. The shape stays still, so it suits a still or tripod shot.</p>
+    <p className="ed-tip">People and objects are found and followed as they move. A drawn shape stays still, so it suits a tripod shot. Pick Slide up as the Enter animation to make the title rise from behind.</p>
     <Group title="Motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0}>
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
@@ -1197,8 +1243,9 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     </>}
     {source?.kind === 'video' && <>
       <h3 className="ed-sub">Background</h3>
-      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange({ cutout: id === 'keep' ? null : id })}/>
-      {clip.cutout && <p className="ed-tip">{!copyReady ? 'Finding the person… This runs in the background, and the preview shows the original until it is ready.'
+      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'remove' ? { cutout: 'remove' } : { cutout: id === 'keep' ? null : id, cutout_pick: null })}/>
+      {clip.cutout === 'remove' && <WhoStays clip={clip} onChange={(cutout_pick) => onChange({ cutout_pick })}/>}
+      {clip.cutout && <p className="ed-tip">{!copyReady ? `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}… This runs in the background, and the preview shows the original until it is ready.`
         : clip.cutout === 'blur' ? 'The person stays sharp and everything behind them is softened.' : isMain ? 'The person shows over black. To put something behind them, add this clip as an overlay over your new background.' : 'The person shows over whatever is under this layer.'}</p>}
     </>}
     {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}

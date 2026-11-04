@@ -6,7 +6,9 @@ import { valueAt } from './evaluate.ts';
 import { rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; clean_voice?: boolean; shape_mask?: ShapeMask | null };
+/** Which of the people, or objects, a cut-out keeps. ids are from the clip's list of them; null keeps them all. */
+export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; clean_voice?: boolean; shape_mask?: ShapeMask | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -292,7 +294,19 @@ export function updateClip(timeline: Timeline, id: string, changes: Partial<Clip
  * The copy is silent and follows the main clip's timing; later edits to the main clip don't change it.
  */
 export function putBehindPerson(timeline: Timeline, textId: string, ids: [string, string]): Timeline {
-  return putInFront(timeline, textId, { cutout: 'remove' }, ids, 'Person');
+  return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: null }, ids, 'Person');
+}
+
+/** Puts a title behind things in the scene, found automatically: a car, a bus, an animal. All of them at first; the copy's panel picks which. */
+export function putBehindObject(timeline: Timeline, textId: string, ids: [string, string]): Timeline {
+  return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } }, ids, 'Object');
+}
+
+/** Which cut-out copy a clip plays: 'remove' or 'blur' for every person, or the chosen people or objects, such as 'people-0-2'. */
+export function cutoutToken(clip: Clip): string {
+  const pick = clip.cutout === 'remove' ? clip.cutout_pick : null;
+  if (!pick || (pick.kind === 'people' && !pick.ids?.length)) return clip.cutout ?? '';
+  return `${pick.kind}-${pick.ids?.length ? [...pick.ids].sort((a, b) => a - b).join('-') : 'all'}`;
 }
 
 /** Puts a title behind part of the scene: a copy of the main clip under it, showing only `mask`, just above the title. */
