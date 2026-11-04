@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -28,11 +28,14 @@ import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } fr
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 import { ProjectSaveQueue, type SaveState } from './project-save';
 import { exportSpec } from './export-spec';
+import { nextTabIndex } from './tab-navigation';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
+const LEFT_TABS = ['media', 'templates', 'themes', 'text', 'audio', 'words'] as const;
+const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', templates: 'Templates', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' };
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
@@ -997,6 +1000,17 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, items: generalItems() });
   };
+  const openViewMenu = (event: React.MouseEvent) => {
+    event.preventDefault(); event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenu({ x: rect.right, y: rect.bottom + 4, items: [
+      { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) },
+      { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } },
+      'divider',
+      { label: 'Guide and shortcuts', hint: '?', onSelect: () => setShowingHelp(true) },
+      { label: 'Reset panel layout', onSelect: resetLayout },
+    ] });
+  };
   const openPreviewMenu = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
@@ -1065,7 +1079,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
-      <button className="ed-icon ed-hide-small" aria-label="Guide and shortcuts" title="Guide: how everything works (?)" onClick={() => setShowingHelp(true)}><CircleHelp size={17}/></button>
       <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
@@ -1077,7 +1090,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
-        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'templates', 'themes', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', templates: 'Templates', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
+        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{LEFT_TABS.map((tab, index) => <button key={tab} role="tab" tabIndex={leftTab === tab ? 0 : -1} aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)} onKeyDown={(event) => { const next = nextTabIndex(index, LEFT_TABS.length, event.key, 3); if (next === index) return; event.preventDefault(); setLeftTab(LEFT_TABS[next]); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus(); }}>{LEFT_TAB_LABELS[tab]}</button>)}</div>
           <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
         {leftTab === 'media' && <>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -1204,7 +1217,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
           <span className="ed-transport-end">
-            {!fullScreen && <button className={`ed-icon ed-safe-toggle ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} title="Show where platform buttons may cover your video"><ShieldCheck size={15}/>Safe area</button>}
             <button className="ed-icon ed-safe-toggle" aria-pressed={fullScreen} onClick={toggleFullScreen} title={fullScreen ? 'Leave full screen (F or Esc)' : 'Full screen preview (F)'} aria-label={fullScreen ? 'Leave full screen' : 'Full screen preview'}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen ? 'Exit' : 'Full screen'}</button>
           </span>
         </div>
@@ -1227,14 +1239,18 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
     <div className="ed-lower"><div className="ed-tools">
-      <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-      <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
-      <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      <span className="ed-tool-group" role="group" aria-label="Edit tools">
+        <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
+        <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
+        <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
+      </span>
       <div className="ed-spacer"/>
-      <button className="ed-button ed-hide-small" onClick={() => { void renderPreview(); }} disabled={!total || Boolean(renderJob) || isRendered} title="Make a quick copy that always plays smoothly">{renderJob ? `Rendering… ${renderJob.progress}%` : 'Render preview'}</button>
-      <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
-      <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
-      <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
+      <span className="ed-tool-group" role="group" aria-label="Timeline view">
+        <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
+        <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
+        <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
+        <button className="ed-button" aria-label="More view and help actions" onClick={openViewMenu}><MoreHorizontal size={15}/>More</button>
+      </span>
     </div>
     {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
     </div></div>

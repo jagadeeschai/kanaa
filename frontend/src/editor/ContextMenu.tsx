@@ -8,6 +8,7 @@ export const isEditable = (target: EventTarget | null) => target instanceof HTML
 
 export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const [place, setPlace] = useState({ left: menu.x, top: menu.y });
   useLayoutEffect(() => {
     const rect = box.current!.getBoundingClientRect();
@@ -21,6 +22,10 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () =>
     window.addEventListener('blur', onClose);
     return () => { window.removeEventListener('pointerdown', close, true); window.removeEventListener('wheel', close, true); window.removeEventListener('blur', onClose); };
   }, [onClose]);
+  useEffect(() => () => {
+    const target = returnFocus.current;
+    setTimeout(() => { if (target?.isConnected && (document.activeElement === document.body || !document.activeElement)) target.focus(); }, 0);
+  }, []);
   const move = (event: React.KeyboardEvent) => {
     const buttons = [...box.current!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
