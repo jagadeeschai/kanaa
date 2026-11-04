@@ -1,4 +1,4 @@
-export type LyricCue = { start: number; end: number; text: string; review?: boolean };
+export type LyricCue = { start: number; end: number; text: string; review?: boolean; position?: 'top' | 'center' | 'bottom' };
 
 const TIME_STAMP = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
 // A word cut across two lines leaves the second starting on a vowel sign or virama.

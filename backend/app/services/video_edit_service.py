@@ -195,13 +195,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 words[mark] = rf'{{\1c{marked}}}{words[mark]}{{\1c{ass_color}}}'
                 text = ' '.join(words)
         family, scale = LYRIC_STYLE_FONTS.get(edit.lyric_font, lyric_font_for(cue.text))
-        font = rf'{{\fn{family}\fs{font_size * scale}{blur}}}'
+        cue_alignment = {('top', 'left'): 7, ('top', 'center'): 8, ('top', 'right'): 9,
+                         ('center', 'left'): 4, ('center', 'center'): 5, ('center', 'right'): 6,
+                         ('bottom', 'left'): 1, ('bottom', 'center'): 2, ('bottom', 'right'): 3}.get((cue.position, edit.lyric_align)) if cue.position else None
+        position_tag = rf'\an{cue_alignment}' if cue_alignment else ''
+        font = rf'{{{position_tag}\fn{family}\fs{font_size * scale}{blur}}}'
         effect = ''
         fade_ms = min(250, max(1, round((cue.end - cue.start) * 1000 / 3)))
         if edit.lyric_animation == 'fade':
             effect = rf'{{\fad({fade_ms},{fade_ms})}}'
         elif edit.lyric_animation == 'slide-up':
-            y = margin if edit.lyric_position == 'top' else height / 2 if edit.lyric_position == 'center' else height - margin
+            line_position = cue.position or edit.lyric_position
+            y = margin if line_position == 'top' else height / 2 if line_position == 'center' else height - margin
             effect = rf'{{\move({width / 2},{y + height * .04},{width / 2},{y},0,{fade_ms})\fad({fade_ms},0)}}'
         elif edit.lyric_animation == 'pop':
             effect = rf'{{\fscx70\fscy70\t(0,{fade_ms},\fscx100\fscy100)\fad({fade_ms},0)}}'

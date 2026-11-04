@@ -344,6 +344,18 @@ class VideoEditingTests(unittest.TestCase):
         self.assertIn('&H70ed3a7c', text)
         self.assertIn(',7,', text)
 
+    def test_each_lyric_line_can_override_its_position(self):
+        from app.services.video_edit_service import write_lyrics
+        edit = VideoEditRequest(canvas='portrait', lyric_position='center', lyrics=[
+            {'start': 0, 'end': 1, 'text': 'Top line', 'position': 'top'},
+            {'start': 1, 'end': 2, 'text': 'Bottom line', 'position': 'bottom'},
+        ])
+        path = self.root / 'mixed-position.ass'
+        write_lyrics(path, edit, self.source)
+        lines = [line for line in path.read_text().splitlines() if line.startswith('Dialogue:')]
+        self.assertIn(r'\an8', lines[0])
+        self.assertIn(r'\an2', lines[1])
+
     def test_invalid_ranges_and_values(self):
         for edit in [VideoEditRequest(trim_start=3), VideoEditRequest(trim_end=4), VideoEditRequest(trim_start=1, trim_end=1.05)]:
             with self.assertRaises(ValueError):

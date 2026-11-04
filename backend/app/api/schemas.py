@@ -13,6 +13,7 @@ class LyricCue(BaseModel):
     start: float = Field(ge=0, le=86400)
     end: float = Field(gt=0, le=86400)
     text: str = Field(min_length=1, max_length=500)
+    position: Optional[Literal["top", "center", "bottom"]] = None
 
     @field_validator("text")
     @classmethod

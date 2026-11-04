@@ -17,11 +17,12 @@ test('lyric handoff adds editable opening and closing cards around the song', ()
 });
 
 test('lyric handoff preserves editable timing and typography', () => {
-  const timeline = lyricEditorTimeline(input);
+  const timeline = lyricEditorTimeline({ ...input, cues: [{ ...input.cues[0], position: 'top' }, { ...input.cues[1], position: 'bottom' }] });
   const lines = timeline.layers[2].items.slice(1, -1);
   assert.deepEqual(lines.map((line) => [line.start, line.length]), [[3, 4], [7, 6]]);
   assert.equal(lines[0].font, 'Catamaran');
   assert.equal(lines[0].band_color, '#123456');
   assert.equal(lines[0].enter.preset, 'pop');
+  assert.deepEqual(lines.map((line) => line.position), ['top', 'bottom']);
   assert.equal(timeline.layers[0].items[2].transition_in.kind, 'crossfade');
 });
