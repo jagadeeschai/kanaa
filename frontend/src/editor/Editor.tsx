@@ -1347,9 +1347,13 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
 }
 
 function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; onSaveStyle: () => void; onBehind: (what: 'person' | 'object') => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+  // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
+  // saved, and leaving the box empty puts the last words back.
+  const [draft, setDraft] = useState(text.text);
+  useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
   return <>
     <Group title="Words" startOpen>
-      <textarea className="ed-text" aria-label="Title" lang="ta" value={text.text} maxLength={500} rows={2} onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }}/>
+      <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
       <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>
       <Timing fields={timing}/>
     </Group>
