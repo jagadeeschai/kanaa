@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, CheckCircle2, Clapperboard, Copy, Film, FolderOpen, HardDrive, Image as ImageIcon, LayoutDashboard, LoaderCircle, Monitor, Moon, MoreHorizontal, Music2, Pencil, Play, Plus, Search, Sparkles, Settings2, Sun, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, CheckCircle2, Clapperboard, Copy, Film, FolderOpen, HardDrive, Image as ImageIcon, LayoutDashboard, LoaderCircle, Monitor, Moon, MoreHorizontal, Music2, Pencil, Play, Plus, Search, Sparkles, Settings2, Smartphone, Sun, Trash2, X } from 'lucide-react';
 import { cancelRenderJob, deleteProject, duplicateProject, getPhoto, getRenderJobs, listPhotos, listProjects, photoThumbUrl, photoVideoUrl, renameProject, type Project } from './api/client';
 import type { Photo, RenderJob } from './types/photo';
 import Editor from './editor/Editor';
@@ -10,6 +10,7 @@ import NewProjectDialog from './components/NewProjectDialog';
 import ImportArea from './components/ImportArea';
 import Dialog from './components/Dialog';
 import AISettingsFields from './components/AISettingsFields';
+import PhoneAccessFields from './components/PhoneAccessFields';
 import { DeleteMediaDialog, FolderDialog, folderNames } from './components/MediaDialogs';
 
 type Section = 'studio' | 'projects' | 'media' | 'exports';
@@ -33,6 +34,7 @@ export default function App() {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [aiSettingsOpen, setAISettingsOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const { choice: themeChoice, next: nextTheme, theme } = useAppTheme();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export default function App() {
   const visibleMedia = (section === 'exports' ? outputs : media).filter((item) => item.filename.toLowerCase().includes(search.toLowerCase()) && (section === 'exports' || !folder || item.folder === folder));
   return <div className="studio-shell" data-ed-theme={theme}>
     <aside className="studio-sidebar"><a href="/" className="studio-brand" aria-label="Kanaa home"><span className="brand-mark"><Play size={21} fill="currentColor"/></span><span className="brand-family"><small lang="ta">கனா</small>Kanaa<span className="brand-dot">.</span></span></a><nav>{([{ id: 'studio', label: 'Studio', Icon: LayoutDashboard }, { id: 'projects', label: 'Projects', Icon: FolderOpen }, { id: 'media', label: 'Media', Icon: ImageIcon }, { id: 'exports', label: 'Exports', Icon: ArrowDownToLine }] as const).map(({ id, label, Icon }) => <button key={id} className={section === id ? 'active' : ''} onClick={() => changeSection(id)}><Icon size={19}/><span>{label}</span>{id === 'exports' && activeJobs.length > 0 && <b>{activeJobs.length}</b>}</button>)}</nav><div className="sidebar-bottom"><HardDrive size={19}/><div><strong>Saved on this Mac</strong></div></div></aside>
-    <main className="studio-main"><header className="studio-topbar"><strong className="topbar-title">{{ studio: 'Studio', projects: 'Projects', media: 'Media', exports: 'Exports' }[section]}</strong><div>{activeJobs.length > 0 && <button className="job-pill" title="See exports" onClick={() => changeSection('exports')}><LoaderCircle className="spin" size={14}/><b>{activeJobs[0].label}</b><em>{activeJobs[0].progress > 0 ? `${activeJobs[0].progress}%` : 'Queued'}</em>{activeJobs.length > 1 && <em>+{activeJobs.length - 1}</em>}<i style={{ width: `${activeJobs[0].progress}%` }}/></button>}<button className="icon-button studio-theme" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={19}/> : themeChoice === 'light' ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button" aria-label="AI settings" title="AI image generation settings" onClick={() => setAISettingsOpen(true)}><Settings2 size={19}/></button><button className="primary small" onClick={() => setNewKind('edit')}><Plus size={17}/>New video</button></div></header>
+    <main className="studio-main"><header className="studio-topbar"><strong className="topbar-title">{{ studio: 'Studio', projects: 'Projects', media: 'Media', exports: 'Exports' }[section]}</strong><div>{activeJobs.length > 0 && <button className="job-pill" title="See exports" onClick={() => changeSection('exports')}><LoaderCircle className="spin" size={14}/><b>{activeJobs[0].label}</b><em>{activeJobs[0].progress > 0 ? `${activeJobs[0].progress}%` : 'Queued'}</em>{activeJobs.length > 1 && <em>+{activeJobs.length - 1}</em>}<i style={{ width: `${activeJobs[0].progress}%` }}/></button>}<button className="icon-button studio-theme" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={19}/> : themeChoice === 'light' ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button" aria-label="Phone access" title="Use Kanaa from your phone" onClick={() => setPhoneOpen(true)}><Smartphone size={19}/></button><button className="icon-button" aria-label="AI settings" title="AI image generation settings" onClick={() => setAISettingsOpen(true)}><Settings2 size={19}/></button><button className="primary small" onClick={() => setNewKind('edit')}><Plus size={17}/>New video</button></div></header>
       <div className="studio-content">
         {error && <div className="studio-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
         {section === 'studio' && !loading && !projects.length && <><div className="welcome"><span className="eyebrow">A LITTLE IDEA. A GREAT VIDEO.</span><h1>Your story, in motion.</h1><p>Turn your clips, images, and favorite words into something worth sharing.</p></div><div className="creation-grid">
@@ -103,6 +105,7 @@ export default function App() {
         </section>}
       </div>
     </main>
+    {phoneOpen && <Dialog title="Phone access" onClose={() => setPhoneOpen(false)}><PhoneAccessFields/></Dialog>}
     {aiSettingsOpen && <Dialog title="AI image generation" onClose={() => setAISettingsOpen(false)}><AISettingsFields/></Dialog>}
     {newKind && <NewProjectDialog kind={newKind} media={media} onClose={() => setNewKind(null)} onImported={imported} onCreated={(project) => { void refresh(); void open(project); }}/>} 
     {active && (active.project.kind === 'edit' ? <Editor key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }} theme={theme} themeChoice={themeChoice} nextTheme={nextTheme}/> : <LyricalVideoCreator key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }}/>) }

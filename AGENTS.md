@@ -87,6 +87,8 @@ Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
 
 **Lyric videos:** a separate mode, with synced lyrics (letter-level), multi-image slideshows and 4K export. See the lyric backlog in the plan.
 
+**Phone access:** off by default. Turned on in Studio (phone icon), devices on the Wi-Fi open `http://<Mac IP>:8010` and enter a 6-digit PIN (`phone_service.py`, gate in `app/main.py`). Loopback never needs it; only the Mac can see or change it; wrong PINs are rate-limited; New PIN signs every phone out. `main.cjs` listens on 0.0.0.0 only when it's on, so turning it on needs a restart.
+
 ## Known limits worth remembering
 
 - **Apple-only parts:** Vision masks, the Mac's English fonts, and the Mac app. On Windows the plan is to swap Vision for an ONNX model behind the same helper protocol (count byte plus masks on stdout), and bundle English fonts.

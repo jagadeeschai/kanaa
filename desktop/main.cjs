@@ -22,13 +22,20 @@ let confirmedQuit = false;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const reach = async (url) => { try { return await fetch(url, { signal: AbortSignal.timeout(1500) }); } catch { return null; } };
 
+/** Whether phone access is on: backend/.data/phone-access.json, which Kanaa's Phone access setting writes. */
+function phoneAccess() {
+  try { return Boolean(JSON.parse(fs.readFileSync(path.join(ROOT, 'backend', '.data', 'phone-access.json'), 'utf8')).enabled); } catch { return false; }
+}
+
 function startBackend() {
   const logs = app.getPath('logs');
   fs.mkdirSync(logs, { recursive: true });
   const log = fs.openSync(path.join(logs, 'backend.log'), 'a');
   // Apps opened from the Dock don't get the terminal's PATH, and Kanaa needs ffmpeg.
-  const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}` };
-  backend = spawn(path.join(ROOT, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', PORT, '--timeout-graceful-shutdown', '3'],
+  // Phone access, when turned on in Kanaa, lets devices on the Wi-Fi reach it too; they still need its PIN.
+  const host = phoneAccess() ? '0.0.0.0' : '127.0.0.1';
+  const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}`, KANAA_HOST: host, KANAA_PORT: PORT };
+  backend = spawn(path.join(ROOT, 'backend/.venv/bin/python'), ['-m', 'uvicorn', 'app.main:app', '--host', host, '--port', PORT, '--timeout-graceful-shutdown', '3'],
     { cwd: path.join(ROOT, 'backend'), env, stdio: ['ignore', log, log] });
   backend.on('exit', () => { backend = null; });
   backend.on('error', () => { backend = null; });
