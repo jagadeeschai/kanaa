@@ -10,7 +10,8 @@ const ADDRESS = `http://127.0.0.1:${PORT}`;
 const START_SECONDS = 40;
 const STOP_MS = 4000;
 const SPLASH = path.join(ROOT, 'desktop', 'splash.html');
-const SPLASH_MS = 3400; // The welcome animation's length: the editor waits for it only if it starts sooner.
+const SPLASH_MS = 4500; // The welcome animation's length: the editor waits for it only if it starts sooner.
+const HOLD_MS = 1000; // Then a moment on "Ready" before the editor.
 const LOADING = `data:text/html,<body style="background:%230e0c14;color:%23b9b4cc;font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0">Starting Kanaa…</body>`;
 const BUSY = new Set(['queued', 'running', 'cancelling']);
 
@@ -67,7 +68,9 @@ async function open() {
     }
   }
   await pause(Math.max(0, SPLASH_MS - (Date.now() - shown)));
-  // Fades the welcome out, then shows the editor.
+  // A moment on "Ready", then the welcome fades out and the editor shows.
+  await window?.webContents.executeJavaScript('window.kanaaReady ? window.kanaaReady() : null').catch(() => {});
+  await pause(HOLD_MS);
   await window?.webContents.executeJavaScript('window.kanaaLeave ? window.kanaaLeave() : null').catch(() => {});
   window?.loadURL(ADDRESS);
 }

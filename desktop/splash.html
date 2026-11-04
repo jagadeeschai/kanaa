@@ -8,115 +8,123 @@
   The welcome screen while Kanaa starts. Loaded from this folder by desktop/main.cjs, so it can change without
   rebuilding the app. Works offline.
 
-  Kanaa means "dream". On a night sky, the pulli (dots) of a kolam appear like stars, one glowing line weaves around
-  them as a kolam is drawn, in a single stroke, then the kolam folds into the Kanaa icon and the name rises out of a
-  dreamy blur. About 3 seconds; still if "Reduce motion" is on.
+  A theatre: velvet curtains part, a projector beam flickers on and lights the screen, a play button appears on it,
+  then the screen draws in and rounds into the Kanaa icon, and கனா rises. About 4 seconds, then a one-second pause
+  (main.cjs) before the editor. Still if "Reduce motion" is on.
 -->
 <style>
   @font-face { font-family: 'Arima'; src: url('../backend/app/assets/fonts/Arima-Bold.ttf'); font-weight: 700; }
-  :root { --bg: #0e0c14; --text: #f1eff8; --muted: #9a94b0; --violet: #7c5cf0; --deep: #5c3ed6; --pink: #e05ad8; }
+  :root { --bg: #0b0910; --text: #f1eff8; --muted: #9a94b0; --violet: #7c5cf0; --deep: #5c3ed6; --pink: #e05ad8; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--text); font: 15px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; overflow: hidden; display: grid; place-items: center;
-    -webkit-user-select: none; user-select: none; cursor: default; transition: opacity .45s ease, filter .45s ease; }
+    -webkit-user-select: none; user-select: none; cursor: default; transition: opacity .5s ease, filter .5s ease; }
   body.leaving { opacity: 0; filter: blur(6px); }
-
-  /* Night: two slow glows, faint stars and fine film grain. */
-  .glow { position: fixed; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(90px); opacity: 0; animation: appear 1.6s ease .1s forwards, drift 14s ease-in-out infinite alternate; }
-  .glow.one { background: radial-gradient(circle, #5c3ed6 0%, transparent 62%); left: -25vmax; top: -30vmax; }
-  .glow.two { background: radial-gradient(circle, #b03fae 0%, transparent 60%); right: -30vmax; bottom: -35vmax; animation-delay: .3s, -6s; animation-duration: 1.6s, 17s; }
-  @keyframes appear { to { opacity: .42; } }
-  @keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(6vmax, 4vmax) scale(1.12); } }
-  .stars i { position: fixed; width: 2px; height: 2px; border-radius: 50%; background: #fff; opacity: 0; animation: twinkle 3.4s ease-in-out infinite; }
-  @keyframes twinkle { 0%, 100% { opacity: 0; } 50% { opacity: .5; } }
   .grain { position: fixed; inset: -50%; opacity: .06; pointer-events: none; animation: grain 1.2s steps(6) infinite;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
   @keyframes grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-4%, 3%); } 66% { transform: translate(3%, -5%); } 100% { transform: translate(-2%, 2%); } }
 
-  main { position: relative; display: flex; flex-direction: column; align-items: center; gap: 20px; }
-  .stage { position: relative; width: 180px; height: 180px; display: grid; place-items: center; }
+  main { position: relative; display: flex; flex-direction: column; align-items: center; gap: 18px; }
 
-  /* The kolam: dots, then one line around them, then it folds away. */
-  .kolam { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transform-origin: center; animation: fold .6s cubic-bezier(.6, 0, .4, 1) 2.05s forwards; }
-  .kolam circle { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: pulli .5s ease forwards; filter: drop-shadow(0 0 3px #fff); }
-  .kolam path { fill: none; stroke: url(#line); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1200; stroke-dashoffset: 1200;
-    filter: drop-shadow(0 0 3px #c4a8ff) drop-shadow(0 0 10px #7c5cf0aa); animation: weave 1.5s cubic-bezier(.45, .05, .35, 1) .5s forwards; }
-  @keyframes pulli { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.7); } 100% { opacity: .9; transform: scale(1); } }
-  @keyframes weave { to { stroke-dashoffset: 0; } }
-  @keyframes fold { to { transform: scale(.3) rotate(90deg); opacity: 0; } }
+  /* The theatre: a room glow, the projector's beam from behind the audience, curtains over the screen. */
+  .theatre { position: relative; width: 380px; height: 240px; display: grid; place-items: center; }
+  .room { position: absolute; inset: -60px -120px; background: radial-gradient(ellipse at 50% 45%, #3a2470 0%, transparent 60%); opacity: 0; animation: show 1s ease .1s forwards, out .6s ease 2.6s forwards; }
+  .beam { position: absolute; left: 50%; bottom: -260px; width: 380px; height: 420px; transform: translateX(-50%);
+    background: linear-gradient(0deg, #ffffff00 0%, #fff3d633 55%, #fff6e055 100%); clip-path: polygon(48% 100%, 52% 100%, 100% 0, 0 0); filter: blur(6px);
+    opacity: 0; animation: projector 1.2s steps(1) 1.05s forwards, out .5s ease 2.6s forwards; }
+  @keyframes projector { 0% { opacity: .5; } 12% { opacity: .1; } 22% { opacity: .7; } 32% { opacity: .25; } 45%, 100% { opacity: .85; } }
+  .dust { position: absolute; inset: 0; animation: out .5s ease 2.6s forwards; }
+  .dust i { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff6e0; opacity: 0; animation: float 3s ease-in-out infinite, show .1s ease 1.4s forwards; }
+  @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(6px, -10px); } }
 
-  /* The icon blooms where the kolam folded, its play mark draws, and a light sweeps across. */
-  .mark { position: absolute; width: 112px; height: 112px; border-radius: 27px; background: linear-gradient(180deg, var(--violet), var(--deep)); overflow: hidden;
-    box-shadow: 0 18px 50px #5c3ed655, inset 0 1px 0 #ffffff33; transform: scale(.3) rotate(-45deg); opacity: 0; animation: bloom .85s cubic-bezier(.2, 1.45, .4, 1) 2.25s forwards; }
-  .mark svg { position: absolute; inset: 0; }
-  .mark path { fill: #fff; fill-opacity: 0; stroke: #fff; stroke-width: 3; stroke-linejoin: round; stroke-dasharray: 150; stroke-dashoffset: 150; animation: draw .55s ease 2.55s forwards, fill .3s ease 2.95s forwards; }
-  .mark::after { content: ''; position: absolute; inset: -40%; background: linear-gradient(105deg, transparent 40%, #ffffff66 50%, transparent 60%); transform: translateX(-120%); animation: sweep 1s ease 3.05s forwards; }
-  @keyframes bloom { to { transform: none; opacity: 1; } }
-  @keyframes draw { to { stroke-dashoffset: 0; } }
-  @keyframes fill { to { fill-opacity: 1; } }
+  /* The screen, which becomes the icon. Its white light gives way to Kanaa's violet as it draws in. */
+  .screen { position: relative; width: 300px; height: 169px; border-radius: 6px; overflow: hidden; background: #15111f;
+    box-shadow: 0 0 0 1px #ffffff12; animation: become .75s cubic-bezier(.65, 0, .3, 1) 2.7s forwards; }
+  .screen .light { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, #fffaf0 0%, #f3e9ff 55%, #cbbcf0 100%); opacity: 0;
+    animation: lamp 1.2s steps(1) 1.05s forwards, out .5s ease 2.75s forwards; }
+  @keyframes lamp { 0% { opacity: .6; } 12% { opacity: .15; } 22% { opacity: .85; } 32% { opacity: .35; } 45%, 100% { opacity: 1; } }
+  .screen .violet { position: absolute; inset: 0; background: linear-gradient(180deg, var(--violet), var(--deep)); opacity: 0; animation: show .5s ease 2.8s forwards; }
+  @keyframes become { to { width: 112px; height: 112px; border-radius: 27px; box-shadow: 0 18px 50px #5c3ed666, inset 0 1px 0 #ffffff33; } }
+  /* The play button: dark on the lit screen, white on the icon. */
+  .play { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%) scale(0); animation: pop .5s cubic-bezier(.2, 1.6, .4, 1) 1.9s forwards; }
+  .play path { fill: #2a1f45; animation: turn .5s ease 2.8s forwards; }
+  @keyframes pop { to { transform: translate(-50%, -50%) scale(1); } }
+  @keyframes turn { to { fill: #ffffff; } }
+  .screen::after { content: ''; position: absolute; inset: -40%; background: linear-gradient(105deg, transparent 40%, #ffffff66 50%, transparent 60%); transform: translateX(-120%); animation: sweep 1s ease 3.35s forwards; }
   @keyframes sweep { to { transform: translateX(120%); } }
 
-  /* கனா out of a dreamy blur. Whole letters only: a vowel sign such as ா must stay with its consonant. */
-  .name { display: flex; font: 700 64px/1.1 'Arima', 'Tamil Sangam MN', serif; }
+  /* Velvet curtains: folds, a little sway, then they part. */
+  .curtain { position: absolute; top: -18px; bottom: -18px; width: 52%; z-index: 2;
+    background: repeating-linear-gradient(90deg, #4a1430 0 9px, #6e1f44 9px 16px, #8c2a55 16px 20px, #5a1838 20px 28px);
+    box-shadow: inset 0 -30px 40px #00000088, inset 0 20px 30px #00000066; }
+  .curtain.left { left: -2%; border-radius: 0 0 40% 0 / 0 0 12% 0; transform-origin: 0 0; animation: sway 1.2s ease-in-out .1s, part-left 1.4s cubic-bezier(.65, 0, .35, 1) .55s forwards; }
+  .curtain.right { right: -2%; border-radius: 0 0 0 40% / 0 0 0 12%; transform-origin: 100% 0; animation: sway 1.2s ease-in-out .1s, part-right 1.4s cubic-bezier(.65, 0, .35, 1) .55s forwards; }
+  .valance { position: absolute; top: -26px; left: -6%; right: -6%; height: 30px; z-index: 3; border-radius: 0 0 50% 50% / 0 0 40% 40%;
+    background: repeating-linear-gradient(90deg, #5a1838 0 14px, #8c2a55 14px 22px); box-shadow: 0 8px 16px #00000088; animation: out .6s ease 2.55s forwards; }
+  @keyframes sway { 50% { transform: skewX(1.5deg); } }
+  @keyframes part-left { 85% { transform: translateX(-88%) scaleX(.6); opacity: 1; } to { transform: translateX(-100%) scaleX(.55); opacity: 0; } }
+  @keyframes part-right { 85% { transform: translateX(88%) scaleX(.6); opacity: 1; } to { transform: translateX(100%) scaleX(.55); opacity: 0; } }
+  @keyframes show { to { opacity: 1; } }
+  @keyframes out { to { opacity: 0; } }
+
+  /* கனா out of a soft blur. Whole letters only: a vowel sign such as ா must stay with its consonant. */
+  .name { display: flex; margin-top: -30px; font: 700 64px/1.1 'Arima', 'Tamil Sangam MN', serif; }
   .name span { display: inline-block; opacity: 0; transform: translateY(16px) scale(.96); filter: blur(12px); animation: rise .9s cubic-bezier(.2, .8, .2, 1) forwards;
     background: linear-gradient(180deg, #ffffff, #d9d0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .name span:nth-child(1) { animation-delay: 2.6s; } .name span:nth-child(2) { animation-delay: 2.82s; }
+  .name span:nth-child(1) { animation-delay: 3.25s; } .name span:nth-child(2) { animation-delay: 3.45s; }
   @keyframes rise { to { opacity: 1; transform: none; filter: none; } }
-  .words { display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: 0; transform: translateY(8px); animation: rise .8s ease 3.15s forwards; }
+  .words { display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: 0; transform: translateY(8px); animation: rise .8s ease 3.7s forwards; }
   .words b { font-size: 15px; font-weight: 600; letter-spacing: .32em; text-transform: uppercase; padding-left: .32em; }
   .words span { font-size: 13px; color: var(--muted); letter-spacing: .03em; }
 
-  .status { margin-top: 26px; display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: 0; animation: rise .6s ease 1s forwards; }
+  .status { margin-top: 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: 0; animation: rise .6s ease 1.2s forwards; }
   .bar { width: 160px; height: 2px; border-radius: 2px; background: #ffffff14; overflow: hidden; }
   .bar i { display: block; width: 40%; height: 100%; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--violet), var(--pink), transparent); animation: shimmer 1.4s ease-in-out infinite; }
   @keyframes shimmer { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
   .status p { margin: 0; font-size: 12px; color: var(--muted); transition: opacity .3s ease; min-height: 1em; }
 
   @media (prefers-reduced-motion: reduce) {
-    .glow, .stars, .grain, .kolam, .bar i { animation: none !important; }
-    .kolam { display: none; }
-    .glow { opacity: .42; }
-    .mark, .name span, .words, .status, .mark path { animation: none !important; opacity: 1; transform: none; filter: none; fill-opacity: 1; stroke-dashoffset: 0; }
+    .grain, .room, .beam, .dust, .curtain, .valance, .screen .light { display: none; }
+    .screen, .screen .violet, .play, .play path, .name span, .words, .status, .bar i, .screen::after { animation: none !important; }
+    .screen { width: 112px; height: 112px; border-radius: 27px; }
+    .screen .violet { opacity: 1; } .play { transform: translate(-50%, -50%); } .play path { fill: #fff; }
+    .name span, .words, .status { opacity: 1; transform: none; filter: none; }
   }
 </style>
 </head>
 <body>
-  <div class="glow one"></div><div class="glow two"></div><div class="stars" id="stars"></div><div class="grain"></div>
+  <div class="grain"></div>
   <main>
-    <div class="stage" aria-hidden="true">
-      <svg class="kolam" viewBox="0 0 160 160">
-        <defs><linearGradient id="line" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd9a8"/><stop offset=".45" stop-color="#e05ad8"/><stop offset="1" stop-color="#7c5cf0"/></linearGradient></defs>
-        <path d="M 80.0 80.0 C 103.4 73.5 132.0 91.7 122.9 112.5 C 115.1 132.0 91.7 128.1 80.0 80.0 C 86.5 103.4 68.3 132.0 47.5 122.9 C 28.0 115.1 31.9 91.7 80.0 80.0 C 56.6 86.5 28.0 68.3 37.1 47.5 C 44.9 28.0 68.3 31.9 80.0 80.0 C 73.5 56.6 91.7 28.0 112.5 37.1 C 132.0 44.9 128.1 68.3 80.0 80.0 M 106.0 80.0 A 26.0 26.0 0 1 1 54.0 80.0 A 26.0 26.0 0 1 1 106.0 80.0"/>
-      </svg>
-      <div class="mark"><svg viewBox="0 0 112 112"><path d="M44 33 L44 79 L82 56 Z"/></svg></div>
+    <div class="theatre" aria-hidden="true">
+      <div class="room"></div>
+      <div class="beam"></div>
+      <div class="dust" id="dust"></div>
+      <div class="screen">
+        <div class="light"></div><div class="violet"></div>
+        <svg class="play" viewBox="0 0 46 46"><path d="M15 9 L15 37 L38 23 Z" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="curtain left"></div><div class="curtain right"></div><div class="valance"></div>
     </div>
     <div class="name" lang="ta" aria-label="கனா"><span>க</span><span>னா</span></div>
     <div class="words"><b>Kanaa</b><span>Your story, in motion · உங்கள் கதை, உயிர்ப்புடன்</span></div>
     <div class="status" role="status"><div class="bar"><i></i></div><p id="say">Starting…</p></div>
   </main>
 <script>
-  // The kolam's pulli, a 3 × 3 grid, each appearing a moment after the last, from the middle out.
-  const kolam = document.querySelector('.kolam');
-  const order = [[0, 0], [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1]];
-  order.forEach(([x, y], index) => {
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', 80 + x * 26); dot.setAttribute('cy', 80 + y * 26); dot.setAttribute('r', 2.6);
-    dot.style.animationDelay = `${0.1 + index * 0.05}s`;
-    kolam.appendChild(dot);
-  });
-  // Faint stars across the sky, each twinkling in its own time.
-  const sky = document.getElementById('stars');
-  for (let index = 0; index < 46; index += 1) {
-    const star = document.createElement('i');
-    star.style.left = `${Math.random() * 100}%`; star.style.top = `${Math.random() * 100}%`;
-    star.style.animationDelay = `${Math.random() * 3.4}s`; star.style.transform = `scale(${0.5 + Math.random()})`;
-    sky.appendChild(star);
+  // Dust drifting in the projector's light.
+  const dust = document.getElementById('dust');
+  for (let index = 0; index < 22; index += 1) {
+    const speck = document.createElement('i');
+    speck.style.left = `${30 + Math.random() * 40}%`; speck.style.top = `${40 + Math.random() * 60}%`;
+    speck.style.animationDelay = `${-Math.random() * 3}s, 1.4s`; speck.style.animationDuration = `${2.4 + Math.random() * 2}s, .1s`;
+    dust.appendChild(speck);
   }
   // Says what's happening if starting takes a while. Kanaa calls kanaaLeave() when the editor is ready.
   const say = document.getElementById('say');
-  const lines = [[3500, 'Getting your projects ready…'], [9000, 'Waking up the video engine…'], [18000, 'Almost there…']];
-  for (const [after, text] of lines) setTimeout(() => { say.style.opacity = 0; setTimeout(() => { say.textContent = text; say.style.opacity = 1; }, 300); }, after);
-  window.kanaaLeave = () => new Promise((done) => { document.body.classList.add('leaving'); setTimeout(done, 450); });
+  const lines = [[4200, 'Getting your projects ready…'], [9000, 'Waking up the video engine…'], [18000, 'Almost there…']];
+  for (const [after, text] of lines) setTimeout(() => { if (ready) return; say.style.opacity = 0; setTimeout(() => { say.textContent = text; say.style.opacity = 1; }, 300); }, after);
+  let ready = false;
+  window.kanaaReady = () => { ready = true; say.style.opacity = 0; setTimeout(() => { say.textContent = 'Ready ✓'; say.style.opacity = 1; }, 250); document.querySelector('.bar i').style.animationPlayState = 'paused'; };
+  window.kanaaLeave = () => new Promise((done) => { document.body.classList.add('leaving'); setTimeout(done, 500); });
 </script>
 </body>
 </html>
