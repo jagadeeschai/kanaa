@@ -450,6 +450,11 @@ With Background → Remove, the panel shows "New background": every picture and 
 
 Limits: the background is centred, so a landscape picture in a vertical video keeps its middle (drag it or change Size to reframe); a much shorter video plays very slowly rather than looping.
 
+### Themes (done)
+A Themes tab, like iMovie's: Wedding, Festival, Travel, Birthday, Memories, Vlog and Classic, each with an English and Tamil name and a picture of its opening title (`timeline/themes.ts`). One click dresses the whole video: one colour look on every main-track clip, one transition between them (none before the first), gentle movement on photos that don't already move (push in and pull out taking turns, or a punch in), an opening title with the project's name and the theme's subtitle (up to 3.5 s, or 40% of a short video), an ending card in the last 3 s (if there is room), and the theme's fonts and colours on titles already there, keeping their words, places and sizes. Its titles live on a text layer named "Theme · <name>", which is how the editor knows the theme. Choosing another replaces it and keeps the opening words; Remove theme takes its titles away and puts clips back to their own colour and plain cuts. All of it is ordinary timeline settings, so export needs nothing new.
+
+Limits: no theme music yet (none is bundled); photo movement from an earlier theme stays when changing theme; restyled titles keep their new look after Remove theme (undo brings back the old one).
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

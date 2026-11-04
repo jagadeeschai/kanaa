@@ -19,6 +19,7 @@ import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
+import { activeTheme, applyTheme, openingWords, removeTheme, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
@@ -102,7 +103,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
-  const [leftTab, setLeftTab] = useState<'media' | 'text' | 'audio' | 'words'>('media');
+  const [leftTab, setLeftTab] = useState<'media' | 'themes' | 'text' | 'audio' | 'words'>('media');
   const [language, setLanguage] = useState(() => { try { return localStorage.getItem('wa.wordsLanguage') ?? 'auto'; } catch { return 'auto'; } });
   const [transcripts, setTranscripts] = useState<Record<string, Word[]>>({});
   const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
@@ -442,12 +443,26 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   // Each template's picture, drawn by the server like any title, small.
   useEffect(() => {
+    if (leftTab === 'themes') {
+      for (const look of THEMES) {
+        const key = `theme-${look.id}`;
+        if (thumbs[key]) continue;
+        void fetchTextImage({ ...look.opener, enter: null, exit: null, id: 'thumb', start: 0, length: 1 }, THUMB_FORMAT).then((url) => setThumbs((current) => ({ ...current, [key]: url }))).catch(() => {});
+      }
+      return;
+    }
     if (leftTab !== 'text') return;
     for (const template of [...TEMPLATES, ...myStyles]) {
       if (thumbs[template.id]) continue;
       void fetchTextImage({ ...template.look, id: 'thumb', start: 0, length: 1 }, THUMB_FORMAT).then((url) => setThumbs((current) => ({ ...current, [template.id]: url }))).catch(() => {});
     }
   }, [leftTab, myStyles, thumbs]);
+  /** Dresses the whole video in a theme. The opening title keeps the words already typed there, or the project's name. */
+  const chooseTheme = (look: VideoTheme) => {
+    if (!timeline || !mainLayer(timeline).items.length) { setError('Add a clip to your video first.'); return; }
+    const words = openingWords(timeline) ?? projectName;
+    change(applyTheme(timeline, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]));
+  };
   const saveStyle = (text: TextItem) => {
     const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text) };
     const next = [style, ...myStyles].slice(0, MAX_SAVED);
@@ -945,7 +960,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
-        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
+        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'themes', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
           <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
         {leftTab === 'media' && <>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -958,6 +973,15 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
+        {leftTab === 'themes' && timeline && (() => {
+          const current = activeTheme(timeline);
+          return <section className="ed-add" aria-label="Themes"><p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
+            <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => chooseTheme(look)} title={`${look.label}: ${look.about}`}>
+              <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
+              <span className="ed-theme-name"><b>{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
+            {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
+            <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
+        })()}
         {leftTab === 'text' && <>
           <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Adds a title at the playhead. Then type your own words.</p>
             <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
