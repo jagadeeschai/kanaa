@@ -27,6 +27,7 @@ import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeli
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 import { ProjectSaveQueue, type SaveState } from './project-save';
+import { exportSpec } from './export-spec';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -474,6 +475,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
   const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
+  const selectedIdentity = selected ? { kind: 'Clip', name: mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}` }
+    : selectedText ? { kind: 'Title', name: selectedText.text || 'Untitled title' }
+      : selectedSound ? { kind: 'Sound', name: selectedSound.sound.name || 'Untitled sound' }
+        : selectedBlur ? { kind: 'Privacy', name: selectedBlur.style === 'pixelate' ? 'Pixelated area' : 'Blurred area' }
+          : selectedCaption ? { kind: 'Caption', name: captionText(selectedCaption.caption) || 'Empty caption' } : null;
   const blurLocal = selectedBlur ? Math.max(0, Math.min(now - selectedBlur.start, selectedBlur.length)) : 0;
   const updateSelectedBlur = (changes: Partial<BlurBox>, group?: string) => { if (timeline && selectedBlur) change(updateBlur(timeline, selectedBlur.id, changes), group); };
   const addBlurBox = (style: BlurBox['style'], at?: [number, number]) => {
@@ -607,6 +613,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const updateSelectedSound = (changes: Partial<Sound>, group?: string) => { if (timeline && selectedSound) change(changes.speed !== undefined ? setSpeed(timeline, selectedSound.sound.id, changes.speed) : updateSound(timeline, selectedSound.sound.id, changes), group); };
   const hasSound = (id: number) => Boolean(visuals.current.get(id)?.peaks?.peaks.some(Boolean));
+  const hasAudibleAudio = Boolean(timeline?.layers.some((layer) => {
+    if (layer.muted) return false;
+    if (layer.kind === 'audio') return layer.items.some((sound) => !sound.muted && sound.volume > 0);
+    if (layer.kind === 'video') return layer.items.some((clip) => !clip.muted && clip.volume > 0 && hasSound(clip.media_id));
+    return false;
+  }));
   const detach = (clip = selected) => {
     if (!timeline || !clip) return;
     const soundId = newId();
@@ -1110,14 +1122,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           const part = (key: 'grade' | 'glow' | 'vignette' | 'grain', label: string) => <ValueSlider key={key} label={label} value={finish?.[key] ?? 0} min={0} max={1} step={0.05} defaultValue={CINEMATIC[key]} unit="%" factor={100}
             onGestureStart={pauseEngine} onChange={(value, group) => setFinish({ ...(finish ?? { ...CINEMATIC, letterbox: false, grade: 0, glow: 0, vignette: 0, grain: 0 }), [key]: value }, group ?? `finish-${key}`)}/>;
           return <section className="ed-add" aria-label="Themes">
-            <div className="ed-cinematic">
-              <label className="ed-check"><input type="checkbox" checked={Boolean(finish)} onChange={(event) => setFinish(event.target.checked ? { ...CINEMATIC, letterbox: barShare(timeline.format) > 0 } : null)}/><span>Cinematic finish<small>Teal and orange colour, a soft glow, darker edges and film grain over the whole video{barShare(timeline.format) > 0 ? ', with widescreen bars' : ''}. Captions stay on top.</small></span></label>
-              {finish && <>
-                {barShare(timeline.format) > 0 ? <label className="ed-check"><input type="checkbox" checked={finish.letterbox} onChange={(event) => setFinish({ ...finish, letterbox: event.target.checked })}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape.</small></span></label>
-                  : <p className="ed-tip">Widescreen bars are for landscape and square videos.</p>}
-                {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
-              </>}
-            </div>
             <p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
             <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} disabled={Boolean(themeBusy)} title={`${look.label}: ${look.about}`}>
               <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
@@ -1126,6 +1130,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
             {current && (() => { const music = themeMusic(timeline); return <div className="ed-add-row"><span>{music ? <>Music: <b>{music.name.replace(/^Theme music · /, '')}</b></> : 'No music'}</span>
               <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
+            <div className="ed-cinematic">
+              <label className="ed-check"><input type="checkbox" checked={Boolean(finish)} onChange={(event) => setFinish(event.target.checked ? { ...CINEMATIC, letterbox: barShare(timeline.format) > 0 } : null)}/><span>Cinematic finish<small>Optional finishing controls after your theme: teal and orange colour, glow, darker edges and grain{barShare(timeline.format) > 0 ? ', with widescreen bars' : ''}.</small></span></label>
+              {finish && <>
+                {barShare(timeline.format) > 0 ? <label className="ed-check"><input type="checkbox" checked={finish.letterbox} onChange={(event) => setFinish({ ...finish, letterbox: event.target.checked })}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape.</small></span></label>
+                  : <p className="ed-tip">Widescreen bars are for landscape and square videos.</p>}
+                {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
+              </>}
+            </div>
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
         {leftTab === 'text' && <>
@@ -1199,7 +1211,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       </main>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
       <HelpContext.Provider value={openGuide}>
-      <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+      <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span><strong title={selectedIdentity.name}>{selectedIdentity.name}</strong></div>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
@@ -1231,7 +1243,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
     {showingHelp && <Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
-    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
+    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
   </div>;
 }
 
@@ -1611,17 +1623,18 @@ function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, fo
   </Panel>;
 }
 
-function ExportDialog({ timeline, projectId, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {
+function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; withSound: boolean; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {
   const shortest = Math.min(timeline.format.width, timeline.format.height);
   const [quality, setQuality] = useState(shortest >= 2160 ? 2160 : Math.max(720, Math.min(1080, shortest)));
   const [job, setJob] = useState<{ id: string; progress: number; status?: string | null; error?: string | null; output?: number | null } | null>(null);
   const [error, setError] = useState('');
   const seconds = duration(timeline);
   const megabytes = Math.round(seconds * ESTIMATED_MB_PER_SECOND_1080 * (quality / 1080) ** 2);
+  const outputFormat = exportFormat(timeline.format, quality);
   const start = async () => {
     setError('');
     try {
-      const { job_id } = await exportProjectTimeline(projectId, { ...timeline, format: exportFormat(timeline.format, quality) });
+      const { job_id } = await exportProjectTimeline(projectId, { ...timeline, format: outputFormat });
       setJob({ id: job_id, progress: 0 });
     } catch (problem) { setError((problem as Error).message); }
   };
@@ -1644,6 +1657,7 @@ function ExportDialog({ timeline, projectId, onNormalize, onClose, onOpen }: { t
     <h2>Export video</h2>
     {!job && <><p>{timecode(seconds)} long · about {megabytes >= 1000 ? `${(megabytes / 1000).toFixed(1)} GB` : `${megabytes} MB`}</p>
       <div className="ed-qualities">{QUALITIES.map((item) => <button key={item.id} className={quality === item.id ? 'on' : ''} aria-pressed={quality === item.id} onClick={() => setQuality(item.id)}><strong>{item.label}</strong><span>{item.note}</span></button>)}</div>
+      <p className="ed-export-spec">{exportSpec(outputFormat, withSound)}</p>
       <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onNormalize(event.target.checked)}/><span>Even out loudness<small>Matches the level social apps expect. Applied to the export, not the preview.</small></span></label>
       {error && <p role="alert" className="ed-bad">{error}</p>}
       <button className="ed-primary wide" onClick={() => { void start(); }}><Download size={16}/>Export MP4</button></>}

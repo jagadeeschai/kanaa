@@ -27,8 +27,11 @@ local computer. First launch installs dependencies if needed. Ctrl+C stops them.
 4. Export to MP4. Progress and cancellation are available in Exports.
 5. Open the result and download it. Projects can be renamed, duplicated, or deleted.
 
-Video editing currently supports one source clip: trim, rotate, flip, picture
-adjustments, mute and volume. Multi-clip timeline editing remains on the roadmap.
+Video projects use a multi-clip timeline with video, photos, overlays, titles,
+captions and separate audio tracks. You can trim and split clips, reframe and
+animate them, apply themes and transitions, edit speech by its words, prepare
+people and background effects, and export up to 4K. Open the in-app Guide from
+the editor's **?** button for the current controls and shortcuts.
 
 Lyric projects support image slideshows or a video background, song uploads,
 automatic local lyric synchronization, manual/LRC/SRT timings, image and lyric
