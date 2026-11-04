@@ -12,6 +12,10 @@
 @font-face { font-family: 'Noto Sans Telugu'; font-weight: 700; font-display: swap; src: url('/api/fonts/NotoSansTelugu-Bold.ttf') format('truetype'); }
 @font-face { font-family: 'Noto Sans Kannada'; font-weight: 700; font-display: swap; src: url('/api/fonts/NotoSansKannada-Bold.ttf') format('truetype'); }
 @font-face { font-family: 'Noto Sans Malayalam'; font-weight: 700; font-display: swap; src: url('/api/fonts/NotoSansMalayalam-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Arima'; font-weight: 700; font-display: swap; src: url('/api/fonts/Arima-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Catamaran'; font-weight: 700; font-display: swap; src: url('/api/fonts/Catamaran-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Baloo Thambi 2'; font-weight: 700; font-display: swap; src: url('/api/fonts/BalooThambi2-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Kavivanar'; font-weight: 400; font-display: swap; src: url('/api/fonts/Kavivanar-Regular.ttf') format('truetype'); }
 
 :root {
   color-scheme: dark;

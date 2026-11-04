@@ -21,6 +21,10 @@ const inputClass = 'theme-control w-full rounded-lg border border-white/10 bg-wh
 const buttonClass = 'theme-control rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 disabled:opacity-40';
 type Job = { id: string; kind: 'sync' | 'export'; status: JobStatusResponse | null };
 type LyricCanvasChoice = 'auto' | LyricCanvas;
+type LyricStyle = 'outline' | 'shadow' | 'band';
+type LyricFont = 'standard' | 'elegant' | 'modern' | 'playful' | 'handwritten';
+type LyricAlign = 'left' | 'center' | 'right';
+type LyricAnimation = 'none' | 'fade' | 'slide-up' | 'pop';
 type LyricRecipe = {
   version: 1;
   clips: { photo_id: number }[];
@@ -33,16 +37,29 @@ type LyricRecipe = {
   fontSize: number;
   placement: 'top' | 'center' | 'bottom';
   imageAnimation: ImageAnimation;
-  lyricAnimation: 'none' | 'fade' | 'slide-up';
+  lyricAnimation: LyricAnimation;
   slideTiming?: SlideTiming;
   storyboardStarts?: number[];
   crossfade?: boolean;
   quality?: '720p' | '1080p' | '4k';
   lyricStyle?: LyricStyle;
+  lyricFont?: LyricFont;
+  lyricAlign?: LyricAlign;
+  lyricBandColor?: string;
 };
-type LyricStyle = 'outline' | 'shadow' | 'band';
 type LyricStage = 'background' | 'song' | 'timing' | 'style' | 'export';
 const LYRIC_STAGES: { id: LyricStage; label: string }[] = [{ id: 'background', label: 'Background' }, { id: 'song', label: 'Song & words' }, { id: 'timing', label: 'Timing' }, { id: 'style', label: 'Style' }, { id: 'export', label: 'Export' }];
+const LYRIC_FONTS: { id: LyricFont; label: string; family: string }[] = [
+  { id: 'standard', label: 'Clean', family: LYRIC_FONT_STACK }, { id: 'elegant', label: 'Elegant', family: 'Arima' },
+  { id: 'modern', label: 'Modern', family: 'Catamaran' }, { id: 'playful', label: 'Playful', family: 'Baloo Thambi 2' },
+  { id: 'handwritten', label: 'Handwritten', family: 'Kavivanar' },
+];
+const LYRIC_PRESETS: { id: string; label: string; font: LyricFont; style: LyricStyle; color: string; band: string; animation: LyricAnimation; placement: 'top' | 'center' | 'bottom' }[] = [
+  { id: 'cinematic', label: 'Cinematic', font: 'elegant', style: 'shadow', color: '#ffffff', band: '#000000', animation: 'fade', placement: 'center' },
+  { id: 'festival', label: 'Festival', font: 'playful', style: 'outline', color: '#ffd400', band: '#7c3aed', animation: 'pop', placement: 'center' },
+  { id: 'bold', label: 'Bold reel', font: 'modern', style: 'band', color: '#ffffff', band: '#dc2626', animation: 'pop', placement: 'center' },
+  { id: 'minimal', label: 'Minimal', font: 'standard', style: 'shadow', color: '#ffffff', band: '#000000', animation: 'fade', placement: 'bottom' },
+];
 
 const LYRIC_STYLE_CSS: Record<LyricStyle, React.CSSProperties> = {
   outline: { textShadow: '0 1px 3px #000, 1px 0 #111, -1px 0 #111' },
@@ -73,9 +90,12 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const [crossfade, setCrossfade] = useState(true);
   const [quality, setQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
   const [lyricStyle, setLyricStyle] = useState<LyricStyle>('band');
+  const [lyricFont, setLyricFont] = useState<LyricFont>('standard');
+  const [lyricAlign, setLyricAlign] = useState<LyricAlign>('center');
+  const [lyricBandColor, setLyricBandColor] = useState('#000000');
   const [storyboardStarts, setStoryboardStarts] = useState<number[]>([]);
   const [beats, setBeats] = useState<{ songId: string; times: number[]; bpm: number } | null>(null);
-  const [lyricAnimation, setLyricAnimation] = useState<'none' | 'fade' | 'slide-up'>('none');
+  const [lyricAnimation, setLyricAnimation] = useState<LyricAnimation>('none');
   const [lyrics, setLyrics] = useState('');
   const [cues, setCues] = useState<LyricCue[]>([]);
   const [undoLyrics, setUndoLyrics] = useState<{ lyrics: string; cues: LyricCue[] } | null>(null);
@@ -118,6 +138,9 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const ratio = resolvedCanvas === 'portrait' ? 9 / 16 : resolvedCanvas === 'square' ? 1 : 16 / 9;
   const previewWidth = Math.min(stageSize.width - 24, (stageSize.height - 24) * ratio);
   const currentCue = cues.find((cue) => position >= cue.start && position < cue.end);
+  const lyricFontFamily = LYRIC_FONTS.find((item) => item.id === lyricFont)?.family ?? LYRIC_FONT_STACK;
+  const cueProgress = currentCue ? Math.min(1, Math.max(0, (position - currentCue.start) / Math.min(.25, (currentCue.end - currentCue.start) / 3))) : 1;
+  const cueTransform = `${placement === 'center' ? 'translateY(-50%) ' : ''}${lyricAnimation === 'pop' ? `scale(${.7 + .3 * cueProgress})` : ''}`.trim() || undefined;
   const songBaseName = song?.name.replace(/\.[^.]+$/, '') || 'lyrics';
   const outputId = job?.kind === 'export' && job.status?.done && !job.status.error ? job.status.output_photo_id : null;
 
@@ -139,11 +162,12 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const hasWork = true;
   const project = useVideoProject<LyricRecipe>(projectId, 'lyric', hasWork ? {
     version: 1, clips: backgrounds.map((item) => ({ photo_id: item.id })), song: song && { id: song.id, name: song.name, duration: song.duration },
-    lyrics, cues, language, canvas, color, fontSize, placement, imageAnimation, lyricAnimation, slideTiming, storyboardStarts, crossfade, quality, lyricStyle,
+    lyrics, cues, language, canvas, color, fontSize, placement, imageAnimation, lyricAnimation, slideTiming, storyboardStarts, crossfade, quality, lyricStyle, lyricFont, lyricAlign, lyricBandColor,
   } : null, async (recipe) => {
     setLyrics(recipe.lyrics ?? ''); setCues(recipe.cues ?? []); setLanguage(recipe.language ?? ''); setCanvas(recipe.canvas ?? 'auto'); setColor(recipe.color ?? '#ffffff');
     setFontSize(recipe.fontSize ?? 44); setPlacement(recipe.placement ?? 'bottom'); setImageAnimation(recipe.imageAnimation ?? 'none'); setLyricAnimation(recipe.lyricAnimation ?? 'none');
     setSlideTiming(recipe.slideTiming ?? 'even'); setStoryboardStarts(recipe.storyboardStarts ?? []); setCrossfade(recipe.crossfade ?? false); setQuality(recipe.quality ?? '720p'); setLyricStyle(recipe.lyricStyle ?? 'outline');
+    setLyricFont(recipe.lyricFont ?? 'standard'); setLyricAlign(recipe.lyricAlign ?? 'center'); setLyricBandColor(recipe.lyricBandColor ?? '#000000');
     if (recipe.song) setSong({ ...recipe.song, url: videoAudioUrl(recipe.song.id) });
     await Promise.all((recipe.clips ?? []).map((clip) => getPhoto(clip.photo_id).catch(() => null))).then((photos) => {
       const available = photos.filter((item): item is Photo => item !== null);
@@ -214,7 +238,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
     try {
       const result = kind === 'sync'
         ? await startLyricSync(song!.id, plainLyricLines(lyrics).join('\n'), language || null)
-        : await startVideoExport(firstBackground.id, { background_photo_ids: isVideo ? [] : backgrounds.map((item) => item.id), image_animation: imageAnimation, slide_starts: isVideo ? [] : slideStarts, transition: crossfade ? 'crossfade' : 'none', quality, lyric_style: lyricStyle, lyric_animation: lyricAnimation, trim_start: 0, trim_end: duration, rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1, volume: 1, mute: false, audio_asset_id: song?.id, canvas: resolvedCanvas, lyrics: cues.map(({ start, end, text }) => ({ start, end, text })), lyric_color: color, lyric_size: fontSize, lyric_position: placement });
+        : await startVideoExport(firstBackground.id, { background_photo_ids: isVideo ? [] : backgrounds.map((item) => item.id), image_animation: imageAnimation, slide_starts: isVideo ? [] : slideStarts, transition: crossfade ? 'crossfade' : 'none', quality, lyric_style: lyricStyle, lyric_animation: lyricAnimation, lyric_font: lyricFont, lyric_align: lyricAlign, lyric_band_color: lyricBandColor, trim_start: 0, trim_end: duration, rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1, volume: 1, mute: false, audio_asset_id: song?.id, canvas: resolvedCanvas, lyrics: cues.map(({ start, end, text }) => ({ start, end, text })), lyric_color: color, lyric_size: fontSize, lyric_position: placement });
       setJob({ id: result.job_id, kind, status: null });
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not start the job.'); }
     finally { lockRef.current = false; setStarting(false); }
@@ -273,7 +297,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
                   {fadeProgress < 1 && <img src={photoImageUrl(backgrounds[slideIndex - 1].id)} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ transform: slideTransform(imageAnimation, slideIndex - 1, slideStarts, duration, fadeSeconds, position) }} />}
                   <img src={photoImageUrl(activeBackground.id)} alt={activeBackground.filename} className="absolute inset-0 h-full w-full object-cover" style={{ opacity: fadeProgress, transform: slideTransform(imageAnimation, slideIndex, slideStarts, duration, fadeSeconds, position) }} />
                 </> : <p className="p-4 text-center text-sm text-white">Choose images or a video below</p>}
-                {currentCue && <div className="pointer-events-none absolute text-center font-bold" style={{ left: '5.5%', right: '5.5%', color, fontFamily: LYRIC_FONT_STACK, fontSize: fontSize * previewWidth / 720, whiteSpace: 'pre-wrap', overflowWrap: 'break-word', opacity: lyricAnimation === 'none' ? 1 : Math.min(1, Math.max(0, (position - currentCue.start) / Math.min(.25, (currentCue.end - currentCue.start) / 3)), lyricAnimation === 'fade' ? Math.max(0, (currentCue.end - position) / Math.min(.25, (currentCue.end - currentCue.start) / 3)) : 1), translate: lyricAnimation === 'slide-up' ? `0 ${Math.max(0, 1 - (position - currentCue.start) / Math.min(.25, (currentCue.end - currentCue.start) / 3)) * previewWidth / ratio * .04}px` : undefined, ...LYRIC_STYLE_CSS[lyricStyle], ...(placement === 'top' ? { top: '8%' } : placement === 'bottom' ? { bottom: '8%' } : { top: '50%', transform: 'translateY(-50%)' }) }}>{lyricStyle === 'band' ? <span style={{ background: 'rgba(0,0,0,.56)', padding: `${.15 * fontSize * previewWidth / 720}px ${.3 * fontSize * previewWidth / 720}px`, WebkitBoxDecorationBreak: 'clone', boxDecorationBreak: 'clone' }}>{currentCue.text}</span> : currentCue.text}</div>}
+                {currentCue && <div className="pointer-events-none absolute font-bold" style={{ left: '5.5%', right: '5.5%', color, fontFamily: lyricFontFamily, textAlign: lyricAlign, fontSize: fontSize * previewWidth / 720, whiteSpace: 'pre-wrap', overflowWrap: 'break-word', opacity: lyricAnimation === 'none' ? 1 : cueProgress * (lyricAnimation === 'fade' ? Math.max(0, (currentCue.end - position) / Math.min(.25, (currentCue.end - currentCue.start) / 3)) : 1), translate: lyricAnimation === 'slide-up' ? `0 ${(1 - cueProgress) * previewWidth / ratio * .04}px` : undefined, transform: cueTransform, ...LYRIC_STYLE_CSS[lyricStyle], ...(placement === 'top' ? { top: '8%' } : placement === 'bottom' ? { bottom: '8%' } : { top: '50%' }) }}>{lyricStyle === 'band' ? <span style={{ background: `${lyricBandColor}b3`, padding: `${.15 * fontSize * previewWidth / 720}px ${.3 * fontSize * previewWidth / 720}px`, WebkitBoxDecorationBreak: 'clone', boxDecorationBreak: 'clone' }}>{currentCue.text}</span> : currentCue.text}</div>}
               </div>
             </div>
             {song && <audio ref={audioRef} src={song.url} onError={() => { setSong(null); setNotice('The saved song is no longer available. Upload it again.'); }} onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => pause()} />}
@@ -310,10 +334,13 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               <div className="flex flex-wrap items-center gap-2"><button onClick={() => { try { setCues(buildLyricTimeline(lyrics, duration)); setNotice('Manual timings created. Adjust or auto-sync them before export.'); setError(null); } catch (problem) { setError((problem as Error).message); } }} className={buttonClass}>Build manual timeline</button><label className="cursor-pointer text-xs text-slate-400">Import LRC or SRT<input aria-label="Import LRC or SRT" type="file" accept=".lrc,.srt,.txt" className="mt-1 block w-full text-xs" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then((text) => { setLyrics(text); setCues(buildLyricTimeline(text, duration)); setError(null); }).catch((problem) => setError(problem.message)); event.target.value = ''; }} /></label></div>
               </>}
               {stage === 'style' && <>
-              <label className="block text-xs text-slate-400">Text position<select aria-label="Lyric position" value={placement} onChange={(event) => setPlacement(event.target.value as typeof placement)} className={`${inputClass} mt-1`}><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select></label>
+              <section className="space-y-2"><h3 className="text-sm font-medium text-slate-200">Title-inspired looks</h3><div className="grid grid-cols-2 gap-2">{LYRIC_PRESETS.map((preset) => <button key={preset.id} type="button" className={`${buttonClass} min-h-14 text-left`} style={{ fontFamily: LYRIC_FONTS.find((item) => item.id === preset.font)?.family }} onClick={() => { setLyricFont(preset.font); setLyricStyle(preset.style); setColor(preset.color); setLyricBandColor(preset.band); setLyricAnimation(preset.animation); setPlacement(preset.placement); }}>{preset.label}<span className="mt-1 block text-[10px] font-normal text-slate-400">{preset.style} · {preset.animation}</span></button>)}</div></section>
+              <div className="grid grid-cols-2 gap-3"><label className="text-xs text-slate-400">Text position<select aria-label="Lyric position" value={placement} onChange={(event) => setPlacement(event.target.value as typeof placement)} className={`${inputClass} mt-1`}><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select></label><label className="text-xs text-slate-400">Alignment<select aria-label="Lyric alignment" value={lyricAlign} onChange={(event) => setLyricAlign(event.target.value as LyricAlign)} className={`${inputClass} mt-1`}><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label></div>
+              <label className="block text-xs text-slate-400">Font<select aria-label="Lyric font" value={lyricFont} onChange={(event) => setLyricFont(event.target.value as LyricFont)} className={`${inputClass} mt-1`} style={{ fontFamily: lyricFontFamily }}>{LYRIC_FONTS.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
               <div className="flex items-center gap-3"><label className="text-xs text-slate-400">Text color<input aria-label="Lyric color" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="mt-1 block h-9 w-12" /></label><label className="flex-1 text-xs text-slate-400">Text size: {fontSize}<input aria-label="Lyric size" type="range" min={20} max={100} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} className="mt-2 w-full accent-brand-400" /></label></div>
-              <div className="grid grid-cols-2 gap-3"><label className="text-xs text-slate-400">Image animation<select aria-label="Image animation" disabled={backgroundType === 'video'} value={imageAnimation} onChange={(event) => setImageAnimation(event.target.value as typeof imageAnimation)} className={`${inputClass} mt-1`}><option value="ken-burns">Ken Burns (varied)</option><option value="zoom-in">Slow zoom in</option><option value="pan-left">Pan left</option><option value="none">None</option></select></label><label className="text-xs text-slate-400">Lyric animation<select aria-label="Lyric animation" value={lyricAnimation} onChange={(event) => setLyricAnimation(event.target.value as typeof lyricAnimation)} className={`${inputClass} mt-1`}><option value="none">None</option><option value="fade">Fade</option><option value="slide-up">Slide up</option></select></label></div>
+              <div className="grid grid-cols-2 gap-3"><label className="text-xs text-slate-400">Image animation<select aria-label="Image animation" disabled={backgroundType === 'video'} value={imageAnimation} onChange={(event) => setImageAnimation(event.target.value as typeof imageAnimation)} className={`${inputClass} mt-1`}><option value="ken-burns">Ken Burns (varied)</option><option value="zoom-in">Slow zoom in</option><option value="pan-left">Pan left</option><option value="none">None</option></select></label><label className="text-xs text-slate-400">Lyric animation<select aria-label="Lyric animation" value={lyricAnimation} onChange={(event) => setLyricAnimation(event.target.value as LyricAnimation)} className={`${inputClass} mt-1`}><option value="none">None</option><option value="fade">Fade</option><option value="slide-up">Slide up</option><option value="pop">Pop</option></select></label></div>
               <label className="text-xs text-slate-400">Text style<select aria-label="Lyric style" value={lyricStyle} onChange={(event) => setLyricStyle(event.target.value as LyricStyle)} className={`${inputClass} mt-1`}><option value="band">Band (most readable)</option><option value="shadow">Soft shadow</option><option value="outline">Outline</option></select></label>
+              {lyricStyle === 'band' && <label className="block text-xs text-slate-400">Band colour<input aria-label="Lyric band color" type="color" value={lyricBandColor} onChange={(event) => setLyricBandColor(event.target.value)} className="mt-1 block h-9 w-12" /></label>}
               <p className="text-xs text-slate-400">Background fills the frame. Video backgrounds loop to the song’s length.</p>
               </>}
               {stage === 'timing' && <>

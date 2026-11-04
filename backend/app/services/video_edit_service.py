@@ -30,6 +30,12 @@ LYRIC_FONTS_DIR = Path(__file__).resolve().parents[1] / 'assets' / 'fonts'
 # libass sizes text by the font's OS/2 win ascent + descent, CSS by the em square. Each scale is
 # that sum over units-per-em, read from the font, so an exported line matches its preview.
 DEFAULT_LYRIC_FONT = ('Noto Sans', 1.519)
+LYRIC_STYLE_FONTS = {
+    'elegant': ('Arima', 1.633),
+    'modern': ('Catamaran', 1.64),
+    'playful': ('Baloo Thambi 2', 1.536),
+    'handwritten': ('Kavivanar', 1.482),
+}
 SCRIPT_LYRIC_FONTS = (
     (0x0900, 0x097F, 'Noto Sans Devanagari', 1.906),
     (0x0980, 0x09FF, 'Noto Sans Bengali', 1.403),
@@ -146,17 +152,21 @@ def write_lyrics(path: Path, edit: VideoEditRequest, source: Path, size: tuple[i
             width, height = height, width
     color = edit.lyric_color.lstrip('#')
     ass_color = f"&H00{color[4:6]}{color[2:4]}{color[0:2]}"
-    alignment = {"top": 8, "center": 5, "bottom": 2}[edit.lyric_position]
+    alignment = {('top', 'left'): 7, ('top', 'center'): 8, ('top', 'right'): 9,
+                 ('center', 'left'): 4, ('center', 'center'): 5, ('center', 'right'): 6,
+                 ('bottom', 'left'): 1, ('bottom', 'center'): 2, ('bottom', 'right'): 3}[(edit.lyric_position, edit.lyric_align)]
     font_size = edit.lyric_size * width / 720
     margin = round(height * 0.08)
     side_margin = round(width * 0.055)
     # Borders are drawn at PlayRes scale, so they grow with the canvas like the text does.
     unit = width / 720
+    band = edit.lyric_band_color.lstrip('#')
+    band_color = f"&H70{band[4:6]}{band[2:4]}{band[0:2]}"
     border_style, outline, shadow, outline_color, back_color = {
         'outline': (1, 2 * unit, 1 * unit, '&H00101010', '&H80000000'),
         # libass blurs the outermost layer, so a dark outline takes the blur and letters stay sharp.
         'shadow': (1, 3 * unit, 2 * unit, '&H00000000', '&H40000000'),
-        'band': (3, 12 * unit, 0, '&H70000000', '&H70000000'),
+        'band': (3, 12 * unit, 0, band_color, band_color),
     }[edit.lyric_style]
     blur = rf'\blur{3 * unit}' if edit.lyric_style == 'shadow' else ''
     header = f"""[Script Info]
@@ -184,7 +194,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if 0 <= mark < len(words):
                 words[mark] = rf'{{\1c{marked}}}{words[mark]}{{\1c{ass_color}}}'
                 text = ' '.join(words)
-        family, scale = lyric_font_for(cue.text)
+        family, scale = LYRIC_STYLE_FONTS.get(edit.lyric_font, lyric_font_for(cue.text))
         font = rf'{{\fn{family}\fs{font_size * scale}{blur}}}'
         effect = ''
         fade_ms = min(250, max(1, round((cue.end - cue.start) * 1000 / 3)))
@@ -193,6 +203,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         elif edit.lyric_animation == 'slide-up':
             y = margin if edit.lyric_position == 'top' else height / 2 if edit.lyric_position == 'center' else height - margin
             effect = rf'{{\move({width / 2},{y + height * .04},{width / 2},{y},0,{fade_ms})\fad({fade_ms},0)}}'
+        elif edit.lyric_animation == 'pop':
+            effect = rf'{{\fscx70\fscy70\t(0,{fade_ms},\fscx100\fscy100)\fad({fade_ms},0)}}'
         lines.append(f"Dialogue: 0,{ass_timestamp(cue.start)},{ass_timestamp(cue.end)},Lyrics,,0,0,0,,{font}{effect}{text}")
     path.write_text(header + '\n'.join(lines) + '\n', encoding='utf-8')
 

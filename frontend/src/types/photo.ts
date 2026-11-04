@@ -365,7 +365,10 @@ export type VideoEditSettings = {
   transition?: 'none' | 'crossfade';
   quality?: '720p' | '1080p' | '4k';
   lyric_style?: 'outline' | 'shadow' | 'band';
-  lyric_animation?: 'none' | 'fade' | 'slide-up';
+  lyric_animation?: 'none' | 'fade' | 'slide-up' | 'pop';
+  lyric_font?: 'standard' | 'elegant' | 'modern' | 'playful' | 'handwritten';
+  lyric_align?: 'left' | 'center' | 'right';
+  lyric_band_color?: string;
   audio_asset_id?: string;
   lyrics?: { start: number; end: number; text: string }[];
   canvas?: 'original' | 'portrait' | 'square' | 'landscape';

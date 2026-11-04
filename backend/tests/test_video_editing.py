@@ -326,13 +326,23 @@ class VideoEditingTests(unittest.TestCase):
 
     def test_lyric_animation_tags_and_literal_text(self):
         from app.services.video_edit_service import write_lyrics
-        for animation, tag in [('fade', r'\fad('), ('slide-up', r'\move(')]:
+        for animation, tag in [('fade', r'\fad('), ('slide-up', r'\move('), ('pop', r'\fscx70')]:
             edit = VideoEditRequest(canvas='portrait', lyric_animation=animation, lyrics=[{'start': 0, 'end': 1, 'text': r'{\evil} Hello'}])
             path = self.root / 'captions.ass'
             write_lyrics(path, edit, self.source)
             text = path.read_text()
             self.assertIn(tag, text)
             self.assertNotIn(r'{\evil}', text)
+
+    def test_lyric_typography_is_written_to_ass(self):
+        from app.services.video_edit_service import write_lyrics
+        edit = VideoEditRequest(canvas='portrait', lyric_font='elegant', lyric_align='left', lyric_position='top', lyric_style='band', lyric_band_color='#7c3aed', lyrics=[{'start': 0, 'end': 1, 'text': 'Hello தமிழ்'}])
+        path = self.root / 'styled.ass'
+        write_lyrics(path, edit, self.source)
+        text = path.read_text()
+        self.assertIn(r'\fnArima', text)
+        self.assertIn('&H70ed3a7c', text)
+        self.assertIn(',7,', text)
 
     def test_invalid_ranges_and_values(self):
         for edit in [VideoEditRequest(trim_start=3), VideoEditRequest(trim_end=4), VideoEditRequest(trim_start=1, trim_end=1.05)]:

@@ -54,4 +54,7 @@ class VideoEditRequest(BaseModel):
     transition: Literal["none", "crossfade"] = "none"
     quality: Literal["720p", "1080p", "4k"] = "720p"
     lyric_style: Literal["outline", "shadow", "band"] = "outline"
-    lyric_animation: Literal["none", "fade", "slide-up"] = "none"
+    lyric_animation: Literal["none", "fade", "slide-up", "pop"] = "none"
+    lyric_font: Literal["standard", "elegant", "modern", "playful", "handwritten"] = "standard"
+    lyric_align: Literal["left", "center", "right"] = "center"
+    lyric_band_color: str = Field(default="#000000", pattern=r"^#[0-9a-fA-F]{6}$")
