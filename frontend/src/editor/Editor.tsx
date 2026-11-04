@@ -118,7 +118,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
-  const [leftTab, setLeftTab] = useState<'media' | 'themes' | 'text' | 'audio' | 'words'>('media');
+  const [leftTab, setLeftTab] = useState<'media' | 'templates' | 'themes' | 'text' | 'audio' | 'words'>('media');
   const [language, setLanguage] = useState(() => { try { return localStorage.getItem('wa.wordsLanguage') ?? 'auto'; } catch { return 'auto'; } });
   const [transcripts, setTranscripts] = useState<Record<string, Word[]>>({});
   const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
@@ -1033,7 +1033,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
-        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'themes', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
+        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{(['media', 'templates', 'themes', 'text', 'audio', 'words'] as const).map((tab) => <button key={tab} role="tab" aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)}>{{ media: 'Media', templates: 'Templates', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' }[tab]}</button>)}</div>
           <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
         {leftTab === 'media' && <>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -1046,13 +1046,12 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
-        {leftTab === 'themes' && timeline && (() => {
-          const current = activeTheme(timeline);
+        {leftTab === 'templates' && timeline && (() => {
           if (story) {
             const filled = story.fills.filter((id) => id !== null).length;
             const pick = (index: number, id: number | null) => setStory({ ...story, fills: story.fills.map((current, at) => (at === index ? id : current)), choosing: null });
             return <section className="ed-add" aria-label="Story">
-              <div className="ed-add-row"><button className="ed-button" onClick={() => setStory(null)}><ArrowLeft size={13}/>Stories</button><span>{filled} of {story.story.slots.length} filled</span></div>
+              <div className="ed-add-row"><button className="ed-button" onClick={() => setStory(null)}><ArrowLeft size={13}/>All stories</button><span>{filled} of {story.story.slots.length} filled</span></div>
               <h3 className="ed-sub">{story.story.label} <em lang="ta" className="ed-tamil-note">{story.story.tamil}</em></h3>
               <ol className="ed-slots">{story.story.slots.map((item, index) => { const id = story.fills[index]; const chosen = id !== null ? mediaById.get(id) : undefined; return <li key={item.label} className={story.choosing === index ? 'on' : ''}>
                 <button className="ed-slot" onClick={() => setStory({ ...story, choosing: story.choosing === index ? null : index })} title={item.hint}>
@@ -1066,11 +1065,16 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
               <p className="ed-tip">Each moment uses the middle of a longer clip. Empty moments are skipped. {mainLayer(timeline).items.length ? 'This replaces the clips on your main track; undo with ⌘Z.' : ''}</p>
             </section>;
           }
-          return <section className="ed-add" aria-label="Themes">
-            <h3 className="ed-sub">Story templates</h3><p className="ed-tip">Pick a story, put a clip or photo in each moment, and Kanaa makes the video with its theme and music.</p>
+          return <section className="ed-add" aria-label="Story templates">
+            <p className="ed-tip">Pick a story, put a clip or photo in each moment, and Kanaa makes the video with its theme and music.</p>
             <div className="ed-stories">{STORIES.map((item) => <button key={item.id} className="ed-story" onClick={() => setStory({ story: item, fills: item.slots.map(() => null), choosing: null })} title={`${item.slots.map((each) => each.label).join(' → ')}`}>
               <b>{item.label}</b><em lang="ta">{item.tamil}</em><small>{item.slots.length} moments · about {storySeconds(item)}s · {THEMES.find((look) => look.id === item.theme)?.label}</small></button>)}</div>
-            <h3 className="ed-sub">Themes</h3><p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
+          </section>;
+        })()}
+        {leftTab === 'themes' && timeline && (() => {
+          const current = activeTheme(timeline);
+          return <section className="ed-add" aria-label="Themes">
+            <p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
             <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} disabled={Boolean(themeBusy)} title={`${look.label}: ${look.about}`}>
               <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
               <span className="ed-theme-name"><b>{themeBusy === look.id ? <LoaderCircle className="spin" size={11}/> : null}{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
