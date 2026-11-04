@@ -440,6 +440,11 @@ The title's "Put the title behind…" is now People, An object, Skyline / ground
 
 Limits: Apple-only, like the person cut-out (a Windows build would need an ONNX instance model in place of Vision); people who cross or hug can swap numbers or merge into one; objects are whatever Vision thinks stands out, so a parked car in a busy street may not be found (then draw around it); at most 6 at a time.
 
+### Focus on someone, blur the rest (done)
+Background → Blur now has the same "Who stays in focus" picker (Everyone, or any mix of the numbered people or objects) and a Blur strength of Subtle, Medium or Strong (0.7%, 1.5% or 3% of the frame height). The chosen ones stay sharp and everything else, other people included, goes soft like a film camera focused on them. Each choice and strength is its own portrait copy and proxy (`portrait-{who}-{amount}-1.mp4`), made from the joined mask of the chosen ones, or from the sharp all-people mask for everyone; everyone at Medium is still the original `portrait-2.mp4`. The preview's token is `blur.{who}.{amount}`, such as `blur.people-1.strong`; export passes `(cutout_pick, blur_amount)` to `prepared` and uses the copy like a steadied one.
+
+Limits: strength is three steps rather than a slider, because each one is a full-size copy made once; the focus can't move from one subject to another during a clip yet (focus pull is next).
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

@@ -37,6 +37,7 @@ FIRM_LOW, FIRM_HIGH = 48, 200  # Below is clear, above is solid, between is the 
 MASK_SIDE = 1280  # The mask's long side. The export scales it to the full frame, softly.
 PREVIEW_SIDE = 720
 PORTRAIT_BLUR = 0.015  # Of the frame height: a strong portrait-mode look.
+BLUR_AMOUNTS = {'subtle': 0.007, 'medium': PORTRAIT_BLUR, 'strong': 0.03}  # Of the frame height.
 EDGE_SOFTNESS = 1.5  # Pixels of the mask's own blur, so edges don't shimmer.
 INSTALL_TOOLS = 'xcode-select --install'
 _build = threading.Lock()
@@ -182,14 +183,15 @@ def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask:
     temporary.replace(target)
 
 
-def make_portrait(facts: MediaFacts, should_cancel: Callable[[], bool]) -> None:
+def make_portrait(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None, proxy: Path | None = None, amount: str = 'medium') -> None:
     """The person sharp over their own background, blurred. Made at full size, so export and preview share it."""
     paths = files(facts.path)
-    temporary = paths[PORTRAIT].with_suffix('.tmp.mp4')
-    sigma = PORTRAIT_BLUR * (facts.height or 1080)
+    mask, target, proxy = mask or paths[MASK], target or paths[PORTRAIT], proxy or paths[PORTRAIT_PROXY]
+    temporary = target.with_suffix('.tmp.mp4')
+    sigma = BLUR_AMOUNTS[amount] * (facts.height or 1080)
     graph = (f"[0:v]{colour(facts)},format=gbrp,split=2[back][front];[back]gblur=sigma={sigma:.2f}:steps=3[soft];[1:v]format=gray[shape];[shape][front]scale2ref=flags=bicubic[mask][sharp];"
              f"[sharp][mask]alphamerge[person];[soft][person]overlay=format=gbrp,format=yuv420p")
-    result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(paths[MASK]), '-filter_complex', graph, '-an',
+    result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(mask), '-filter_complex', graph, '-an',
                               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '14', '-fps_mode', 'passthrough', *BT709_OUTPUT_ARGS, str(temporary)], should_cancel)
     if result.returncode:
         temporary.unlink(missing_ok=True)
@@ -198,8 +200,8 @@ def make_portrait(facts: MediaFacts, should_cancel: Callable[[], bool]) -> None:
     portrait = probe_video(temporary)
     if portrait is None:
         raise RuntimeError('Could not blur the background of this clip.')
-    make_proxy(portrait, paths[PORTRAIT_PROXY], should_cancel)
-    temporary.replace(paths[PORTRAIT])
+    make_proxy(portrait, proxy, should_cancel)
+    temporary.replace(target)
 
 
 def is_ready(source: Path, mode: str) -> bool:
@@ -223,15 +225,6 @@ def ensure_mask(facts: MediaFacts, should_cancel: Callable[[], bool] = lambda: F
     """For Remove: the mask the export applies to the full video."""
     prepare(facts, 'remove', lambda _: None, should_cancel)
     return files(facts.path)[MASK]
-
-
-def ensure_portrait(facts: MediaFacts, should_cancel: Callable[[], bool] = lambda: False) -> MediaFacts:
-    """For Blur: the portrait copy, used like a steadied one."""
-    prepare(facts, 'blur', lambda _: None, should_cancel)
-    portrait = probe_video(files(facts.path)[PORTRAIT])
-    if portrait is None:
-        raise RuntimeError('The portrait copy of this clip could not be read.')
-    return portrait
 
 
 def request_cutout(facts: MediaFacts, mode: str, label: str) -> dict:

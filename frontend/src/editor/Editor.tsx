@@ -6,7 +6,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { groundShape, putBehindShape, putBehindObject, cutoutToken, type CutoutPick, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { groundShape, putBehindShape, putBehindObject, cutoutToken, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -59,6 +59,7 @@ const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
   return steady || backwards || cutout ? [steady, backwards, cutout] : null;
 };
 const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
+const BLUR_AMOUNTS: { id: BlurAmount; label: string }[] = [{ id: 'subtle', label: 'Subtle' }, { id: 'medium', label: 'Medium' }, { id: 'strong', label: 'Strong' }];
 const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
 type StemChoice = 'music' | 'vocals' | 'both';
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
@@ -1087,24 +1088,25 @@ function WhoStays({ clip, onChange }: { clip: Clip; onChange: (pick: CutoutPick 
   }, [key, clip.media_id, kind, steady, backwards]);
   const tracks = found.key === key ? found.tracks : null;
   const everyone = kind === 'people' ? 'Everyone' : 'All of them';
+  const blur = clip.cutout === 'blur';
   const toggle = (id: number) => {
     const chosen = ids ?? [];
     const next = chosen.includes(id) ? chosen.filter((other) => other !== id) : [...chosen, id];
     onChange({ kind, ids: next.length ? next.sort((a, b) => a - b) : null });
   };
   return <div className="ed-who">
-    <span className="ed-who-title">Who stays in front</span>
+    <span className="ed-who-title">{blur ? 'Who stays in focus' : 'Who stays in front'}</span>
     <Chips label="Find" options={[{ id: 'people' as const, label: 'People' }, { id: 'objects' as const, label: 'Objects' }]} value={kind} onPick={(next) => onChange(next === 'people' ? null : { kind: next, ids: null })}/>
     {found.key === key && found.problem ? <p className="ed-tip">{found.problem}</p>
       : !tracks ? <p className="ed-tip">Finding each {kind === 'people' ? 'person' : 'object'}… {found.progress ? `${found.progress}%` : ''}</p>
       : !tracks.length ? <p className="ed-tip">{kind === 'people' ? 'No people were found in this clip.' : 'No objects stood out in this clip. Try drawing around it instead.'}</p>
       : <>
         <img className="ed-who-picture" src={`${instancesPictureUrl(clip.media_id, kind, steady, backwards)}&v=${tracks.map((track) => track.id).join('-')}`} alt={`The clip with each ${kind === 'people' ? 'person' : 'object'} numbered`}/>
-        <div className="ed-chips" role="group" aria-label="Who stays in front">
+        <div className="ed-chips" role="group" aria-label={blur ? 'Who stays in focus' : 'Who stays in front'}>
           <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => onChange(kind === 'people' ? null : { kind, ids: null })}>{everyone}</button>
           {tracks.map((track) => <button key={track.id} className={ids?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(ids?.includes(track.id))} onClick={() => toggle(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
         </div>
-        {tracks.length > 1 && <p className="ed-tip">The ones you choose stay in front of the title; the rest go behind it.</p>}
+        {tracks.length > 1 && <p className="ed-tip">{blur ? 'The ones you choose stay sharp; the rest blur with the background.' : 'The ones you choose stay in front of the title; the rest go behind it.'}</p>}
       </>}
   </div>;
 }
@@ -1243,10 +1245,11 @@ function Inspector({ clip, source, format, onChange, canDetach, onDetach, local,
     </>}
     {source?.kind === 'video' && <>
       <h3 className="ed-sub">Background</h3>
-      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'remove' ? { cutout: 'remove' } : { cutout: id === 'keep' ? null : id, cutout_pick: null })}/>
-      {clip.cutout === 'remove' && <WhoStays clip={clip} onChange={(cutout_pick) => onChange({ cutout_pick })}/>}
-      {clip.cutout && <p className="ed-tip">{!copyReady ? `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}… This runs in the background, and the preview shows the original until it is ready.`
-        : clip.cutout === 'blur' ? 'The person stays sharp and everything behind them is softened.' : isMain ? 'The person shows over black. To put something behind them, add this clip as an overlay over your new background.' : 'The person shows over whatever is under this layer.'}</p>}
+      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null } : { cutout: id })}/>
+      {clip.cutout === 'blur' && <div className="ed-strength"><span className="ed-who-title">Blur strength</span><Chips label="Blur strength" options={BLUR_AMOUNTS} value={clip.blur_amount ?? 'medium'} onPick={(blur_amount) => onChange({ blur_amount })}/></div>}
+      {clip.cutout && <WhoStays clip={clip} onChange={(cutout_pick) => onChange({ cutout_pick })}/>}
+      {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? 'Blurring the background' : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background, and the preview shows the original until it is ready.`
+        : clip.cutout === 'blur' ? 'Who you choose stays sharp and everything else is softened, like a film camera focused on them.' : isMain ? 'The person shows over black. To put something behind them, add this clip as an overlay over your new background.' : 'The person shows over whatever is under this layer.'}</p>}
     </>}
     {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
     <div className="ed-pair">

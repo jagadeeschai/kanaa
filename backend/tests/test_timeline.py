@@ -1210,8 +1210,10 @@ class QuickEffects(Clips):
         if backwards:
             facts = reverse_service.ensure_reversed(facts)
         if portrait:
-            cutout_service.prepare(facts, 'blur', lambda _: None, lambda: False, finder=FAKE_FINDER)
-            facts = probe_video(cutout_service.files(facts.path)[cutout_service.PORTRAIT])
+            choice, amount = portrait if isinstance(portrait, tuple) else (None, 'medium')
+            pick = instance_service.from_choice(choice)
+            instance_service.prepare_portrait(facts, pick, amount, lambda _: None, lambda: False, finder=FAKE_FINDER if instance_service.is_everyone(pick) else FAKE_INSTANCES)
+            facts = probe_video(instance_service.portrait_paths(facts.path, pick, amount)[0])
         return facts
 
     def test_freeze_holds_one_frame_and_is_silent(self):
@@ -1399,13 +1401,32 @@ class Cutout(QuickEffects):
             self.assertAlmostEqual(float(got), want, delta=12)
 
     def test_choosing_who_stays_needs_the_background_removed(self):
-        clip = {'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'blur', 'cutout_pick': {'kind': 'people', 'ids': [0]}}
+        clip = {'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout_pick': {'kind': 'people', 'ids': [0]}}
         with self.assertRaises(ValidationError):
             Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [clip]}]})
         self.assertEqual(instance_service.parse('people-2-0'), instance_service.Pick('people', (0, 2)))
         self.assertEqual(instance_service.parse('objects-all'), instance_service.Pick('objects', None))
         for wrong in ('people', 'people-', 'cars-1', 'people-9', 'people-x'):
             self.assertIsNone(instance_service.parse(wrong))
+
+    def test_blur_can_keep_only_the_chosen_one_sharp_and_be_stronger(self):
+        facts = self.facts[80]
+        instance_service.prepare(facts, instance_service.Pick('people', None), lambda _: None, lambda: False, finder=FAKE_INSTANCES, joined=False)
+        right = instance_service.tracks(facts.path, 'people')[1]['id']
+        original = self.frame(facts.path, 20, (640, 360))
+        frames = {}
+        for amount in ('subtle', 'strong'):
+            clip = {'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'blur', 'cutout_pick': {'kind': 'people', 'ids': [right]}, 'blur_amount': amount}
+            data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [clip]}]}
+            frames[amount] = self.frame(self.render(data, f'focus-{amount}.mp4', prepared=self.prepared), 20, (640, 360))
+        strong = frames['strong']
+        self.assertGreater(self.detail(strong, 480, 180), self.detail(original, 480, 180) * 0.85)  # The chosen one stays sharp...
+        self.assertLess(self.detail(strong, 160, 180), self.detail(original, 160, 180) * 0.5)  # ...the other one goes soft with the background.
+        self.assertLess(self.detail(strong, 40, 40), self.detail(frames['subtle'], 40, 40))
+        self.assertEqual(instance_service.parse_cutout('blur.people-1.strong'), ('blur', instance_service.Pick('people', (1,)), 'strong'))
+        self.assertEqual(instance_service.parse_cutout('blur.all.subtle'), ('blur', None, 'subtle'))
+        for wrong in ('blur.people-1', 'blur.people-1.huge', 'blur.cars-1.strong', 'blur..strong', 'cut'):
+            self.assertIsNone(instance_service.parse_cutout(wrong))
 
     def test_without_its_mask_a_cut_out_clip_is_refused(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'p', 'media_id': 80, 'start': 0, 'in': 0, 'out': 2, 'cutout': 'remove'}]}]}

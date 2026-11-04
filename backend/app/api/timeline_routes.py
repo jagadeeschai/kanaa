@@ -71,7 +71,7 @@ def proxy(identifier: int, request: Request):
     return serve_file_with_ranges(asset_path(identifier, 'proxy.mp4'), 'video/mp4', request)
 
 
-def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait: bool = False, should_cancel=lambda: False) -> MediaFacts:
+def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait=None, should_cancel=lambda: False) -> MediaFacts:
     """Steadied, then reversed, then the background blurred, so the steps combine. Each copy is made once."""
     facts = media_facts(identifier)
     if steady:
@@ -79,11 +79,9 @@ def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait: bool
     if backwards:
         facts = ensure_reversed(facts, should_cancel)
     if portrait:
-        facts = cutout_service.ensure_portrait(facts, should_cancel)
+        choice, amount = portrait
+        facts = instance_service.ensure_portrait(facts, instance_service.from_choice(choice), amount, should_cancel)
     return facts
-
-
-CUTOUTS = {'', 'remove', 'blur'}
 
 
 def steady_and_reversed(identifier: int, steady: bool, backwards: bool) -> tuple[MediaFacts | None, dict]:
@@ -104,13 +102,16 @@ def steady_and_reversed(identifier: int, steady: bool, backwards: bool) -> tuple
 def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = ''):
     """Starts making whatever copies a clip needs, one step at a time. Ready, or preparing with a job to watch."""
     row = get_media(identifier)
-    pick = instance_service.parse(cutout)
-    if row['media_type'] != 'video' or (cutout not in CUTOUTS and pick is None):
+    wanted = instance_service.parse_cutout(cutout)
+    if row['media_type'] != 'video' or wanted is None:
         raise HTTPException(400, 'Only videos can be steadied, reversed or cut out.')
     facts, status = steady_and_reversed(identifier, steady, backwards)
     if facts is None:
         return status
+    mode, pick, amount = wanted
     try:
+        if mode == 'blur':
+            return instance_service.request_portrait(facts, pick, amount, row['filename'])
         if pick:
             return instance_service.request(facts, pick, row['filename'])
         return cutout_service.request_cutout(facts, cutout, row['filename']) if cutout else {'status': 'ready'}
@@ -170,11 +171,17 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
         base, target = copies(base)
-    pick = instance_service.parse(cutout)
-    if cutout in ('remove', 'blur') or pick:
+    wanted = instance_service.parse_cutout(cutout)
+    if wanted is None:
+        raise HTTPException(400, 'Unknown cut-out.')
+    mode, pick, amount = wanted
+    if mode:
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
-        target = instance_service.pick_paths(base, pick)[1] if pick else cutout_service.files(base)[cutout_service.SEE_THROUGH if cutout == 'remove' else cutout_service.PORTRAIT_PROXY]
+        if mode == 'blur':
+            target = instance_service.portrait_paths(base, pick, amount)[1]
+        else:
+            target = instance_service.pick_paths(base, pick)[1] if pick else cutout_service.files(base)[cutout_service.SEE_THROUGH]
     if target is None or not target.is_file():
         raise HTTPException(404, 'This copy is still being made.')
     return serve_file_with_ranges(target, 'video/webm' if target.suffix == '.webm' else 'video/mp4', request)

@@ -140,7 +140,8 @@ class Clip(Strict):
     stabilise: bool = False  # Uses the steadied copy, slightly zoomed in.
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
-    cutout_pick: Optional[CutoutPick] = None  # With remove: only these people, or these objects, stay.
+    cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
+    blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
@@ -150,8 +151,8 @@ class Clip(Strict):
             raise ValueError('A clip must end after it starts.')
         if self.ramp is not None and (len(self.ramp) < 2 or self.ramp[0].t != 0 or self.ramp[-1].t != 1 or any(b.t <= a.t for a, b in zip(self.ramp, self.ramp[1:]))):
             raise ValueError('A speed ramp must run from the start of the clip to its end.')
-        if self.cutout_pick is not None and self.cutout != 'remove':
-            raise ValueError('Choosing who stays needs the background removed.')
+        if self.cutout_pick is not None and self.cutout is None:
+            raise ValueError('Choosing who stays needs the background removed or blurred.')
         return self
 
     @property

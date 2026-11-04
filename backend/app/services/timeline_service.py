@@ -38,7 +38,7 @@ MIN_WORK_SCALE = 0.1
 LOUDNORM = 'loudnorm=I=-14:TP=-1:LRA=11'  # -14 LUFS is what the main social platforms aim for.
 MAX_ATEMPO_STEP = 2.0
 # A source's prepared copy: (media id, steadied, reversed, background blurred) to the copy's facts.
-Prepared = Callable[[int, bool, bool, bool], MediaFacts]
+Prepared = Callable[[int, bool, bool, Any], MediaFacts]  # The last: None, or (who stays sharp, blur amount) for a blurred background.
 RAMP_MARGIN = 2.0  # Seconds.
 BLUR_REACH = 0.04  # A blur box's strength at 1, as a share of the frame height. Matches timeline/blur.ts.
 BLUR_FEATHER = 0.12
@@ -511,7 +511,7 @@ class Builder:
             frozen = clip.freeze is not None and facts.media_type == 'video'
             steady = clip.stabilise and facts.media_type == 'video'
             backwards = clip.reverse and facts.media_type == 'video' and not frozen
-            portrait = clip.cutout == 'blur' and facts.media_type == 'video'
+            portrait = (clip.cutout_pick, clip.blur_amount) if clip.cutout == 'blur' and facts.media_type == 'video' else None
             cut = clip.cutout == 'remove' and facts.media_type == 'video'
             if steady or backwards or portrait:
                 if self.prepared is None:
