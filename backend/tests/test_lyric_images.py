@@ -64,8 +64,10 @@ class LyricImagesTests(unittest.TestCase):
     def test_local_planning_unicode_and_settings_redaction(self):
         batch = self.plan()
         self.assertEqual(len(batch['scenes']), 3)
-        self.assertIn('கடல் அலைகள்', batch['scenes'][0]['prompt'])
+        self.assertNotIn('கடல் அலைகள்', batch['scenes'][0]['prompt'])
         self.assertIn('Coastal village at dawn', batch['scenes'][2]['prompt'])
+        self.assertIn('Continuity is mandatory', batch['scenes'][2]['prompt'])
+        self.assertTrue(all(scene['prompt'].isascii() for scene in batch['scenes']))
         self.assertEqual([scene['start'] for scene in batch['scenes']], [0, 2, 4])
         self.assertEqual(self.generate(batch).status_code, 400)
         self.configure()
@@ -76,6 +78,17 @@ class LyricImagesTests(unittest.TestCase):
         self.assertEqual(self.client.patch(self.prefix + '/' + batch['id'], json={'scenes': [{'id': batch['scenes'][0]['id'], 'prompt': prompt}]}).status_code, 200)
         self.assertEqual(self.client.get(self.prefix).json()['batch']['scenes'][0]['prompt'], prompt)
         self.assertEqual(self.client.put('/api/ai-settings', json={'base_url': 'http://evil.example/v1', 'model': 'test'}).status_code, 400)
+
+    def test_visual_brief_and_scene_prompts_must_be_english(self):
+        lyrics = 'கடல் அலைகள்\nமீண்டும் வா'
+        response = self.client.post(self.prefix + '/plan', json={'lyrics': lyrics, 'count': 2, 'brief': 'கடற்கரை கிராமம்', 'style': 'cinematic', 'canvas': 'landscape'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('English', response.text)
+        batch = self.plan()
+        scene = batch['scenes'][0]
+        self.assertEqual(self.client.patch(self.prefix + '/' + batch['id'], json={'scenes': [{'id': scene['id'], 'prompt': 'கடற்கரை காட்சி'}]}).status_code, 400)
+        self.configure()
+        self.assertEqual(self.client.post(self.prefix + '/generate', json={'batch_id': batch['id'], 'scenes': [{'id': scene['id'], 'prompt': 'கடற்கரை காட்சி'}]}).status_code, 400)
 
     def test_lyric_project_can_start_without_upload(self):
         response = self.client.post('/api/projects', json={'name': 'AI-only start', 'kind': 'lyric'})

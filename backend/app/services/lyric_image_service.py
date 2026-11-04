@@ -27,6 +27,13 @@ STYLES = {
 }
 generation_lock = threading.Lock()
 SIZES = {'portrait': '1024x1536', 'square': '1024x1024', 'landscape': '1536x1024'}
+STORY_BEATS = (
+    'an establishing image that introduces the place and recurring subject',
+    'the recurring subject moving deeper into the same world',
+    'an intimate detail or quiet emotional moment with the recurring subject',
+    'a visual turning point that raises the emotion while preserving continuity',
+    'a calm resolution in the same world with the recurring subject',
+)
 
 
 class ScenePlan(BaseModel):
@@ -56,6 +63,15 @@ def require_project(identifier):
         raise ValueError('Choose an existing lyric video project.')
 
 
+def require_english_visual_prompt(value, label='visual brief'):
+    text = value.strip()
+    if not text:
+        raise ValueError(f'Add an English {label} before building scenes.')
+    if not any('a' <= character.lower() <= 'z' for character in text) or any(ord(character) > 127 for character in text):
+        raise ValueError(f'Write the {label} in English. Lyrics stay separate and are not used as image prompts.')
+    return text
+
+
 def current_batch(identifier, batch_id=None):
     with get_connection() as conn:
         row = conn.execute('SELECT * FROM image_batches WHERE project_id=?' + (' AND id=?' if batch_id else '') + ' ORDER BY rowid DESC LIMIT 1', (identifier, batch_id) if batch_id else (identifier,)).fetchone()
@@ -80,6 +96,7 @@ def _plan_scenes(identifier, plan):
     lines = [line.strip() for line in plan.lyrics.splitlines() if line.strip()]
     if not lines or len(lines) > 500 or any(len(line) > 500 for line in lines):
         raise ValueError('Use 1–500 lyric lines, with up to 500 characters per line.')
+    brief = require_english_visual_prompt(plan.brief)
     # Timings only attach when the supplied cues still describe these exact lyrics.
     timed = len(plan.cues) == len(lines) and all(cue.text.strip() == line for cue, line in zip(plan.cues, lines)) and all(plan.cues[index].start >= plan.cues[index - 1].end for index in range(1, len(plan.cues)))
     count = min(plan.count, len(lines))
@@ -89,15 +106,16 @@ def _plan_scenes(identifier, plan):
         for index in range(count):
             first, end = index * len(lines) // count, (index + 1) * len(lines) // count
             excerpt = '\n'.join(lines[first:end])
-            prompt = (f'Create scene {index + 1} of {count} for one cohesive lyrical music video. '
-                      'Interpret the meaning, emotion, and visual metaphors of the lyrics in their original language. '
-                      'Create a thoughtful visual scene rather than lettering or a screenshot of lyrics. '
+            beat = STORY_BEATS[min(len(STORY_BEATS) - 1, index * len(STORY_BEATS) // count)]
+            prompt = (f'Create scene {index + 1} of {count} for one visually continuous music video. '
+                      f'English visual brief and continuity bible: {brief}. '
+                      'Continuity is mandatory: keep the same recurring people with the same facial features, age, hair, skin tone, and wardrobe; '
+                      'keep the same location design, time of day, weather, color palette, lighting direction, lens language, and image treatment in every scene. '
+                      'Do not introduce a new main character or redesign a recurring subject unless the visual brief explicitly asks for it. '
+                      f'This scene is {beat}. '
                       f'Visual style shared across the entire video: {STYLES[plan.style]} '
-                      f'Creative direction shared across scenes: {plan.brief.strip() or "A poetic journey with a consistent color palette and atmosphere."} '
-                      f'Overall song context:\n{plan.lyrics[:4000]}\n\n'
-                      f'This scene illustrates these lines:\n{excerpt[:5000]}\n\n'
                       'Keep the lower fifth calm and uncluttered for lyric overlays. No words, captions, logos, or watermarks. '
-                      f'Use a visually complete {plan.canvas} composition with centered focal subjects and generous crop-safe margins. Preserve the shared visual direction.')
+                      f'Use a visually complete {plan.canvas} composition with centered focal subjects and generous crop-safe margins. Follow the continuity bible exactly.')
             conn.execute('INSERT INTO image_scenes(batch_id,position,lyric,prompt,start,end) VALUES(?,?,?,?,?,?)',
                          (batch_id, index, excerpt, prompt, plan.cues[first].start if timed else None, plan.cues[end - 1].end if timed else None))
         conn.commit()
@@ -159,8 +177,8 @@ def _start_generation(identifier, request):
         raise ValueError('Choose scenes from this project’s current plan.')
     if any(available[identifier]['status'] == 'done' for identifier in ids):
         raise ValueError('These scenes are already generated. Retry unfinished scenes or make a new plan.')
-    if any(not scene.prompt.strip() for scene in request.scenes):
-        raise ValueError('Every scene needs a visual prompt.')
+    for scene in request.scenes:
+        require_english_visual_prompt(scene.prompt, 'scene prompt')
     ready = threading.Event()
     with get_connection() as conn:
         for scene in request.scenes:
@@ -228,6 +246,8 @@ def save_scene_prompts(identifier, batch_id, scenes):
         available = {scene['id']: scene for scene in batch['scenes']}
         if any(scene.id not in available or available[scene.id]['status'] == 'done' or not scene.prompt.strip() for scene in scenes):
             raise ValueError('Only unfinished scene prompts can be edited.')
+        for scene in scenes:
+            require_english_visual_prompt(scene.prompt, 'scene prompt')
         with get_connection() as conn:
             for scene in scenes:
                 conn.execute('UPDATE image_scenes SET prompt=? WHERE id=?', (scene.prompt.strip(), scene.id))
