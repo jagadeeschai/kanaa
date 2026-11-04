@@ -68,7 +68,9 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/api/photos/{media['id']}/image").status_code, 200)
         self.assertEqual(self.client.post('/api/media', files={'file': ('bad.mp4', b'bad video')}).status_code, 400)
         self.assertEqual(len(list((settings.data_dir / 'media').iterdir())), 1)
-        self.assertEqual(self.client.post('/api/projects', json={'name': 'Bad', 'kind': 'edit', 'media_id': media['id']}).status_code, 400)
+        image_edit = self.client.post('/api/projects', json={'name': 'Image edit', 'kind': 'edit', 'media_id': media['id']})
+        self.assertEqual(image_edit.status_code, 200)
+        self.assertEqual(self.client.get(f"/api/projects/{image_edit.json()['id']}/timeline").status_code, 200)
 
     def test_video_import_trim_export_and_download(self):
         media = self.client.post('/api/media', files={'file': ('clip.mp4', self.video.read_bytes(), 'video/mp4')}).json()

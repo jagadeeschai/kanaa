@@ -43,6 +43,7 @@ class ScenePlan(BaseModel):
     style: Literal['cinematic', 'watercolor', 'illustration', 'dreamlike', 'photographic'] = 'cinematic'
     brief: str = Field(default='', max_length=1500)
     canvas: Literal['portrait', 'square', 'landscape'] = 'portrait'
+    purpose: Literal['scenes', 'cover'] = 'scenes'
 
 
 class SceneEdit(BaseModel):
@@ -59,8 +60,8 @@ class GenerateScenes(BaseModel):
 def require_project(identifier):
     with get_connection() as conn:
         project = conn.execute('SELECT kind FROM projects WHERE id=?', (identifier,)).fetchone()
-    if project is None or project['kind'] != 'lyric':
-        raise ValueError('Choose an existing lyric video project.')
+    if project is None or project['kind'] not in {'lyric', 'edit'}:
+        raise ValueError('Choose an existing video project.')
 
 
 def require_english_visual_prompt(value, label='visual brief'):
@@ -107,7 +108,11 @@ def _plan_scenes(identifier, plan):
             first, end = index * len(lines) // count, (index + 1) * len(lines) // count
             excerpt = '\n'.join(lines[first:end])
             beat = STORY_BEATS[min(len(STORY_BEATS) - 1, index * len(STORY_BEATS) // count)]
-            prompt = (f'Create scene {index + 1} of {count} for one visually continuous music video. '
+            prompt = ((f'Create one polished cover artwork for a video. English visual brief: {brief}. '
+                       'Use one clear focal subject, a memorable silhouette, and a calm title-safe area. '
+                       f'Visual style: {STYLES[plan.style]} No words, captions, logos, or watermarks. '
+                       f'Use a visually complete {plan.canvas} composition with generous crop-safe margins.') if plan.purpose == 'cover' else
+                      (f'Create scene {index + 1} of {count} for one visually continuous music video. '
                       f'English visual brief and continuity bible: {brief}. '
                       'Continuity is mandatory: keep the same recurring people with the same facial features, age, hair, skin tone, and wardrobe; '
                       'keep the same location design, time of day, weather, color palette, lighting direction, lens language, and image treatment in every scene. '
@@ -115,7 +120,7 @@ def _plan_scenes(identifier, plan):
                       f'This scene is {beat}. '
                       f'Visual style shared across the entire video: {STYLES[plan.style]} '
                       'Keep the lower fifth calm and uncluttered for lyric overlays. No words, captions, logos, or watermarks. '
-                      f'Use a visually complete {plan.canvas} composition with centered focal subjects and generous crop-safe margins. Follow the continuity bible exactly.')
+                      f'Use a visually complete {plan.canvas} composition with centered focal subjects and generous crop-safe margins. Follow the continuity bible exactly.'))
             conn.execute('INSERT INTO image_scenes(batch_id,position,lyric,prompt,start,end) VALUES(?,?,?,?,?,?)',
                          (batch_id, index, excerpt, prompt, plan.cues[first].start if timed else None, plan.cues[end - 1].end if timed else None))
         conn.commit()

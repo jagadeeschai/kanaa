@@ -61,6 +61,8 @@
 .ed code{background:var(--well);padding:1px 4px;border-radius:4px;color:var(--selected-text);user-select:text}
 .ed-chips{display:flex;flex-wrap:wrap;gap:4px}.ed-chips button{padding:4px 9px;border:0;border-radius:999px;background:none;box-shadow:inset 0 0 0 1px var(--hairline);font-size:11px;line-height:14px;color:var(--text-2)}.ed-chips button:hover{background:var(--wash);color:var(--text)}.ed-chips button.on{background:var(--selected-bg);color:var(--selected-text);box-shadow:inset 0 0 0 1px var(--accent)}
 .ed-text{width:100%;box-sizing:border-box;padding:8px;border:0;border-radius:7px;background:var(--well);box-shadow:var(--inset);color:var(--text);font:inherit;font-size:14px;resize:vertical;user-select:text}
+.ed-label{display:grid;gap:5px;color:var(--muted);font-size:12px}
+.ed-label select,.ed-label textarea{box-sizing:border-box;width:100%;padding:8px;border:0;border-radius:7px;background:var(--well);box-shadow:var(--inset);color:var(--text);font:inherit;user-select:text}
 .ed-color{display:flex;justify-content:space-between;align-items:center;margin:10px 0}.ed-color input{width:40px;height:26px;padding:0;border:1px solid var(--hairline);border-radius:6px;background:none}
 .ed-motion{display:flex;justify-content:space-between;align-items:center;min-height:28px;font-size:12px}.ed-motion span{display:flex;gap:8px}.ed-key-tools{display:flex;gap:1px;margin-left:auto}
 .ed-path{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.ed-path polyline{fill:none;stroke:#ffb020;stroke-width:2;stroke-dasharray:5 4}.ed-path circle{fill:#ffb020;stroke:#14121d;stroke-width:2;pointer-events:all;cursor:grab}

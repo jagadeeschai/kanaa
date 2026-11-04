@@ -234,8 +234,8 @@ def create_project(data: ProjectCreate):
         media = index_media(path, 'Blank canvas.png')
         data.media_id = media['id']
     media = get_media(data.media_id)
-    if data.kind == 'edit' and media['media_type'] != 'video':
-        raise HTTPException(400, 'Choose a video for a video project.')
+    if data.kind == 'edit' and media['media_type'] not in {'video', 'image'}:
+        raise HTTPException(400, 'Choose a video or image for a video project.')
     if not data.name.strip():
         raise HTTPException(400, 'Give your project a name.')
     recipe = None

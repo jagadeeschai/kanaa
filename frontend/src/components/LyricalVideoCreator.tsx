@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Music, Sparkles, X } from 'lucide-react';
-import { cancelRenderJob, getSongBeats, getJobStatus, getPhoto, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, startLyricSync, startVideoExport, uploadVideoAudio, videoAudioUrl } from '../api/client';
+import { cancelRenderJob, createProject, getSongBeats, getJobStatus, getPhoto, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, startLyricSync, startVideoExport, uploadVideoAudio, videoAudioUrl, type Project } from '../api/client';
 import type { JobStatusResponse, Photo } from '../types/photo';
 import { buildLyricTimeline, cuesToLrc, cuesToSrt, hasLyricTimings, plainLyricLines, reconcileLyricCues, validateLyricCues, type LyricCue } from '../utils/lyrics';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -11,6 +11,7 @@ import LyricImageGenerator from './LyricImageGenerator';
 import { computeSlideStarts, crossfadeSeconds, slideIndexAt, slideTransform, type ImageAnimation, type SlideTiming } from '../utils/slides';
 import { nextTabIndex } from '../editor/tab-navigation';
 import { mediaCanvas, type LyricCanvas } from '../editor/lyric-canvas';
+import { lyricEditorTimeline } from '../editor/lyric-handoff';
 
 // Same bundled fonts as the export, loaded in index.css, so the preview matches it.
 const LYRIC_FONT_STACK = "'Noto Sans', 'Noto Sans Tamil', 'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Gurmukhi', 'Noto Sans Gujarati', 'Noto Sans Telugu', 'Noto Sans Kannada', 'Noto Sans Malayalam', sans-serif";
@@ -76,9 +77,9 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function LyricalVideoCreator({ photo, projectId, projectName, onClose, onOpenOutput }: { photo: Photo; projectId: number; projectName: string; onClose: () => void; onOpenOutput?: (id: number) => void }) {
+export default function LyricalVideoCreator({ photo, projectId, projectName, onClose, onOpenOutput, onContinueInEditor }: { photo: Photo; projectId: number; projectName: string; onClose: () => void; onOpenOutput?: (id: number) => void; onContinueInEditor: (project: Project) => void }) {
   const [backgrounds, setBackgrounds] = useState<Photo[]>([photo]);
-  const [backgroundType, setBackgroundType] = useState(photo.media_type === 'video' ? 'video' : 'image');
+  const [backgroundType, setBackgroundType] = useState<'image' | 'video'>(photo.media_type === 'video' ? 'video' : 'image');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPhotos, setPickerPhotos] = useState<Photo[]>([]);
   const [pickerPage, setPickerPage] = useState(0);
@@ -109,6 +110,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const [playing, setPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [handingOff, setHandingOff] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const activeBackground = backgrounds[Math.max(0, slideIndex)];
   const fadeSeconds = crossfade ? crossfadeSeconds(slideStarts, duration) : 0;
   const fadeProgress = fadeSeconds > 0 && slideIndex > 0 ? Math.min(1, (position - slideStarts[slideIndex]) / fadeSeconds) : 1;
-  const busy = starting || uploading || Boolean(job && !job.status?.done);
+  const busy = starting || uploading || handingOff || Boolean(job && !job.status?.done);
   const valid = validateLyricCues(cues, duration);
   const ratio = resolvedCanvas === 'portrait' ? 9 / 16 : resolvedCanvas === 'square' ? 1 : 16 / 9;
   const previewWidth = Math.min(stageSize.width - 24, (stageSize.height - 24) * ratio);
@@ -228,6 +230,17 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
       setPosition(0); setCues([]); setJob(null); setNotice(fromFile ? 'Found lyrics inside the song file. Check them, then choose Auto-sync lyrics.' : 'Paste the song lyrics and choose Auto-sync lyrics.');
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Song upload failed.'); }
     finally { lockRef.current = false; setUploading(false); }
+  };
+  const continueInEditor = async () => {
+    if (busy || !song || !firstBackground || !valid || !cues.length) return;
+    setHandingOff(true); setError(null); setNotice(null); pause();
+    try {
+      const timeline = lyricEditorTimeline({ name: projectName, backgrounds, backgroundType, duration, slideStarts, song, cues, canvas: resolvedCanvas, color, fontSize, placement, lyricStyle, lyricFont, lyricAlign, lyricBandColor, lyricAnimation, crossfade, imageAnimation });
+      const next = await createProject(`${projectName} – final edit`, 'edit', backgrounds.map((item) => item.id));
+      await saveVideoProject(next.id, 'edit', timeline);
+      onContinueInEditor(next);
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not open this lyric video in the Video Editor.'); }
+    finally { setHandingOff(false); }
   };
   const start = async (kind: 'sync' | 'export') => {
     if (lockRef.current || busy) return;
@@ -353,11 +366,11 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               {!cues.length && <div className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">Sync the lyrics or build a manual timeline in Song & words to edit line timing.</div>}
               {cues.length > 0 && <div><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium text-slate-200">3. Review line timings</h3><div className="flex gap-2 text-xs"><button onClick={() => downloadText(`${songBaseName}.lrc`, cuesToLrc(cues))} className="text-brand-300 hover:underline">Save LRC</button><button onClick={() => downloadText(`${songBaseName}.srt`, cuesToSrt(cues))} className="text-brand-300 hover:underline">Save SRT</button></div></div><div className="space-y-3">{cues.map((cue, index) => <div key={index} className="rounded-xl border border-white/10 p-2"><div className="mb-2 flex items-center justify-between text-xs text-slate-400"><button onClick={() => { seek(cue.start); if (window.innerWidth < 1024) stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }} className="text-brand-300">Line {index + 1} · Preview</button>{cue.review && <span>Check timing</span>}<button aria-label={`Remove lyric line ${index + 1}`} onClick={() => setCues((previous) => previous.filter((_, current) => current !== index))}>Remove</button></div><input aria-label={`Lyric line ${index + 1}`} value={cue.text} maxLength={500} onChange={(event) => editCue(index, { text: event.target.value })} className={inputClass} /><div className="mt-2 grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Start<input aria-label={`Line ${index + 1} start`} type="number" min={0} max={duration} step={0.05} value={cue.start} onChange={(event) => editCue(index, { start: Number(event.target.value) })} className={`${inputClass} mt-1`} /></label><label className="text-xs text-slate-400">End<input aria-label={`Line ${index + 1} end`} type="number" min={cue.start} max={duration} step={0.05} value={cue.end} onChange={(event) => editCue(index, { end: Number(event.target.value) })} className={`${inputClass} mt-1`} /></label></div></div>)}</div></div>}
               </>}
-              {stage === 'export' && <section className="space-y-4" aria-label="Export settings">
-                <label className="block text-xs text-slate-400">Quality<select aria-label="Export quality" value={quality} onChange={(event) => setQuality(event.target.value as typeof quality)} className={`${inputClass} mt-1`}><option value="1080p">1080p</option><option value="4k">4K (much slower)</option><option value="720p">720p (faster)</option></select></label>
+              {stage === 'export' && <section className="space-y-4" aria-label="Finish in Video Editor">
+                <h3 className="text-sm font-medium text-slate-200">Finish in Video Editor</h3><p className="text-xs text-slate-400">Kanaa will create an editable final project with a 3-second opening card, every timed lyric line, and a 3-second closing credits card. Edit those cards and export from the Video Editor.</p>
                 <div className="space-y-2 rounded-xl border border-white/10 p-3 text-xs text-slate-300"><p>{firstBackground ? '✓ Background ready' : '○ Choose a background'}</p><p>{isVideo || song ? '✓ Audio source ready' : '○ Add a song'}</p><p>{valid && cues.length ? `✓ ${cues.length} timed lyric lines` : '○ Sync and review lyric timing'}</p><p>{resolvedCanvas === 'portrait' ? '9:16 portrait' : resolvedCanvas === 'square' ? '1:1 square' : '16:9 landscape'}{canvas === 'auto' ? ' · matched to media' : ''} · {quality} · MP4</p></div>
-                {(!firstBackground || (!isVideo && !song) || !valid || !cues.length) && <p className="text-xs text-amber-200">Complete the missing items above before exporting.</p>}
-                <button onClick={() => { void start('export'); }} disabled={busy || !valid || !cues.length || !firstBackground || (!isVideo && !song)} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40"><Music className="h-4 w-4" />Export lyrical video</button>
+                {(!firstBackground || !song || !valid || !cues.length) && <p className="text-xs text-amber-200">Complete the missing items above before continuing.</p>}
+                <button onClick={() => { void continueInEditor(); }} disabled={busy || !valid || !cues.length || !firstBackground || !song} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40"><Music className="h-4 w-4" />{handingOff ? 'Preparing final edit…' : 'Continue in Video Editor'}</button>
               </section>}
             </fieldset>
           </aside>

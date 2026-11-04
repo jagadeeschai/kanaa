@@ -103,6 +103,15 @@ class LyricImagesTests(unittest.TestCase):
             self.assertEqual(response.json()['key_source'], 'environment')
             self.assertNotIn('environment-only-test-secret', (settings.data_dir / 'ai-settings.json').read_text())
 
+    def test_video_project_can_plan_cover_art(self):
+        media = self.client.get(f'/api/projects/{self.project}').json()['media_id']
+        project = self.client.post('/api/projects', json={'name': 'Cover art', 'kind': 'edit', 'media_id': media}).json()
+        response = self.client.post(f"/api/projects/{project['id']}/image-scenes/plan", json={'lyrics': 'Cover art', 'count': 1, 'brief': 'A singer on a moonlit rooftop', 'style': 'cinematic', 'canvas': 'landscape', 'purpose': 'cover'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['scenes']), 1)
+        self.assertNotIn('Cover art', response.json()['scenes'][0]['prompt'])
+        self.assertIn('cover artwork', response.json()['scenes'][0]['prompt'])
+
     def test_partial_failure_retry_and_real_saved_image(self):
         self.configure(); batch = self.plan()
         def handler(request):
