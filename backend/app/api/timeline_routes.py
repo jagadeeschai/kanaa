@@ -79,8 +79,9 @@ def prepared_copy(identifier: int, steady: bool, backwards: bool, portrait=None,
     if backwards:
         facts = ensure_reversed(facts, should_cancel)
     if portrait:
-        choice, amount = portrait
-        facts = instance_service.ensure_portrait(facts, instance_service.from_choice(choice), amount, should_cancel)
+        choice, amount, pull = portrait
+        pick = instance_service.from_choice(choice)
+        facts = instance_service.ensure_portrait(facts, pick, amount, should_cancel, pull=instance_service.from_pull(pull, pick.kind if pick else 'people'))
     return facts
 
 
@@ -108,10 +109,10 @@ def request_prepared(identifier: int, steady: bool = False, backwards: bool = Fa
     facts, status = steady_and_reversed(identifier, steady, backwards)
     if facts is None:
         return status
-    mode, pick, amount = wanted
+    mode, pick, amount, pull = wanted
     try:
         if mode == 'blur':
-            return instance_service.request_portrait(facts, pick, amount, row['filename'])
+            return instance_service.request_portrait(facts, pick, amount, row['filename'], pull)
         if pick:
             return instance_service.request(facts, pick, row['filename'])
         return cutout_service.request_cutout(facts, cutout, row['filename']) if cutout else {'status': 'ready'}
@@ -174,12 +175,12 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
     wanted = instance_service.parse_cutout(cutout)
     if wanted is None:
         raise HTTPException(400, 'Unknown cut-out.')
-    mode, pick, amount = wanted
+    mode, pick, amount, pull = wanted
     if mode:
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
         if mode == 'blur':
-            target = instance_service.portrait_paths(base, pick, amount)[1]
+            target = instance_service.portrait_paths(base, pick, amount, pull)[1]
         else:
             target = instance_service.pick_paths(base, pick)[1] if pick else cutout_service.files(base)[cutout_service.SEE_THROUGH]
     if target is None or not target.is_file():

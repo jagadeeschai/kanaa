@@ -4,7 +4,8 @@ A Swift helper finds them in every frame with Apple's Vision framework. Vision n
 each one is followed from frame to frame by how much its outline overlaps where it was, and given a lasting number.
 Each one found gets its own steadied mask, made once and kept with the clip's other prepared files, plus a picture of
 the clip with everyone numbered, for choosing. A choice of several becomes one mask, and a see-through preview copy.
-The same choice can instead stay sharp while everything else is blurred, at one of three strengths.
+The same choice can instead stay sharp while everything else is blurred, at one of three strengths, and the focus
+can move from them to others part way through, like a film camera's focus pull.
 """
 from __future__ import annotations
 
@@ -74,26 +75,66 @@ def parse(token: str) -> Optional[Pick]:
     return Pick(kind, ids) if ids and all(0 <= number < MAX_TRACKS for number in ids) else None
 
 
+@dataclass(frozen=True)
+class Pull:
+    """The focus moves to `to` (None is everyone), starting `at` seconds into the source and taking `length` seconds.
+    Both are kept in milliseconds, so the same pull always names the same file."""
+    to: Optional[Pick]
+    at_ms: int
+    length_ms: int
+
+    @property
+    def token(self) -> str:
+        return f"{'all' if is_everyone(self.to) else self.to.token}@{self.at_ms}+{self.length_ms}"
+
+
+MIN_PULL_MS, MAX_PULL_MS = 200, 4000
+
+
+def parse_pull(token: str) -> Optional[Pull]:
+    """'people-1@2500+800' to a pull. None if it isn't one."""
+    who, _, rest = token.partition('@')
+    at, _, length = rest.partition('+')
+    if not (at.isdigit() and length.isdigit()) or not MIN_PULL_MS <= int(length) <= MAX_PULL_MS:
+        return None
+    to = None if who == 'all' else parse(who)
+    if who != 'all' and to is None:
+        return None
+    return Pull(to, int(at), int(length))
+
+
+def from_pull(choice, kind: str) -> Optional[Pull]:
+    """A timeline clip's focus_pull to a pull, of the same kind as who it starts on."""
+    if choice is None:
+        return None
+    to = Pick(kind, tuple(choice.to)) if choice.to else (None if kind == 'people' else Pick(kind, None))
+    return Pull(to, round(choice.at * 1000), round(choice.length * 1000))
+
+
 def is_everyone(pick: Optional[Pick]) -> bool:
     """Every person: served by the sharper all-people mask."""
     return pick is None or (pick.kind == 'people' and pick.ids is None)
 
 
-def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str]]:
-    """A prepared copy's cutout token to (remove or blur, who, blur amount); '' is (''...). None if it isn't one.
-    'remove', 'blur', 'people-0-2' (remove, keeping those), 'blur.people-0-2.strong', 'blur.all.subtle'."""
+def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str, Optional[Pull]]]:
+    """A prepared copy's cutout token to (remove or blur, who, blur amount, focus pull). None if it isn't one.
+    'remove', 'blur', 'people-0-2' (remove, keeping those), 'blur.people-0-2.strong', 'blur.all.subtle',
+    'blur.people-0.strong.people-1@2500+800' (the focus moves to person 1 at 2.5 s, over 0.8 s)."""
     if token in ('', 'remove', 'blur'):
-        return token, None, 'medium'
+        return token, None, 'medium', None
     if token.startswith('blur.'):
-        _, who, amount = (token.split('.') + ['', ''])[:3]
-        if amount not in cutout_service.BLUR_AMOUNTS or token.count('.') != 2:
+        parts = token.split('.')
+        if len(parts) not in (3, 4) or parts[2] not in cutout_service.BLUR_AMOUNTS:
             return None
-        if who == 'all':
-            return 'blur', None, amount
-        pick = parse(who)
-        return ('blur', pick, amount) if pick else None
+        pull = parse_pull(parts[3]) if len(parts) == 4 else None
+        if len(parts) == 4 and pull is None:
+            return None
+        pick = None if parts[1] == 'all' else parse(parts[1])
+        if parts[1] != 'all' and pick is None:
+            return None
+        return 'blur', pick, parts[2], pull
     pick = parse(token)
-    return ('remove', pick, 'medium') if pick else None
+    return ('remove', pick, 'medium', None) if pick else None
 
 
 def summary_path(source: Path, kind: str) -> Path:
@@ -108,14 +149,15 @@ def picture_path(source: Path, kind: str) -> Path:
     return folder_for(content_key(source)) / f'{kind}-{VERSION}-picture.jpg'
 
 
-def portrait_paths(source: Path, pick: Optional[Pick], amount: str) -> tuple[Path, Path]:
+def portrait_paths(source: Path, pick: Optional[Pick], amount: str, pull: Optional[Pull] = None) -> tuple[Path, Path]:
     """The copy with only the chosen ones sharp, and its proxy. Everyone at the usual strength is the original portrait."""
-    if is_everyone(pick) and amount == 'medium':
+    if is_everyone(pick) and amount == 'medium' and pull is None:
         paths = cutout_service.files(source)
         return paths[cutout_service.PORTRAIT], paths[cutout_service.PORTRAIT_PROXY]
     folder = folder_for(content_key(source))
     who = 'people-all' if is_everyone(pick) else pick.token
-    return folder / f'portrait-{who}-{amount}-{VERSION}.mp4', folder / f'portrait-{who}-{amount}-{VERSION}-proxy.mp4'
+    then = f'-to-{pull.token}' if pull else ''
+    return folder / f'portrait-{who}{then}-{amount}-{VERSION}.mp4', folder / f'portrait-{who}{then}-{amount}-{VERSION}-proxy.mp4'
 
 
 def pick_paths(source: Path, pick: Pick) -> tuple[Path, Path]:
@@ -352,28 +394,54 @@ def prepare(facts: MediaFacts, pick: Pick, on_progress: Callable[[int], None], s
             cutout_service.make_see_through(facts, should_cancel, mask=mask, target=cut)
 
 
-def prepare_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None) -> None:
-    """The chosen ones sharp, everything else blurred: from the all-people mask for everyone, else from their joined mask."""
-    target, proxy = portrait_paths(facts.path, pick, amount)
-    if target.is_file() and proxy.is_file():
-        return
-    if is_everyone(pick):
+def sharp_mask(facts: MediaFacts, who: Optional[Pick], on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None) -> Path:
+    """The mask of who stays sharp: the all-people mask for everyone, else the chosen ones' joined mask."""
+    if is_everyone(who):
         with lock_for(content_key(facts.path)):
             if not cutout_service.files(facts.path)[cutout_service.MASK].is_file():
                 cutout_service.make_mask(facts, on_progress, should_cancel, finder)
-        mask = cutout_service.files(facts.path)[cutout_service.MASK]
-    else:
-        prepare(facts, pick, on_progress, should_cancel, finder, see_through=False)
-        mask = pick_paths(facts.path, pick)[0]
+        return cutout_service.files(facts.path)[cutout_service.MASK]
+    prepare(facts, who, on_progress, should_cancel, finder, see_through=False)
+    return pick_paths(facts.path, who)[0]
+
+
+def make_pull(facts: MediaFacts, first: Path, then: Path, pull: Pull, target: Path, should_cancel: Callable[[], bool]) -> None:
+    """One mask that is `first` until the pull starts, then eases into `then`: the focus moving from one to the other."""
+    at, length = pull.at_ms / 1000, pull.length_ms / 1000
+    share = f'clip((T-{at:.3f})/{length:.3f},0,1)'
+    graph = f"[0:v]format=gray[a];[1:v]format=gray[b];[b][a]scale2ref[later][earlier];[earlier][later]blend=all_expr='st(0,{share});A+(B-A)*ld(0)*ld(0)*(3-2*ld(0))'"
+    temporary = target.with_suffix('.tmp.mp4')
+    result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(first), '-i', str(then), '-filter_complex', graph, '-fps_mode', 'passthrough',
+                              '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '12', '-pix_fmt', 'yuv420p', str(temporary)], should_cancel)
+    if result.returncode:
+        temporary.unlink(missing_ok=True)
+        logger.error('Focus pull failed for %s: %s', facts.path, result.stderr[-800:])
+        raise RuntimeError('Could not prepare the focus pull.')
+    temporary.replace(target)
+
+
+def prepare_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None, pull: Optional[Pull] = None) -> None:
+    """The chosen ones sharp, everything else blurred; with a pull, the sharp ones change part way through."""
+    target, proxy = portrait_paths(facts.path, pick, amount, pull)
+    if target.is_file() and proxy.is_file():
+        return
+    mask = sharp_mask(facts, pick, on_progress, should_cancel, finder)
+    if pull:
+        later = sharp_mask(facts, pull.to, on_progress, should_cancel, finder)
+        moving = target.with_name(target.stem + '-mask.mp4')
+        with lock_for(f'{content_key(facts.path)}:{moving.name}'):
+            if not moving.is_file():
+                make_pull(facts, mask, later, pull, moving, should_cancel)
+        mask = moving
     with lock_for(f'{content_key(facts.path)}:{target.name}'):
         if not (target.is_file() and proxy.is_file()):
             cutout_service.make_portrait(facts, should_cancel, mask=mask, target=target, proxy=proxy, amount=amount)
 
 
-def ensure_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, should_cancel: Callable[[], bool] = lambda: False) -> MediaFacts:
+def ensure_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, should_cancel: Callable[[], bool] = lambda: False, pull: Optional[Pull] = None) -> MediaFacts:
     """For export: the blurred copy, used like a steadied one."""
-    prepare_portrait(facts, pick, amount, lambda _: None, should_cancel)
-    portrait = probe_video(portrait_paths(facts.path, pick, amount)[0])
+    prepare_portrait(facts, pick, amount, lambda _: None, should_cancel, pull=pull)
+    portrait = probe_video(portrait_paths(facts.path, pick, amount, pull)[0])
     if portrait is None:
         raise RuntimeError('The blurred copy of this clip could not be read.')
     return portrait
@@ -395,10 +463,10 @@ def request(facts: MediaFacts, pick: Pick, label: str, joined: bool = True) -> d
                          lambda progress, should_cancel: prepare(facts, pick, progress, should_cancel, joined=joined))
 
 
-def request_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, label: str) -> dict:
-    target, proxy = portrait_paths(facts.path, pick, amount)
+def request_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, label: str, pull: Optional[Pull] = None) -> dict:
+    target, proxy = portrait_paths(facts.path, pick, amount, pull)
     return in_background(facts, target.name, target.is_file() and proxy.is_file(), f'Blurring the background of {label}',
-                         lambda progress, should_cancel: prepare_portrait(facts, pick, amount, progress, should_cancel))
+                         lambda progress, should_cancel: prepare_portrait(facts, pick, amount, progress, should_cancel, pull=pull))
 
 
 def in_background(facts: MediaFacts, name: str, ready: bool, title: str, work: Callable[[Callable[[int], None], Callable[[], bool]], None]) -> dict:

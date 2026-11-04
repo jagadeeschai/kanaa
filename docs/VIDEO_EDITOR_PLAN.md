@@ -455,6 +455,11 @@ A Themes tab, like iMovie's: Wedding, Festival, Travel, Birthday, Memories, Vlog
 
 Limits: no theme music yet (none is bundled); photo movement from an earlier theme stays when changing theme; restyled titles keep their new look after Remove theme (undo brings back the old one).
 
+### Focus pull (done)
+With Background → Blur and people or objects found, "Pull focus at the playhead" makes the focus move part way through the clip, like a film camera: "Then the focus moves to" (Everyone, or any of the numbers), the moment (Move to playhead), and the speed (Quick 0.4 s, Smooth 1 s, Slow 2 s). `Clip.focus_pull` holds who, `at` in source seconds (of the reversed copy's own time when reversed: `focusAt` and `focusLocal` in `model.ts`) and the length. The server blends the first mask into the second with an eased step (`blend` with `T`), and blurs with that one moving mask, so partway through both are a little soft, as with a real lens. Preview and export share the copy; its token adds `.{to}@{at ms}+{length ms}`, URL-encoded since `+` would otherwise read as a space.
+
+Limits: one pull per clip (split the clip for more); a ramped clip's pull time is shown approximately.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

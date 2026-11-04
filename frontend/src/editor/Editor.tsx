@@ -6,7 +6,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -60,6 +60,7 @@ const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
   return steady || backwards || cutout ? [steady, backwards, cutout] : null;
 };
 const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
+const PULL_SPEEDS: { id: string; label: string }[] = [{ id: '0.4', label: 'Quick' }, { id: '1', label: 'Smooth' }, { id: '2', label: 'Slow' }];
 const BLUR_AMOUNTS: { id: BlurAmount; label: string }[] = [{ id: 'subtle', label: 'Subtle' }, { id: 'medium', label: 'Medium' }, { id: 'strong', label: 'Strong' }];
 const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
 type StemChoice = 'music' | 'vocals' | 'both';
@@ -1101,7 +1102,7 @@ function Timing({ fields }: { fields: TimeFieldProps[] }) {
 }
 
 /** Who stays: everyone, or the people or objects chosen from a numbered picture of the clip. */
-function WhoStays({ clip, onChange }: { clip: Clip; onChange: (pick: CutoutPick | null) => void }) {
+function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onChange: (changes: Partial<Clip>) => void; local: number; sourceDuration?: number | null }) {
   const kind = clip.cutout_pick?.kind ?? 'people';
   const ids = clip.cutout_pick?.ids ?? null;
   const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null;
@@ -1127,21 +1128,45 @@ function WhoStays({ clip, onChange }: { clip: Clip; onChange: (pick: CutoutPick 
   const toggle = (id: number) => {
     const chosen = ids ?? [];
     const next = chosen.includes(id) ? chosen.filter((other) => other !== id) : [...chosen, id];
-    onChange({ kind, ids: next.length ? next.sort((a, b) => a - b) : null });
+    pick({ kind, ids: next.length ? next.sort((a, b) => a - b) : null });
+  };
+  const pick = (cutout_pick: CutoutPick | null) => onChange({ cutout_pick });
+  const pull = blur ? clip.focus_pull ?? null : null;
+  const pullTo = (id: number | null) => {
+    if (!pull) return;
+    if (id === null) { onChange({ focus_pull: { ...pull, to: null } }); return; }
+    const chosen = pull.to ?? [];
+    const next = chosen.includes(id) ? chosen.filter((other) => other !== id) : [...chosen, id];
+    onChange({ focus_pull: { ...pull, to: next.length ? next.sort((a, b) => a - b) : null } });
+  };
+  const startPull = () => {
+    const other = tracks?.find((track) => !ids?.includes(track.id));
+    onChange({ focus_pull: { to: ids ? (other ? [other.id] : null) : tracks?.[1] ? [tracks[1].id] : null, at: focusAt(clip, local, sourceDuration), length: 1 } });
   };
   return <div className="ed-who">
     <span className="ed-who-title">{blur ? 'Who stays in focus' : 'Who stays in front'}</span>
-    <Chips label="Find" options={[{ id: 'people' as const, label: 'People' }, { id: 'objects' as const, label: 'Objects' }]} value={kind} onPick={(next) => onChange(next === 'people' ? null : { kind: next, ids: null })}/>
+    <Chips label="Find" options={[{ id: 'people' as const, label: 'People' }, { id: 'objects' as const, label: 'Objects' }]} value={kind} onPick={(next) => onChange({ cutout_pick: next === 'people' ? null : { kind: next, ids: null }, focus_pull: null })}/>
     {found.key === key && found.problem ? <p className="ed-tip">{found.problem}</p>
       : !tracks ? <p className="ed-tip">Finding each {kind === 'people' ? 'person' : 'object'}… {found.progress ? `${found.progress}%` : ''}</p>
       : !tracks.length ? <p className="ed-tip">{kind === 'people' ? 'No people were found in this clip.' : 'No objects stood out in this clip. Try drawing around it instead.'}</p>
       : <>
         <img className="ed-who-picture" src={`${instancesPictureUrl(clip.media_id, kind, steady, backwards)}&v=${tracks.map((track) => track.id).join('-')}`} alt={`The clip with each ${kind === 'people' ? 'person' : 'object'} numbered`}/>
         <div className="ed-chips" role="group" aria-label={blur ? 'Who stays in focus' : 'Who stays in front'}>
-          <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => onChange(kind === 'people' ? null : { kind, ids: null })}>{everyone}</button>
+          <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => pick(kind === 'people' ? null : { kind, ids: null })}>{everyone}</button>
           {tracks.map((track) => <button key={track.id} className={ids?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(ids?.includes(track.id))} onClick={() => toggle(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
         </div>
         {tracks.length > 1 && <p className="ed-tip">{blur ? 'The ones you choose stay sharp; the rest blur with the background.' : 'The ones you choose stay in front of the title; the rest go behind it.'}</p>}
+        {blur && tracks.length > 0 && (!pull ? <button className="ed-button wide" onClick={startPull} title="Part way through, the focus moves to someone else, like a film camera"><Crosshair size={14}/>Pull focus at the playhead</button>
+          : <div className="ed-pull">
+            <span className="ed-who-title">Then the focus moves to</span>
+            <div className="ed-chips" role="group" aria-label="Focus moves to">
+              <button className={pull.to ? '' : 'on'} aria-pressed={!pull.to} onClick={() => pullTo(null)}>{everyone}</button>
+              {tracks.map((track) => <button key={track.id} className={pull.to?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(pull.to?.includes(track.id))} onClick={() => pullTo(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
+            </div>
+            <div className="ed-add-row"><span>At {timecode(Math.max(0, focusLocal(clip, pull.at, sourceDuration)))}</span><button className="ed-button" onClick={() => onChange({ focus_pull: { ...pull, at: focusAt(clip, local, sourceDuration) } })}>Move to playhead</button></div>
+            <Chips label="Focus speed" options={PULL_SPEEDS} value={PULL_SPEEDS.find((speed) => Number(speed.id) === pull.length)?.id ?? null} onPick={(id) => onChange({ focus_pull: { ...pull, length: Number(id) } })}/>
+            <button className="ed-button wide" onClick={() => onChange({ focus_pull: null })}><X size={14}/>Remove focus pull</button>
+          </div>)}
       </>}
   </div>;
 }
@@ -1280,9 +1305,9 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
     </>}
     {source?.kind === 'video' && <>
       <h3 className="ed-sub">Background</h3>
-      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null } : { cutout: id })}/>
+      <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
       {clip.cutout === 'blur' && <div className="ed-strength"><span className="ed-who-title">Blur strength</span><Chips label="Blur strength" options={BLUR_AMOUNTS} value={clip.blur_amount ?? 'medium'} onPick={(blur_amount) => onChange({ blur_amount })}/></div>}
-      {clip.cutout && <WhoStays clip={clip} onChange={(cutout_pick) => onChange({ cutout_pick })}/>}
+      {clip.cutout && <WhoStays clip={clip} onChange={onChange} local={local} sourceDuration={source?.duration}/>}
       {clip.cutout === 'remove' && <div className="ed-strength"><span className="ed-who-title">New background</span>
         {backgrounds.length ? <div className="ed-media-grid ed-backgrounds">{backgrounds.map((item) => <button key={item.id} className="ed-tile-add" onClick={() => onBackground(item)} title={`Put ${item.filename} behind, filling the frame`}><img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b></span></button>)}</div>
           : <p className="ed-tip">Import a picture or video in Media, then choose it here.</p>}

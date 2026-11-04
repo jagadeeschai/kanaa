@@ -3,13 +3,15 @@ import type { Chroma } from './chroma';
 import type { Transform } from './evaluate';
 import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
 import { valueAt } from './evaluate.ts';
-import { rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
+import { localAt, rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 
 export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
 /** Which of the people, or objects, a cut-out keeps. ids are from the clip's list of them; null keeps them all. */
 export type BlurAmount = 'subtle' | 'medium' | 'strong';
+/** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
+export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; clean_voice?: boolean; shape_mask?: ShapeMask | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -313,6 +315,12 @@ export function cutoutToken(clip: Clip): string {
   const who = everyone ? 'all' : `${pick.kind}-${pick.ids?.length ? [...pick.ids].sort((a, b) => a - b).join('-') : 'all'}`;
   if (clip.cutout === 'blur') {
     const amount = clip.blur_amount ?? 'medium';
+    const pull = clip.focus_pull;
+    if (pull) {
+      const kind = pick?.kind ?? 'people';
+      const to = !pull.to?.length ? (kind === 'people' ? 'all' : `${kind}-all`) : `${kind}-${[...pull.to].sort((a, b) => a - b).join('-')}`;
+      return `blur.${who}.${amount}.${to}@${Math.round(pull.at * 1000)}+${Math.round(pull.length * 1000)}`;
+    }
     return everyone && amount === 'medium' ? 'blur' : `blur.${who}.${amount}`;
   }
   return everyone ? clip.cutout ?? '' : who;
@@ -330,6 +338,17 @@ function putInFront(timeline: Timeline, textId: string, changes: Partial<Clip>, 
   const copy: Clip = { ...clip, id: ids[0], ...changes, muted: true, clean_voice: false, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
   const after = timeline.layers.indexOf(found.layer) + 1;
   return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name, items: [copy] }, ...timeline.layers.slice(after)] };
+}
+
+/** The focus pull's time for the moment `local` seconds into the clip: source seconds, or the reversed copy's own. */
+export function focusAt(clip: Clip, local: number, sourceDuration?: number | null): number {
+  const t = sourceAt(clip, local);
+  return round(Math.max(0, clip.reverse && clip.freeze == null && sourceDuration ? sourceDuration - t : t));
+}
+
+/** Where in the clip a focus pull happens, in the clip's own seconds. */
+export function focusLocal(clip: Clip, at: number, sourceDuration?: number | null): number {
+  return localAt(clip, clip.reverse && clip.freeze == null && sourceDuration ? sourceDuration - at : at);
 }
 
 /**

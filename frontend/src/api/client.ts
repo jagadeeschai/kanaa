@@ -73,8 +73,8 @@ export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { me
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });
 /** A steadied and/or reversed copy of a video, made once on the server. */
-export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${cutout}`, { method: 'POST' });
-export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${cutout}`;
+export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`, { method: 'POST' });
+export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`;
 /** Each person, or object, found in a video, for choosing who stays in front of a title. */
 export type FoundOne = { id: number; label: number; colour: string; centre: [number, number] | null };
 export const requestInstances = (id: number, kind: 'people' | 'objects', steady: boolean, backwards: boolean) => requestJson<{ status: 'ready' | 'preparing'; progress?: number; tracks?: FoundOne[] }>(`/api/photos/${id}/instances?kind=${kind}&steady=${steady}&backwards=${backwards}`, { method: 'POST' });

@@ -103,6 +103,14 @@ class CutoutPick(Strict):
         return sorted(set(ids)) if ids is not None else None
 
 
+class FocusPull(Strict):
+    """With a blurred background: part way through, the focus moves from who was chosen to `to` (None is all of them).
+    `at` is in the clip's source seconds, of the steadied or reversed copy when there is one."""
+    to: Optional[List[int]] = Field(default=None, min_length=1, max_length=6)
+    at: float = Field(ge=0)
+    length: float = Field(default=1, ge=0.2, le=4)
+
+
 class ShapeMask(Strict):
     """Only the part of the frame inside `points` shows, with a soft edge. Points are 0 to 1 across and down the frame."""
     points: List[Tuple[float, float]] = Field(min_length=3, max_length=200)
@@ -142,6 +150,7 @@ class Clip(Strict):
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
+    focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
@@ -153,6 +162,8 @@ class Clip(Strict):
             raise ValueError('A speed ramp must run from the start of the clip to its end.')
         if self.cutout_pick is not None and self.cutout is None:
             raise ValueError('Choosing who stays needs the background removed or blurred.')
+        if self.focus_pull is not None and self.cutout != 'blur':
+            raise ValueError('A focus pull needs the background blurred.')
         return self
 
     @property

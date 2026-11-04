@@ -124,3 +124,16 @@ test('a new background takes the cut-out clip\'s place and fills the frame, and 
   assert.equal(cutoutToken(video('c', { cutout: 'blur', cutout_pick: { kind: 'objects', ids: null } })), 'blur.objects-all.medium');
   assert.equal(cutoutToken(video('c', { cutout: 'remove', cutout_pick: { kind: 'people', ids: [1] } })), 'people-1');
 });
+
+test('a focus pull names its copy and keeps its moment in the source, forwards or backwards', async () => {
+  const { cutoutToken, focusAt, focusLocal } = await import('../src/timeline/model.ts');
+  const clip = video('f', { in: 2, out: 8, cutout: 'blur', cutout_pick: { kind: 'people', ids: [0] }, blur_amount: 'strong', focus_pull: { to: [1], at: 4.5, length: 0.4 } });
+  assert.equal(cutoutToken(clip), 'blur.people-0.strong.people-1@4500+400');
+  assert.equal(cutoutToken({ ...clip, cutout_pick: null, blur_amount: 'medium', focus_pull: { to: null, at: 3, length: 1 } }), 'blur.all.medium.all@3000+1000');
+  assert.equal(focusAt(clip, 2.5), 4.5);
+  close(focusLocal(clip, 4.5), 2.5, 'back to the clip');
+  const backwards = { ...clip, reverse: true };
+  // Two and a half seconds into a reversed 2–8 s clip shows source 5.5 s, which is 4.5 s into the reversed copy of a 10 s video.
+  assert.equal(focusAt(backwards, 2.5, 10), 4.5);
+  close(focusLocal(backwards, 4.5, 10), 2.5, 'back to the reversed clip');
+});
