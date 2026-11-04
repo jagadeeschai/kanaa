@@ -26,11 +26,11 @@ import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS,
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
+import { ProjectSaveQueue, type SaveState } from './project-save';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
-const SAVE_DELAY_MS = 650;
 const ASSET_POLL_MS = 2000;
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
@@ -97,7 +97,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(40);
   const [playing, setPlaying] = useState(false);
-  const [saved, setSaved] = useState<'saved' | 'saving' | 'failed'>('saved');
+  const [saved, setSaved] = useState<SaveState>('saved');
   const [ready, setReady] = useState<Record<number, boolean>>({});
   const [preparedReady, setPreparedReady] = useState<Record<string, boolean>>({});
   const [cleanReady, setCleanReady] = useState<Record<string, boolean>>({});
@@ -180,7 +180,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const playhead = useRef({ current: 0 }).current;
   const fastRate = useRef(0);
   const loadedRef = useRef(false);
-  const lastSaved = useRef('');
+  const saveQueue = useRef<ProjectSaveQueue | null>(null);
+  if (!saveQueue.current) saveQueue.current = new ProjectSaveQueue(
+    (serialized) => saveVideoProject(projectId, 'edit', JSON.parse(serialized)),
+    setSaved,
+  );
   const visuals = useRef(new Map<number, ClipVisuals>());
 
   const mediaById = useMemo(() => new Map(media.map((item) => [item.id, item])), [media]);
@@ -286,7 +290,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         setMedia((current) => [...current, ...library.photos.filter((item) => !current.some((entry) => entry.id === item.id))]);
         const started = project.recipe?.version === 2;
         const loaded = normalizeTimeline(upgraded);
-        lastSaved.current = started ? JSON.stringify(loaded) : '';
+        saveQueue.current!.load(started ? JSON.stringify(loaded) : '');
         dispatch({ type: 'load', timeline: loaded });
         if (!started) setChoosingFormat(true);
         loadedRef.current = true;
@@ -438,15 +442,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => {
     if (!timeline || !loadedRef.current || choosingFormat) return;
-    const serialized = JSON.stringify(timeline);
-    if (serialized === lastSaved.current) { setSaved('saved'); return; }
-    setSaved('saving');
-    const timer = setTimeout(() => {
-      lastSaved.current = serialized;
-      saveVideoProject(projectId, 'edit', timeline).then(() => setSaved('saved')).catch(() => { lastSaved.current = ''; setSaved('failed'); });
-    }, SAVE_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [timeline, projectId, choosingFormat]);
+    saveQueue.current!.change(JSON.stringify(timeline));
+  }, [timeline, choosingFormat]);
+  const closeEditor = useCallback(async () => {
+    if (await saveQueue.current!.flush()) onClose();
+    else setError('Your latest edit could not be saved. Check the connection and try Back again.');
+  }, [onClose]);
+  useEffect(() => {
+    const flush = () => saveQueue.current!.flush();
+    window.kanaaFlush = flush;
+    return () => {
+      if (window.kanaaFlush === flush) delete window.kanaaFlush;
+      void saveQueue.current!.flush();
+    };
+  }, []);
 
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: next, group }), []);
   const selected = timeline ? findClip(timeline, selectedId) : null;
@@ -1040,7 +1049,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
   return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     <header className="ed-top">
-      <button className="ed-icon" onClick={onClose} aria-label="Back to projects"><ArrowLeft size={18}/></button>
+      <button className="ed-icon" onClick={() => { void closeEditor(); }} aria-label="Back to projects"><ArrowLeft size={18}/></button>
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>

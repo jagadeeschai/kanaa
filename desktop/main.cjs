@@ -12,6 +12,7 @@ const STOP_MS = 4000;
 const SPLASH = path.join(ROOT, 'desktop', 'splash.html');
 const SPLASH_MS = 4500; // The welcome animation's length: the editor waits for it only if it starts sooner.
 const HOLD_MS = 1000; // Then a moment on "Ready" before the editor.
+const SAVE_WAIT_MS = 10000;
 const LOADING = `data:text/html,<body style="background:%230e0c14;color:%23b9b4cc;font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0">Starting Kanaa…</body>`;
 const BUSY = new Set(['queued', 'running', 'cancelling']);
 
@@ -21,6 +22,15 @@ let confirmedQuit = false;
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const reach = async (url) => { try { return await fetch(url, { signal: AbortSignal.timeout(1500) }); } catch { return null; } };
+const waitForRendererSave = async () => {
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return true;
+  try {
+    return await Promise.race([
+      window.webContents.executeJavaScript('window.kanaaFlush ? window.kanaaFlush() : true', true),
+      pause(SAVE_WAIT_MS).then(() => false),
+    ]);
+  } catch { return false; }
+};
 
 /** Whether phone access is on: backend/.data/phone-access.json, which Kanaa's Phone access setting writes. */
 function phoneAccess() {
@@ -87,6 +97,10 @@ function confirmClose(event) {
   if (confirmedQuit) return;
   event.preventDefault();
   void (async () => {
+    if (!(await waitForRendererSave())) {
+      const saveChoice = await dialog.showMessageBox(window, { type: 'warning', message: 'Your latest edit could not be saved', detail: 'Keep working and try again, or quit without the latest unsaved change.', buttons: ['Keep working', 'Quit without saving'], defaultId: 0, cancelId: 0 });
+      if (saveChoice.response !== 1) return;
+    }
     const response = await reach(`${ADDRESS}/api/render-jobs`);
     const jobs = response?.ok ? await response.json().catch(() => []) : [];
     const list = Array.isArray(jobs) ? jobs : jobs.jobs ?? [];
