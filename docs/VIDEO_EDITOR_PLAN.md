@@ -467,6 +467,11 @@ Audio tab: "Your music", by mood, with listen and add-at-playhead. Themes tab: "
 
 Limits: moods are guessed from names and genres, so some will be off (use Another track); a song shorter than the video simply ends (no looping yet); macOS may ask once for permission to read the Music folder.
 
+### Story templates (done)
+At the top of the Themes tab: Wedding highlights, Trip recap, Birthday reel, Festival day, Temple visit, Product intro and Then and now (`timeline/stories.ts`), each a list of named moments in English and Tamil with a length and a hint ("The ceremony · முகூர்த்தம் · 6s — the thali, the vows"), 22 to 28 seconds in all, and the theme that suits it. Choosing one opens its moments: click a moment to pick a clip or photo for it, "Fill the rest with my media" puts unused media into the empty ones in order, and "Make my video" lays them on the main track (replacing what was there; other layers stay) and dresses it in the story's theme with music from the library, as one undoable change. A longer video keeps the middle stretch of the moment's length, a shorter one plays whole, a photo lasts the moment; every clip fills the frame, as in a reel. Empty moments are skipped.
+
+Limits: "the middle" is a guess at the best part (it doesn't look at the footage yet); the moments are fixed per story, though the clips can be trimmed and moved afterwards like any others.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

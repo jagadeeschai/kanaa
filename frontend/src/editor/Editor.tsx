@@ -20,6 +20,7 @@ import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
+import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
@@ -109,6 +110,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [themeWithMusic, setThemeWithMusic] = useState(true);
   const [themeTrack, setThemeTrack] = useState<string | null>(null);
   const [themeBusy, setThemeBusy] = useState<string | null>(null);
+  // A story being filled: what goes in each moment, and which moment is choosing.
+  const [story, setStory] = useState<{ story: Story; fills: (number | null)[]; choosing: number | null } | null>(null);
   const [musicMood, setMusicMood] = useState<Mood | null>(null);
   const [listening, setListening] = useState<string | null>(null);
   const listenRef = useRef<HTMLAudioElement | null>(null);
@@ -487,12 +490,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   /** A library track as a song: copied into Kanaa once, then used like an uploaded one. */
   const librarySong = async (track: LibraryTrack) => ({ ...(await takeLibraryTrack(track.id)), name: track.genre && /^track\b/i.test(track.name) ? `${track.name} · ${track.genre}` : track.name });
   /** Dresses the whole video in a theme. The opening title keeps the words already typed there, or the project's name. */
-  const chooseTheme = async (look: VideoTheme) => {
-    if (!timeline || !mainLayer(timeline).items.length) { setError('Add a clip to your video first.'); return; }
+  const chooseTheme = async (look: VideoTheme, base = timeline, busy = look.id) => {
+    if (!base || !mainLayer(base).items.length) { setError('Add a clip to your video first.'); return; }
     if (themeBusy) return;
-    const words = openingWords(timeline) ?? projectName;
-    setThemeBusy(look.id);
-    let next = applyTheme(timeline, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]);
+    const words = openingWords(base) ?? projectName;
+    setThemeBusy(busy);
+    let next = applyTheme(base, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]);
     try {
       const track = themeWithMusic ? pickTrack(await loadLibrary(), look, duration(next)) : null;
       if (track) {
@@ -500,6 +503,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       }
       change(next);
     } finally { setThemeBusy(null); }
+  };
+  const storyMedia = media.filter((item) => item.media_type === 'video' || item.media_type === 'image');
+  /** The story's clips in its order, then its theme and music, as one change. */
+  const makeStory = async () => {
+    if (!timeline || !story) return;
+    const fills = story.fills.map((id) => (id === null ? null : facts(id) ?? null));
+    if (!fills.some(Boolean)) { setError('Put a clip or photo in at least one moment.'); return; }
+    const look = THEMES.find((item) => item.id === story.story.theme) ?? THEMES[0];
+    await chooseTheme(look, buildStory(timeline, story.story, fills, newId), `story-${story.story.id}`);
+    setStory(null);
   };
   /** The theme's music: the next suitable track, or none. */
   const changeThemeMusic = async (on: boolean) => {
@@ -1035,8 +1048,30 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
         {leftTab === 'themes' && timeline && (() => {
           const current = activeTheme(timeline);
-          return <section className="ed-add" aria-label="Themes"><p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
-            <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} title={`${look.label}: ${look.about}`}>
+          if (story) {
+            const filled = story.fills.filter((id) => id !== null).length;
+            const pick = (index: number, id: number | null) => setStory({ ...story, fills: story.fills.map((current, at) => (at === index ? id : current)), choosing: null });
+            return <section className="ed-add" aria-label="Story">
+              <div className="ed-add-row"><button className="ed-button" onClick={() => setStory(null)}><ArrowLeft size={13}/>Stories</button><span>{filled} of {story.story.slots.length} filled</span></div>
+              <h3 className="ed-sub">{story.story.label} <em lang="ta" className="ed-tamil-note">{story.story.tamil}</em></h3>
+              <ol className="ed-slots">{story.story.slots.map((item, index) => { const id = story.fills[index]; const chosen = id !== null ? mediaById.get(id) : undefined; return <li key={item.label} className={story.choosing === index ? 'on' : ''}>
+                <button className="ed-slot" onClick={() => setStory({ ...story, choosing: story.choosing === index ? null : index })} title={item.hint}>
+                  <span className="ed-slot-art">{chosen ? <img src={photoThumbUrl(chosen.id)} alt=""/> : <Plus size={14}/>}</span>
+                  <span className="ed-slot-text"><b>{index + 1}. {item.label}</b><em lang="ta">{item.tamil} · {item.seconds}s</em><small>{chosen ? chosen.filename : item.hint}</small></span></button>
+                {chosen && <button className="ed-icon small" aria-label={`Empty ${item.label}`} title="Empty this moment" onClick={() => pick(index, null)}><X size={12}/></button>}
+                {story.choosing === index && <div className="ed-media-grid ed-backgrounds">{storyMedia.length ? storyMedia.map((item2) => <button key={item2.id} className="ed-tile-add" onClick={() => pick(index, item2.id)} title={`Use ${item2.filename}`}><img src={photoThumbUrl(item2.id)} alt="" loading="lazy"/><span className="ed-tile-label"><b>{item2.filename}</b></span></button>) : <p className="ed-tip">Import your clips and photos in Media first.</p>}</div>}
+              </li>; })}</ol>
+              <button className="ed-button wide" disabled={!storyMedia.length || filled === story.fills.length} onClick={() => setStory({ ...story, fills: fillRest(story.story, story.fills.map((id) => (id === null ? null : facts(id) ?? null)), storyMedia.map((item) => facts(item.id)!).filter(Boolean)).map((source) => source?.media_id ?? null), choosing: null })}>Fill the rest with my media</button>
+              <button className="ed-primary wide" disabled={!filled || Boolean(themeBusy)} onClick={() => { void makeStory(); }}>{themeBusy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Make my video</button>
+              <p className="ed-tip">Each moment uses the middle of a longer clip. Empty moments are skipped. {mainLayer(timeline).items.length ? 'This replaces the clips on your main track; undo with ⌘Z.' : ''}</p>
+            </section>;
+          }
+          return <section className="ed-add" aria-label="Themes">
+            <h3 className="ed-sub">Story templates</h3><p className="ed-tip">Pick a story, put a clip or photo in each moment, and Kanaa makes the video with its theme and music.</p>
+            <div className="ed-stories">{STORIES.map((item) => <button key={item.id} className="ed-story" onClick={() => setStory({ story: item, fills: item.slots.map(() => null), choosing: null })} title={`${item.slots.map((each) => each.label).join(' → ')}`}>
+              <b>{item.label}</b><em lang="ta">{item.tamil}</em><small>{item.slots.length} moments · about {storySeconds(item)}s · {THEMES.find((look) => look.id === item.theme)?.label}</small></button>)}</div>
+            <h3 className="ed-sub">Themes</h3><p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
+            <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} disabled={Boolean(themeBusy)} title={`${look.label}: ${look.about}`}>
               <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
               <span className="ed-theme-name"><b>{themeBusy === look.id ? <LoaderCircle className="spin" size={11}/> : null}{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
             <label className="ed-check"><input type="checkbox" checked={themeWithMusic} onChange={(event) => setThemeWithMusic(event.target.checked)}/><span>Add music from your library<small>{library === null ? 'Reading your music…' : library.length ? `${library.length} tracks, matched to each theme's mood.` : 'No music found in your Music app folder.'}</small></span></label>
