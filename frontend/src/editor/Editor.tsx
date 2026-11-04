@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
@@ -19,7 +19,7 @@ import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
-import { activeTheme, applyTheme, openingWords, removeTheme, THEMES, type Theme as VideoTheme } from '../timeline/themes';
+import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
@@ -60,6 +60,8 @@ const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
   return steady || backwards || cutout ? [steady, backwards, cutout] : null;
 };
 const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
+const MOODS: Mood[] = ['romantic', 'happy', 'birthday', 'calm', 'energetic', 'cinematic', 'inspiring', 'songs'];
+const MOOD_LABELS: Record<Mood, string> = { romantic: 'Romantic', happy: 'Happy', birthday: 'Birthday', calm: 'Calm', energetic: 'Energetic', cinematic: 'Cinematic', inspiring: 'Inspiring', songs: 'Songs' };
 const PULL_SPEEDS: { id: string; label: string }[] = [{ id: '0.4', label: 'Quick' }, { id: '1', label: 'Smooth' }, { id: '2', label: 'Slow' }];
 const BLUR_AMOUNTS: { id: BlurAmount; label: string }[] = [{ id: 'subtle', label: 'Subtle' }, { id: 'medium', label: 'Medium' }, { id: 'strong', label: 'Strong' }];
 const LOOK_NAMES: { id: LookName; label: string }[] = [{ id: 'none', label: 'Original' }, { id: 'warm', label: 'Warm' }, { id: 'cool', label: 'Cool' }, { id: 'vivid', label: 'Vivid' }, { id: 'film', label: 'Film' }, { id: 'mono', label: 'Mono' }];
@@ -101,6 +103,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [addingMusic, setAddingMusic] = useState(false);
+  // The person's own music, read once when Themes or Audio is first opened.
+  const [library, setLibrary] = useState<LibraryTrack[] | null>(null);
+  const [libraryFolder, setLibraryFolder] = useState('');
+  const [themeWithMusic, setThemeWithMusic] = useState(true);
+  const [themeTrack, setThemeTrack] = useState<string | null>(null);
+  const [themeBusy, setThemeBusy] = useState<string | null>(null);
+  const [musicMood, setMusicMood] = useState<Mood | null>(null);
+  const [listening, setListening] = useState<string | null>(null);
+  const listenRef = useRef<HTMLAudioElement | null>(null);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
@@ -458,11 +469,59 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       void fetchTextImage({ ...template.look, id: 'thumb', start: 0, length: 1 }, THUMB_FORMAT).then((url) => setThumbs((current) => ({ ...current, [template.id]: url }))).catch(() => {});
     }
   }, [leftTab, myStyles, thumbs]);
+  const libraryLoad = useRef<Promise<LibraryTrack[]> | null>(null);
+  /** Reads the library once; later calls share the same answer. */
+  const loadLibrary = useCallback(() => libraryLoad.current ?? (libraryLoad.current = getMusicLibrary()
+    .then((found) => { setLibrary(found.tracks); setLibraryFolder(found.folder); return found.tracks; })
+    .catch(() => { setLibrary([]); return [] as LibraryTrack[]; })), []);
+  useEffect(() => { if (leftTab === 'themes' || leftTab === 'audio') void loadLibrary(); }, [leftTab, loadLibrary]);
+  const listen = (id: string) => {
+    const player = listenRef.current ?? (listenRef.current = new Audio());
+    if (listening === id) { player.pause(); setListening(null); return; }
+    player.src = musicListenUrl(id);
+    player.onended = () => setListening(null);
+    void player.play().catch(() => setListening(null));
+    setListening(id);
+  };
+  useEffect(() => () => { listenRef.current?.pause(); }, []);
+  /** A library track as a song: copied into Kanaa once, then used like an uploaded one. */
+  const librarySong = async (track: LibraryTrack) => ({ ...(await takeLibraryTrack(track.id)), name: track.genre && /^track\b/i.test(track.name) ? `${track.name} · ${track.genre}` : track.name });
   /** Dresses the whole video in a theme. The opening title keeps the words already typed there, or the project's name. */
-  const chooseTheme = (look: VideoTheme) => {
+  const chooseTheme = async (look: VideoTheme) => {
     if (!timeline || !mainLayer(timeline).items.length) { setError('Add a clip to your video first.'); return; }
+    if (themeBusy) return;
     const words = openingWords(timeline) ?? projectName;
-    change(applyTheme(timeline, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]));
+    setThemeBusy(look.id);
+    let next = applyTheme(timeline, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]);
+    try {
+      const track = themeWithMusic ? pickTrack(await loadLibrary(), look, duration(next)) : null;
+      if (track) {
+        try { next = addThemeMusic(next, await librarySong(track), [newId(), newId()]); setThemeTrack(track.id); } catch (problem) { setError((problem as Error).message); }
+      }
+      change(next);
+    } finally { setThemeBusy(null); }
+  };
+  /** The theme's music: the next suitable track, or none. */
+  const changeThemeMusic = async (on: boolean) => {
+    const look = timeline && activeTheme(timeline);
+    if (!timeline || !look) return;
+    if (!on) { change(removeThemeMusic(timeline)); return; }
+    const track = library && pickTrack(library, look, duration(timeline), themeTrack);
+    if (!track) { setError('No music in your library suits this theme yet.'); return; }
+    try { change(addThemeMusic(timeline, await librarySong(track), [newId(), newId()])); setThemeTrack(track.id); } catch (problem) { setError((problem as Error).message); }
+  };
+  const addLibraryTrack = async (track: LibraryTrack) => {
+    if (!timeline) return;
+    setAddingMusic(true);
+    try {
+      const song = await librarySong(track);
+      const at = Math.round(engineRef.current ? engineRef.current.currentTime * 1000 : 0) / 1000;
+      const left = duration(timeline) - at;
+      const length = left >= MIN_MUSIC_SECONDS ? Math.min(left, song.duration) : song.duration;
+      const sound: Sound = { id: newId(), asset_id: song.asset_id, start: at, in: 0, out: length, speed: 1, volume: MUSIC_VOLUME, muted: false, fade_in: 0, fade_out: 0, duck: true, name: song.name.slice(0, 120), source_length: song.duration };
+      change(addSound(timeline, sound, newId()));
+      setSelectedId(sound.id);
+    } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
   };
   const saveStyle = (text: TextItem) => {
     const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text) };
@@ -977,9 +1036,12 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         {leftTab === 'themes' && timeline && (() => {
           const current = activeTheme(timeline);
           return <section className="ed-add" aria-label="Themes"><p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
-            <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => chooseTheme(look)} title={`${look.label}: ${look.about}`}>
+            <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} title={`${look.label}: ${look.about}`}>
               <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
-              <span className="ed-theme-name"><b>{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
+              <span className="ed-theme-name"><b>{themeBusy === look.id ? <LoaderCircle className="spin" size={11}/> : null}{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
+            <label className="ed-check"><input type="checkbox" checked={themeWithMusic} onChange={(event) => setThemeWithMusic(event.target.checked)}/><span>Add music from your library<small>{library === null ? 'Reading your music…' : library.length ? `${library.length} tracks, matched to each theme's mood.` : 'No music found in your Music app folder.'}</small></span></label>
+            {current && (() => { const music = themeMusic(timeline); return <div className="ed-add-row"><span>{music ? <>Music: <b>{music.name.replace(/^Theme music · /, '')}</b></> : 'No music'}</span>
+              <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
@@ -1004,7 +1066,16 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
             {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>
         </>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
-          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label></>}
+          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
+          <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music</h3>
+            {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : <>
+              <div className="ed-chips" role="group" aria-label="Mood">{([null, ...MOODS] as (Mood | null)[]).map((mood) => <button key={mood ?? 'all'} className={musicMood === mood ? 'on' : ''} aria-pressed={musicMood === mood} onClick={() => setMusicMood(mood)}>{mood ? MOOD_LABELS[mood] : 'All'}</button>)}</div>
+              <ul className="ed-tracks">{library.filter((track) => !musicMood || track.mood === musicMood).map((track) => <li key={track.id}>
+                <button className="ed-icon small" aria-label={`${listening === track.id ? 'Stop' : 'Listen to'} ${track.name}`} onClick={() => listen(track.id)}>{listening === track.id ? <Pause size={13}/> : <Play size={13}/>}</button>
+                <span><b>{track.name}</b><small>{[track.genre, timecode(track.seconds).replace(/\.\d+$/, '')].filter(Boolean).join(' · ')}</small></span>
+                <button className="ed-icon small" aria-label={`Add ${track.name} at the playhead`} title="Add at the playhead" disabled={addingMusic} onClick={() => { void addLibraryTrack(track); }}><Plus size={14}/></button></li>)}</ul>
+              <p className="ed-tip">From {libraryFolder}. Your files are only read; a track is copied into Kanaa when you use it.</p></>}
+          </section></>}
       </aside>
       {mediaOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show media panel" title="Show the media panel" onClick={() => updateLayout({ mediaOpen: true })}><PanelLeftOpen size={15}/></button></div>}
       <main className="ed-stage">

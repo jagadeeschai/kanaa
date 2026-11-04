@@ -18,7 +18,7 @@ from app.services.transcript_service import LANGUAGES, PHASE, saved_words, trans
 from app.services.face_service import find_faces
 from app.services.reverse_service import ensure_reversed, request_reversed, reversed_files
 from app.services.stabilise_service import ensure_stable, request_stable, stable_files
-from app.services import cutout_service, instance_service, voice_service
+from app.services import cutout_service, instance_service, music_library_service, voice_service
 from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Caption, CaptionLayer, Format, ShapeMask, Text, Timeline
@@ -186,6 +186,30 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
     if target is None or not target.is_file():
         raise HTTPException(404, 'This copy is still being made.')
     return serve_file_with_ranges(target, 'video/webm' if target.suffix == '.webm' else 'video/mp4', request)
+
+
+@router.get('/music-library')
+def music_library():
+    """The person's own music, sorted into moods. Read from the Music app's folder; nothing there is changed."""
+    return {'tracks': music_library_service.tracks(), 'folder': str(music_library_service.library_root())}
+
+
+@router.get('/music-library/{track_id}/listen')
+def music_listen(track_id: str, request: Request):
+    try:
+        path = music_library_service.path_of(track_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return serve_file_with_ranges(path, 'audio/mp4' if path.suffix.lower() in ('.m4a', '.aac') else 'audio/mpeg' if path.suffix.lower() == '.mp3' else 'application/octet-stream', request)
+
+
+@router.post('/music-library/{track_id}/use')
+def music_use(track_id: str):
+    """The track as a song for the timeline."""
+    try:
+        return music_library_service.use(track_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.get('/photos/{identifier}/filmstrip')

@@ -460,6 +460,13 @@ With Background → Blur and people or objects found, "Pull focus at the playhea
 
 Limits: one pull per clip (split the clip for more); a ramped clip's pull time is shown approximately.
 
+### Your music library, and music for themes (done)
+`music_library_service.py` reads the Music app's folder (`~/Music/Music/Media.localized/Music`, or `KANAA_MUSIC_DIR`), only ever reading. Tags come from ffprobe, eight files at a time (159 tracks in about 3 s the first time), and are kept in `music-library-2.json` until a file changes; moods are worked out fresh each time from the name (most telling: "Happy Rock", "Memories") and then the genre tag (bought packs call every track "Track", so "Track 12 · Classical" is romantic). Moods: romantic, happy, birthday, calm, energetic, cinematic, inspiring, and songs (Tamil titles, which have vocals, so themes don't pick them). Effects under 30 s, talks (podcast, interview…) and anything over 15 minutes are left out; the same song kept twice shows once. Using a track copies it once into Kanaa's song store, like an upload.
+
+Audio tab: "Your music", by mood, with listen and add-at-playhead. Themes tab: "Add music from your library" (on by default) puts a track of the theme's mood under the whole video, the closest one long enough to cover it, fading in and out and dipping under speech; "Another track" steps through the rest, and the × removes it. Theme music is the sound named "Theme music · …", replaced by the next theme and taken away with Remove theme.
+
+Limits: moods are guessed from names and genres, so some will be off (use Another track); a song shorter than the video simply ends (no looping yet); macOS may ask once for permission to read the Music folder.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

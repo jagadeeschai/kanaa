@@ -1,6 +1,6 @@
 import type { LookName, Transition } from './animation.ts';
 import { applyMove, type MovePreset } from './presets.ts';
-import { clipLength, duration, mainLayer, textLayers, type Clip, type TextItem, type TextLayer, type Timeline } from './model.ts';
+import { addSound, audioLayers, clipLength, duration, mainLayer, MUSIC_VOLUME, removeSound, textLayers, type Clip, type Sound, type TextItem, type TextLayer, type Timeline } from './model.ts';
 import type { TitleLook } from './templates.ts';
 
 /**
@@ -11,6 +11,8 @@ import type { TitleLook } from './templates.ts';
 export type Theme = {
   id: string; label: string; tamil: string; about: string;
   look: LookName; transition: Transition | null; photos: MovePreset | null;
+  /** Moods of music that suit it, best first, from the person's own library. */
+  music: MusicMood[];
   opener: TitleLook; closer: TitleLook;
   /** For titles already in the video: their fonts and colours change, their words and places don't. */
   titles: Pick<TextItem, 'font' | 'tamil_font' | 'color' | 'style' | 'band_color' | 'subtitle_color'>;
@@ -18,33 +20,34 @@ export type Theme = {
 };
 
 const fade = (duration: number) => ({ preset: 'fade' as const, duration });
+export type MusicMood = 'romantic' | 'happy' | 'birthday' | 'calm' | 'energetic' | 'cinematic' | 'inspiring' | 'songs';
 
 export const THEMES: Theme[] = [
-  { id: 'wedding', label: 'Wedding', tamil: 'திருமணம்', about: 'Warm and soft, slow crossfades', look: 'warm', transition: { kind: 'crossfade', duration: 0.9 }, photos: 'push-in', swatch: ['#7a4b2a', '#e8c48a'],
+  { id: 'wedding', label: 'Wedding', tamil: 'திருமணம்', about: 'Warm and soft, slow crossfades', look: 'warm', transition: { kind: 'crossfade', duration: 0.9 }, photos: 'push-in', music: ['romantic', 'calm'], swatch: ['#7a4b2a', '#e8c48a'],
     opener: { font: 'Snell Roundhand', tamil_font: 'Arima', text: 'Our wedding', subtitle: 'WITH LOVE', subtitle_size: 28, subtitle_spacing: 8, subtitle_color: '#f3dfb0', style: 'shadow', position: 'center', color: '#ffffff', size: 84, enter: fade(1), exit: fade(0.8) },
     closer: { font: 'Snell Roundhand', tamil_font: 'Arima', text: 'நன்றி', subtitle: 'Thank you for being with us', subtitle_size: 28, subtitle_color: '#f3dfb0', style: 'shadow', position: 'center', color: '#ffffff', size: 76, enter: fade(0.8), exit: fade(0.8) },
     titles: { font: 'Snell Roundhand', tamil_font: 'Arima', color: '#ffffff', style: 'shadow', subtitle_color: '#f3dfb0' } },
-  { id: 'festival', label: 'Festival', tamil: 'திருவிழா', about: 'Bright colours, lively zooms', look: 'vivid', transition: { kind: 'zoom', duration: 0.5 }, photos: 'punch-in', swatch: ['#c2410c', '#facc15'],
+  { id: 'festival', label: 'Festival', tamil: 'திருவிழா', about: 'Bright colours, lively zooms', look: 'vivid', transition: { kind: 'zoom', duration: 0.5 }, photos: 'punch-in', music: ['happy', 'energetic'], swatch: ['#c2410c', '#facc15'],
     opener: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'Happy festival', subtitle: 'இனிய வாழ்த்துகள்', subtitle_size: 36, subtitle_color: '#ffffff', style: 'outline', position: 'center', color: '#facc15', size: 76, enter: { preset: 'pop', duration: 0.5 }, exit: fade(0.4) },
     closer: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'நன்றி', subtitle: 'See you next year', subtitle_size: 32, subtitle_color: '#ffffff', style: 'outline', position: 'center', color: '#facc15', size: 72, enter: { preset: 'pop', duration: 0.5 }, exit: fade(0.4) },
     titles: { font: 'Futura', tamil_font: 'Baloo Thambi 2', color: '#facc15', style: 'outline', subtitle_color: '#ffffff' } },
-  { id: 'travel', label: 'Travel', tamil: 'பயணம்', about: 'Film colours, sliding cuts', look: 'film', transition: { kind: 'slide', duration: 0.5 }, photos: 'push-in', swatch: ['#0f4c5c', '#e9c46a'],
+  { id: 'travel', label: 'Travel', tamil: 'பயணம்', about: 'Film colours, sliding cuts', look: 'film', transition: { kind: 'slide', duration: 0.5 }, photos: 'push-in', music: ['inspiring', 'cinematic'], swatch: ['#0f4c5c', '#e9c46a'],
     opener: { font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'On the road', subtitle: 'A TRAVEL STORY', subtitle_size: 28, subtitle_spacing: 10, subtitle_color: '#e9c46a', style: 'shadow', position: 'center', color: '#ffffff', size: 88, enter: { preset: 'slide-up', duration: 0.6 }, exit: fade(0.5) },
     closer: { font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'Until the next trip', subtitle: 'அடுத்த பயணம் வரை', subtitle_size: 30, subtitle_color: '#e9c46a', style: 'shadow', position: 'center', color: '#ffffff', size: 64, enter: { preset: 'slide-up', duration: 0.6 }, exit: fade(0.5) },
     titles: { font: 'DIN Condensed', tamil_font: 'Catamaran', color: '#ffffff', style: 'shadow', subtitle_color: '#e9c46a' } },
-  { id: 'birthday', label: 'Birthday', tamil: 'பிறந்தநாள்', about: 'Playful pops and quick whips', look: 'vivid', transition: { kind: 'whip', duration: 0.4 }, photos: 'punch-in', swatch: ['#db2777', '#a78bfa'],
+  { id: 'birthday', label: 'Birthday', tamil: 'பிறந்தநாள்', about: 'Playful pops and quick whips', look: 'vivid', transition: { kind: 'whip', duration: 0.4 }, photos: 'punch-in', music: ['birthday', 'happy'], swatch: ['#db2777', '#a78bfa'],
     opener: { font: 'Marker Felt', tamil_font: 'Baloo Thambi 2', text: 'Happy birthday!', subtitle: 'பிறந்தநாள் வாழ்த்துகள்', subtitle_size: 34, subtitle_color: '#ffffff', style: 'band', band_color: '#db2777', position: 'center', color: '#ffffff', size: 72, enter: { preset: 'bounce', duration: 0.7 }, exit: fade(0.4) },
     closer: { font: 'Marker Felt', tamil_font: 'Baloo Thambi 2', text: 'Make a wish!', subtitle: 'With love', subtitle_size: 30, subtitle_color: '#ffffff', style: 'band', band_color: '#7c3aed', position: 'center', color: '#ffffff', size: 68, enter: { preset: 'pop', duration: 0.5 }, exit: fade(0.4) },
     titles: { font: 'Marker Felt', tamil_font: 'Baloo Thambi 2', color: '#ffffff', style: 'band', band_color: '#db2777', subtitle_color: '#ffffff' } },
-  { id: 'memories', label: 'Memories', tamil: 'நினைவுகள்', about: 'Faded film, gentle fades to black', look: 'film', transition: { kind: 'dip', duration: 1 }, photos: 'pull-out', swatch: ['#3f3a36', '#c9b79c'],
+  { id: 'memories', label: 'Memories', tamil: 'நினைவுகள்', about: 'Faded film, gentle fades to black', look: 'film', transition: { kind: 'dip', duration: 1 }, photos: 'pull-out', music: ['calm', 'romantic'], swatch: ['#3f3a36', '#c9b79c'],
     opener: { font: 'Georgia', tamil_font: 'Kavivanar', text: 'நினைவுகள்', subtitle: 'Memories', subtitle_size: 30, subtitle_spacing: 4, subtitle_color: '#e7dcc8', style: 'shadow', position: 'center', color: '#ffffff', size: 72, enter: fade(1.2), exit: fade(1) },
     closer: { font: 'Georgia', tamil_font: 'Kavivanar', text: 'Forever in our hearts', subtitle: 'என்றும் நம் நினைவில்', subtitle_size: 30, subtitle_color: '#e7dcc8', style: 'shadow', position: 'center', color: '#ffffff', size: 56, enter: fade(1), exit: fade(1) },
     titles: { font: 'Georgia', tamil_font: 'Kavivanar', color: '#ffffff', style: 'shadow', subtitle_color: '#e7dcc8' } },
-  { id: 'vlog', label: 'Vlog', tamil: 'வ்லாக்', about: 'Cool and punchy, fast cuts', look: 'cool', transition: { kind: 'whip', duration: 0.3 }, photos: 'punch-in', swatch: ['#0f172a', '#38bdf8'],
+  { id: 'vlog', label: 'Vlog', tamil: 'வ்லாக்', about: 'Cool and punchy, fast cuts', look: 'cool', transition: { kind: 'whip', duration: 0.3 }, photos: 'punch-in', music: ['energetic', 'happy'], swatch: ['#0f172a', '#38bdf8'],
     opener: { font: 'Impact', tamil_font: 'Baloo Thambi 2', text: 'TODAY’S VLOG', subtitle: 'Watch till the end', subtitle_size: 30, subtitle_color: '#0f172a', style: 'band', band_color: '#38bdf8', position: 'center', color: '#0f172a', size: 76, enter: { preset: 'pop', duration: 0.4 }, exit: fade(0.3) },
     closer: { font: 'Impact', tamil_font: 'Baloo Thambi 2', text: 'SUBSCRIBE', subtitle: '@yourchannel', subtitle_size: 30, subtitle_color: '#0f172a', style: 'band', band_color: '#38bdf8', position: 'center', color: '#0f172a', size: 72, enter: { preset: 'pop', duration: 0.4 }, exit: fade(0.3) },
     titles: { font: 'Impact', tamil_font: 'Baloo Thambi 2', color: '#0f172a', style: 'band', band_color: '#38bdf8', subtitle_color: '#0f172a' } },
-  { id: 'classic', label: 'Classic', tamil: 'கிளாசிக்', about: 'Black and white, simple crossfades', look: 'mono', transition: { kind: 'crossfade', duration: 0.7 }, photos: 'push-in', swatch: ['#111111', '#d4d4d4'],
+  { id: 'classic', label: 'Classic', tamil: 'கிளாசிக்', about: 'Black and white, simple crossfades', look: 'mono', transition: { kind: 'crossfade', duration: 0.7 }, photos: 'push-in', music: ['cinematic', 'romantic'], swatch: ['#111111', '#d4d4d4'],
     opener: { font: 'Didot', tamil_font: 'Arima', text: 'A story', subtitle: 'IN BLACK AND WHITE', subtitle_size: 26, subtitle_spacing: 10, subtitle_color: '#d4d4d4', style: 'shadow', position: 'center', color: '#ffffff', size: 84, enter: fade(1), exit: fade(0.8) },
     closer: { font: 'Didot', tamil_font: 'Arima', text: 'The end', subtitle: 'முற்றும்', subtitle_size: 30, subtitle_color: '#d4d4d4', style: 'shadow', position: 'center', color: '#ffffff', size: 72, enter: fade(1), exit: fade(1) },
     titles: { font: 'Didot', tamil_font: 'Arima', color: '#ffffff', style: 'shadow', subtitle_color: '#d4d4d4' } },
@@ -102,10 +105,10 @@ export function applyTheme(timeline: Timeline, theme: Theme, title: string, isPh
   return { ...restyled, layers: [...restyled.layers, layer] };
 }
 
-/** Takes the theme off: its titles go, clips return to their own colours with plain cuts. Restyled titles keep their new look. */
+/** Takes the theme off: its titles and music go, clips return to their own colours with plain cuts. Restyled titles keep their new look. */
 export function removeTheme(timeline: Timeline): Timeline {
   const had = activeTheme(timeline);
-  const layers = timeline.layers.filter((layer) => !isThemeLayer(layer));
+  const layers = removeThemeMusic(timeline).layers.filter((layer) => !isThemeLayer(layer));
   if (!had) return { ...timeline, layers };
   const main = mainLayer(timeline);
   const themed = (clip: Clip) => clip.look === had.look;
@@ -117,6 +120,45 @@ export function openingWords(timeline: Timeline): string | null {
   const layer = timeline.layers.find(isThemeLayer) as TextLayer | undefined;
   const opener = layer?.items.find((item) => item.start === 0);
   return opener ? opener.text : null;
+}
+
+const THEME_MUSIC = 'Theme music · ';
+const MUSIC_FADE_IN = 1;
+const MUSIC_FADE_OUT = 2.5;
+export type Song = { asset_id: string; duration: number; name: string };
+export type PickableTrack = { id: string; seconds: number; mood: MusicMood };
+
+/** The theme's music, if it has some. */
+export function themeMusic(timeline: Timeline): Sound | null {
+  return audioLayers(timeline).flatMap((layer) => layer.items).find((sound) => sound.name.startsWith(THEME_MUSIC)) ?? null;
+}
+
+export function removeThemeMusic(timeline: Timeline): Timeline {
+  const sound = themeMusic(timeline);
+  return sound ? removeSound(timeline, sound.id) : timeline;
+}
+
+/**
+ * A track for the theme from the person's library: the first mood that has any, preferring one long enough to cover
+ * the whole video, the closest in length. `after` steps on to the next one, for "Another track".
+ */
+export function pickTrack<T extends PickableTrack>(tracks: T[], theme: Theme, seconds: number, after?: string | null): T | null {
+  const fit = (a: T, b: T) => Number(a.seconds < seconds) - Number(b.seconds < seconds) || Math.abs(a.seconds - seconds) - Math.abs(b.seconds - seconds);
+  const ordered = theme.music.flatMap((mood) => tracks.filter((track) => track.mood === mood).sort(fit));
+  if (!ordered.length) return null;
+  const index = after ? ordered.findIndex((track) => track.id === after) : -1;
+  return ordered[(index + 1) % ordered.length];
+}
+
+/** Music under the whole video: fades in and out, dips under speech, replacing the theme's earlier music. */
+export function addThemeMusic(timeline: Timeline, song: Song, ids: [string, string]): Timeline {
+  const cleared = removeThemeMusic(timeline);
+  const total = duration(cleared);
+  if (total <= 0) return cleared;
+  const length = Math.min(total, song.duration);
+  const sound: Sound = { id: ids[0], asset_id: song.asset_id, start: 0, in: 0, out: round(length), speed: 1, volume: MUSIC_VOLUME, muted: false,
+    fade_in: Math.min(MUSIC_FADE_IN, length / 4), fade_out: Math.min(MUSIC_FADE_OUT, length / 3), duck: true, name: `${THEME_MUSIC}${song.name}`.slice(0, 120), source_length: song.duration };
+  return addSound(cleared, sound, ids[1]);
 }
 
 export const themeTextLayers = (timeline: Timeline) => textLayers(timeline).filter(isThemeLayer);

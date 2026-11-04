@@ -52,3 +52,27 @@ test('a short video gets only the opening title', () => {
   assert.equal(layer.items.length, 1);
   assert.ok(layer.items[0].length <= 1.6 + 1e-9);
 });
+
+test('a theme picks music of its mood from the library, long enough to cover the video, and Another track steps on', async () => {
+  const { pickTrack, addThemeMusic, themeMusic, removeTheme } = await import('../src/timeline/themes.ts');
+  const tracks = [
+    { id: 'short', seconds: 8, mood: 'romantic' }, { id: 'long', seconds: 200, mood: 'romantic' }, { id: 'fits', seconds: 20, mood: 'romantic' },
+    { id: 'calm', seconds: 60, mood: 'calm' }, { id: 'party', seconds: 90, mood: 'happy' },
+  ];
+  const wedding = byId('wedding');
+  assert.equal(pickTrack(tracks, wedding, 13).id, 'fits');
+  assert.equal(pickTrack(tracks, wedding, 13, 'fits').id, 'long');
+  assert.equal(pickTrack(tracks, wedding, 13, 'long').id, 'short');
+  assert.equal(pickTrack(tracks, wedding, 13, 'short').id, 'calm');
+  assert.equal(pickTrack(tracks, wedding, 13, 'calm').id, 'fits');
+  assert.equal(pickTrack([{ id: 'x', seconds: 9, mood: 'songs' }], wedding, 13), null);
+  const themed = applyTheme(story(), wedding, 'Day', isPhoto, ['l', 'o', 'c']);
+  const withMusic = addThemeMusic(themed, { asset_id: 'a'.repeat(32), duration: 200, name: 'Track 12 · Classical' }, ['m', 'ml']);
+  const music = themeMusic(withMusic);
+  assert.equal(music.out, 13);
+  assert.ok(music.duck && music.fade_in > 0 && music.fade_out > 0);
+  const again = addThemeMusic(withMusic, { asset_id: 'b'.repeat(32), duration: 5, name: 'Short' }, ['m2', 'ml2']);
+  assert.equal(again.layers.flatMap((layer) => layer.kind === 'audio' ? layer.items : []).length, 1);
+  assert.equal(themeMusic(again).out, 5);
+  assert.equal(themeMusic(removeTheme(again)), null);
+});

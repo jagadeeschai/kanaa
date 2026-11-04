@@ -75,6 +75,12 @@ export const startFaces = (id: number, body: { start: number; end: number }) => 
 /** A steadied and/or reversed copy of a video, made once on the server. */
 export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`, { method: 'POST' });
 export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`;
+/** The person's own music from the Music app, sorted into moods. */
+export type Mood = 'romantic' | 'happy' | 'birthday' | 'calm' | 'energetic' | 'cinematic' | 'inspiring' | 'songs';
+export type LibraryTrack = { id: string; name: string; artist: string | null; genre: string | null; seconds: number; mood: Mood };
+export const getMusicLibrary = () => requestJson<{ tracks: LibraryTrack[]; folder: string }>('/api/music-library');
+export const musicListenUrl = (id: string) => `/api/music-library/${id}/listen`;
+export const takeLibraryTrack = (id: string) => requestJson<{ asset_id: string; duration: number; name: string }>(`/api/music-library/${id}/use`, { method: 'POST' });
 /** Each person, or object, found in a video, for choosing who stays in front of a title. */
 export type FoundOne = { id: number; label: number; colour: string; centre: [number, number] | null };
 export const requestInstances = (id: number, kind: 'people' | 'objects', steady: boolean, backwards: boolean) => requestJson<{ status: 'ready' | 'preparing'; progress?: number; tracks?: FoundOne[] }>(`/api/photos/${id}/instances?kind=${kind}&steady=${steady}&backwards=${backwards}`, { method: 'POST' });
