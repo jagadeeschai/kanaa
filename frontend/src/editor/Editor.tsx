@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -104,6 +104,23 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [addingMusic, setAddingMusic] = useState(false);
+  // The preview alone, filling the screen. Esc or the same button leaves it.
+  const stageRef = useRef<HTMLElement>(null);
+  const [fullScreen, setFullScreen] = useState(false);
+  useEffect(() => {
+    // Leaving the screen's full screen (Esc, or the green button) leaves this too.
+    const changed = () => { if (!document.fullscreenElement) setFullScreen(false); };
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
+  /** Fills the window at once, and the whole screen where the system allows it. */
+  const toggleFullScreen = useCallback(() => {
+    setFullScreen((on) => {
+      if (on) { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); return false; }
+      void stageRef.current?.requestFullscreen?.().catch(() => { /* The window-filling view still works. */ });
+      return true;
+    });
+  }, []);
   // The person's own music, read once when Themes or Audio is first opened.
   const [library, setLibrary] = useState<LibraryTrack[] | null>(null);
   const [libraryFolder, setLibraryFolder] = useState('');
@@ -750,6 +767,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
+      if (event.key === 'Escape' && fullScreen) { toggleFullScreen(); return; }
       if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
       if (event.key === 'Escape' && drawing) { setDrawing(null); return; }
       if (shaping && event.key === 'Escape') { setShaping(null); return; }
@@ -773,6 +791,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         case 'ArrowLeft': event.preventDefault(); engine?.pause(); seek(playhead.current - frame * (event.shiftKey ? 10 : 1)); break;
         case 'ArrowRight': event.preventDefault(); engine?.pause(); seek(playhead.current + frame * (event.shiftKey ? 10 : 1)); break;
         case 's': split(); break;
+        case 'f': toggleFullScreen(); break;
         case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
         case 'Escape': setWordSelection(new Set()); break;
@@ -781,7 +800,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
@@ -1129,7 +1148,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           </section></>}
       </aside>
       {mediaOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show media panel" title="Show the media panel" onClick={() => updateLayout({ mediaOpen: true })}><PanelLeftOpen size={15}/></button></div>}
-      <main className="ed-stage">
+      <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
@@ -1159,7 +1178,10 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         <div className="ed-transport">
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
-          <button className={`ed-icon ed-safe-toggle ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} title="Show where platform buttons may cover your video"><ShieldCheck size={15}/>Safe area</button>
+          <span className="ed-transport-end">
+            {!fullScreen && <button className={`ed-icon ed-safe-toggle ${safeArea ? 'on' : ''}`} aria-pressed={safeArea} onClick={() => setSafeArea((value) => !value)} title="Show where platform buttons may cover your video"><ShieldCheck size={15}/>Safe area</button>}
+            <button className="ed-icon ed-safe-toggle" aria-pressed={fullScreen} onClick={toggleFullScreen} title={fullScreen ? 'Leave full screen (F or Esc)' : 'Full screen preview (F)'} aria-label={fullScreen ? 'Leave full screen' : 'Full screen preview'}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen ? 'Exit' : 'Full screen'}</button>
+          </span>
         </div>
       </main>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
@@ -1198,7 +1220,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
   </div>;
 }
 
-const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
+const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
 function HelpDialog({ onClose, onResetLayout }: { onClose: () => void; onResetLayout: () => void }) {
   return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Shortcuts and layout" onClick={onClose}><div className="ed-card small" onClick={(event) => event.stopPropagation()}>
