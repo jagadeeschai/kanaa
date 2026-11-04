@@ -9,6 +9,8 @@ const PORT = process.env.MOTION_PORT ?? '8010';
 const ADDRESS = `http://127.0.0.1:${PORT}`;
 const START_SECONDS = 40;
 const STOP_MS = 4000;
+const SPLASH = path.join(ROOT, 'desktop', 'splash.html');
+const SPLASH_MS = 3400; // The welcome animation's length: the editor waits for it only if it starts sooner.
 const LOADING = `data:text/html,<body style="background:%230e0c14;color:%23b9b4cc;font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0">Starting Kanaa…</body>`;
 const BUSY = new Set(['queued', 'running', 'cancelling']);
 
@@ -42,7 +44,9 @@ async function waitForBackend() {
 
 async function open() {
   window = new BrowserWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 600, title: 'Kanaa', backgroundColor: '#0e0c14' });
-  window.loadURL(LOADING);
+  const shown = Date.now();
+  // The animated welcome from the project folder, so it can change without rebuilding; the plain one if it's missing.
+  if (fs.existsSync(SPLASH)) window.loadFile(SPLASH); else window.loadURL(LOADING);
   window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(ADDRESS)) event.preventDefault(); });
   window.on('close', confirmClose);
@@ -62,6 +66,9 @@ async function open() {
       confirmedQuit = true; app.quit(); return;
     }
   }
+  await pause(Math.max(0, SPLASH_MS - (Date.now() - shown)));
+  // Fades the welcome out, then shows the editor.
+  await window?.webContents.executeJavaScript('window.kanaaLeave ? window.kanaaLeave() : null').catch(() => {});
   window?.loadURL(ADDRESS);
 }
 

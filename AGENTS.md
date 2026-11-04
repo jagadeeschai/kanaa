@@ -14,7 +14,7 @@ This file is the starting point. `docs/VIDEO_EDITOR_PLAN.md` has each feature's 
 |---|---|
 | `frontend/` | React + TypeScript + Vite. The editor, the WebGL preview and the timeline model. |
 | `backend/` | FastAPI + SQLite (`backend/.data`). Media store, jobs, and export through FFmpeg 6.1 (`/opt/homebrew/bin/ffmpeg`). |
-| `desktop/` | The Electron Mac app, installed by `desktop/build.sh` as `/Applications/Kanaa.app`. It runs this folder's code and serves `frontend/dist` on port 8010. |
+| `desktop/` | The Electron Mac app, installed by `desktop/build.sh` as `/Applications/Kanaa.app`. It runs this folder's code and serves `frontend/dist` on port 8010. While it starts it shows `desktop/splash.html` (a kolam that folds into the icon), read from this folder, so the welcome can change without a rebuild; `main.cjs` changes need `build.sh`. |
 | `backend/native/` | Swift helpers using Apple Vision: `person_mask.swift` (all people) and `instance_mask.swift` (each person or object). Compiled once with `swiftc` into `.data/bin`. |
 | `tools/` | `golden_frames.py` and `golden_check.js`: preview against export, frame by frame. |
 
