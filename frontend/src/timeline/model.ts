@@ -332,6 +332,34 @@ function putInFront(timeline: Timeline, textId: string, changes: Partial<Clip>, 
   return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name, items: [copy] }, ...timeline.layers.slice(after)] };
 }
 
+/**
+ * A new picture or video behind a clip whose background is removed, filling the frame whatever its shape.
+ * A main-track clip moves up to a layer of its own, at the same time, and the new background takes its place on the
+ * main track, so nothing after it moves. A clip already above the main track gets the main clip under it replaced.
+ * A video background shorter than the clip plays slower to cover it; a photo simply lasts as long.
+ */
+export function replaceBackground(timeline: Timeline, clipId: string, source: SourceFacts & { width: number; height: number }, ids: [string, string]): Timeline {
+  const main = mainLayer(timeline);
+  const onMain = main.items.find((item) => item.id === clipId);
+  const above = onMain ? null : timeline.layers.flatMap((layer) => (layer.kind === 'video' && layer !== main ? layer.items : [])).find((item) => item.id === clipId);
+  const person = onMain ?? above;
+  if (!person) return timeline;
+  const under = onMain ?? main.items.find((item) => person.start >= item.start - 1e-6 && person.start < item.start + clipLength(item));
+  if (!under) return timeline;
+  const length = clipLength(under);
+  const fresh = newClip(source, ids[0]);
+  const available = source.media_type === 'image' ? length : source.duration ?? length;
+  const speed = available >= length ? 1 : Math.max(0.05, round(available / length));
+  const background: Clip = { ...fresh, start: under.start, out: round(Math.min(available, length * speed)), speed, muted: true, transition_in: under.transition_in ?? null,
+    transform: { ...fresh.transform, scale: round(fillScale(source, 0, timeline.format)) } };
+  const replaced = withClips(timeline, main.items.map((item) => (item.id === under.id ? background : item)));
+  if (!onMain) return replaced;
+  if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers.`);
+  const moved: Clip = { ...person, transition_in: null };
+  const index = replaced.layers.findIndex((layer) => layer.id === main.id) + 1;
+  return { ...replaced, layers: [...replaced.layers.slice(0, index), { id: ids[1], kind: 'video', name: 'Person', items: [moved] }, ...replaced.layers.slice(index)] };
+}
+
 /** A shape from points clicked along the top of the ground or a mountain: everything below the line, out to both edges. */
 export function groundShape(points: [number, number][]): [number, number][] {
   const line = [...points].sort((a, b) => a[0] - b[0]);

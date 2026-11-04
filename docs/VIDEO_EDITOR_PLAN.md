@@ -445,6 +445,11 @@ Background → Blur now has the same "Who stays in focus" picker (Everyone, or a
 
 Limits: strength is three steps rather than a slider, because each one is a full-size copy made once; the focus can't move from one subject to another during a clip yet (focus pull is next).
 
+### New background (done)
+With Background → Remove, the panel shows "New background": every picture and video in the media list. Choosing one (`replaceBackground` in `timeline/model.ts`) puts it behind, filling the frame whatever its shape (Fill scale, centred, muted). A main-track clip moves up to a "Person" layer of its own at the same time, and the background takes its place on the main track with the same length and transition, so nothing after it moves. Choosing again from the cut-out clip replaces the main clip under it. A video shorter than the clip plays slower to cover it.
+
+Limits: the background is centred, so a landscape picture in a vertical video keeps its middle (drag it or change Size to reframe); a much shorter video plays very slowly rather than looping.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

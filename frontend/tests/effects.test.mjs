@@ -96,3 +96,31 @@ test('a line along the mountains becomes everything below it, and the title goes
   const front = behind.layers[2].items[0];
   assert.deepEqual([front.shape_mask, front.muted, front.cutout ?? null], [mask, true, null]);
 });
+
+test('a new background takes the cut-out clip\'s place and fills the frame, and nothing after it moves', async () => {
+  const { replaceBackground, clipLength, cutoutToken } = await import('../src/timeline/model.ts');
+  let timeline = insertClip(insertClip(emptyTimeline(format), video('a', { out: 4, cutout: 'remove' })), video('b', { out: 3 }));
+  const landscape = { media_id: 7, media_type: 'image', width: 1920, height: 1080 };
+  const swapped = replaceBackground(timeline, 'a', landscape, ['bg', 'layer']);
+  const [back, after] = mainLayer(swapped).items;
+  assert.equal(back.media_id, 7);
+  assert.equal(clipLength(back), 4);
+  assert.equal(after.start, 4);
+  assert.ok(back.muted);
+  close(back.transform.scale, 1920 / 1080 * (1920 / 1080), 'fills a portrait frame from a landscape photo');
+  const layer = swapped.layers[1];
+  assert.equal(layer.id, 'layer');
+  assert.equal(layer.items[0].id, 'a');
+  assert.equal(layer.items[0].start, 0);
+  // From the cut-out clip, now above, a short video replaces the background and plays slower to cover it.
+  const again = replaceBackground(swapped, 'a', { media_id: 8, media_type: 'video', duration: 2, width: 1080, height: 1920 }, ['bg2', 'unused']);
+  const slow = mainLayer(again).items[0];
+  assert.equal(slow.media_id, 8);
+  close(slow.speed, 0.5, 'half speed');
+  close(clipLength(slow), 4, 'still four seconds');
+  assert.equal(again.layers.length, swapped.layers.length);
+  assert.equal(cutoutToken(video('c', { cutout: 'blur', cutout_pick: { kind: 'people', ids: [2, 0] }, blur_amount: 'strong' })), 'blur.people-0-2.strong');
+  assert.equal(cutoutToken(video('c', { cutout: 'blur' })), 'blur');
+  assert.equal(cutoutToken(video('c', { cutout: 'blur', cutout_pick: { kind: 'objects', ids: null } })), 'blur.objects-all.medium');
+  assert.equal(cutoutToken(video('c', { cutout: 'remove', cutout_pick: { kind: 'people', ids: [1] } })), 'people-1');
+});
