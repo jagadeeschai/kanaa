@@ -48,7 +48,7 @@ type LyricRecipe = {
   lyricBandColor?: string;
 };
 type LyricStage = 'background' | 'song' | 'timing' | 'style' | 'export';
-const LYRIC_STAGES: { id: LyricStage; label: string }[] = [{ id: 'background', label: 'Background' }, { id: 'song', label: 'Song & words' }, { id: 'timing', label: 'Timing' }, { id: 'style', label: 'Style' }, { id: 'export', label: 'Export' }];
+const LYRIC_STAGES: { id: LyricStage; label: string }[] = [{ id: 'song', label: 'Song & words' }, { id: 'background', label: 'Scenes & background' }, { id: 'timing', label: 'Timing' }, { id: 'style', label: 'Style' }, { id: 'export', label: 'Export' }];
 const LYRIC_FONTS: { id: LyricFont; label: string; family: string }[] = [
   { id: 'standard', label: 'Clean', family: LYRIC_FONT_STACK }, { id: 'elegant', label: 'Elegant', family: 'Arima' },
   { id: 'modern', label: 'Modern', family: 'Catamaran' }, { id: 'playful', label: 'Playful', family: 'Baloo Thambi 2' },
@@ -112,7 +112,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [stage, setStage] = useState<LyricStage>('background');
+  const [stage, setStage] = useState<LyricStage>('song');
   const [stageSize, setStageSize] = useState({ width: 600, height: 500 });
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -332,6 +332,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               <button onClick={() => { void start('sync'); }} disabled={!song || !lyrics.trim()} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100"><Sparkles className="h-4 w-4" />Auto-sync lyrics</button>
               <p className="text-xs text-slate-400">{!song ? 'Add a song to sync.' : !lyrics.trim() ? 'Paste the words to sync.' : 'Sync runs locally. First use may download a speech model. Sung vocals can need timing corrections.'}</p>
               <div className="flex flex-wrap items-center gap-2"><button onClick={() => { try { setCues(buildLyricTimeline(lyrics, duration)); setNotice('Manual timings created. Adjust or auto-sync them before export.'); setError(null); } catch (problem) { setError((problem as Error).message); } }} className={buttonClass}>Build manual timeline</button><label className="cursor-pointer text-xs text-slate-400">Import LRC or SRT<input aria-label="Import LRC or SRT" type="file" accept=".lrc,.srt,.txt" className="mt-1 block w-full text-xs" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then((text) => { setLyrics(text); setCues(buildLyricTimeline(text, duration)); setError(null); }).catch((problem) => setError(problem.message)); event.target.value = ''; }} /></label></div>
+              <button type="button" disabled={!lyrics.trim()} onClick={() => setStage('background')} className="theme-action-brand w-full rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40">Next: create scenes &amp; background</button>
               </>}
               {stage === 'style' && <>
               <section className="space-y-2"><h3 className="text-sm font-medium text-slate-200">Title-inspired looks</h3><div className="grid grid-cols-2 gap-2">{LYRIC_PRESETS.map((preset) => <button key={preset.id} type="button" className={`${buttonClass} min-h-14 text-left`} style={{ fontFamily: LYRIC_FONTS.find((item) => item.id === preset.font)?.family }} onClick={() => { setLyricFont(preset.font); setLyricStyle(preset.style); setColor(preset.color); setLyricBandColor(preset.band); setLyricAnimation(preset.animation); setPlacement(preset.placement); }}>{preset.label}<span className="mt-1 block text-[10px] font-normal text-slate-400">{preset.style} · {preset.animation}</span></button>)}</div></section>
