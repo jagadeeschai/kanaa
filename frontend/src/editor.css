@@ -521,3 +521,40 @@ body {
 
 /* The lyric editor's preview controls sit on white, which only suits the light theme. */
 :root[data-theme='dark'] .theme-modal .bg-white { background-color: #1a1a19; }
+
+.lyric-stages button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  padding: 0.45rem 0.2rem;
+  color: rgb(148, 163, 184);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.lyric-stages button span {
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  font-size: 0.65rem;
+}
+
+.lyric-stages button:hover,
+.lyric-stages button.active {
+  background: rgba(124, 92, 240, 0.16);
+  color: rgb(221, 214, 254);
+}
+
+.lyric-stages button.active span {
+  border-color: rgb(165, 140, 255);
+  background: rgb(104, 85, 220);
+  color: white;
+}
