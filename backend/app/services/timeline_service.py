@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.api.schemas import VideoEditRequest
+from app.services.finish_service import finish_filters
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
@@ -704,13 +705,28 @@ class Builder:
         elif self.audio or self.ducked:
             self.audio_graph.append(f'{self.bus(self.audio or self.ducked, total)}[mix]')
 
+    def add_finish(self, current: str) -> str:
+        """The cinematic finish over everything so far: captions come after it, above the bars."""
+        finish = self.timeline.finish
+        if finish is None or not (finish.letterbox or finish.grade or finish.glow or finish.vignette or finish.grain):
+            return current
+        steps, out, inputs = finish_filters(finish, self.fmt.width, self.fmt.height, self.folder, 'finish', current)
+        if inputs:
+            index = self.add_input(*inputs)
+            steps = [line.replace('[MASK]', f'[{index}:v]') for line in steps]
+        self.graph += steps
+        return out
+
     def build(self) -> Compiled:
         fmt = self.fmt
         self.graph.append(f'color=c=black:s={fmt.width}x{fmt.height}:r={fmt.fps}:d={self.total_frames / fmt.fps},format=gbrp,trim=end_frame={self.total_frames}[canvas]')
         current = 'canvas'
+        finished = False
         for position, layer in enumerate(self.timeline.layers):
             if layer.hidden or not layer.items:
                 continue
+            if layer.kind == 'captions' and not finished:
+                current, finished = self.add_finish(current), True
             if layer.kind == 'video':
                 current = self.add_video_layer(layer, position, current)
             elif layer.kind == 'text':
@@ -721,6 +737,8 @@ class Builder:
                 current = self.add_caption_layer(layer, position, current)
             else:
                 self.add_audio_layer(layer)
+        if not finished:
+            current = self.add_finish(current)
         self.graph.append(f'[{current}]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[final]')
         total = self.total_frames / fmt.fps
         self.mix_tracks(total)

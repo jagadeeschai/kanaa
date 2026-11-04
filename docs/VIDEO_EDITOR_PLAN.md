@@ -472,6 +472,11 @@ In their own Templates tab (the left panel's six tabs sit in two rows: Media, Te
 
 Limits: "the middle" is a guess at the best part (it doesn't look at the footage yet); the moments are fixed per story, though the clips can be trimmed and moved afterwards like any others.
 
+### Cinematic finish (done)
+At the top of the Themes tab, "Cinematic finish" puts a film look over the whole video, under the captions so they stay readable: widescreen bars to 2.39:1 (only on landscape and square frames; each bar is `(1 - aspect / 2.39) / 2` of the height), a teal and orange grade (teal in the shadows, orange in skin and light), glow on the highlights (above half brightness, a Gaussian of 3% of the height, screen-blended), darker edges (a smooth falloff from 45% to 105% of the way to the corners), and film grain (on brightness only, up to ±8%). Defaults: grade 70%, glow 35%, edges 55%, grain 30%; each has a slider. `Timeline.finish` holds it. Export (`finish_service.py`) uses a 33³ LUT and a vignette mask picture made from the same formulas, a quarter-size blurred highlight pass, FFmpeg noise and drawbox; the preview (`FINISH_FRAGMENT` in `playback.ts`) copies the frame and runs one shader with the same maths, before the first caption layer as the export does. A side-by-side of preview and export on the sunset photo matched by eye (grain differs, being random).
+
+Limits: whooshes on transitions, light leaks and smooth slow motion were planned with it but are not built yet.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

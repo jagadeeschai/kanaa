@@ -321,11 +321,21 @@ class AudioLayer(LayerBase):
 Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, CaptionLayer, AudioLayer], Field(discriminator='kind')]
 
 
+class Finish(Strict):
+    """A cinematic look over the whole video, under the captions. Each part 0 (off) to 1 (strong)."""
+    letterbox: bool = False
+    grade: float = Field(default=0, ge=0, le=1)  # Teal shadows, orange highlights.
+    glow: float = Field(default=0, ge=0, le=1)
+    vignette: float = Field(default=0, ge=0, le=1)
+    grain: float = Field(default=0, ge=0, le=1)
+
+
 class Timeline(Strict):
     version: Literal[2] = 2
     format: Format = Field(default_factory=Format)
     layers: List[Layer] = Field(default_factory=list)
     normalize_audio: bool = False
+    finish: Optional[Finish] = None
 
     @model_validator(mode='after')
     def limits(self):

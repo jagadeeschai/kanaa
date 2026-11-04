@@ -5,7 +5,7 @@ import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
-import { REST_TRANSFORM, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
@@ -33,6 +33,35 @@ const VERTEX = `#version 300 es
 in vec2 p; out vec2 uv; uniform vec4 box; uniform float turn; uniform vec2 frame;
 void main(){ uv=p; vec2 d=(p-.5)*box.zw*frame; float c=cos(turn), s=sin(turn);
   vec2 pos=box.xy+vec2(d.x*c-d.y*s, d.x*s+d.y*c)/frame; gl_Position=vec4(pos.x*2.-1.,1.-pos.y*2.,0,1); }`;
+/** The cinematic finish over the whole frame. Matches finish_service.py: the same grade, glow, vignette, grain and bars. */
+const FINISH_VERTEX = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
+const FINISH_FRAGMENT = `#version 300 es
+precision highp float; out vec4 color; uniform sampler2D backdrop; uniform vec2 viewport;
+uniform float grade, glow, vignette, grain, bars, seed;
+float luma(vec3 c){ return dot(c, vec3(.2126, .7152, .0722)); }
+vec3 tone(vec3 c){ float l = luma(c); float shadow = 1. - smoothstep(0., .55, l); float high = smoothstep(.45, 1., l);
+  return clamp(c + grade * (shadow * vec3(-.06, .02, .07) + high * vec3(.08, .02, -.07)), 0., 1.); }
+float hash(vec2 q){ return fract(sin(dot(q, vec2(12.9898, 78.233)) + seed * 7.13) * 43758.5453); }
+void main(){
+  vec2 at = gl_FragCoord.xy / viewport; float aspect = viewport.x / viewport.y;
+  vec3 c = tone(texture(backdrop, at).rgb);
+  if (glow > 0.) {
+    // The highlights, blurred: a Gaussian of sigma 3% of the height, sampled on a spiral.
+    vec3 sum = vec3(0.); float total = 0.;
+    for (int i = 0; i < 40; i++) {
+      float r = sqrt((float(i) + .5) / 40.) * 2.5; float a = float(i) * 2.39996;
+      vec2 off = vec2(cos(a), sin(a)) * r * .03 * vec2(1. / aspect, 1.);
+      float w = exp(-.5 * r * r);
+      sum += clamp((tone(texture(backdrop, at + off).rgb) - .5) * 2., 0., 1.) * w; total += w;
+    }
+    c = 1. - (1. - c) * (1. - sum / total * glow);
+  }
+  if (vignette > 0.) { vec2 d = (at - .5) * vec2(aspect, 1.); c *= 1. - vignette * smoothstep(.45, 1.05, length(d) / length(vec2(aspect, 1.) * .5)); }
+  if (grain > 0.) c = clamp(c + (hash(floor(gl_FragCoord.xy)) - .5) * grain * .16, 0., 1.);
+  if (at.y < bars || at.y > 1. - bars) c = vec3(0.);
+  color = vec4(c, 1.);
+}`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
@@ -123,6 +152,9 @@ export class PlaybackEngine {
   onStruggling: () => void = () => {};
   private unkeyedClip: string | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
+  private main!: WebGLProgram;
+  private finishing!: WebGLProgram;
+  private finishUniforms: Record<string, WebGLUniformLocation | null> = {};
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
   private timeline: Timeline | null = null;
@@ -153,6 +185,14 @@ export class PlaybackEngine {
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
     for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    this.main = program;
+    const finishing = gl.createProgram()!;
+    gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
+    gl.attachShader(finishing, shader(gl.FRAGMENT_SHADER, FINISH_FRAGMENT));
+    gl.bindAttribLocation(finishing, position, 'p');
+    gl.linkProgram(finishing);
+    this.finishing = finishing;
+    for (const name of ['backdrop', 'viewport', 'grade', 'glow', 'vignette', 'grain', 'bars', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -539,18 +579,43 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.hideMode, 0);
   }
 
+  /** The cinematic finish over everything drawn so far, as the export does it, before the captions. */
+  private drawFinish() {
+    const finish = this.timeline?.finish;
+    if (!finish || !(finish.letterbox || finish.grade || finish.glow || finish.vignette || finish.grain)) return;
+    const { gl } = this;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.backdrop);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.useProgram(this.finishing);
+    const u = this.finishUniforms;
+    gl.uniform1i(u.backdrop, 1);
+    gl.uniform2f(u.viewport, this.canvas.width, this.canvas.height);
+    gl.uniform1f(u.grade, finish.grade); gl.uniform1f(u.glow, finish.glow); gl.uniform1f(u.vignette, finish.vignette); gl.uniform1f(u.grain, finish.grain);
+    gl.uniform1f(u.bars, finish.letterbox ? barShare(this.timeline!.format) : 0);
+    gl.uniform1f(u.seed, Math.floor(this.time * this.timeline!.format.fps) % 997);
+    gl.disable(gl.BLEND);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.enable(gl.BLEND);
+    gl.useProgram(this.main);
+  }
+
   private draw() {
     const { gl } = this;
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (!this.timeline) return;
+    let finished = false;
     for (const layer of this.timeline.layers) {
       if (layer.hidden) continue;
+      if (layer.kind === 'captions' && !finished) { this.drawFinish(); finished = true; }
       if (layer.kind === 'video') this.drawLayer(layer);
       else if (layer.kind === 'text') this.drawText(layer);
       else if (layer.kind === 'blur') this.drawBlur(layer);
       else if (layer.kind === 'captions') this.drawCaptions(layer);
     }
+    if (!finished) this.drawFinish();
   }
 
   seek(t: number) {

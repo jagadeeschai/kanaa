@@ -1621,3 +1621,51 @@ class TitleTemplates(unittest.TestCase):
         picture = self.draw(text='{\\fs200}A', subtitle='{\\c&H0000FF&}b', style='shadow')
         self.assertLess(self.rows(picture)[1] - self.rows(picture)[0], 200)
 
+
+
+class CinematicFinish(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def setUp(self):
+        super().setUp()
+        picture = np.full((360, 640, 3), 40, np.uint8)
+        picture[:, 320:] = 210
+        picture[160:200, 140:180] = 255  # A bright patch in the dark half, for the glow.
+        path = self.root / 'finish-scene.png'
+        Image.fromarray(picture).save(path)
+        self.facts[95] = MediaFacts(path=path, media_type='image', width=640, height=360)
+
+    def scene(self, finish=None):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 95, 'start': 0, 'in': 0, 'out': 1}]}]}
+        if finish:
+            data['finish'] = finish
+        return self.frame(self.render(data, f"finish-{len(str(finish))}-{hash(str(finish)) & 0xffff}.mp4"), 10, (640, 360))
+
+    def test_each_part_of_the_finish_does_its_job(self):
+        plain = self.scene()
+        bars = self.scene({'letterbox': True})
+        share = round((1 - (640 / 360) / 2.39) / 2 * 360)
+        self.assertLess(bars[share // 2, 480].max(), 10)
+        self.assertLess(bars[360 - share // 2, 480].max(), 10)
+        self.assertAlmostEqual(int(bars[180, 480].mean()), int(plain[180, 480].mean()), delta=4)
+        graded = self.scene({'grade': 1})
+        dark, bright = graded[100, 60], graded[100, 560]
+        self.assertGreater(dark[2] - dark[0], plain[100, 60][2] - plain[100, 60][0] + 8)  # Teal in the shadows.
+        self.assertGreater(bright[0] - bright[2], plain[100, 560][0] - plain[100, 560][2] + 8)  # Orange in the light.
+        dimmed = self.scene({'vignette': 1})
+        self.assertLess(dimmed[5, 635].mean(), plain[5, 635].mean() * 0.4)
+        self.assertAlmostEqual(dimmed[180, 330].mean(), plain[180, 330].mean(), delta=4)
+        glowing = self.scene({'glow': 1})
+        self.assertGreater(glowing[180, 186].mean(), plain[180, 186].mean() + 15)  # Light spills past the patch's edge.
+        grainy = self.scene({'grain': 1})
+        self.assertGreater(grainy[20:80, 20:120].std(), plain[20:80, 20:120].std() + 3)
+
+    def test_captions_stay_above_the_finish(self):
+        data = {'format': self.FORMAT, 'finish': {'letterbox': True, 'vignette': 1},
+                'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 95, 'start': 0, 'in': 0, 'out': 1}]},
+                           {'id': 'subs', 'kind': 'captions', 'size': 60, 'items': [{'id': 'c', 'start': 0, 'length': 1, 'words': [{'w': 'HELLO', 's': 0}]}]}]}
+        compiled_order = self.render(data, 'finish-captions.mp4')
+        self.assertTrue(compiled_order.is_file())
+        from app.services.timeline_service import compile_timeline
+        graph = compile_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, self.out).graph
+        self.assertLess(graph.index('blend=all_mode=multiply'), graph.index('subtitles=') if 'subtitles=' in graph else graph.index('ass='))
