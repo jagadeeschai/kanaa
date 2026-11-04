@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronRight, Info, Search, X, type LucideIcon } from 'lucide-react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 const THEME_KEY = 'wa.editorTheme';
@@ -65,10 +65,57 @@ export function Splitter({ label, axis, value, min, max, sign, onChange, onReset
 const opened = new Map<string, boolean>();
 
 /** A settings group. Several can stay open, and each remembers its state until the page reloads. */
-export function Group({ title, startOpen = false, changed = false, children }: { title: string; startOpen?: boolean; changed?: boolean; children: ReactNode }) {
+/** Opens the guide at an article. Set by the editor; panels call it from their ⓘ buttons. */
+export const HelpContext = createContext<(article: string) => void>(() => {});
+
+/** Which tab of a settings panel shows, and what's being searched for. Groups read it to decide whether they show. */
+type PanelState = { tab: string; query: string };
+const PanelContext = createContext<PanelState | null>(null);
+export type PanelTab = { id: string; label: string; Icon: LucideIcon; changed?: boolean };
+const lastTab = new Map<string, string>();
+
+/** A gentle settings panel: a few tabs with icons, and a search box that finds any setting by everyday words. */
+export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
+  const remembered = lastTab.get(id);
+  const [tab, setTab] = useState(remembered && tabs.some((item) => item.id === remembered) ? remembered : tabs[0]?.id ?? '');
+  const [query, setQuery] = useState('');
+  const shown = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? '';
+  const pick = (next: string) => { lastTab.set(id, next); setTab(next); setQuery(''); };
+  return <PanelContext.Provider value={{ tab: shown, query: query.trim().toLowerCase() }}>
+    <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a setting… (blur, speed, behind)" aria-label="Find a setting"/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
+    {!query && tabs.length > 1 && <div className="ed-panel-tabs" role="tablist" aria-label="Settings">{tabs.map(({ id: key, label, Icon, changed }) => <button key={key} role="tab" aria-selected={shown === key} className={shown === key ? 'on' : ''} onClick={() => pick(key)}><Icon size={15}/><span>{label}</span>{changed && <i title="Has changes"/>}</button>)}</div>}
+    <div className="ed-panel-body">{children}</div>
+    {query && <p className="ed-tip ed-find-none">Showing settings that match “{query}”. <button className="ed-link" onClick={() => setQuery('')}>Show all</button></p>}
+  </PanelContext.Provider>;
+}
+
+/**
+ * A section of settings. In a Panel it shows on its own tab, or when its title or keywords match the search (then open).
+ * `tip` is one plain sentence under the title; `help` opens the guide's article on it.
+ */
+export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
-  return <section className={`ed-group ${open ? 'open' : ''}`}>
-    <button className="ed-group-head" aria-expanded={open} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{title}</span>{changed && <i title="Changed from the default"/>}</button>
-    {open && <div className="ed-group-body">{children}</div>}
+  const panel = useContext(PanelContext);
+  const openHelp = useContext(HelpContext);
+  const matches = panel?.query ? `${title} ${keywords} ${tip ?? ''}`.toLowerCase().includes(panel.query) : null;
+  if (panel && (matches === false || (matches === null && tab && tab !== panel.tab))) return null;
+  const showing = open || Boolean(matches);
+  return <section className={`ed-group ${showing ? 'open' : ''}`}>
+    <div className="ed-group-top">
+      <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{title}</span>{changed && <i title="Changed from the default"/>}</button>
+      {help && <button className="ed-icon small ed-help-button" aria-label={`Learn about ${title}`} title="Learn more" onClick={() => openHelp(help)}><Info size={13}/></button>}
+    </div>
+    {showing && <div className="ed-group-body">{tip && <p className="ed-group-tip">{tip}</p>}{children}</div>}
   </section>;
+}
+
+/** Advanced settings, folded away until wanted. A search opens it. */
+export function More({ label = 'More options', children }: { label?: string; children: ReactNode }) {
+  const panel = useContext(PanelContext);
+  const [open, setOpen] = useState(false);
+  const showing = open || Boolean(panel?.query);
+  return <div className={`ed-more ${showing ? 'open' : ''}`}>
+    <button className="ed-more-head" aria-expanded={showing} onClick={() => setOpen(!open)}><ChevronRight size={13}/>{label}</button>
+    {showing && <div className="ed-more-body">{children}</div>}
+  </div>;
 }

@@ -8,10 +8,10 @@ const SAMPLES_PER_SECOND = 30;
 const EASES: { id: Ease; label: string }[] = [{ id: 'easeInOut', label: 'Smooth' }, { id: 'easeOut', label: 'Slow down' }, { id: 'linear', label: 'Steady' }];
 const SLIDERS: Record<Exclude<Control, 'position'>, { label: string; property: AnimatedProperty; min: number; max: number; step: number; rest: number; unit: string; factor: number }> = {
   scale: { label: 'Size', property: 'scale', min: 0.05, max: 8, step: 0.01, rest: 1, unit: '%', factor: 100 },
-  rotation: { label: 'Rotation', property: 'rotation', min: -360, max: 360, step: 1, rest: 0, unit: '°', factor: 1 },
-  opacity: { label: 'Opacity', property: 'opacity', min: 0, max: 1, step: 0.01, rest: 1, unit: '%', factor: 100 },
+  rotation: { label: 'Tilt', property: 'rotation', min: -360, max: 360, step: 1, rest: 0, unit: '°', factor: 1 },
+  opacity: { label: 'See-through', property: 'opacity', min: 0, max: 1, step: 0.01, rest: 1, unit: '%', factor: 100 },
 };
-const LABELS: Record<Control, string> = { position: 'Position', scale: 'Size', rotation: 'Rotation', opacity: 'Opacity' };
+const LABELS: Record<Control, string> = { position: 'Position', scale: 'Size', rotation: 'Tilt', opacity: 'See-through' };
 
 type PanelProps = { transform: Transform; local: number; length: number; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void; onGestureStart: () => void; controls?: Control[] };
 
@@ -24,11 +24,11 @@ function Stopwatch({ control, transform, local, length, onChange, onSeek }: Pane
   const name = LABELS[control];
   return <div className="ed-key-tools">
     {animated && <>
-      <button className="ed-icon small" disabled={before === undefined} aria-label={`Previous ${name} keyframe`} title="Previous keyframe" onClick={() => onSeek(before!)}><ChevronLeft size={14}/></button>
-      <button className={`ed-icon small ${here ? 'on' : ''}`} aria-pressed={here} aria-label={`${here ? 'Remove' : 'Add'} ${name} keyframe here`} title={here ? 'Remove this keyframe' : 'Add a keyframe here'} onClick={() => onChange((here ? removeKey : addKey)(transform, control, local))}><Diamond size={13}/></button>
-      <button className="ed-icon small" disabled={after === undefined} aria-label={`Next ${name} keyframe`} title="Next keyframe" onClick={() => onSeek(after!)}><ChevronRight size={14}/></button>
+      <button className="ed-icon small" disabled={before === undefined} aria-label={`Previous ${name} point`} title="Previous point" onClick={() => onSeek(before!)}><ChevronLeft size={14}/></button>
+      <button className={`ed-icon small ${here ? 'on' : ''}`} aria-pressed={here} aria-label={`${here ? 'Remove' : 'Add'} ${name} point here`} title={here ? 'Remove this point' : 'Add a point here'} onClick={() => onChange((here ? removeKey : addKey)(transform, control, local))}><Diamond size={13}/></button>
+      <button className="ed-icon small" disabled={after === undefined} aria-label={`Next ${name} point`} title="Next point" onClick={() => onSeek(after!)}><ChevronRight size={14}/></button>
     </>}
-    <button className={`ed-icon small ${animated ? 'on' : ''}`} aria-pressed={animated} aria-label={`Animate ${name}`} title={animated ? 'Stop animating and keep this value' : 'Animate: changes now add keyframes'} onClick={() => onChange(toggleAnimated(transform, control, local))}><Timer size={14}/></button>
+    <button className={`ed-icon small ${animated ? 'on' : ''}`} aria-pressed={animated} aria-label={`Animate ${name}`} title={animated ? 'Stop animating and keep this value' : 'Animate: each change adds a point'} onClick={() => onChange(toggleAnimated(transform, control, local))}><Timer size={14}/></button>
   </div>;
 }
 
@@ -38,7 +38,7 @@ export function MotionPanel(props: PanelProps) {
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;
   return <>
     <div className="ed-motion"><span>Position</span><Stopwatch {...props} control="position"/></div>
-    {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a keyframe.</p>}
+    {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a point.</p>}
     {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).filter((control) => controls.includes(control)).map((control) => {
       const slider = SLIDERS[control];
       const value = valueAt(transform, slider.property, local);

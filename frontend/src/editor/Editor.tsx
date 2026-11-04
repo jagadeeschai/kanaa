@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, ShieldCheck, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -13,7 +13,8 @@ import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
-import { DEFAULT_LAYOUT, Group, LIMITS, Splitter, useEditorLayout, type ThemeChoice } from './layout';
+import { DEFAULT_LAYOUT, Group, HelpContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
+import { Guide } from './Guide';
 import { MotionPanel, MotionPath } from './Keyframes';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
@@ -141,6 +142,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
   const [wordSelection, setWordSelection] = useState<Set<string>>(new Set());
   const [showingHelp, setShowingHelp] = useState(false);
+  // The guide's article to open at: an ⓘ in a settings panel picks one.
+  const [guideArticle, setGuideArticle] = useState<string | null>(null);
+  const openGuide = useCallback((article: string) => { setGuideArticle(article); setShowingHelp(true); }, []);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pickingKey, setPickingKey] = useState(false);
   const [drawing, setDrawing] = useState<{ mode: 'start' | 'continue'; from?: [number, number]; to?: [number, number] } | null>(null);
@@ -965,7 +969,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const generalItems = (): MenuItem[] => [
     { label: 'Undo', hint: '⌘Z', disabled: !history.past.length, onSelect: () => dispatch({ type: 'undo' }) },
     { label: 'Redo', hint: '⇧⌘Z', disabled: !history.future.length, onSelect: () => dispatch({ type: 'redo' }) },
-    'divider', { label: 'Shortcuts and layout', hint: '?', onSelect: () => setShowingHelp(true) },
+    'divider', { label: 'Guide and shortcuts', hint: '?', onSelect: () => setShowingHelp(true) },
   ];
   const openGeneralMenu = (event: React.MouseEvent) => {
     if (isEditable(event.target)) return;
@@ -1040,7 +1044,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
-      <button className="ed-icon ed-hide-small" aria-label="Shortcuts and layout" title="Shortcuts and layout (?)" onClick={() => setShowingHelp(true)}><CircleHelp size={17}/></button>
+      <button className="ed-icon ed-hide-small" aria-label="Guide and shortcuts" title="Guide: how everything works (?)" onClick={() => setShowingHelp(true)}><CircleHelp size={17}/></button>
       <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
@@ -1185,6 +1189,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         </div>
       </main>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
+      <HelpContext.Provider value={openGuide}>
       <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
@@ -1196,7 +1201,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         : selected ? <Inspector backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
-          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Shortcuts and layout</button></div>}</aside>
+          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Guide: how everything works</button></div>}</aside>
+      </HelpContext.Provider>
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
     <div className="ed-lower"><div className="ed-tools">
@@ -1214,7 +1220,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
-    {showingHelp && <HelpDialog onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
+    {showingHelp && <Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
   </div>;
@@ -1222,15 +1228,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
 
 const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
-function HelpDialog({ onClose, onResetLayout }: { onClose: () => void; onResetLayout: () => void }) {
-  return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Shortcuts and layout" onClick={onClose}><div className="ed-card small" onClick={(event) => event.stopPropagation()}>
-    <button className="ed-close" aria-label="Close" onClick={onClose}><X size={17}/></button>
-    <h2>Shortcuts and layout</h2>
-    <div className="ed-keys">{SHORTCUTS.flatMap(([keys, action]) => [<kbd key={keys}>{keys}</kbd>, <span key={action}>{action}</span>])}</div>
-    <p>Drag the gaps between panels to resize them. Double-click a gap to reset it.</p>
-    <button className="ed-button wide" onClick={() => { onResetLayout(); onClose(); }}>Reset layout</button>
-  </div></div>;
-}
 
 function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | null; current: Format; onChoose: (format: Format) => void }) {
   return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Choose a format"><div className="ed-card">
@@ -1351,47 +1348,51 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
-  return <>
-    <Group title="Words" startOpen>
-      <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
-      <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>
+  return <Panel id="title" tabs={[{ id: 'words', label: 'Words', Icon: Type }, { id: 'style', label: 'Style', Icon: Palette }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
+    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
-    <Group title="Look" startOpen>
-      <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
-      <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
-      <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
-      <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
-      <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
-      <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
-      <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
-      {text.style === 'band' && <label className="ed-color"><span>Band colour</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
+    <Group title="Words" tab="words" startOpen keywords="text title words tamil english subtitle type" tip="Type in Tamil or English; a subtitle adds a small line." help="titles">
+      <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
+      <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>
     </Group>
-    {text.subtitle && <Group title="Subtitle" startOpen>
+    {text.subtitle && <Group title="Subtitle" tab="words" keywords="subtitle small line spacing">
       <ValueSlider label="Size" value={text.subtitle_size ?? Math.round(Math.max(20, text.size) * 0.55)} min={10} max={100} step={1} defaultValue={Math.round(Math.max(20, text.size) * 0.55)} onChange={(subtitle_size, group) => onChange({ subtitle_size: Math.round(subtitle_size) }, group)}/>
       <ValueSlider label="Letter spacing" value={text.subtitle_spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ subtitle_spacing: Math.round(spacing) }, group)}/>
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Subtitle colour" value={text.subtitle_color ?? text.color} onChange={(event) => onChange({ subtitle_color: event.target.value }, `subcolor-${text.id}`)}/></label>
       <Chips label="Subtitle place" options={[{ id: 'below' as const, label: 'Below the title' }, { id: 'above' as const, label: 'Above it' }]} value={text.subtitle_above ? 'above' : 'below'} onPick={(place) => onChange({ subtitle_above: place === 'above' })}/>
     </Group>}
-    <Group title="Animation" changed={Boolean(text.enter || text.exit)}>
+    <Group title="Style" tab="style" startOpen keywords="font bigger size colour color band shadow outline style look" tip="Choose a style, size and colour. Drag the title in the preview to move it." help="title-styles">
+      <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
+      <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
+      <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
+      <More>
+      <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
+      <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
+      <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
+      <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
+      {text.style === 'band' && <label className="ed-color"><span>Band colour</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
+    <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>
+      </More>
+    </Group>
+    <Group title="Animation" tab="motion" startOpen changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="How the title appears and leaves." help="animations-and-moves">
       <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
       <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
     </Group>
-    <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>
-    <p className="ed-tip">Drag the title in the preview to move it.</p>
-    <h3 className="ed-sub">Put the title behind…</h3>
+    <Group title="Put the title behind…" tab="motion" startOpen keywords="behind depth mountain person in front object car skyline" tip="People, cars or hills stand in front of your title." help="title-behind">
     <div className="ed-add-grid">
       <button className="ed-button" onClick={() => onBehind('person')} title="People in the video stay in front of this title. With several, choose who."><Users size={14}/>People</button>
       <button className="ed-button" onClick={() => onBehind('object')} title="Found automatically: a car, a bus, an animal. Choose which stay in front."><Car size={14}/>An object</button>
       <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill, skyline or the ground. Everything below stays in front."><Mountain size={14}/>Skyline / ground</button>
       <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or anything still. It stays in front of the title."><PenTool size={14}/>Draw around it</button>
     </div>
-    <p className="ed-tip">People and objects are found and followed as they move. A drawn shape stays still, so it suits a tripod shot. Pick Slide up as the Enter animation to make the title rise from behind.</p>
-    <Group title="Motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0}>
+    <p className="ed-group-tip">People and objects are found and followed as they move. A drawn shape stays still, so it suits a tripod shot. Pick Slide up as the Enter animation to make the title rise from behind.</p>
+    </Group>
+    <Group title="Moves" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-    <Group title="Follow movement" startOpen={Boolean(text.transform?.keyframes?.x?.length)}>{follow}</Group>
-  </>;
+    <Group title="Follow movement" tab="motion" startOpen={Boolean(text.transform?.keyframes?.x?.length)} keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>
+  </Panel>;
 }
 
 function SoundControls({ item, length, onChange }: { item: { volume: number; fade_in: number; fade_out: number }; length: number; onChange: (changes: { volume?: number; fade_in?: number; fade_out?: number }, group?: string) => void }) {
@@ -1405,19 +1406,24 @@ function SoundControls({ item, length, onChange }: { item: { volume: number; fad
 
 function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems }: { sound: Sound; timing: TimeFieldProps[]; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
   stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void }) {
-  return <>
-    <h2>Sound</h2>
+  return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
     <p className="ed-name" title={sound.name}>{sound.name}</p>
+    <Group title="Timing" startOpen keywords="when start length duration trim" help="timing-and-trimming">
+    <Timing fields={timing}/>
+    </Group>
+    <Group title="Volume" tab="volume" startOpen keywords="volume mute louder quiet fade speed dip duck music" tip="Set loudness and fades; music dips by itself while people talk." help="music-volume-ducking">
     <div className="ed-pair">
       <button className={`ed-button ${sound.muted ? 'on' : ''}`} aria-pressed={sound.muted} onClick={() => onChange({ muted: !sound.muted })}>{sound.muted ? <VolumeX size={14}/> : <Volume2 size={14}/>}Mute</button>
-      <button className={`ed-button ${layer.muted ? 'on' : ''}`} aria-pressed={Boolean(layer.muted)} onClick={() => onLayer({ muted: !layer.muted })}>Mute track</button>
     </div>
-    <Timing fields={timing}/>
     <SoundControls item={sound} length={soundLength(sound)} onChange={onChange}/>
-    <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
-    <label className="ed-check"><input type="checkbox" checked={Boolean(sound.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
     <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
-    <h2>Voice and music</h2>
+      <More>
+    <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
+      <div className="ed-pair"><button className={`ed-button ${layer.muted ? 'on' : ''}`} aria-pressed={Boolean(layer.muted)} onClick={() => onLayer({ muted: !layer.muted })}>Mute track</button></div>
+      </More>
+    </Group>
+    <Group title="Voice" tab="voice" startOpen keywords="clean voice noise karaoke vocals instrumental singing remove" tip="Clean up a voice, or take the singing out of a song." help="voice-and-vocals">
+    <label className="ed-check"><input type="checkbox" checked={Boolean(sound.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
     {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Kanaa folder, then restart Kanaa.</p>
       : job ? <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Separating… {job.progress}%. This can take a few minutes, and you can keep editing.</p><button className="ed-button wide" onClick={onCancelStems}>Cancel</button></>
         : <div className="ed-stack">
@@ -1425,7 +1431,8 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
           <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('vocals')}>Keep only vocals</button>
           <button className="ed-button wide" disabled={busy} onClick={() => onSeparate('both')}>Split into two tracks</button>
         </div>}
-  </>;
+    </Group>
+  </Panel>;
 }
 
 function Inspector({ backgrounds, onBackground, clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { backgrounds: Photo[]; onBackground: (item: Photo) => void; clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
@@ -1436,13 +1443,22 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
   const filling = Math.abs(size - fill) < 0.01;
   const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
   return <>
-    <Group title="Timing" startOpen><Timing fields={timing}/></Group>
-    <Group title="Framing" startOpen>
+    <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: Palette, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: WandSparkles, changed: Boolean(clip.cutout || clip.chroma) },
+      { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
+    <Group title="Timing" startOpen keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    <Group title="Frame" tab="frame" startOpen keywords="fit fill crop zoom rotate turn sideways mirror flip" tip="Fit shows everything; Fill covers the screen. Drag the picture to move it." help="framing-and-rotating">
     <div className="ed-pair">
       <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
       <button className={`ed-button ${filling ? 'on' : ''}`} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
     </div>
-    <p className="ed-tip">Drag the picture in the preview to position it.</p>
+    <div className="ed-pair">
+      <button className="ed-icon" aria-label="Rotate left" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 270) % 360) as Adjust['rotation'] })}><RotateCcw size={16}/></button>
+      <button className="ed-icon" aria-label="Rotate right" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 90) % 360) as Adjust['rotation'] })}><RotateCw size={16}/></button>
+      <button className={`ed-icon ${clip.adjust.flip_horizontal ? 'on' : ''}`} aria-label="Flip horizontally" onClick={() => adjust({ flip_horizontal: !clip.adjust.flip_horizontal })}><FlipHorizontal size={16}/></button>
+      <button className={`ed-icon ${clip.adjust.flip_vertical ? 'on' : ''}`} aria-label="Flip vertically" onClick={() => adjust({ flip_vertical: !clip.adjust.flip_vertical })}><FlipVertical size={16}/></button>
+    </div>
+    <More>
+    {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
     {overlay && source && <>
       <h3 className="ed-sub">Corner</h3>
       <Chips label="Corner" options={CORNERS} value={null} onPick={(corner) => { const spot = cornerPlacement(source, clip.adjust.rotation, format, size, corner); onChange({ transform: writeValue(writeValue(clip.transform, 'x', local, spot.x), 'y', local, spot.y) }); }}/>
@@ -1451,8 +1467,18 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
       <h3 className="ed-sub">Blend</h3>
       <Chips label="Blend" options={BLENDS} value={overlay.blend ?? 'normal'} onPick={(blend) => onLayer({ blend })}/>
     </>}
-    {source?.kind === 'video' && <>
-      <h3 className="ed-sub">Background</h3>
+    </More>
+    </Group>
+    {clip.freeze != null && <Group title="Frozen frame" tab="frame" startOpen keywords="still hold pause freeze"><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
+    <Group title="Colour" tab="look" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1} keywords="filter colour color brighter dark black and white warm vintage look" tip="Pick a look, then fine-tune the brightness." help="colour-and-looks">
+    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
+    <ValueSlider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(brightness, group) => adjust({ brightness }, group)}/>
+    <More>
+    <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
+    <ValueSlider label="Colour strength" value={clip.adjust.saturation} min={0} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(saturation, group) => adjust({ saturation }, group)}/>
+    </More>
+    </Group>
+    {source?.kind === 'video' && <Group title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
       <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
       {clip.cutout === 'blur' && <div className="ed-strength"><span className="ed-who-title">Blur strength</span><Chips label="Blur strength" options={BLUR_AMOUNTS} value={clip.blur_amount ?? 'medium'} onPick={(blur_amount) => onChange({ blur_amount })}/></div>}
       {clip.cutout && <WhoStays clip={clip} onChange={onChange} local={local} sourceDuration={source?.duration}/>}
@@ -1462,41 +1488,21 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
         <p className="ed-tip">It fills the whole frame, behind {isMain ? 'this clip' : 'the cut-out'}. A shorter video plays slower to cover it.</p></div>}
       {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? 'Blurring the background' : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background, and the preview shows the original until it is ready.`
         : clip.cutout === 'blur' ? 'Who you choose stays sharp and everything else is softened, like a film camera focused on them.' : isMain ? 'The person shows over black until you choose a new background below.' : 'The person shows over whatever is under this layer.'}</p>}
-    </>}
-    {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
-    <div className="ed-pair">
-      <button className="ed-icon" aria-label="Rotate left" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 270) % 360) as Adjust['rotation'] })}><RotateCcw size={16}/></button>
-      <button className="ed-icon" aria-label="Rotate right" onClick={() => adjust({ rotation: ((clip.adjust.rotation + 90) % 360) as Adjust['rotation'] })}><RotateCw size={16}/></button>
-      <button className={`ed-icon ${clip.adjust.flip_horizontal ? 'on' : ''}`} aria-label="Flip horizontally" onClick={() => adjust({ flip_horizontal: !clip.adjust.flip_horizontal })}><FlipHorizontal size={16}/></button>
-      <button className={`ed-icon ${clip.adjust.flip_vertical ? 'on' : ''}`} aria-label="Flip vertically" onClick={() => adjust({ flip_vertical: !clip.adjust.flip_vertical })}><FlipVertical size={16}/></button>
-    </div>
-    </Group>
-    <Group title="Motion" startOpen={Object.keys(clip.transform.keyframes ?? {}).length > 0} changed={Object.keys(clip.transform.keyframes ?? {}).length > 0}>
-    <div className="ed-chips" role="group" aria-label="Quick moves">{MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange({ transform: applyMove(clip.transform, move.id, local, (clip.out - clip.in) / clip.speed) })}>{move.label}</button>)}</div>
-    <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
-    </Group>
-    {follow && <Group title="Follow movement" startOpen={Boolean(clip.transform.keyframes?.x?.length)}>{follow}</Group>}
-    <Group title="Remove background" startOpen={Boolean(clip.chroma)} changed={Boolean(clip.chroma)}>
+    </Group>}
+    <Group title="Green screen" tab="background" startOpen={Boolean(clip.chroma) || source?.kind !== 'video'} changed={Boolean(clip.chroma)} keywords="green screen chroma key transparent blue" tip="Click the green or blue in the preview to make it see-through." help="green-screen">
     {clip.chroma ? <>
       <div className="ed-key-color"><label><span className="ed-key-swatch" style={{ background: clip.chroma.color }}/><input type="color" aria-label="Colour to remove" value={clip.chroma.color} onChange={(event) => onChange({ chroma: { ...clip.chroma!, color: event.target.value } }, `key-colour-${clip.id}`)}/></label>
         <button className={`ed-button ${picking ? 'on' : ''}`} onClick={onPick}><Pipette size={14}/>{picking ? 'Click the preview' : 'Pick from preview'}</button></div>
       <ValueSlider label="Strength" value={clip.chroma.similarity} min={0.001} max={0.5} step={0.001} defaultValue={DEFAULT_CHROMA.similarity} unit="%" factor={100} decimals={1} onChange={(similarity, group) => onChange({ chroma: { ...clip.chroma!, similarity } }, group)}/>
-      <ValueSlider label="Edge softness" value={clip.chroma.softness} min={0.001} max={0.5} step={0.001} defaultValue={DEFAULT_CHROMA.softness} unit="%" factor={100} decimals={1} onChange={(softness, group) => onChange({ chroma: { ...clip.chroma!, softness } }, group)}/>
-      <ValueSlider label="Remove colour spill" value={clip.chroma.spill} min={0} max={1} step={0.01} defaultValue={DEFAULT_CHROMA.spill} unit="%" factor={100} onChange={(spill, group) => onChange({ chroma: { ...clip.chroma!, spill } }, group)}/>
+      <ValueSlider label="Soft edges" value={clip.chroma.softness} min={0.001} max={0.5} step={0.001} defaultValue={DEFAULT_CHROMA.softness} unit="%" factor={100} decimals={1} onChange={(softness, group) => onChange({ chroma: { ...clip.chroma!, softness } }, group)}/>
+      <ValueSlider label="Clean up green edges" value={clip.chroma.spill} min={0} max={1} step={0.01} defaultValue={DEFAULT_CHROMA.spill} unit="%" factor={100} onChange={(spill, group) => onChange({ chroma: { ...clip.chroma!, spill } }, group)}/>
       <button className="ed-button wide" onClick={() => onChange({ chroma: null })}>Turn off</button>
     </> : <>
       <p className="ed-tip">Removes a green or blue screen. Add the clip as an overlay to put something behind it.</p>
       <button className="ed-button wide" onClick={() => { onChange({ chroma: DEFAULT_CHROMA }); onPick(); }}><Pipette size={14}/>Remove a colour</button>
     </>}
     </Group>
-    <Group title="Colour" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1}>
-    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
-    <h3 className="ed-sub">Adjust</h3>
-    <ValueSlider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(brightness, group) => adjust({ brightness }, group)}/>
-    <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
-    <ValueSlider label="Saturation" value={clip.adjust.saturation} min={0} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(saturation, group) => adjust({ saturation }, group)}/>
-    </Group>
-    <Group title="Animation" changed={Boolean(clip.enter || clip.exit || clip.transition_in)}>
+    <Group title="Animation" tab="motion" startOpen changed={Boolean(clip.enter || clip.exit || clip.transition_in)} keywords="animation entrance exit transition fade slide" tip="How it appears, leaves, and joins the clip before." help="animations-and-moves">
     {canTransition && <>
       <h3 className="ed-sub">Transition from the last clip</h3>
       <Chips label="Transition" options={[{ id: 'none' as const, label: 'None' }, ...TRANSITIONS]} value={transition?.kind ?? 'none'} onPick={(kind) => { onChange({ transition_in: kind === 'none' ? null : { kind, duration: transition?.duration ?? 0.6 } }); if (kind !== 'none') setTimeout(onShowTransition, 60); }}/>
@@ -1505,19 +1511,27 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
     {transition ? <p className="ed-tip">The transition replaces this clip's enter animation.</p> : <AnimationPicker label="Enter" value={clip.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onShowEnter}/>}
     {closesWithTransition ? <p className="ed-tip">The next clip's transition replaces this clip's exit animation.</p> : <AnimationPicker label="Exit" value={clip.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onShowExit}/>}
     </Group>
-    {clip.freeze != null && <Group title="Frozen frame" startOpen><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
-    {source?.kind === 'video' && clip.freeze == null && <Group title="Speed and sound" changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0 || Boolean(clip.reverse)}>
-      {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
+    <Group title="Moves" tab="motion" startOpen changed={Object.keys(clip.transform.keyframes ?? {}).length > 0} keywords="zoom in push pull shake move keyframe position size tilt see-through animate" tip="A gentle zoom in one click; More lets you animate anything." help="animations-and-moves">
+    <div className="ed-chips" role="group" aria-label="Quick moves">{MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange({ transform: applyMove(clip.transform, move.id, local, (clip.out - clip.in) / clip.speed) })}>{move.label}</button>)}</div>
+    <More label="Animate position, size and more">
+    <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
+    </More>
+    </Group>
+    {follow && <Group title="Follow movement" tab="motion" startOpen={Boolean(clip.transform.keyframes?.x?.length)} keywords="track follow stick moving person" tip="Draw a box around something and this follows it as it moves." help="follow-movement">{follow}</Group>}
+    {source?.kind === 'video' && clip.freeze == null && <Group title="Speed and sound" tab="sound" startOpen changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0 || Boolean(clip.reverse)} keywords="volume mute louder quiet slow motion fast reverse backwards noise clean voice speed" tip="Loudness and speed; Clean voice removes fan and AC hum." help="speed-and-sound">
+      <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
+      <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
       <ValueSlider label={clip.ramp ? 'Overall speed' : 'Speed'} value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
-      <h3 className="ed-sub">Speed ramp</h3>
+      <More>
+      <h3 className="ed-sub">Speed effect</h3>
       <Chips label="Speed ramp" options={RAMP_CHOICES} value={rampName(clip.ramp)} onPick={(id) => onChange({ ramp: id === 'off' ? null : RAMPS[id] })}/>
       {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">Sound is off during a speed ramp. Slow parts look smoothest in footage filmed at 60 or 120 frames a second.</p></>}
-      <h3 className="ed-sub">Sound</h3>
-      <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
+      {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
       <label className="ed-check"><input type="checkbox" checked={Boolean(clip.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
-      <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
-      {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Detach sound</button>}
+      {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Move sound to its own track</button>}
+      </More>
     </Group>}
+    </Panel>
   </>;
 }
 
@@ -1548,40 +1562,44 @@ function FollowPanel({ blur, drawing, job, busy, note, following, size, onSize, 
 function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll }: { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void }) {
   const [draft, setDraft] = useState(captionText(caption));
   useEffect(() => setDraft(captionText(caption)), [caption.id]);
-  return <>
-    <Group title="This caption" startOpen>
-      <textarea className="ed-text" aria-label="Caption text" lang="ta" value={draft} maxLength={300} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onText(event.target.value); }}/>
-      <p className="ed-tip">Fix a word by typing. Keep the same number of words to keep each word's timing.</p>
+  return <Panel id="caption" tabs={[{ id: 'words', label: 'Words', Icon: Captions }, { id: 'style', label: 'Style', Icon: Palette }]}>
+    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
-    <Group title="All captions" startOpen>
+    <Group title="This caption" tab="words" startOpen keywords="subtitles captions words fix spelling text" tip="Fix a word by typing. Keep the same number of words to keep its timing." help="captions">
+      <textarea className="ed-text" aria-label="Caption text" lang="ta" value={draft} maxLength={300} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onText(event.target.value); }}/>
+    </Group>
+    <Group title="All captions" tab="style" startOpen keywords="captions style size position colour highlight karaoke remove" tip="Changes every caption at once." help="captions">
       <Chips label="Caption style" options={[{ id: 'outline' as const, label: 'Outline' }, { id: 'shadow' as const, label: 'Shadow' }, { id: 'band' as const, label: 'Band' }]} value={layer.style} onPick={(style) => onLook({ style })}/>
-      <Chips label="Caption position" options={[{ id: 'top' as const, label: 'Top' }, { id: 'center' as const, label: 'Middle' }, { id: 'bottom' as const, label: 'Bottom' }]} value={layer.position} onPick={(position) => onLook({ position })}/>
       <ValueSlider label="Size" value={layer.size} min={20} max={100} step={1} defaultValue={48} onChange={(size, group) => onLook({ size: Math.round(size) }, group)}/>
+      <Chips label="Caption position" options={[{ id: 'top' as const, label: 'Top' }, { id: 'center' as const, label: 'Middle' }, { id: 'bottom' as const, label: 'Bottom' }]} value={layer.position} onPick={(position) => onLook({ position })}/>
+      <More>
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Caption colour" value={layer.color} onChange={(event) => onLook({ color: event.target.value }, `caption-colour-${layer.id}`)}/></label>
       <label className="ed-check"><input type="checkbox" checked={Boolean(layer.highlight)} onChange={(event) => onLook({ highlight: event.target.checked ? '#ffd400' : null })}/><span>Light up each word as it's spoken</span></label>
-      {layer.highlight && <label className="ed-color"><span>Lit word</span><input type="color" aria-label="Lit word colour" value={layer.highlight} onChange={(event) => onLook({ highlight: event.target.value }, `caption-lit-${layer.id}`)}/></label>}
+      {layer.highlight && <label className="ed-color"><span>Highlight colour</span><input type="color" aria-label="Lit word colour" value={layer.highlight} onChange={(event) => onLook({ highlight: event.target.value }, `caption-lit-${layer.id}`)}/></label>}
       <button className="ed-button wide" onClick={onRemoveAll}><Trash2 size={14}/>Remove all captions</button>
+      </More>
     </Group>
-  </>;
+  </Panel>;
 }
 
 function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, follow }: { blur: BlurBox; timing: TimeFieldProps[]; local: number; onChange: (changes: Partial<BlurBox>, group?: string) => void; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode }) {
-  return <>
-    <Group title="Timing" startOpen><Timing fields={timing}/></Group>
-    <Group title="Hide" startOpen>
+  return <Panel id="blur" tabs={[{ id: 'hide', label: 'Hide', Icon: EyeOff }, { id: 'motion', label: 'Motion', Icon: Move, changed: Object.keys(blur.transform.keyframes ?? {}).length > 0 }]}>
+    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    <Group title="Hide" tab="hide" startOpen keywords="hide face number plate pixelate censor blur strength oval box" tip="Hide a face or number plate. Drag the box in the preview to move it." help="hide-faces-plates">
       <Chips label="Style" options={[{ id: 'blur' as const, label: 'Blur' }, { id: 'pixelate' as const, label: 'Pixelate' }]} value={blur.style} onPick={(style) => onChange({ style })}/>
       <Chips label="Shape" options={[{ id: 'oval' as const, label: 'Oval' }, { id: 'box' as const, label: 'Box' }]} value={blur.shape} onPick={(shape) => onChange({ shape })}/>
       <ValueSlider label="Strength" value={blur.amount} min={0.05} max={1} step={0.01} defaultValue={DEFAULT_BLUR.amount} unit="%" factor={100} onChange={(amount, group) => onChange({ amount }, group)}/>
+      <More>
       <ValueSlider label="Width" value={blur.width} min={0.02} max={1} step={0.005} defaultValue={DEFAULT_BLUR.width} unit="%" factor={100} decimals={1} onChange={(width, group) => onChange({ width }, group)}/>
       <ValueSlider label="Height" value={blur.height} min={0.02} max={1} step={0.005} defaultValue={DEFAULT_BLUR.height} unit="%" factor={100} decimals={1} onChange={(height, group) => onChange({ height }, group)}/>
-      <p className="ed-tip">Drag the box in the preview to move it.</p>
+      </More>
     </Group>
-    <Group title="Follow movement" startOpen>{follow}</Group>
-    <Group title="Motion" changed={Object.keys(blur.transform.keyframes ?? {}).length > 0}>
+    <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw around a face, and the blur follows it as it moves." help="follow-movement">{follow}</Group>
+    <Group title="Moves" tab="motion" keywords="move position size animate keyframe" help="animations-and-moves" changed={Object.keys(blur.transform.keyframes ?? {}).length > 0}>
       <MotionPanel transform={blur.transform} local={local} length={blur.length} controls={['position', 'scale']} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-  </>;
+  </Panel>;
 }
 
 function ExportDialog({ timeline, projectId, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {

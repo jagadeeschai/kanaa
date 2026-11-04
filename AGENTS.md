@@ -89,6 +89,8 @@ Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
 
 **Phone access:** off by default. Turned on in Studio (phone icon), devices on the Wi-Fi open `http://<Mac IP>:8010` and enter a 6-digit PIN (`phone_service.py`, gate in `app/main.py`). Loopback never needs it; only the Mac can see or change it; wrong PINs are rate-limited; New PIN signs every phone out. `main.cjs` listens on 0.0.0.0 only when it's on, so turning it on needs a restart.
 
+**Settings panels and the Guide:** every inspector is a `Panel` (`editor/layout.tsx`): a search box, icon tabs, and `Group`s that each name their `tab`, search `keywords`, a one-line `tip` and a `help` article id; rarer controls sit in `More`. Clip: Frame, Look, Backdrop, Motion, Sound. Title: Words, Style, Motion. Sound: Volume, Voice. Caption: Words, Style. Blur box: Hide, Motion. Timing shows on every tab. The ⓘ on a section opens the Guide (`editor/Guide.tsx`, articles in `editor/guide-articles.ts`, with the shortcuts), also on the ? button. Keep the articles true to how features work when you change them.
+
 ## Known limits worth remembering
 
 - **Apple-only parts:** Vision masks, the Mac's English fonts, and the Mac app. On Windows the plan is to swap Vision for an ONNX model behind the same helper protocol (count byte plus masks on stdout), and bundle English fonts.
