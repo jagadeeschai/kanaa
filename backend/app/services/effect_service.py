@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.db.database import get_connection
 from app.services.job_service import JobCancelled
 
-VERSION = 1  # Bump when an effect's drawing changes, so new copies are made.
+VERSION = 2  # Natural weather rendering; old generated media remains reusable in the library.
 FPS = 30
 SECONDS = 5.0
 SHORT_SIDE = 720  # Soft light scales up well; this keeps making an effect to a few seconds.
@@ -47,7 +47,7 @@ EFFECTS = [
     Effect('bokeh', 'Bokeh lights', 'ஒளிப் புள்ளிகள்', 'wedding', 'Soft out-of-focus lights rising'),
     Effect('light-leak', 'Light leak', 'ஒளிக் கசிவு', 'travel', 'Warm film light drifting across'),
     Effect('film-burn', 'Film burn', 'ஃபிலிம் எரிவு', 'travel', 'A warm flash, good between two places'),
-    Effect('snow', 'Snow', 'பனி', 'travel', 'Gentle snow, for hills and winter trips'),
+    Effect('snow', 'Snow', 'பனி', 'weather', 'Gentle depth-layered snow, for hills and winter trips'),
     Effect('rain', 'Rain', 'மழை', 'weather', 'Diagonal rain with a soft wet glow'),
     Effect('lightning', 'Lightning', 'மின்னல்', 'weather', 'A bright sky flash with a branching lightning bolt'),
     Effect('fog', 'Fog', 'மூடுபனி', 'weather', 'Soft banks of mist drifting across the frame'),
@@ -66,9 +66,13 @@ def weather_options(effect_id: str, raw: dict | None = None) -> dict:
     raw = raw or {}
     seed = max(0, min(99, int(raw.get('seed', 0))))
     if effect_id == 'rain':
-        return {'density': max(0.25, min(2.0, float(raw.get('density', 1)))), 'direction': max(-1.0, min(1.0, float(raw.get('direction', -0.35)))), 'seed': seed}
+        return {'density': max(0.25, min(2.0, float(raw.get('density', 1)))), 'direction': max(-1.0, min(1.0, float(raw.get('direction', -0.35)))), 'speed': max(0.6, min(1.6, float(raw.get('speed', 1)))), 'seed': seed}
     if effect_id == 'lightning':
         return {'frequency': max(1, min(6, int(raw.get('frequency', 3)))), 'brightness': max(0.25, min(1.5, float(raw.get('brightness', 1)))), 'seed': seed}
+    if effect_id == 'fog':
+        return {'density': max(0.2, min(1.25, float(raw.get('density', 0.65)))), 'speed': max(0.2, min(1.4, float(raw.get('speed', 0.55)))), 'direction': max(-1.0, min(1.0, float(raw.get('direction', 0.35)))), 'seed': seed}
+    if effect_id == 'snow':
+        return {'density': max(0.25, min(1.75, float(raw.get('density', 0.8)))), 'speed': max(0.4, min(1.5, float(raw.get('speed', 0.8)))), 'direction': max(-1.0, min(1.0, float(raw.get('direction', 0.12)))), 'seed': seed}
     return {}
 
 
@@ -227,24 +231,28 @@ def film_burn(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
                          (0.2, 0.9, 0.4, (200, 40, 20), 0.6 * rise)])
 
 
-def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 1, direction: float = -0.35, seed: int = 0) -> Image.Image:
-    """Layered diagonal rain: short sharp drops near the camera, faint fine drops behind them."""
+def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 1, direction: float = -0.35, speed: float = 1, seed: int = 0) -> Image.Image:
+    """Layered rain: many soft distant drops and fewer sharp foreground streaks."""
     width, height = size
     unit = min(width, height)
-    key = (*size, round(density, 2), round(direction, 2), seed)
+    key = (*size, round(density, 2), round(direction, 2), round(speed, 2), seed)
     drops = rain.cache.get(key)
     if drops is None:
-        drops = rain.cache[key] = _particles(rng, round(360 * density), x=(-0.15, 1.15), phase=(0, 1), speed=(0.65, 1.5), length=(0.018, 0.065), light=(0.25, 0.9))
-    image = Image.new('RGB', size)
-    draw = ImageDraw.Draw(image)
+        drops = rain.cache[key] = {**_particles(rng, round(520 * density), x=(-0.2, 1.2), phase=(0, 1), fall=(0.55, 1.7), length=(0.012, 0.055), light=(0.12, 0.62), depth=(0, 1))}
+    distant = Image.new('RGB', size)
+    near = Image.new('RGB', size)
+    far_draw, near_draw = ImageDraw.Draw(distant), ImageDraw.Draw(near)
     t = n / FPS
     for i in range(len(drops['x'])):
-        y = ((drops['phase'][i] + t * drops['speed'][i]) % 1.15) - 0.08
-        length = drops['length'][i] * unit
+        y = ((drops['phase'][i] + t * drops['fall'][i] * speed) % 1.15) - 0.08
+        depth = drops['depth'][i]
+        length = drops['length'][i] * unit * (0.45 + depth * 0.9)
         x = (drops['x'][i] + y * direction * 0.35) * width
-        shade = int(210 * drops['light'][i])
-        draw.line((x, y * height, x - length * 0.28, y * height + length), fill=(shade * 3 // 4, shade * 7 // 8, shade), width=max(1, round(length / 28)))
-    return image
+        shade = int(155 * drops['light'][i] * (0.55 + depth * 0.65))
+        draw = near_draw if depth > 0.72 else far_draw
+        draw.line((x, y * height, x - length * direction * 0.45, y * height + length), fill=(shade * 4 // 5, shade * 9 // 10, shade), width=max(1, round(length / 38)))
+    distant = distant.filter(ImageFilter.GaussianBlur(max(0.45, unit * 0.0014)))
+    return Image.fromarray(np.clip(np.asarray(distant, np.int16) + np.asarray(near, np.int16), 0, 255).astype(np.uint8))
 
 
 rain.cache = {}
@@ -284,14 +292,55 @@ def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
     return Image.fromarray(np.clip(np.asarray(image, np.float32) + np.asarray(_glow(bolt, unit * 0.018, 1.8), np.float32), 0, 255).astype(np.uint8))
 
 
-def fog(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
-    """Wide, dim mist banks; Screen blend makes them translucent over the shot."""
+def fog(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 0.65, speed: float = 0.55, direction: float = 0.35, seed: int = 0) -> Image.Image:
+    """Low-frequency textured mist, kept translucent enough to preserve the underlying shot."""
+    width, height = size
+    small = (max(24, width // 12), max(16, height // 12))
+    key = (*small, seed)
+    texture = fog.cache.get(key)
+    if texture is None:
+        noise_rng = np.random.default_rng(7129 + seed * 101)
+        noise = Image.fromarray(noise_rng.integers(0, 256, (small[1], small[0]), dtype=np.uint8), 'L')
+        texture = fog.cache[key] = np.asarray(noise.filter(ImageFilter.GaussianBlur(max(2, small[1] * 0.11))), np.float32) / 255
+    shift = round((n / FPS) * speed * direction * small[0] * 0.08)
+    cloud = np.roll(texture, shift, axis=1)
+    # Uneven bands keep it from looking like a flat grey veil.
+    ys = np.linspace(0, 1, small[1], dtype=np.float32)[:, None]
+    bands = 0.76 + 0.12 * np.sin(ys * 8 + n / FPS * speed * 0.24) + 0.07 * np.sin(ys * 19 - 0.8)
+    alpha = np.clip((cloud - 0.34) * 1.55 * bands * density, 0, 0.42)
+    colour = np.array([225, 232, 234], np.float32)
+    picture = np.clip(alpha[..., None] * colour, 0, 255).astype(np.uint8)
+    return Image.fromarray(picture).resize(size, Image.BICUBIC).filter(ImageFilter.GaussianBlur(max(1, min(size) * 0.008)))
+
+
+fog.cache = {}
+
+
+def snow(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 0.8, speed: float = 0.8, direction: float = 0.12, seed: int = 0) -> Image.Image:
+    """Round, depth-layered flakes with gentle wind and softly blurred distant snow."""
+    width, height = size
+    unit = min(size)
+    key = (*size, round(density, 2), round(speed, 2), round(direction, 2), seed)
+    flakes = snow.cache.get(key)
+    if flakes is None:
+        flakes = snow.cache[key] = _particles(rng, round(230 * density), x=(-0.08, 1.08), phase=(0, 1.1), fall=(0.025, 0.12), size=(0.0012, 0.0055), sway=(0, 6.28), depth=(0, 1))
+    distant = Image.new('RGB', size)
+    near = Image.new('RGB', size)
+    far_draw, near_draw = ImageDraw.Draw(distant), ImageDraw.Draw(near)
     t = n / FPS
-    return _field(size, [
-        (-0.25 + (t * 0.055) % 1.5, 0.30, 0.42, (185, 200, 210), 0.34),
-        (1.20 - (t * 0.040) % 1.5, 0.62, 0.50, (215, 220, 220), 0.28),
-        (-0.10 + (t * 0.028) % 1.35, 0.88, 0.38, (165, 185, 195), 0.22),
-    ]).filter(ImageFilter.GaussianBlur(max(2, min(size) * 0.025)))
+    for i in range(len(flakes['x'])):
+        depth = flakes['depth'][i]
+        y = ((flakes['phase'][i] + t * flakes['fall'][i] * speed * (0.55 + depth)) % 1.15) - 0.08
+        x = flakes['x'][i] + t * direction * 0.035 * (0.4 + depth) + math.sin(t * (0.7 + depth) + flakes['sway'][i]) * 0.012
+        radius = flakes['size'][i] * unit * (0.45 + depth)
+        shade = round(135 + depth * 95)
+        draw = near_draw if depth > 0.68 else far_draw
+        draw.ellipse((x * width - radius, y * height - radius, x * width + radius, y * height + radius), fill=(shade, shade, min(255, shade + 8)))
+    distant = distant.filter(ImageFilter.GaussianBlur(max(0.6, unit * 0.002)))
+    return Image.fromarray(np.clip(np.asarray(distant, np.int16) + np.asarray(near, np.int16), 0, 255).astype(np.uint8))
+
+
+snow.cache = {}
 
 
 def dust(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
@@ -337,7 +386,7 @@ def lens_flare(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
-    'snow': falling([(235, 240, 255), (200, 210, 230)], 160, (0.002, 0.006), 0.02, 0.5, 'petal'),
+    'snow': snow,
     'rain': rain,
     'lightning': lightning,
     'fog': fog,
@@ -365,7 +414,7 @@ def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progre
         for n in range(total):
             if should_cancel():
                 raise JobCancelled()
-            frame = rain(n, total, size, rng, **config) if effect_id == 'rain' else lightning(n, total, size, rng, **config) if effect_id == 'lightning' else paint(n, total, size, rng)
+            frame = paint(n, total, size, rng, **config) if effect_id in {'rain', 'lightning', 'fog', 'snow'} else paint(n, total, size, rng)
             process.stdin.write(frame.convert('RGB').tobytes())
             on_progress(min(95, (n + 1) * 95 // total))
         process.stdin.close()
