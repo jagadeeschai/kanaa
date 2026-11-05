@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, LoaderCircle, Sparkles } from 'lucide-react';
-import { describeVideo, getTextAISettings, planEdits, saveTextAISettings, type TextAISettings } from '../api/client';
+import { describeVideo, getAISettings, planEdits, type AISettings } from '../api/client';
+import AISettingsFields from '../components/AISettingsFields';
 import { describeCommand, usable, type Options, type Proposed } from '../timeline/commands';
 import type { Timeline } from '../timeline/model';
 
-/** Ready-made connections. The model name is left to the person: providers rename models often. */
-const PRESETS = [
-  { id: 'local', label: 'On this Mac (Ollama)', base: 'http://localhost:11434/v1', note: 'Free and private: nothing leaves this Mac. Install Ollama and a model first (for example with "ollama pull <model>").' },
-  { id: 'cloud', label: 'OpenAI-compatible service', base: 'https://api.openai.com/v1', note: 'Needs an API key and uses credits. Your request, file names, titles and captions are sent to the provider; your videos are not.' },
-];
 const EXAMPLES = ['Make it a warm wedding reel with captions', 'Add a title “Pongal 2026” at the start and fireworks at the end', 'Make it vertical and cut it to the beat', 'Translate the captions to Tamil'];
 
 type Props = {
@@ -20,13 +16,10 @@ type Props = {
 };
 
 export default function AskPanel({ timeline, options, project, onApply }: Props) {
-  const [settings, setSettings] = useState<TextAISettings | null>(null);
+  const [settings, setSettings] = useState<AISettings | null>(null);
   const [editing, setEditing] = useState(false);
-  const [base, setBase] = useState(PRESETS[0].base);
-  const [model, setModel] = useState('');
-  const [key, setKey] = useState('');
   const [request, setRequest] = useState('');
-  const [busy, setBusy] = useState<'plan' | 'apply' | 'save' | 'describe' | null>(null);
+  const [busy, setBusy] = useState<'plan' | 'apply' | 'describe' | null>(null);
   const [error, setError] = useState('');
   const [plan, setPlan] = useState<{ summary: string; commands: Proposed[]; dropped: number } | null>(null);
   const [ticked, setTicked] = useState<Set<number>>(new Set());
@@ -36,14 +29,9 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    getTextAISettings().then((found) => { setSettings(found); if (found.base_url) setBase(found.base_url); setModel(found.model); setEditing(!found.configured); }).catch((problem) => setError((problem as Error).message));
+    getAISettings().then((found) => { setSettings(found); setEditing(!found.text_configured); }).catch((problem) => setError((problem as Error).message));
   }, []);
 
-  const save = async () => {
-    setBusy('save'); setError('');
-    try { const next = await saveTextAISettings({ base_url: base, model, api_key: key.trim() || undefined }); setSettings(next); setKey(''); setEditing(!next.configured); if (!next.configured) setError('Add an API key for a cloud service.'); }
-    catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
-  };
   const ask = async (text = request) => {
     if (!text.trim()) return;
     setBusy('plan'); setError(''); setPlan(null); setResults([]);
@@ -68,22 +56,16 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
     if (!post) return;
     try { await navigator.clipboard.writeText(`${post.title}\n\n${post.description}\n\n${post.hashtags.join(' ')}`); setCopied(true); } catch { setError('Could not copy. Select the words and copy them instead.'); }
   };
-  const preset = PRESETS.find((item) => item.base === base) ?? PRESETS[1];
 
   return <section className="ed-add ed-ask" aria-label="Ask AI">
     <p className="ed-tip">Say what you want in plain words, in English or Tamil. Kanaa suggests edits; nothing changes until you apply them, and ⌘Z undoes each one.</p>
-    {settings && !editing && <div className="ed-add-row"><span>AI: <b>{settings.model}</b> {settings.local ? '· on this Mac' : '· cloud'}</span><button className="ed-button" onClick={() => setEditing(true)}>Change</button></div>}
-    {editing && <div className="ed-ask-connect" role="group" aria-label="AI connection">
-      <h3 className="ed-sub">AI connection</h3>
-      <div className="ed-chips" role="group" aria-label="Where the AI runs">{PRESETS.map((item) => <button key={item.id} className={preset.id === item.id ? 'on' : ''} aria-pressed={preset.id === item.id} onClick={() => setBase(item.base)}>{item.label}</button>)}</div>
-      <p className="ed-tip">{preset.note}</p>
-      <label className="ed-field">Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="The model's name at your provider"/></label>
-      <details><summary className="ed-tip">Address</summary><label className="ed-field">OpenAI-compatible API address<input value={base} onChange={(event) => setBase(event.target.value)}/></label></details>
-      {preset.id !== 'local' && <label className="ed-field">API key<input type="password" autoComplete="new-password" value={key} onChange={(event) => setKey(event.target.value)} placeholder={settings?.has_key ? 'Saved. Type to replace it.' : ''}/></label>}
-      <button className="ed-button wide" disabled={!model.trim() || busy === 'save'} onClick={() => { void save(); }}>{busy === 'save' ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Save AI connection</button>
-      <p className="ed-tip">The key stays on this Mac and is never put in projects.</p>
+    {settings && !editing && <div className="ed-add-row"><span>AI: <b>{settings.text_model}</b> {settings.local ? '· on this Mac' : '· cloud'}</span><button className="ed-button" onClick={() => setEditing(true)}>AI settings</button></div>}
+    {editing && <div className="ed-ask-connect" role="group" aria-label="AI settings">
+      <h3 className="ed-sub">AI settings</h3>
+      <p className="ed-tip">The same connection as image generation. Ask AI needs a text model (a chat model at your provider).</p>
+      <AISettingsFields onSaved={(next) => { setSettings(next); setEditing(!next.text_configured); if (!next.text_configured) setError('Add a text model, and an API key for a cloud provider.'); else setError(''); }}/>
     </div>}
-    {settings?.configured && <>
+    {settings?.text_configured && !editing && <>
       <textarea className="ed-ask-input" aria-label="What should Kanaa do?" rows={3} value={request} placeholder="For example: make it a warm wedding reel with captions and confetti at the end"
         onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void ask(); }}/>
       <div className="ed-chips ed-ask-examples" role="group" aria-label="Examples">{EXAMPLES.map((text) => <button key={text} onClick={() => { setRequest(text); void ask(text); }}>{text}</button>)}</div>

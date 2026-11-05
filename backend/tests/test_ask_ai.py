@@ -1,4 +1,4 @@
-"""Ask AI: the text connection, edit plans, caption translation and post words, against a fake provider."""
+"""Ask AI: the shared AI connection (OpenAI library), edit plans, caption translation and post words, against a fake provider."""
 import json
 import tempfile
 import unittest
@@ -94,41 +94,47 @@ class Api(unittest.TestCase):
         for item in reversed(self.patches): item.stop()
         self.folder.cleanup()
 
-    def test_settings_keep_the_key_private_and_allow_a_local_model_without_one(self):
-        self.assertFalse(self.client.get('/api/ai-text-settings').json()['configured'])
-        self.assertEqual(self.client.put('/api/ai-text-settings', json={'base_url': 'http://example.com/v1', 'model': 'm'}).status_code, 400, 'plain http only for this Mac')
-        local = self.client.put('/api/ai-text-settings', json={'base_url': 'http://localhost:11434/v1', 'model': 'qwen'}).json()
-        self.assertTrue(local['configured']); self.assertTrue(local['local'])
-        cloud = self.client.put('/api/ai-text-settings', json={'base_url': 'https://api.example.com/v1', 'model': 'm'}).json()
-        self.assertFalse(cloud['configured'], 'a cloud service needs a key')
-        saved = self.client.put('/api/ai-text-settings', json={'base_url': 'https://api.example.com/v1', 'model': 'm', 'api_key': 'sk-secret'}).json()
-        self.assertTrue(saved['configured']); self.assertTrue(saved['has_key'])
-        self.assertNotIn('sk-secret', json.dumps(self.client.get('/api/ai-text-settings').json()))
+    def settings(self, **body):
+        return self.client.put('/api/ai-settings', json={'model': 'image-model', **body})
 
-    def test_plans_go_through_the_provider_with_the_key(self):
+    def test_ask_ai_shares_the_image_connection_with_its_own_text_model(self):
+        self.assertFalse(self.client.get('/api/ai-settings').json()['text_configured'])
+        self.assertEqual(self.settings(base_url='http://example.com/v1').status_code, 400, 'plain http only for this Mac')
+        local = self.settings(base_url='http://localhost:11434/v1', text_model='qwen').json()
+        self.assertTrue(local['text_configured'], 'a provider on this Mac needs no key'); self.assertTrue(local['local'])
+        self.assertFalse(local['configured'], 'image generation still needs a key')
+        cloud = self.settings(base_url='https://api.example.com/v1').json()
+        self.assertEqual(cloud['text_model'], 'qwen', 'leaving the text model out keeps it')
+        self.assertFalse(cloud['text_configured'], 'a cloud provider needs a key')
+        saved = self.settings(base_url='https://api.example.com/v1', api_key='sk-secret', text_model='chat-model').json()
+        self.assertTrue(saved['configured']); self.assertTrue(saved['text_configured'])
+        self.assertNotIn('sk-secret', json.dumps(self.client.get('/api/ai-settings').json()))
+        self.assertEqual(self.settings(base_url='https://api.example.com/v1', text_model='').json()['text_configured'], False, 'clearing it turns Ask AI off')
+
+    def test_plans_go_through_the_openai_library_with_the_key_and_text_model(self):
         self.assertEqual(self.client.post('/api/ai/plan', json={'request': 'x', 'options': OPTIONS}).status_code, 409, 'not connected yet')
-        self.client.put('/api/ai-text-settings', json={'base_url': 'https://api.example.com/v1', 'model': 'm', 'api_key': 'sk-secret'})
+        self.settings(base_url='https://api.example.com/v1', api_key='sk-secret', text_model='chat-model')
         self.provider.reply = '```json\n{"summary": "Done", "commands": [{"name": "set_look", "args": {"look": "warm", "clips": "all"}}]}\n```'
         plan = self.client.post('/api/ai/plan', json={'request': 'warm it up', 'project': PROJECT, 'options': OPTIONS}).json()
         self.assertEqual(plan['commands'][0]['args'], {'look': 'warm', 'clips': 'all'})
         request = self.provider.requests[-1]
         self.assertEqual(str(request.url), 'https://api.example.com/v1/chat/completions')
         self.assertEqual(request.headers['authorization'], 'Bearer sk-secret')
-        self.assertEqual(json.loads(request.content)['model'], 'm')
+        self.assertEqual(json.loads(request.content)['model'], 'chat-model', 'the text model, not the image model')
 
     def test_provider_trouble_is_explained(self):
-        self.client.put('/api/ai-text-settings', json={'base_url': 'http://localhost:11434/v1', 'model': 'qwen'})
+        self.settings(base_url='http://localhost:11434/v1', text_model='qwen')
         self.provider.status = 401
         response = self.client.post('/api/ai/translate', json={'lines': ['Hello'], 'to': 'ta'})
         self.assertEqual(response.status_code, 502)
-        self.assertIn('refused the key', response.json()['detail'])
-        self.assertNotIn('authorization', {key.lower() for key in self.provider.requests[-1].headers}, 'no key, no header')
+        self.assertIn('refused the API key', response.json()['detail'])
+        self.provider.status = 404
+        self.assertIn('no model called "qwen"', self.client.post('/api/ai/translate', json={'lines': ['Hello'], 'to': 'ta'}).json()['detail'])
         self.provider.status = 200
         self.provider.reply = 'I would rather not.'
         self.assertIn('expected form', self.client.post('/api/ai/describe', json={'project': PROJECT}).json()['detail'])
         self.provider.reply = '{"lines": ["வணக்கம்"]}'
         self.assertEqual(self.client.post('/api/ai/translate', json={'lines': ['Hello'], 'to': 'ta'}).json(), {'lines': ['வணக்கம்']})
-
 
 if __name__ == '__main__':
     unittest.main()

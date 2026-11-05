@@ -10,6 +10,7 @@ class AISettingsUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=500)
     base_url: str = Field(default='https://api.openai.com/v1', max_length=500)
     model: str = Field(default='gpt-image-2.5-flare', min_length=1, max_length=100)
+    text_model: str | None = Field(default=None, max_length=120)  # For Ask AI; None keeps the saved one.
     clear_key: bool = False
 
 
@@ -21,7 +22,7 @@ def get_settings():
 @router.put('/ai-settings')
 def update_settings(data: AISettingsUpdate):
     try:
-        return save_settings(data.api_key, data.base_url, data.model, data.clear_key)
+        return save_settings(data.api_key, data.base_url, data.model, data.clear_key, data.text_model)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -69,13 +70,6 @@ from typing import Any, Literal  # noqa: E402
 from app.services import edit_plan_service, text_ai_service  # noqa: E402
 
 
-class TextAISettingsUpdate(BaseModel):
-    base_url: str = Field(min_length=1, max_length=500)
-    model: str = Field(min_length=1, max_length=120)
-    api_key: str | None = Field(default=None, max_length=500)
-    clear_key: bool = False
-
-
 class PlanRequest(BaseModel):
     request: str = Field(min_length=1, max_length=1000)
     project: dict[str, Any] = Field(default_factory=dict)
@@ -101,19 +95,6 @@ def _ai(work):
         raise HTTPException(502, str(exc)) from exc
     except Exception as exc:  # Network trouble: say so plainly.
         raise HTTPException(502, f'Could not reach the AI provider: {exc.__class__.__name__}.') from exc
-
-
-@router.get('/ai-text-settings')
-def get_text_settings():
-    return text_ai_service.public_settings()
-
-
-@router.put('/ai-text-settings')
-def update_text_settings(data: TextAISettingsUpdate):
-    try:
-        return text_ai_service.save_settings(data.base_url, data.model, data.api_key, data.clear_key)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post('/ai/plan')

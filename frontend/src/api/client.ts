@@ -37,9 +37,9 @@ export const renameProject = (id: number, name: string) => requestJson(`/api/pro
 export const duplicateProject = (id: number) => requestJson<Project>(`/api/projects/${id}/duplicate`, { method: 'POST' });
 export const deleteProject = (id: number) => requestJson(`/api/projects/${id}`, { method: 'DELETE' });
 
-export type AISettings = { configured: boolean; base_url: string; model: string; key_source: 'environment' | 'local' | null };
+export type AISettings = { configured: boolean; base_url: string; model: string; text_model: string; text_configured: boolean; local: boolean; key_source: 'environment' | 'local' | null };
 export const getAISettings = () => requestJson<AISettings>('/api/ai-settings');
-export const saveAISettings = (data: { api_key?: string; base_url: string; model: string; clear_key?: boolean }) => requestJson<AISettings>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(data) });
+export const saveAISettings = (data: { api_key?: string; base_url: string; model: string; text_model?: string; clear_key?: boolean }) => requestJson<AISettings>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(data) });
 export type ImageScene = { id: number; position: number; lyric: string; prompt: string; start: number | null; end: number | null; status: 'draft' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled'; media_id: number | null; error: string | null };
 export type ImageBatch = { id: string; project_id: number; lyrics: string; style: string; brief: string; canvas: 'portrait' | 'square' | 'landscape'; job_id: string | null; active: boolean; scenes: ImageScene[] };
 export const getImageScenes = (id: number) => requestJson<{ batch: ImageBatch | null }>(`/api/projects/${id}/image-scenes`);
@@ -79,9 +79,6 @@ export const moveMediaToFolder = (ids: number[], folder: string | null) => reque
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const getFocus = (id: number, at = 0) => requestJson<{ x: number | null; y: number | null; faces: number; model?: boolean }>(`/api/photos/${id}/focus?at=${at.toFixed(2)}`);
-export type TextAISettings = { configured: boolean; base_url: string; model: string; has_key: boolean; local: boolean };
-export const getTextAISettings = () => requestJson<TextAISettings>('/api/ai-text-settings');
-export const saveTextAISettings = (body: { base_url: string; model: string; api_key?: string; clear_key?: boolean }) => requestJson<TextAISettings>('/api/ai-text-settings', { method: 'PUT', body: JSON.stringify(body) });
 export const planEdits = (body: { request: string; project: unknown; options: unknown }) => requestJson<{ summary: string; commands: unknown[]; dropped: { reason: string }[] }>('/api/ai/plan', { method: 'POST', body: JSON.stringify(body) });
 export const translateLines = (lines: string[], to: 'ta' | 'en') => requestJson<{ lines: string[] }>('/api/ai/translate', { method: 'POST', body: JSON.stringify({ lines, to }) });
 export const describeVideo = (project: unknown, language: 'ta' | 'en' | 'both') => requestJson<{ title: string; description: string; hashtags: string[] }>('/api/ai/describe', { method: 'POST', body: JSON.stringify({ project, language }) });
