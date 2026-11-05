@@ -1787,7 +1787,6 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
   const theme = activeTheme(timeline);
   const [luts, setLuts] = useState<LutInfo[]>([]);
   const [lutFolder, setLutFolder] = useState('');
-  const [lutQuery, setLutQuery] = useState('');
   useEffect(() => { void listLuts().then((found) => { setLuts(found.luts); setLutFolder(found.folder); }).catch(() => setLuts([])); }, []);
   const ratio = (width: number, height: number) => { const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a); const d = gcd(width, height); return `${width / d}:${height / d}`; };
   const setFormat = (next: Partial<Format>) => onChange({ ...timeline, format: { ...format, ...next } });
@@ -1821,9 +1820,8 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
           : <p className="ed-group-tip">Widescreen bars are available for landscape and square projects.</p>}
       </Group>
       <Group title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
-        <input className="ed-input" type="search" value={lutQuery} onChange={(event) => setLutQuery(event.target.value)} placeholder={`Search ${luts.length || ''} LUTs…`} aria-label="Search LUTs"/>
-        <label className="ed-field">LUT<KanaaSelect aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>
-          <option value="">None</option>{luts.filter((lut) => !lutQuery || lut.name.toLowerCase().includes(lutQuery.toLowerCase()) || lut.id === timeline.lut).map((lut) => <option key={lut.id} value={lut.id}>{lut.name}</option>)}
+        <label className="ed-lut-field"><span>LUT</span><KanaaSelect searchable searchPlaceholder={`Search ${luts.length || ''} LUTs…`} aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>
+          <option value="">None</option>{luts.map((lut) => <option key={lut.id} value={lut.id}>{lut.name}</option>)}
         </KanaaSelect></label>
         {timeline.lut && <ValueSlider label="Intensity" value={timeline.lut_amount ?? 1} min={0} max={1} step={0.05} defaultValue={1} unit="%" factor={100} onGestureStart={onPause} onChange={(value, group) => onChange({ ...timeline, lut_amount: value }, group ?? 'project-lut')}/>}
         <p className="ed-group-tip">{luts.length ? `${luts.length} LUTs from ${lutFolder}. The source files stay read-only.` : `No .cube LUTs found in ${lutFolder || 'your LUT folder'}.`}</p>
