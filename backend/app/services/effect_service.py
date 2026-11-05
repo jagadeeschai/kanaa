@@ -42,6 +42,11 @@ class Effect:
 EFFECTS = [
     Effect('confetti', 'Confetti', 'வண்ணக் காகிதம்', 'celebration', 'Colourful paper falling and turning'),
     Effect('petals', 'Flower shower', 'பூ மழை', 'wedding', 'Marigold and rose petals drifting down'),
+    Effect('jasmine', 'Jasmine shower', 'மல்லிகை மழை', 'wedding', 'Small white jasmine buds falling gently'),
+    Effect('akshatai', 'Rice and turmeric', 'அட்சதை', 'wedding', 'Blessed yellow rice grains arc upwards and fall'),
+    Effect('diya', 'Diya glow', 'தீப ஒளி', 'festival', 'A row of oil-lamp flames flickering along the bottom'),
+    Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
+    Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
     Effect('sparkles', 'Sparkles', 'மின்னல்', 'celebration', 'Little stars that twinkle'),
     Effect('fireworks', 'Fireworks', 'பட்டாசு', 'festival', 'Bursts of light, for Diwali and new year'),
     Effect('bokeh', 'Bokeh lights', 'ஒளிப் புள்ளிகள்', 'wedding', 'Soft out-of-focus lights rising'),
@@ -383,9 +388,148 @@ def lens_flare(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
     return _glow(image, max(2, unit * 0.035), 1.7)
 
 
+def jasmine(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    buds = jasmine.cache.get(size)
+    if buds is None:
+        buds = jasmine.cache[size] = _particles(rng, 78, x=(-0.03, 1.03), phase=(0, 1.15), fall=(0.065, 0.13), size=(0.0035, 0.008), sway=(0, 6.28), spin=(0, 6.28))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(buds['x'])):
+        y = ((buds['phase'][i] + t * buds['fall'][i]) % 1.18) - 0.08
+        x = buds['x'][i] + 0.025 * math.sin(t * 0.8 + buds['sway'][i])
+        radius = buds['size'][i] * unit
+        angle = buds['spin'][i] + t * 0.45
+        cx, cy = x * width, y * height
+        for petal in range(3):
+            a = angle + petal * math.tau / 3
+            px, py = cx + math.cos(a) * radius * 0.55, cy + math.sin(a) * radius * 0.55
+            draw.ellipse((px - radius * 0.62, py - radius * 0.46, px + radius * 0.62, py + radius * 0.46), fill=(238, 235, 218))
+        draw.ellipse((cx - radius * 0.24, cy - radius * 0.24, cx + radius * 0.24, cy + radius * 0.24), fill=(255, 250, 226))
+    return _glow(image, max(0.5, unit * 0.0015), 0.35)
+
+
+jasmine.cache = {}
+
+
+def akshatai(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    grains = akshatai.cache.get(size)
+    if grains is None:
+        grains = akshatai.cache[size] = _particles(rng, 140, delay=(0, 2.2), x=(-0.12, 0.12), vx=(-0.32, 0.32), vy=(0.55, 0.95), gravity=(0.42, 0.58), size=(0.002, 0.005), turn=(0, 6.28))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(grains['x'])):
+        age = (t - grains['delay'][i]) % 2.2
+        if age > 1.75:
+            continue
+        x = 0.5 + grains['x'][i] + grains['vx'][i] * age
+        y = 1.04 - grains['vy'][i] * age + grains['gravity'][i] * age * age
+        length = grains['size'][i] * unit * 2.8
+        angle = grains['turn'][i] + age * 5
+        dx, dy = math.cos(angle) * length, math.sin(angle) * length
+        shade = (245, 196 + int(35 * (i % 3) / 2), 45)
+        draw.line((x * width - dx, y * height - dy, x * width + dx, y * height + dy), fill=shade, width=max(1, round(length * 0.55)))
+    return _glow(image, max(0.5, unit * 0.001), 0.25)
+
+
+akshatai.cache = {}
+
+
+def diya(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    count = max(5, min(11, round(width / height * 7)))
+    for i in range(count):
+        x = width * (i + 1) / (count + 1)
+        base = height * 0.93
+        bowl_w, bowl_h = unit * 0.055, unit * 0.018
+        draw.polygon(((x - bowl_w, base - bowl_h), (x + bowl_w, base - bowl_h), (x + bowl_w * 0.62, base + bowl_h), (x - bowl_w * 0.62, base + bowl_h)), fill=(155, 72, 12))
+        draw.line((x - bowl_w, base - bowl_h, x + bowl_w, base - bowl_h), fill=(255, 183, 45), width=max(1, round(unit * 0.004)))
+        flicker = 0.88 + 0.12 * math.sin(t * (7.5 + i * 0.17) + i * 1.9) + 0.05 * math.sin(t * 18 + i)
+        flame_h, flame_w = unit * 0.085 * flicker, unit * 0.024
+        draw.polygon(((x, base - bowl_h - flame_h), (x + flame_w, base - bowl_h - flame_h * 0.3), (x, base - bowl_h), (x - flame_w, base - bowl_h - flame_h * 0.3)), fill=(255, 132, 22))
+        inner_h = flame_h * 0.58
+        draw.polygon(((x, base - bowl_h - inner_h), (x + flame_w * 0.42, base - bowl_h - inner_h * 0.25), (x, base - bowl_h), (x - flame_w * 0.42, base - bowl_h - inner_h * 0.25)), fill=(255, 245, 166))
+    return _glow(image, max(2, unit * 0.025), 1.25)
+
+
+def sparkler(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    sparks = sparkler.cache.get(size)
+    if sparks is None:
+        sparks = sparkler.cache[size] = _particles(rng, 150, born=(0, 1), angle=(0, 6.28), speed=(0.06, 0.24), life=(0.22, 0.9), size=(0.001, 0.0035))
+    t = n / FPS
+    cx = width * (0.62 + 0.035 * math.sin(t * 0.8))
+    cy = height * (0.52 + 0.025 * math.sin(t * 1.1))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    draw.line((cx + unit * 0.01, cy + unit * 0.01, cx + unit * 0.18, cy + unit * 0.28), fill=(110, 95, 75), width=max(1, round(unit * 0.004)))
+    for i in range(len(sparks['born'])):
+        age = (t + sparks['born'][i]) % 1.0
+        if age > sparks['life'][i]:
+            continue
+        fade = 1 - age / sparks['life'][i]
+        distance = sparks['speed'][i] * unit * age * 5
+        gravity = unit * 0.13 * age * age
+        x = cx + math.cos(sparks['angle'][i]) * distance
+        y = cy + math.sin(sparks['angle'][i]) * distance + gravity
+        trail = max(2, distance * 0.22)
+        colour = (round(255 * fade), round((205 + 45 * fade) * fade), round(115 * fade))
+        draw.line((x, y, x - math.cos(sparks['angle'][i]) * trail, y - math.sin(sparks['angle'][i]) * trail), fill=colour, width=max(1, round(sparks['size'][i] * unit)))
+    draw.ellipse((cx - unit * 0.012, cy - unit * 0.012, cx + unit * 0.012, cy + unit * 0.012), fill=(255, 255, 225))
+    return _glow(image, max(1, unit * 0.008), 1.1)
+
+
+sparkler.cache = {}
+
+
+def kolam(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    cx, cy = width * 0.5, height * 0.52
+    step = unit * 0.105
+    for gy in range(-2, 3):
+        for gx in range(-2, 3):
+            if abs(gx) + abs(gy) <= 3:
+                r = max(1, unit * 0.004)
+                draw.ellipse((cx + gx * step - r, cy + gy * step - r, cx + gx * step + r, cy + gy * step + r), fill=(160, 170, 175))
+    rings = []
+    for ring, samples in ((2.25, 96), (1.35, 72)):
+        points = []
+        for i in range(samples + 1):
+            a = math.tau * i / samples
+            wave = 0.18 * math.cos(4 * a)
+            points.append((cx + step * (ring + wave) * math.cos(a), cy + step * (ring + wave) * math.sin(a)))
+        rings.append(points)
+    progress = min(1, (n / max(1, total - 1)) * 1.18)
+    remaining = round(sum(map(len, rings)) * progress)
+    for points in rings:
+        shown = min(len(points), remaining)
+        if shown >= 2:
+            draw.line(points[:shown], fill=(245, 246, 238), width=max(1, round(unit * 0.008)), joint='curve')
+        remaining -= shown
+    return _glow(image, max(1, unit * 0.006), 0.75)
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
+    'jasmine': jasmine,
+    'akshatai': akshatai,
+    'diya': diya,
+    'sparkler': sparkler,
+    'kolam': kolam,
     'snow': snow,
     'rain': rain,
     'lightning': lightning,

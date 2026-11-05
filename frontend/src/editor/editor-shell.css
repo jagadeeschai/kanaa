@@ -161,6 +161,11 @@
 .ed-effects .ed-quick-art{display:grid;place-items:center;background:#0b0b10;color:#fff}
 .fx-confetti .ed-quick-art{background:radial-gradient(circle at 20% 30%,#ff4d6d 0 3px,transparent 4px),radial-gradient(circle at 60% 20%,#ffc83d 0 3px,transparent 4px),radial-gradient(circle at 80% 70%,#48cae4 0 3px,transparent 4px),radial-gradient(circle at 35% 75%,#7c5cff 0 3px,transparent 4px),#0b0b10}
 .fx-petals .ed-quick-art{background:radial-gradient(ellipse 5px 3px at 25% 35%,#ff9900 90%,transparent),radial-gradient(ellipse 5px 3px at 70% 25%,#e62846 90%,transparent),radial-gradient(ellipse 5px 3px at 55% 70%,#ffc400 90%,transparent),#0b0b10}
+.fx-jasmine .ed-quick-art{background:radial-gradient(circle at 24% 32%,#fffbe7 0 3px,transparent 4px),radial-gradient(circle at 68% 25%,#f6f1db 0 3px,transparent 4px),radial-gradient(circle at 52% 70%,#fffbe7 0 4px,transparent 5px),#182019}
+.fx-akshatai .ed-quick-art{background:radial-gradient(ellipse 2px 5px at 30% 60%,#ffd438 80%,transparent),radial-gradient(ellipse 2px 5px at 52% 32%,#f5bd25 80%,transparent),radial-gradient(ellipse 2px 5px at 72% 58%,#ffe06a 80%,transparent),#241a0b}
+.fx-diya .ed-quick-art{background:radial-gradient(ellipse at 50% 80%,#ff8b22 0 6%,#ffcf5b66 18%,transparent 48%),linear-gradient(#100b08,#2b170d)}
+.fx-sparkler .ed-quick-art{background:repeating-conic-gradient(from 10deg at 58% 52%,#fff7c8 0 1deg,transparent 2deg 16deg),radial-gradient(circle at 58% 52%,#fff 0 2px,#ffc85788 6px,transparent 18px),#0b0b10}
+.fx-kolam .ed-quick-art{background:radial-gradient(circle,#fff 0 1px,transparent 2px) 0 0/12px 12px,radial-gradient(circle at 50% 50%,transparent 0 12px,#f5f4e8 13px 14px,transparent 15px),#273033}
 .fx-sparkles .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),radial-gradient(circle at 70% 60%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),#0b0b10}
 .fx-fireworks .ed-quick-art{background:radial-gradient(circle at 50% 45%,transparent 0 8px,#ffc83d 9px,transparent 12px),radial-gradient(circle at 50% 45%,#ffc83d55,transparent 20px),#0b0b10}
 .fx-bokeh .ed-quick-art{background:radial-gradient(circle at 30% 60%,#ffc47899 0 8px,transparent 10px),radial-gradient(circle at 65% 35%,#ff96aa88 0 10px,transparent 12px),#0b0b10}

@@ -104,6 +104,11 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['fog'].mood, 'weather')
         self.assertEqual(found['dust'].mood, 'travel')
         self.assertEqual(found['lens-flare'].mood, 'travel')
+        self.assertEqual(found['jasmine'].mood, 'wedding')
+        self.assertEqual(found['akshatai'].mood, 'wedding')
+        self.assertEqual(found['diya'].mood, 'festival')
+        self.assertEqual(found['sparkler'].mood, 'festival')
+        self.assertEqual(found['kolam'].mood, 'festival')
 
     def test_weather_settings_are_bounded_and_make_cached_variants(self):
         rain = effect_service.weather_options('rain', {'density': 9, 'direction': -9, 'seed': 101})
