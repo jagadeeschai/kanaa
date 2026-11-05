@@ -4,8 +4,8 @@
  */
 import { addSound, mainLayer, textLayers, type Sound, type Timeline } from './model.ts';
 
-export type SoundEffect = { asset_id: string; duration: number; name: string; kind: 'whoosh' | 'hit'; peak: number };
-export const SFX_NAMES = { whoosh: 'Whoosh', hit: 'Hit' } as const;
+export type SoundEffect = { asset_id: string; duration: number; name: string; kind: 'whoosh' | 'hit' | 'thunder'; peak: number };
+export const SFX_NAMES = { whoosh: 'Whoosh', hit: 'Hit', thunder: 'Thunder' } as const;
 export const SFX_VOLUME = 0.7;
 const round = (value: number) => Math.round(value * 1000) / 1000;
 

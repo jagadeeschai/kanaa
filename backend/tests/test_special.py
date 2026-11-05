@@ -97,6 +97,11 @@ class Effects(unittest.TestCase):
         self.assertEqual((facts.width, facts.height), (128, 72))
         self.assertAlmostEqual(facts.duration, 0.5, delta=0.1)
 
+    def test_weather_effects_are_available(self):
+        found = {effect.id: effect for effect in effect_service.EFFECTS}
+        self.assertEqual(found['rain'].mood, 'weather')
+        self.assertEqual(found['lightning'].mood, 'weather')
+
 
 class Api(unittest.TestCase):
     def setUp(self):

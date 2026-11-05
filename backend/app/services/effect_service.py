@@ -46,6 +46,8 @@ EFFECTS = [
     Effect('light-leak', 'Light leak', 'ஒளிக் கசிவு', 'travel', 'Warm film light drifting across'),
     Effect('film-burn', 'Film burn', 'ஃபிலிம் எரிவு', 'travel', 'A warm flash, good between two places'),
     Effect('snow', 'Snow', 'பனி', 'travel', 'Gentle snow, for hills and winter trips'),
+    Effect('rain', 'Rain', 'மழை', 'weather', 'Diagonal rain with a soft wet glow'),
+    Effect('lightning', 'Lightning', 'மின்னல்', 'weather', 'A bright sky flash with a branching lightning bolt'),
 ]
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
@@ -208,10 +210,68 @@ def film_burn(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
                          (0.2, 0.9, 0.4, (200, 40, 20), 0.6 * rise)])
 
 
+def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Layered diagonal rain: short sharp drops near the camera, faint fine drops behind them."""
+    width, height = size
+    unit = min(width, height)
+    drops = rain.cache.get(size)
+    if drops is None:
+        drops = rain.cache[size] = _particles(rng, 360, x=(-0.15, 1.15), phase=(0, 1), speed=(0.65, 1.5), length=(0.018, 0.065), light=(0.25, 0.9))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(drops['x'])):
+        y = ((drops['phase'][i] + t * drops['speed'][i]) % 1.15) - 0.08
+        length = drops['length'][i] * unit
+        x = (drops['x'][i] - y * 0.12) * width
+        shade = int(210 * drops['light'][i])
+        draw.line((x, y * height, x - length * 0.28, y * height + length), fill=(shade * 3 // 4, shade * 7 // 8, shade), width=max(1, round(length / 28)))
+    return image
+
+
+rain.cache = {}
+
+
+def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Two repeatable lightning strikes with a quick double flash and a branching bolt."""
+    width, height = size
+    unit = min(width, height)
+    t = n / FPS
+    strikes = (1.0, 2.5, 4.15)
+    strength = max((math.exp(-((t - at) / 0.055) ** 2) + 0.5 * math.exp(-((t - at - 0.16) / 0.04) ** 2) for at in strikes), default=0.0)
+    image = Image.new('RGB', size, tuple(int(c * min(1, strength * 0.52)) for c in (150, 175, 255)))
+    nearest = min(strikes, key=lambda at: abs(t - at))
+    if abs(t - nearest) > 0.22:
+        return image
+    # Seed by the strike, not the frame, so the bolt holds still while it flashes.
+    bolt_rng = np.random.default_rng(round(nearest * 1000))
+    points = [(width * bolt_rng.uniform(0.35, 0.72), -unit * 0.02)]
+    while points[-1][1] < height * 0.82:
+        x, y = points[-1]
+        points.append((x + bolt_rng.uniform(-0.09, 0.09) * width, y + bolt_rng.uniform(0.07, 0.14) * height))
+    bolt = Image.new('RGB', size)
+    draw = ImageDraw.Draw(bolt)
+    brightness = max(0.18, min(1.0, strength))
+    draw.line(points, fill=tuple(int(c * brightness) for c in (225, 235, 255)), width=max(1, round(unit * 0.006)), joint='curve')
+    for branch_at in (2, 4):
+        if branch_at >= len(points) - 1:
+            continue
+        x, y = points[branch_at]
+        branch = [(x, y)]
+        for _ in range(3):
+            x += bolt_rng.uniform(-0.12, 0.12) * width
+            y += bolt_rng.uniform(0.05, 0.1) * height
+            branch.append((x, y))
+        draw.line(branch, fill=tuple(int(c * brightness * 0.7) for c in (210, 225, 255)), width=max(1, round(unit * 0.003)))
+    return Image.fromarray(np.clip(np.asarray(image, np.float32) + np.asarray(_glow(bolt, unit * 0.018, 1.8), np.float32), 0, 255).astype(np.uint8))
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
     'snow': falling([(235, 240, 255), (200, 210, 230)], 160, (0.002, 0.006), 0.02, 0.5, 'petal'),
+    'rain': rain,
+    'lightning': lightning,
     'sparkles': sparkles,
     'fireworks': fireworks,
     'bokeh': bokeh,

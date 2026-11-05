@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ RATE = 44100
 MAX_SECONDS = 30.0
 KINDS = {'whoosh': re.compile(r'whoosh|woosh|swoosh|swish|swipe|whip|sweep|riser|transition', re.I),
          'hit': re.compile(r'\bhit|impact|boom|thud|punch|slam|drum ?hit|braam|stinger', re.I)}
-OWN = {'kanaa-whoosh': ('whoosh', "Kanaa's whoosh"), 'kanaa-hit': ('hit', "Kanaa's hit")}
+OWN = {'kanaa-whoosh': ('whoosh', "Kanaa's whoosh"), 'kanaa-hit': ('hit', "Kanaa's hit"), 'kanaa-thunder': ('thunder', 'Thunder')}
 VERSION = 1
 
 
@@ -72,6 +73,26 @@ def make_hit(seconds: float = 0.8) -> np.ndarray:
     return out / (np.abs(out).max() or 1) * 0.9
 
 
+def make_thunder(seconds: float = 5.0) -> np.ndarray:
+    """A close crack followed by a low, irregular rumble. Generated locally; no sound file is downloaded."""
+    rng = np.random.default_rng(29)
+    count = int(seconds * RATE)
+    t = np.arange(count) / RATE
+    noise = rng.standard_normal(count)
+    # Low-pass noise for the body, with several rolling swells rather than one synthetic fade.
+    out = np.empty(count)
+    state = 0.0
+    alpha = 1 - math.exp(-2 * math.pi * 115 / RATE)
+    for index in range(count):
+        state += alpha * (noise[index] - state)
+        out[index] = state
+    rolls = (0.95 * np.exp(-t / 1.25) + 0.55 * np.exp(-((t - 1.2) / 0.55) ** 2) + 0.35 * np.exp(-((t - 2.6) / 0.8) ** 2))
+    crack = rng.standard_normal(count) * np.exp(-t / 0.035) * 0.7
+    sub = np.sin(2 * np.pi * (48 * t + 7 * np.sin(t * 2.1))) * np.exp(-t / 1.8) * 0.35
+    result = out * rolls * 5.5 + crack + sub
+    return result / (np.abs(result).max() or 1) * 0.9
+
+
 def loudest(path: Path) -> float:
     """Seconds into the file where it is loudest: where a whoosh should meet the cut."""
     result = subprocess.run([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-i', str(path), '-t', str(MAX_SECONDS), '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
@@ -106,7 +127,8 @@ def library_effects() -> list[dict]:
 
 
 def effects() -> list[dict]:
-    own = [{'id': key, 'kind': kind, 'name': name, 'seconds': 0.9 if kind == 'whoosh' else 0.8, 'own': True} for key, (kind, name) in OWN.items()]
+    durations = {'whoosh': 0.9, 'hit': 0.8, 'thunder': 5.0}
+    own = [{'id': key, 'kind': kind, 'name': name, 'seconds': durations[kind], 'own': True} for key, (kind, name) in OWN.items()]
     return own + [{key: value for key, value in item.items() if key != 'path'} for item in library_effects()]
 
 
@@ -117,8 +139,9 @@ def use(effect_id: str) -> dict:
         asset_id = hashlib.sha256(f'{effect_id}-v{VERSION}'.encode()).hexdigest()[:32]
         target = _store(asset_id)
         if not target.is_file():
-            _write_wav(target, make_whoosh() if kind == 'whoosh' else make_hit())
-        return {'asset_id': asset_id, 'duration': 0.9 if kind == 'whoosh' else 0.8, 'name': name, 'kind': kind, 'peak': 0.5 if kind == 'whoosh' else 0.0}
+            _write_wav(target, make_whoosh() if kind == 'whoosh' else make_hit() if kind == 'hit' else make_thunder())
+        duration = {'whoosh': 0.9, 'hit': 0.8, 'thunder': 5.0}[kind]
+        return {'asset_id': asset_id, 'duration': duration, 'name': name, 'kind': kind, 'peak': 0.5 if kind == 'whoosh' else 0.0}
     item = next((entry for entry in library_effects() if entry['id'] == effect_id), None)
     if item is None:
         raise ValueError('That sound effect is no longer in your music library.')

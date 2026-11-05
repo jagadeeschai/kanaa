@@ -699,7 +699,7 @@ def list_sound_effects():
 @router.post('/sound-effects/{effect_id}/use')
 def use_sound_effect(effect_id: str):
     from app.services import sound_effect_service
-    if not re.fullmatch(r'kanaa-(whoosh|hit)|[0-9a-f]{16}', effect_id):
+    if not re.fullmatch(r'kanaa-(whoosh|hit|thunder)|[0-9a-f]{16}', effect_id):
         raise HTTPException(404, 'Unknown sound effect.')
     try:
         return sound_effect_service.use(effect_id)

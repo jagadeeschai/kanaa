@@ -961,6 +961,21 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setSfxNote(`${result.placed} ${kind === 'whoosh' ? (result.placed === 1 ? 'whoosh' : 'whooshes') : (result.placed === 1 ? 'hit' : 'hits')} added. Each is a sound you can move, trim or mute; ⌘Z undoes them all.`);
     } catch (problem) { setSfxNote((problem as Error).message); } finally { setSfxBusy(null); }
   };
+  const [thunderBusy, setThunderBusy] = useState(false);
+  /** Adds Kanaa's locally generated thunder at the playhead as a normal, editable sound clip. */
+  const addThunder = async () => {
+    const current = timelineRef.current;
+    if (!current || thunderBusy) return;
+    setThunderBusy(true);
+    try {
+      const effect = await fetchSoundEffect('kanaa-thunder');
+      const at = Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000;
+      const sound: Sound = { id: newId(), asset_id: effect.asset_id, start: at, in: 0, out: effect.duration, speed: 1, volume: 0.8, muted: false,
+        fade_in: 0, fade_out: 0.8, duck: false, name: 'Thunder', source_length: effect.duration };
+      change(addSound(timelineRef.current ?? current, sound, newId()));
+      setSelectedId(sound.id);
+    } catch (problem) { setError((problem as Error).message); } finally { setThunderBusy(false); }
+  };
   const [looping, setLooping] = useState(false);
   /** Repeats a short song on the beat until the picture ends. */
   const loopSelectedSound = async (soundId: string) => {
@@ -1593,10 +1608,11 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         }}/>}
         {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
           <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
-          {(['celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
-            <h3 className="ed-sub">{{ celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
+          {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
+            <h3 className="ed-sub">{{ weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
             <div className="ed-quick ed-effects">{group.map((effect) => <button key={effect.id} className={`ed-quick-tile fx-${effect.id}`} {...draggableAs({ kind: 'effect', effect: effect.id })} disabled={!total || Boolean(effectBusy)} onClick={() => { void addEffect(effect.id); }} title={`${effect.about}. Click to add at the playhead, or drag onto the timeline.`}>
-              <span className="ed-quick-art">{effectBusy?.id === effect.id && <LoaderCircle className="spin" size={14}/>}</span><b>{effect.label}</b><em lang="ta">{effect.tamil}</em></button>)}</div></div>; })}
+              <span className="ed-quick-art">{effectBusy?.id === effect.id && <LoaderCircle className="spin" size={14}/>}</span><b>{effect.label}</b><em lang="ta">{effect.tamil}</em></button>)}{mood === 'weather' && <button className="ed-quick-tile fx-thunder" disabled={!total || thunderBusy} onClick={() => { void addThunder(); }} title="Add locally generated thunder at the playhead. It is an editable sound clip.">
+                <span className="ed-quick-art">{thunderBusy && <LoaderCircle className="spin" size={14}/>}</span><b>Thunder</b><em lang="ta">இடி</em></button>}</div></div>; })}
           {effectBusy && <p className="ed-tip" role="status">Making the effect for this video's shape… {effectBusy.progress}%. Next time it's instant.</p>}
           {!effects.length && <p className="ed-tip">Loading effects…</p>}
         </section>}
