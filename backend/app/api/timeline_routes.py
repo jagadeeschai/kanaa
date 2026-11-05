@@ -705,3 +705,69 @@ def use_sound_effect(effect_id: str):
         return sound_effect_service.use(effect_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.get('/travel-map/status')
+def travel_map_status():
+    """Whether the map data is on this Mac, and how much would be downloaded."""
+    from app.services import travel_map_service
+    return travel_map_service.status()
+
+
+@router.post('/travel-map/download')
+def travel_map_download():
+    """Fetches the map data once. The editor asks the person first."""
+    from app.services import travel_map_service
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Downloading map data', progress=0)
+        return {'progress': 100, 'phase': 'Map data ready', **travel_map_service.download(lambda progress: update_job(job_id, progress=progress), should_cancel)}
+
+    job_id = enqueue_render('map-data', 'Download map data', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
+
+
+@router.get('/travel-map/places')
+def travel_map_places(q: str = ''):
+    from app.services import travel_map_service
+    return {'places': travel_map_service.search(q[:80])}
+
+
+@router.post('/travel-map')
+def make_travel_map(body: dict):
+    """A route map video for the trip, in the project's shape: a job whose result is the new clip's media id."""
+    from app.services import travel_map_render, travel_map_service
+    if not travel_map_service.status()['ready']:
+        raise HTTPException(409, 'Download the map data first.')
+    try:
+        stops = [{'name': str(stop['name'])[:60], 'tamil': str(stop.get('tamil') or '')[:60], 'lat': float(stop['lat']), 'lon': float(stop['lon'])} for stop in body['stops']]
+        modes = [str(mode) for mode in body['modes']]
+        width, height = int(body['width']), int(body['height'])
+        style, language = str(body.get('style', 'light')), str(body.get('language', 'en'))
+        if not 2 <= len(stops) <= 6 or len(modes) != len(stops) - 1 or any(mode not in travel_map_render.MODES for mode in modes) \
+                or style not in travel_map_render.STYLES or language not in ('en', 'ta', 'both') or not (16 <= width <= 8192 and 16 <= height <= 8192) \
+                or any(not (-90 <= stop['lat'] <= 90 and -180 <= stop['lon'] <= 180) for stop in stops):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose 2 to 6 places and how each part of the trip is travelled.') from exc
+    name = ' → '.join(stop['name'] for stop in stops)[:100]
+    target = settings.data_dir / 'travel_maps' / f'{uuid.uuid4().hex}.mp4'
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Drawing the map', progress=0)
+        result = travel_map_render.render(stops, modes, (width, height), style, language, target, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        media = index_media(target, f'{name}.mp4')['id']
+        with get_connection() as conn:
+            conn.execute('INSERT OR IGNORE INTO media_folders(name) VALUES (?)', ('Travel maps',))
+            conn.execute('UPDATE photos SET folder=? WHERE id=?', ('Travel maps', media))
+            conn.commit()
+        return {'progress': 100, 'phase': 'Map ready', 'media_id': media, **result}
+
+    job_id = enqueue_render('travel-map', f'Map: {name}', run, total=100)
+    ready.set()
+    return {'job_id': job_id}

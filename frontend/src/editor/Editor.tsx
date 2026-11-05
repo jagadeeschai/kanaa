@@ -1,3 +1,4 @@
+import TravelMapPanel from './TravelMapPanel';
 import { loopSound, needsLoop } from '../timeline/loop';
 import { placeEffects, removeEffects, titleTimes, transitionTimes } from '../timeline/sfx';
 import AskPanel from './AskPanel';
@@ -1581,6 +1582,15 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
         {leftTab === 'ask' && timeline && <AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/>}
+        {leftTab === 'effects' && timeline && <TravelMapPanel format={timeline.format} onMade={async (mediaId) => {
+          const item = await getPhoto(mediaId);
+          setMedia((current) => [item, ...current.filter((each) => each.id !== item.id)]);
+          const current = timelineRef.current;
+          if (!current) return;
+          const clip = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());
+          change(dropClip(current, clip, engineRef.current?.currentTime ?? 0));
+          setSelectedId(clip.id);
+        }}/>}
         {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
           <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
           {(['celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>

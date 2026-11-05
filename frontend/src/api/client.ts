@@ -86,6 +86,11 @@ export const describeVideo = (project: unknown, language: 'ta' | 'en' | 'both') 
 export type SoundEffectInfo = { id: string; kind: 'whoosh' | 'hit'; name: string; seconds: number; own?: boolean };
 export const listSoundEffects = () => requestJson<{ effects: SoundEffectInfo[] }>('/api/sound-effects');
 export const useSoundEffect = (id: string) => requestJson<{ asset_id: string; duration: number; name: string; kind: 'whoosh' | 'hit'; peak: number }>(`/api/sound-effects/${id}/use`, { method: 'POST' });
+export type MapPlace = { id?: number; name: string; tamil: string; country?: string; lat: number; lon: number };
+export const travelMapStatus = () => requestJson<{ ready: boolean; missing: string[]; size_mb: number; sources: string }>('/api/travel-map/status');
+export const downloadTravelMapData = () => requestJson<{ job_id: string }>('/api/travel-map/download', { method: 'POST' });
+export const searchPlaces = (q: string) => requestJson<{ places: MapPlace[] }>(`/api/travel-map/places?q=${encodeURIComponent(q)}`);
+export const makeTravelMap = (body: { stops: MapPlace[]; modes: string[]; style: string; language: string; width: number; height: number }) => requestJson<{ job_id: string }>('/api/travel-map', { method: 'POST', body: JSON.stringify(body) });
 export const startBestMoments = (items: { media_id: number; length: number }[]) => requestJson<{ job_id: string }>('/api/best-moments', { method: 'POST', body: JSON.stringify({ items }) });
 /** Waits for a background job, reporting its progress, and returns its final fields. */
 export async function waitForJob<T>(id: string, onProgress: (progress: number) => void = () => {}): Promise<T> {
