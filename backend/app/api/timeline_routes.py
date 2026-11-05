@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.services.asset_service import content_key, folder_for, make_peaks, manifest_for, request_assets
 from app.services.job_service import update_job
 from app.services.media_probe import MediaFacts, probe_video
-from app.services.media_service import get_media, index_media
+from app.services.media_service import describe, get_media, index_media
 from app.services.render_queue_service import enqueue_render
 from app.services.transcript_service import LANGUAGES, PHASE, saved_words, transcribe
 from app.services.face_service import find_faces
@@ -525,4 +525,89 @@ def export_project(identifier: int, timeline: dict):
             raise
 
     job_id = enqueue_render('video_export', f"Export: {row['name']}", run, total=100)
+    return {'job_id': job_id}
+
+
+@router.get('/photos/{identifier}/focus')
+def photo_focus(identifier: int, at: float = 0.0):
+    """Where the main faces are in a photo, or in a video at `at` seconds, so a push-in aims at them. x and y are null when there are none."""
+    from app.services.face_service import MODEL_NAME
+    from app.services.focus_service import cached_focus
+    if not (settings.model_cache_dir / 'face' / MODEL_NAME).is_file():
+        # The face finder is fetched once by Blur faces; moves never download it on their own.
+        return {'x': None, 'y': None, 'faces': 0, 'model': False}
+    row = get_media(identifier)
+    path = Path(row['absolute_path'])
+    if not path.is_file():
+        raise HTTPException(404, f"{row['filename']} is no longer readable.")
+    try:
+        return cached_focus(str(path), row['media_type'], int(row['width'] or 1920), int(row['height'] or 1080), round(max(0.0, at), 2), path.stat().st_mtime)
+    except Exception as exc:  # The face finder's first use downloads it; say so plainly if that fails.
+        raise HTTPException(503, f'Could not look for faces: {exc}') from exc
+
+
+@router.post('/photos/{identifier}/scenes')
+def start_scenes(identifier: int, body: dict):
+    """Where the video changes shot between `start` and `end`, source seconds."""
+    from app.services.scene_service import find_scenes
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos have scenes to split.')
+    try:
+        start, end = float(body['start']), float(body['end'])
+        if not 0 <= start < end:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a part of a video to search.') from exc
+    facts = media_facts(identifier)
+    key = content_key(facts.path)
+    source = folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Finding scene changes', progress=0)
+        return {'progress': 100, 'phase': 'Found scene changes', **find_scenes(source, start, end, lambda progress: update_job(job_id, progress=progress), should_cancel)}
+
+    job_id = enqueue_render('scenes', 'Find scene changes', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
+
+
+@router.get('/effects')
+def list_effects():
+    from app.services.effect_service import EFFECTS
+    return [{'id': effect.id, 'label': effect.label, 'tamil': effect.tamil, 'mood': effect.mood, 'about': effect.about} for effect in EFFECTS]
+
+
+@router.post('/effects/{effect_id}')
+def make_effect(effect_id: str, body: dict):
+    """An effect clip in the project's shape: the media at once if it was made before, otherwise a job that makes it."""
+    from app.services import effect_service
+    effect = effect_service.BY_ID.get(effect_id)
+    if not effect:
+        raise HTTPException(404, 'No such effect.')
+    try:
+        width, height = int(body['width']), int(body['height'])
+        if not (16 <= width <= 8192 and 16 <= height <= 8192):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Give the project size.') from exc
+    size = effect_service.work_size(width, height)
+    target = effect_service.effect_path(effect_id, size)
+    known = effect_service.existing_media(target)
+    if known:
+        return {'media': describe(get_media(known))}
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase=f'Making {effect.label}', progress=0)
+        effect_service.render_effect(effect_id, size, target, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        media = effect_service.existing_media(target) or index_media(target, f'{effect.label}.mp4')['id']
+        effect_service.file_into_effects_folder(media)
+        return {'progress': 100, 'phase': f'{effect.label} ready', 'media_id': media}
+
+    job_id = enqueue_render('effect', f'Make {effect.label}', run, total=100)
+    ready.set()
     return {'job_id': job_id}

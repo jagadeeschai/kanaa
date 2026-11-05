@@ -155,3 +155,14 @@
 .ed-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0}.ed-quick-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border:1px solid var(--hairline);border-radius:9px;background:var(--panel);color:var(--text);font-size:11px;cursor:grab}.ed-quick-tile:hover{border-color:var(--accent)}.ed-quick-tile:active{cursor:grabbing}.ed-quick-art{width:100%;aspect-ratio:16/9;border-radius:6px;background:linear-gradient(135deg,#c98b5e,#4d6a8a)}
 .look-warm .ed-quick-art{filter:sepia(.35) saturate(1.3)}.look-cool .ed-quick-art{filter:hue-rotate(25deg) saturate(.9)}.look-vivid .ed-quick-art{filter:saturate(1.8) contrast(1.1)}.look-film .ed-quick-art{filter:contrast(.9) sepia(.2) brightness(.95)}.look-mono .ed-quick-art{filter:grayscale(1)}
 .ed-tile-add[draggable=true],.ed-template[draggable=true],.ed-tracks li[draggable=true]{cursor:grab}
+/* Special effects tiles: a small picture of each effect's light, drawn in CSS. */
+.ed-effects .ed-quick-tile b{font-weight:600}.ed-effects .ed-quick-tile em{font-style:normal;font-size:10px;color:var(--muted,#888)}
+.ed-effects .ed-quick-art{display:grid;place-items:center;background:#0b0b10;color:#fff}
+.fx-confetti .ed-quick-art{background:radial-gradient(circle at 20% 30%,#ff4d6d 0 3px,transparent 4px),radial-gradient(circle at 60% 20%,#ffc83d 0 3px,transparent 4px),radial-gradient(circle at 80% 70%,#48cae4 0 3px,transparent 4px),radial-gradient(circle at 35% 75%,#7c5cff 0 3px,transparent 4px),#0b0b10}
+.fx-petals .ed-quick-art{background:radial-gradient(ellipse 5px 3px at 25% 35%,#ff9900 90%,transparent),radial-gradient(ellipse 5px 3px at 70% 25%,#e62846 90%,transparent),radial-gradient(ellipse 5px 3px at 55% 70%,#ffc400 90%,transparent),#0b0b10}
+.fx-sparkles .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),radial-gradient(circle at 70% 60%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),#0b0b10}
+.fx-fireworks .ed-quick-art{background:radial-gradient(circle at 50% 45%,transparent 0 8px,#ffc83d 9px,transparent 12px),radial-gradient(circle at 50% 45%,#ffc83d55,transparent 20px),#0b0b10}
+.fx-bokeh .ed-quick-art{background:radial-gradient(circle at 30% 60%,#ffc47899 0 8px,transparent 10px),radial-gradient(circle at 65% 35%,#ff96aa88 0 10px,transparent 12px),#0b0b10}
+.fx-light-leak .ed-quick-art{background:radial-gradient(circle at 25% 40%,#ff7828,transparent 70%),radial-gradient(circle at 80% 20%,#ffd278,transparent 50%),#0b0b10}
+.fx-film-burn .ed-quick-art{background:radial-gradient(circle at 60% 50%,#fff 0 4px,#ffd278 10px,#ff6e1e 22px,transparent 40px),#0b0b10}
+.fx-snow .ed-quick-art{background:radial-gradient(circle at 20% 30%,#fff 0 1px,transparent 2px),radial-gradient(circle at 55% 60%,#fff 0 1.5px,transparent 2px),radial-gradient(circle at 80% 25%,#fff 0 1px,transparent 2px),radial-gradient(circle at 40% 80%,#fff 0 1px,transparent 2px),#1b2333}

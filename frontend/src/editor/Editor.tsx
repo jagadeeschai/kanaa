@@ -1,7 +1,9 @@
-import { applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
+import { splitAtCuts } from '../timeline/scenes';
+import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
+import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -23,7 +25,7 @@ import { clipBox } from '../timeline/resize';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { isFollowed, writeValue } from '../timeline/keyframes';
-import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
+import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } from '../timeline/presets';
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
@@ -39,8 +41,8 @@ type Props = { projectId: number; projectName: string; photo: Photo; onClose: ()
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
-const LEFT_TABS = ['media', 'templates', 'themes', 'text', 'audio', 'words'] as const;
-const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', templates: 'Templates', themes: 'Themes', text: 'Text', audio: 'Audio', words: 'Words' };
+const LEFT_TABS = ['media', 'templates', 'themes', 'effects', 'text', 'audio', 'words'] as const;
+const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', templates: 'Templates', themes: 'Themes', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
@@ -157,7 +159,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
-  const [leftTab, setLeftTab] = useState<'media' | 'templates' | 'themes' | 'text' | 'audio' | 'words'>('media');
+  const [leftTab, setLeftTab] = useState<(typeof LEFT_TABS)[number]>('media');
   const [language, setLanguage] = useState(() => { try { return localStorage.getItem('wa.wordsLanguage') ?? 'auto'; } catch { return 'auto'; } });
   const [transcripts, setTranscripts] = useState<Record<string, Word[]>>({});
   const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
@@ -174,6 +176,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [followJob, setFollowJob] = useState<FollowJob | null>(null);
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
   const [faceJob, setFaceJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
+  const [sceneJob, setSceneJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
   const [faceNote, setFaceNote] = useState('');
   const [captionWords, setCaptionWords] = useState(DEFAULT_CAPTION_OPTIONS.words);
   const [captionsWaiting, setCaptionsWaiting] = useState(false);
@@ -558,7 +561,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (themeBusy) return;
     const words = openingWords(base) ?? projectName;
     setThemeBusy(busy);
-    let next = applyTheme(base, look, words, (clip) => mediaById.get(clip.media_id)?.media_type === 'image', [newId(), newId(), newId()]);
+    const isPhoto = (clip: Clip) => mediaById.get(clip.media_id)?.media_type === 'image';
+    const aims = new Map(await Promise.all(mainLayer(base).items.filter(isPhoto).map(async (clip) => [clip.id, await aimFor(clip, base)] as const)));
+    let next = applyTheme(base, look, words, isPhoto, [newId(), newId(), newId()], (clip) => aims.get(clip.id) ?? null);
     try {
       const track = themeWithMusic ? pickTrack(await loadLibrary(), look, duration(next)) : null;
       if (track) {
@@ -828,10 +833,79 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } else if (payload.kind === 'title') {
       const template = [...TEMPLATES, ...myStyles].find((each) => each.id === payload.template);
       if (template) addTitle(template, target.time);
-    } else {
+    } else if (payload.kind === 'track') {
       const track = library?.find((each) => each.id === payload.track);
       if (track) void addLibraryTrack(track, target.time);
+    } else void addEffect(payload.effect, target.time);
+  };
+  /** Where faces are in each picture (0 to 1), found once per picture and moment. Null: none, or the face finder isn't on this Mac yet. */
+  const focusCache = useRef(new Map<string, Focus | null>());
+  const aimFor = async (clip: Clip, base: Timeline): Promise<Focus | null> => {
+    const item = mediaById.get(clip.media_id);
+    if (!item?.width || !item.height) return null;
+    const at = item.media_type === 'video' ? clip.in : 0;
+    const cacheKey = `${item.id}@${at.toFixed(2)}`;
+    if (!focusCache.current.has(cacheKey)) {
+      try {
+        const found = await getFocus(item.id, at);
+        focusCache.current.set(cacheKey, found.x === null || found.y === null ? null : { x: found.x, y: found.y });
+      } catch { return null; } // Moves still work, towards the middle.
     }
+    const focus = focusCache.current.get(cacheKey);
+    return focus ? focusOnScreen(clip.transform, focus, { width: item.width, height: item.height }, clip.adjust.rotation, base.format) : null;
+  };
+  /** Quick moves on the selected clip. Push in and Pull out aim at faces when there are any. */
+  const moveSelected = async (move: MovePreset) => {
+    if (!timeline || !selected) return;
+    const clip = selected;
+    const aim = move === 'push-in' || move === 'pull-out' ? await aimFor(clip, timeline) : null;
+    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim) });
+  };
+  const [effects, setEffects] = useState<EffectInfo[]>([]);
+  const [effectBusy, setEffectBusy] = useState<{ id: string; progress: number } | null>(null);
+  useEffect(() => { if (leftTab === 'effects' && !effects.length) listEffects().then(setEffects).catch((problem) => setError((problem as Error).message)); }, [leftTab, effects.length]);
+  /** Makes the effect once in this project's shape (later uses are instant), then lays it over the video at `dropAt` or the playhead. */
+  const addEffect = async (effectId: string, dropAt?: number) => {
+    if (!timeline || effectBusy) return;
+    const at = Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000;
+    const format = timeline.format;
+    setEffectBusy({ id: effectId, progress: 0 });
+    try {
+      const made = await makeEffect(effectId, { width: format.width, height: format.height });
+      let item = made.media;
+      if (!item && made.job_id) {
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          const status = await getJobStatus(made.job_id) as unknown as { status?: string; progress: number; error?: string | null; media_id?: number };
+          if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not make this effect.');
+          if (status.status === 'done' && status.media_id) { item = await getPhoto(status.media_id); break; }
+          setEffectBusy({ id: effectId, progress: status.progress });
+        }
+      }
+      if (!item) throw new Error('Could not make this effect.');
+      const made2 = item;
+      setMedia((current) => (current.some((each) => each.id === made2.id) ? current : [made2, ...current]));
+      const source: SourceFacts = { media_id: made2.id, media_type: 'video', duration: made2.duration, width: made2.width, height: made2.height };
+      const clip = { ...newClip(source, newId()), start: at, muted: true };
+      const current = timelineRef.current ?? timeline;
+      change(placeEffect(current, clip, newId()));
+      setSelectedId(clip.id);
+    } catch (problem) { setError((problem as Error).message); } finally { setEffectBusy(null); }
+  };
+  const [beatBusy, setBeatBusy] = useState(false);
+  const [beatNote, setBeatNote] = useState<string | null>(null);
+  /** Ends every main-track clip on the music's nearest beat, in one Undo. */
+  const cutClipsToBeat = async () => {
+    if (!timeline) return;
+    const sound = beatSound(timeline);
+    if (!sound) { setBeatNote('Add a song first. The cuts follow its beat.'); return; }
+    setBeatBusy(true); setBeatNote(null);
+    try {
+      const { beats, bpm } = await getSongBeats(sound.asset_id);
+      const result = cutToBeats(timeline, timelineBeats(sound, beats), facts);
+      if (result.changed) change(result.timeline);
+      setBeatNote(result.changed ? `${result.changed} clip${result.changed === 1 ? '' : 's'} now end on the beat (about ${Math.round(bpm)} beats a minute). ⌘Z undoes it.` : 'Your clips already end on the beat, or the song has no clear beat where they are.');
+    } catch (problem) { setBeatNote((problem as Error).message); } finally { setBeatBusy(false); }
   };
   /** Clicking a look or transition tile applies it to the selected clip; dragging puts it on any clip. */
   const applyToSelected = (payload: DragPayload) => {
@@ -934,6 +1008,34 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     : selectedText ? { id: selectedText.id, start: selectedText.start, length: selectedText.length, transform: selectedText.transform ?? REST_TRANSFORM } : null;
   const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
   // Blur faces: every face in the clip at the playhead gets its own blur box that follows it.
+  /** Finds where a long video changes shot, then splits it there, so dull parts can be deleted. */
+  const splitScenes = async (clipId: string) => {
+    const clip = timeline && findClip(timeline, clipId);
+    if (!clip || !isVideo(clip.media_id)) return;
+    engineRef.current?.pause();
+    setFaceNote('');
+    try {
+      const { job_id } = await startScenes(clip.media_id, { start: clip.in, end: clip.out });
+      setSceneJob({ jobId: job_id, clipId, progress: 0 });
+    } catch (problem) { setError((problem as Error).message); }
+  };
+  useEffect(() => {
+    if (!sceneJob) return;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getJobStatus(sceneJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; cuts?: number[] };
+        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not look for scene changes.'); setSceneJob(null); return; }
+        if (status.status !== 'done' || !status.cuts) { setSceneJob({ ...sceneJob, progress: status.progress }); return; }
+        setSceneJob(null);
+        const current = timelineRef.current;
+        if (!current) return;
+        const result = splitAtCuts(current, sceneJob.clipId, status.cuts, newId);
+        if (result.splits) change(result.timeline);
+        setFaceNote(result.splits ? `Split into ${result.splits + 1} scenes. Select one and press Delete to drop it; ⌘Z puts them back together.` : 'No scene changes found in this clip.');
+      } catch (problem) { setError((problem as Error).message); setSceneJob(null); }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [sceneJob, change]);
   const blurFaces = async () => {
     if (!timeline) return;
     engineRef.current?.pause();
@@ -1166,6 +1268,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const sound = findSound(timeline, id)?.sound;
     const items: MenuItem[] = [];
     if (clip || sound) items.push({ label: 'Split here', hint: 'S', onSelect: () => { const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) change(next); } });
+    if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) items.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
     items.push({ label: 'Duplicate', onSelect: () => { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } });
     if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) });
     if (clip) {
@@ -1297,6 +1400,15 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <p className="ed-tip">The cinematic finish and frame rate are in Project settings: click the size button at the top, or an empty part of the timeline.</p>
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
+        {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
+          <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
+          {(['celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
+            <h3 className="ed-sub">{{ celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
+            <div className="ed-quick ed-effects">{group.map((effect) => <button key={effect.id} className={`ed-quick-tile fx-${effect.id}`} {...draggableAs({ kind: 'effect', effect: effect.id })} disabled={!total || Boolean(effectBusy)} onClick={() => { void addEffect(effect.id); }} title={`${effect.about}. Click to add at the playhead, or drag onto the timeline.`}>
+              <span className="ed-quick-art">{effectBusy?.id === effect.id && <LoaderCircle className="spin" size={14}/>}</span><b>{effect.label}</b><em lang="ta">{effect.tamil}</em></button>)}</div></div>; })}
+          {effectBusy && <p className="ed-tip" role="status">Making the effect for this video's shape… {effectBusy.progress}%. Next time it's instant.</p>}
+          {!effects.length && <p className="ed-tip">Loading effects…</p>}
+        </section>}
         {leftTab === 'text' && <>
           <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add a title at the playhead, or drag one onto the timeline. Then type your own words.</p>
             <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" {...draggableAs({ kind: 'title', template: template.id })} onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
@@ -1319,6 +1431,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         </>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead, or drag a track onto the timeline. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
+          <section className="ed-add" aria-label="Cut to the beat"><h3 className="ed-sub">Cut to the beat</h3><p className="ed-tip">Each clip on the main track ends on the song's nearest beat, so cuts land with the music.</p>
+            <button className="ed-button wide" disabled={!total || beatBusy || Boolean(timeline && mainLayer(timeline).locked)} onClick={() => { void cutClipsToBeat(); }}>{beatBusy ? <LoaderCircle className="spin" size={14}/> : <AudioLines size={14}/>}{beatBusy ? 'Listening for the beat…' : 'Cut clips to the beat'}</button>
+            {beatNote && <p className="ed-tip" role="status">{beatNote}</p>}</section>
           <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music</h3>
             {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : <>
               <div className="ed-chips" role="group" aria-label="Mood">{([null, ...MOODS] as (Mood | null)[]).map((mood) => <button key={mood ?? 'all'} className={musicMood === mood ? 'on' : ''} aria-pressed={musicMood === mood} onClick={() => setMusicMood(mood)}>{mood ? MOOD_LABELS[mood] : 'All'}</button>)}</div>
@@ -1342,8 +1457,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             if (!box) return null;
             return <button className="ed-follow-chip" style={{ left: `clamp(48px, ${box[0] * 100}%, calc(100% - 48px))`, top: `clamp(20px, ${(box[1] + box[3] / 2) * 100}%, calc(100% - 20px))` }} onPointerDown={(event) => event.stopPropagation()} onClick={() => { void followHere('start'); }} title="Kanaa finds what is under it and keeps it covered as it moves"><Crosshair size={13}/>Follow</button>;
           })()}
-          {(faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
-            {faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
+          {(sceneJob || faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
+            {sceneJob ? <><span>Finding scene changes… {sceneJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${sceneJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(sceneJob.jobId); setSceneJob(null); }}>Cancel</button></>
+            : faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
               : followJob ? <><span>Following… {followJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
               : <><span>{faceNote || followNote?.text}</span><button aria-label="Close" onClick={() => { setFaceNote(''); setFollowNote(null); }}>×</button></>}
           </div>}
@@ -1386,7 +1502,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         : selectedText ? <TextInspector text={selectedText} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
-        : selected ? <Inspector backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
+        : selected ? <Inspector onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
           onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); updateLayout({ mediaOpen: true }); }} onGuide={() => setShowingHelp(true)}/>
@@ -1693,7 +1809,7 @@ function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, b
   </Panel>;
 }
 
-function Inspector({ backgrounds, onBackground, clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { backgrounds: Photo[]; onBackground: (item: Photo) => void; clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ onMove, backgrounds, onBackground, clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -1771,7 +1887,7 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
     {closesWithTransition ? <p className="ed-tip">The next clip's transition replaces this clip's exit animation.</p> : <AnimationPicker label="Exit" value={clip.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onShowExit}/>}
     </Group>
     <Group title="Moves" tab="motion" startOpen changed={Object.keys(clip.transform.keyframes ?? {}).length > 0} keywords="zoom in push pull shake move keyframe position size tilt see-through animate" tip="A gentle zoom in one click; More lets you animate anything." help="animations-and-moves">
-    <div className="ed-chips" role="group" aria-label="Quick moves">{MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange({ transform: applyMove(clip.transform, move.id, local, (clip.out - clip.in) / clip.speed) })}>{move.label}</button>)}</div>
+    <div className="ed-chips" role="group" aria-label="Quick moves">{MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onMove(move.id)}>{move.label}</button>)}</div>
     <More label="Animate position, size and more">
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </More>

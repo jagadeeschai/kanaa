@@ -78,6 +78,11 @@ export const deleteMediaFolder = (name: string) => requestJson<void>(`/api/media
 export const moveMediaToFolder = (ids: number[], folder: string | null) => requestJson<{ folder: string | null; updated: number }>('/api/photos/folder', { method: 'PATCH', body: JSON.stringify({ ids, folder }) });
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
+export const getFocus = (id: number, at = 0) => requestJson<{ x: number | null; y: number | null; faces: number; model?: boolean }>(`/api/photos/${id}/focus?at=${at.toFixed(2)}`);
+export const startScenes = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/scenes`, { method: 'POST', body: JSON.stringify(body) });
+export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string };
+export const listEffects = () => requestJson<EffectInfo[]>('/api/effects');
+export const makeEffect = (id: string, size: { width: number; height: number }) => requestJson<{ media?: Photo; job_id?: string }>(`/api/effects/${id}`, { method: 'POST', body: JSON.stringify(size) });
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });
 /** A steadied and/or reversed copy of a video, made once on the server. */
 export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`, { method: 'POST' });

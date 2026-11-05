@@ -1,5 +1,5 @@
 import type { LookName, Transition } from './animation.ts';
-import { applyMove, type MovePreset } from './presets.ts';
+import { applyMove, type Focus, type MovePreset } from './presets.ts';
 import { addSound, audioLayers, clipLength, duration, mainLayer, MUSIC_VOLUME, removeSound, textLayers, type Clip, type Sound, type TextItem, type TextLayer, type Timeline } from './model.ts';
 import type { TitleLook } from './templates.ts';
 
@@ -77,7 +77,8 @@ function photoMove(theme: Theme, index: number): MovePreset | null {
  * Dresses the video in `theme`. `title` is the opening title's words, usually the project's name; `isPhoto` says which
  * clips are photos, which get gentle movement unless they already move. ids: the theme layer and its two titles.
  */
-export function applyTheme(timeline: Timeline, theme: Theme, title: string, isPhoto: (clip: Clip) => boolean, ids: [string, string, string]): Timeline {
+/** `aim` gives where a photo's faces show on screen, so its push-in moves towards them (see presets.focusOnScreen). */
+export function applyTheme(timeline: Timeline, theme: Theme, title: string, isPhoto: (clip: Clip) => boolean, ids: [string, string, string], aim: (clip: Clip) => Focus | null = () => null): Timeline {
   const cleared = removeTheme(timeline);
   const main = mainLayer(cleared);
   const ordered = [...main.items].sort((a, b) => a.start - b.start);
@@ -87,7 +88,7 @@ export function applyTheme(timeline: Timeline, theme: Theme, title: string, isPh
     const next: Clip = { ...clip, look: theme.look, transition_in: first ? null : theme.transition };
     if (isPhoto(clip) && !next.transform.keyframes?.scale?.length) {
       const move = photoMove(theme, photoIndex++);
-      if (move) next.transform = applyMove(next.transform, move, 0, clipLength(clip));
+      if (move) next.transform = applyMove(next.transform, move, 0, clipLength(clip), aim(clip));
     }
     return next;
   });

@@ -25,12 +25,39 @@ function place(transform: Transform, property: AnimatedProperty, from: number, t
 
 const key = (t: number, v: number, ease: Ease = 'easeInOut'): Keyframe => ({ t, v, ease });
 
-/** `local` is the playhead's time in the item; `length` is the item's. */
-export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number): Transform {
+/** Where the faces are, from 0 to 1 across the picture itself (from the backend's face finder). */
+export type Focus = { x: number; y: number };
+
+/**
+ * Where a point of the picture shows on screen, from 0 to 1 across the frame, at the start of the item.
+ * Kept inside the frame: zooming in about a point inside the frame never uncovers its edges.
+ * Null for a turned picture, whose sides are swapped.
+ */
+export function focusOnScreen(transform: Transform, focus: Focus, source: { width: number; height: number }, rotation: number, format: Format): Focus | null {
+  if (rotation % 360) return null;
+  const fitted = fittedSize(source, 0, format);
+  const scale = valueAt(transform, 'scale', 0);
+  const clamp = (value: number) => Math.min(0.92, Math.max(0.08, value));
+  return { x: clamp(valueAt(transform, 'x', 0) + (focus.x - 0.5) * fitted.width * scale / format.width),
+    y: clamp(valueAt(transform, 'y', 0) + (focus.y - 0.5) * fitted.height * scale / format.height) };
+}
+
+/** `local` is the playhead's time in the item; `length` is the item's. `aim`, a point on screen, is what a push-in moves towards (usually faces). */
+export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number, aim?: Focus | null): Transform {
   if (preset === 'push-in' || preset === 'pull-out') {
     const base = valueAt(transform, 'scale', 0);
     const [first, last] = preset === 'push-in' ? [base, base * PUSH] : [base * PUSH, base];
-    return place(transform, 'scale', 0, length, [key(0, first, 'linear'), key(length, last, 'linear')]);
+    const zoomed = place(transform, 'scale', 0, length, [key(0, first, 'linear'), key(length, last, 'linear')]);
+    if (!aim) return zoomed;
+    // Zooming about the aim point keeps it where it is on screen while everything grows around it.
+    let aimed = zoomed;
+    for (const axis of ['x', 'y'] as const) {
+      const rest = valueAt(transform, axis, 0);
+      const close = aim[axis] + (rest - aim[axis]) * PUSH;
+      const [from, to] = preset === 'push-in' ? [rest, close] : [close, rest];
+      aimed = place(aimed, axis, 0, length, [key(0, from, 'linear'), key(length, to, 'linear')]);
+    }
+    return aimed;
   }
   const start = Math.max(0, Math.min(local, length - PUNCH_SECONDS));
   const size = valueAt(transform, 'scale', start);

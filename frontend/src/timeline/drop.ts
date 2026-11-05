@@ -5,7 +5,7 @@
  * Kept free of React and the DOM so it can be tested on its own.
  */
 import type { LookName, TransitionKind } from './animation.ts';
-import { clipLength, insertClip, mainLayer, overlayLayers, updateClip, type Clip, type Timeline } from './model.ts';
+import { clipLength, insertClip, mainLayer, MAX_VIDEO_LAYERS, overlayLayers, updateClip, type Clip, type Timeline, type VideoLayer } from './model.ts';
 
 export const DRAG_TYPE = 'application/x-kanaa';
 export const TRANSITION_SECONDS = 0.6;
@@ -15,7 +15,8 @@ export type DragPayload =
   | { kind: 'look'; look: LookName }
   | { kind: 'transition'; transition: TransitionKind }
   | { kind: 'title'; template: string }
-  | { kind: 'track'; track: string };
+  | { kind: 'track'; track: string }
+  | { kind: 'effect'; effect: string };
 
 /** Where on the timeline something was dropped. `clipId` is the clip under the pointer, if any. */
 export type DropTarget = { zone: 'main' | 'above'; time: number; clipId: string | null };
@@ -31,6 +32,7 @@ export function decodePayload(raw: string | null | undefined): DragPayload | nul
     if (value?.kind === 'transition' && typeof value.transition === 'string') return value;
     if (value?.kind === 'title' && typeof value.template === 'string') return value;
     if (value?.kind === 'track' && typeof value.track === 'string') return value;
+    if (value?.kind === 'effect' && typeof value.effect === 'string') return value;
   } catch { /* Not ours: a file or text from elsewhere. */ }
   return null;
 }
@@ -61,6 +63,7 @@ export function dropHint(timeline: Timeline, payload: DragPayload, target: DropT
     case 'transition': return clip && isMainAfterFirst(timeline, clip.id) ? 'Transition into this clip' : null;
     case 'title': return 'Add a title here';
     case 'track': return 'Add music here';
+    case 'effect': return 'Add effect here';
   }
 }
 
@@ -91,3 +94,19 @@ function isMainAfterFirst(timeline: Timeline, id: string): boolean {
 let active: DragPayload | null = null;
 export const activeDrag = () => active;
 export const setActiveDrag = (payload: DragPayload | null) => { active = payload; };
+
+export const EFFECT_LAYER = 'Effects';
+
+/**
+ * A special effect (drawn on black by backend effect_service.py) goes on its own layer with the Screen blend,
+ * above the other video, so its black disappears and only its light shows. Effects share that layer when they don't overlap.
+ */
+export function placeEffect(timeline: Timeline, clip: Clip, layerId: string): Timeline {
+  const fits = (layer: VideoLayer) => layer.items.every((item) => item.start + clipLength(item) <= clip.start + 1e-6 || clip.start + clipLength(clip) <= item.start + 1e-6);
+  const free = overlayLayers(timeline).find((layer) => layer.blend === 'screen' && layer.name === EFFECT_LAYER && !layer.locked && fits(layer));
+  if (free) return { ...timeline, layers: timeline.layers.map((layer) => (layer === free ? { ...free, items: [...free.items, clip] } : layer)) };
+  if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers. Delete an overlay, or move this effect to a time with no other effect.`);
+  const after = timeline.layers.reduce((last, layer, index) => (layer.kind === 'video' ? index : last), 0) + 1;
+  const layer: VideoLayer = { id: layerId, kind: 'video', name: EFFECT_LAYER, blend: 'screen', items: [clip] };
+  return { ...timeline, layers: [...timeline.layers.slice(0, after), layer, ...timeline.layers.slice(after)] };
+}
