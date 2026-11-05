@@ -134,6 +134,7 @@ class Clip(Strict):
     speed: float = Field(default=1, ge=0.05, le=20)  # Wider than the slider: halves of a split ramp need it.
     volume: float = Field(default=1, ge=0, le=2)
     muted: bool = False
+    enabled: bool = True  # An inactive multicam angle stays timed on the timeline but is absent from preview and export.
     fade_in: float = Field(default=0, ge=0)
     fade_out: float = Field(default=0, ge=0)
     transform: Transform = Field(default_factory=Transform)

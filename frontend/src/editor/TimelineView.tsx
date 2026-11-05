@@ -26,7 +26,8 @@ const readColors = (element: HTMLElement) => {
   return Object.fromEntries(Object.entries(TOKENS).map(([key, token]) => [key, style.getPropertyValue(token).trim()])) as Colors;
 };
 
-const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
+const rowHeight = (layer: TrackLayer) => layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
+const rowTop = (layers: TrackLayer[], row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer) + SOUND_GAP, 0);
 
 export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,6 +43,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
 
   const xOf = (t: number) => PAD + t * props.current.zoom;
   const timeOf = (x: number) => Math.max(0, (x - PAD) / props.current.zoom);
+  const topOf = (row: number) => rowTop(trackLayers(props.current.timeline), row);
 
   useEffect(() => {
     const canvas = canvasRef.current!; const host = hostRef.current!; const context = canvas.getContext('2d')!;
@@ -52,6 +54,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       context.save();
       context.beginPath(); context.roundRect(x, y, Math.max(2, width), h, 7); context.clip();
       context.fillStyle = colors.current.clip; context.fillRect(x, y, width, h);
+      context.globalAlpha = clip.enabled === false ? 0.24 : 1;
       const { filmstrip, peaks: allPeaks } = look(clip.media_id);
       const peaks = clip.muted ? undefined : allPeaks;
       if (filmstrip?.image.complete && filmstrip.image.naturalWidth) {
@@ -75,6 +78,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         }
       }
       context.restore();
+      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Inactive', x + 8, y + 13); context.restore(); }
       context.lineWidth = clip.id === selected ? 2 : 1;
       context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, Math.max(2, width - 1), h - 1, 7); context.stroke();
@@ -85,7 +89,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawSound = (sound: Sound, row: number, layerMuted: boolean) => {
       const { selectedId: selected, zoom: scale, soundPeaks: look } = props.current;
-      const x = xOf(sound.start); const width = Math.max(2, soundLength(sound) * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      const x = xOf(sound.start); const width = Math.max(2, soundLength(sound) * scale); const y = topOf(row); const h = SOUND_HEIGHT;
       const quiet = sound.muted || layerMuted;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
@@ -118,7 +122,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawBlur = (blur: BlurBox, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
-      const x = xOf(blur.start); const width = Math.max(2, blur.length * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      const x = xOf(blur.start); const width = Math.max(2, blur.length * scale); const y = topOf(row); const h = SOUND_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.text; context.fillRect(x, y, width, h);
@@ -139,7 +143,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const drawCaption = (caption: Caption, row: number) => drawText({ id: caption.id, start: caption.start, length: caption.length, text: captionText(caption) } as TextItem, row);
     const drawText = (text: TextItem, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
-      const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = topOf(row); const h = SOUND_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.text; context.fillRect(x, y, width, h);
@@ -172,16 +176,18 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawOverlay = (clip: Clip, row: number) => {
       const { selectedId: selected, zoom: scale, visuals: look } = props.current;
-      const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = soundTop(row); const h = SOUND_HEIGHT;
+      const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = topOf(row); const h = TRACK_HEIGHT;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.clip; context.fillRect(x, y, width, h);
+      context.globalAlpha = clip.enabled === false ? 0.24 : 1;
       const { filmstrip } = look(clip.media_id);
       if (filmstrip?.image.complete && filmstrip.image.naturalWidth) {
         const tile = h * (filmstrip.tile_width / filmstrip.tile_height);
         for (let left = 0; left < width; left += tile) context.drawImage(filmstrip.image, 0, 0, filmstrip.tile_width, filmstrip.tile_height, x + left, y, tile, h);
       }
       context.restore();
+      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Inactive', x + 8, y + 13); context.restore(); }
       context.lineWidth = clip.id === selected ? 2 : 1;
       context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
@@ -223,7 +229,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         else if (layer.kind === 'blur') for (const blur of layer.items) drawBlur(blur, row);
         else if (layer.kind === 'captions') for (const caption of layer.items) drawCaption(caption, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
-        veil(layer.hidden, soundTop(row), SOUND_HEIGHT);
+        veil(layer.hidden, rowTop(tracks, row), rowHeight(layer));
       });
       const drop = dropRef.current;
       if (drop) {
@@ -253,7 +259,10 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const rect = canvasRef.current!.getBoundingClientRect();
     return event.clientX - rect.left;
   };
-  const rowAt = (y: number) => Math.floor((y - (TRACK_TOP + TRACK_HEIGHT + SOUND_GAP)) / (SOUND_HEIGHT + SOUND_GAP));
+  const rowAt = (y: number) => {
+    const layers = trackLayers(props.current.timeline);
+    return layers.findIndex((layer, row) => y >= rowTop(layers, row) && y < rowTop(layers, row) + rowHeight(layer));
+  };
   const hitSound = (x: number, y: number) => {
     const layer = trackLayers(props.current.timeline)[rowAt(y)];
     if (!layer || y < TRACK_TOP + TRACK_HEIGHT) return null;
@@ -394,8 +403,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     position={layer.kind === 'video' && layer !== main ? overlayLayers(timeline).findIndex((entry) => entry.id === layer.id) : -1} overlays={overlayLayers(timeline).length}
     onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))}/>;
   return <div className="tl-host">
-    <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.length * (SOUND_HEIGHT + SOUND_GAP) }}>
-      <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, soundTop(row), SOUND_HEIGHT))}</div>
+    <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer) + SOUND_GAP, 0) }}>
+      <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row), rowHeight(layer)))}</div>
       <div className="tl-scroll" ref={hostRef}>
         <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>

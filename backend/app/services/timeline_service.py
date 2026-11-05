@@ -501,7 +501,9 @@ class Builder:
         return f'sendcmd=f={name}.cmd,gblur@{name}=sigma=0'
 
     def add_video_layer(self, layer: VideoLayer, position: int, base: str) -> str:
-        clips = sorted(layer.items, key=lambda clip: clip.start)
+        clips = sorted((clip for clip in layer.items if clip.enabled), key=lambda clip: clip.start)
+        if not clips:
+            return base
         fps = self.fmt.fps
         halves = self.transition_frames(clips)
         segments: list[str] = []

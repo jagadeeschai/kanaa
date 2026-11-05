@@ -275,7 +275,7 @@ export class PlaybackEngine {
   }
 
   private clipFor(layer: VideoLayer, t: number): { clip?: Clip; next?: Clip } {
-    const clips = [...layer.items].sort((a, b) => a.start - b.start);
+    const clips = layer.items.filter((clip) => clip.enabled !== false).sort((a, b) => a.start - b.start);
     const index = clips.findIndex((clip) => t >= clip.start && t < clip.start + clipLength(clip));
     if (index >= 0) return { clip: clips[index], next: clips[index + 1] };
     const last = clips[clips.length - 1];
@@ -283,7 +283,7 @@ export class PlaybackEngine {
     return { next: clips.find((clip) => clip.start > t) };
   }
 
-  private sorted(layer: VideoLayer) { return [...layer.items].sort((a, b) => a.start - b.start); }
+  private sorted(layer: VideoLayer) { return layer.items.filter((clip) => clip.enabled !== false).sort((a, b) => a.start - b.start); }
 
   private crossing(layer: VideoLayer, t: number): Crossing | null {
     const clips = this.sorted(layer);
@@ -657,7 +657,7 @@ export class PlaybackEngine {
   private syncSound() {
     if (!this.timeline) return;
     // Clips with Clean voice join the mix as sounds at their own place and speed, from their cleaned copies.
-    const voices: Sound[] = this.videoLayers().flatMap((layer) => layer.items.filter((clip) => clip.clean_voice && clip.freeze == null && !clip.reverse && !clip.ramp && this.cleanVoice(clip.media_id)).map((clip) => ({
+    const voices: Sound[] = this.videoLayers().flatMap((layer) => layer.items.filter((clip) => clip.enabled !== false && clip.clean_voice && clip.freeze == null && !clip.reverse && !clip.ramp && this.cleanVoice(clip.media_id)).map((clip) => ({
       id: `${clip.id}:voice`, media_id: clip.media_id, start: clip.start, in: clip.in, out: clip.out, speed: clip.speed, volume: clip.volume, muted: clip.muted || Boolean(layer.muted),
       fade_in: clip.fade_in, fade_out: clip.fade_out, duck: false, name: '', clean_voice: true })));
     const timeline = voices.length ? { ...this.timeline, layers: [...this.timeline.layers, { id: 'clean-voices', kind: 'audio' as const, items: voices }] } : this.timeline;

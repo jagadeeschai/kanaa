@@ -70,6 +70,7 @@ test('normalizeTimeline fills fields the server omits and repairs magnetic start
   assert.equal(first.speed, 1);
   assert.equal(first.transform.scale, 1);
   assert.equal(first.adjust.brightness, 1);
+  assert.equal(first.enabled, true);
   assert.equal(second.start, 8);
 });
 

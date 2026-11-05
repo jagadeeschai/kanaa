@@ -12,7 +12,7 @@ export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -185,7 +185,7 @@ export function clipAt(timeline: Timeline, t: number): Clip | undefined {
 
 export function newClip(source: SourceFacts, id: string): Clip {
   const length = source.media_type === 'image' ? PHOTO_SECONDS : source.duration ?? PHOTO_SECONDS;
-  return { id, media_id: source.media_id, start: 0, in: 0, out: length, speed: 1, volume: 1, muted: false,
+  return { id, media_id: source.media_id, start: 0, in: 0, out: length, speed: 1, volume: 1, muted: false, enabled: true,
     fade_in: 0, fade_out: 0, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 }, adjust: { ...DEFAULT_ADJUST }, frame_locked: true };
 }
 
@@ -203,7 +203,7 @@ export function normalizeTimeline(timeline: Timeline): Timeline {
     let cursor = 0;
     const items = layer.items.map((item) => {
       const partial = item as Partial<Clip> & Pick<Clip, 'id' | 'media_id' | 'in' | 'out'>;
-      const clip: Clip = { ...partial, start: partial.start ?? 0, speed: partial.speed ?? 1, volume: partial.volume ?? 1, muted: partial.muted ?? false, fade_in: partial.fade_in ?? 0, fade_out: partial.fade_out ?? 0,
+      const clip: Clip = { ...partial, start: partial.start ?? 0, speed: partial.speed ?? 1, volume: partial.volume ?? 1, muted: partial.muted ?? false, enabled: partial.enabled ?? true, fade_in: partial.fade_in ?? 0, fade_out: partial.fade_out ?? 0,
         transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, ...partial.transform }, adjust: { ...DEFAULT_ADJUST, ...partial.adjust }, frame_locked: partial.frame_locked ?? true };
       if (layer.magnetic) clip.start = cursor;
       cursor = clip.start + clipLength(clip);

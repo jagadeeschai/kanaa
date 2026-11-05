@@ -200,6 +200,15 @@ class Join(Clips):
         self.assertFalse(any(s['codec_type'] == 'audio' for s in _run_ffprobe(output)['streams']))
         self.assertGreater(self.frame(output, 15)[360, 640, 0], 200)
 
+    def test_inactive_clip_stays_timed_but_is_absent_with_its_sound(self):
+        data = {'format': self.FORMAT, 'layers': [
+            {'id': 'main', 'kind': 'video', 'items': [self.clip(1, 0, muted=True)]},
+            {'id': 'angle', 'kind': 'video', 'items': [{**self.clip(2, 0), 'enabled': False}]}]}
+        output = self.render(data)
+        self.assertEqual(self.frame_count(output), 30)
+        self.assertGreater(self.frame(output, 15)[360, 640, 0], 200)
+        self.assertFalse(any(stream['codec_type'] == 'audio' for stream in _run_ffprobe(output)['streams']))
+
     def test_keyframed_layer_lands_where_the_shared_math_says(self):
         transform = {'x': 0.2, 'y': 0.5, 'scale': 0.25, 'keyframes': {'x': [{'t': 0, 'v': 0.2, 'ease': 'easeInOut'}, {'t': 1.8, 'v': 0.8}]}}
         data = {'format': self.FORMAT, 'layers': [
