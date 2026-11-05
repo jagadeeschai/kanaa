@@ -714,7 +714,7 @@ class Builder:
             path = str(resolve(self.timeline.lut)).replace("'", "'\\''")
             amount = self.timeline.lut_amount
             graded, mixed, original = 'project_lut', 'project_lut_mix', 'project_lut_source'
-            self.graph += [f'{current}split=2[{original}][{graded}]', f'[{graded}]lut3d=file=\'{path}\':interp=tetrahedral[{graded}done]',
+            self.graph += [f'{current}split=2[{original}][{graded}]', f'[{graded}]lut3d=file=\'{path}\':interp=trilinear[{graded}done]',
                            f'[{original}][{graded}done]blend=all_expr=\'A*{1 - amount:.6f}+B*{amount:.6f}\'[{mixed}]']
             current = f'[{mixed}]'
         if finish is None or not (finish.letterbox or finish.grade or finish.glow or finish.vignette or finish.grain):
