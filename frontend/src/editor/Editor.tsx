@@ -7,7 +7,7 @@ import { keepCaptionsClear, type FacePath } from '../timeline/clear-faces';
 import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/reframe';
 import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
-import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
+import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
@@ -2049,11 +2049,21 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
   const size = valueAt(clip.transform, 'scale', local);
   const filling = Math.abs(size - fill) < 0.01;
   const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
+  const isEffect = overlay?.name === EFFECT_LAYER;
+  const effectFadeMax = Math.min(2, clipLength(clip) / 2);
   return <>
     <ActiveEffects clip={clip} onChange={onChange}/>
     <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: Palette, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: WandSparkles, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" startOpen keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    {isEffect && <Group title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
+      <ValueSlider label="Intensity" value={clip.transform.opacity} min={0} max={1} step={0.01} defaultValue={1} unit="%" factor={100} onGestureStart={onPause} onChange={(opacity, group) => onChange({ transform: { ...clip.transform, opacity } }, group)}/>
+      <ValueSlider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onGestureStart={onPause} onChange={(speed, group) => onChange({ speed }, group)}/>
+      <ValueSlider label="Fade in" value={clip.enter?.preset === 'fade' ? clip.enter.duration : 0} min={0} max={effectFadeMax} step={0.1} defaultValue={0} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: duration ? { preset: 'fade', duration } : null }, group)}/>
+      <ValueSlider label="Fade out" value={clip.exit?.preset === 'fade' ? clip.exit.duration : 0} min={0} max={effectFadeMax} step={0.1} defaultValue={0} unit="s" decimals={1} onChange={(duration, group) => onChange({ exit: duration ? { preset: 'fade', duration } : null }, group)}/>
+      <Chips label="Blend" options={BLENDS} value={overlay?.blend ?? 'screen'} onPick={(blend) => onLayer({ blend })}/>
+      <p className="ed-group-tip">Timing above controls where it starts and ends. Slower speed makes the generated pattern last longer.</p>
+    </Group>}
     <Group title="Frame" tab="frame" startOpen keywords="fit fill crop zoom rotate turn sideways mirror flip resize size bigger smaller corner picture in picture pip" tip="Fit shows everything; Fill covers the screen. Drag the picture to move it, or a corner to resize it." help="framing-and-rotating">
     <div className="ed-pair">
       <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
