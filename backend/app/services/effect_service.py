@@ -24,6 +24,7 @@ from app.db.database import get_connection
 from app.services.job_service import JobCancelled
 
 VERSION = 2  # Natural weather rendering; old generated media remains reusable in the library.
+EFFECT_VERSIONS = {'anamorphic': 3}  # Regenerate only effects whose renderer changed independently.
 FPS = 30
 SECONDS = 5.0
 SHORT_SIDE = 720  # Soft light scales up well; this keeps making an effect to a few seconds.
@@ -96,7 +97,7 @@ def weather_options(effect_id: str, raw: dict | None = None) -> dict:
 def effect_path(effect_id: str, size: tuple[int, int], options: dict | None = None) -> Path:
     config = weather_options(effect_id, options)
     variant = f'-{hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:10]}' if config else ''
-    return settings.data_dir / 'effects' / f'{effect_id}-{size[0]}x{size[1]}{variant}-v{VERSION}.mp4'
+    return settings.data_dir / 'effects' / f'{effect_id}-{size[0]}x{size[1]}{variant}-v{EFFECT_VERSIONS.get(effect_id, VERSION)}.mp4'
 
 
 # Each painter draws frame `n` of `total` onto a black RGB image of `size` and returns it.
@@ -666,20 +667,46 @@ def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
     width, height = size
     unit = min(size)
     t = n / FPS
-    image = Image.new('RGB', size)
-    draw = ImageDraw.Draw(image)
-    lights = ((0.28 + 0.08 * math.sin(t * 0.37), 0.34, 0.72), (0.72 + 0.05 * math.sin(t * 0.29 + 2), 0.66, 0.48))
-    for x, y, strength in lights:
-        cx, cy = x * width, y * height
-        half = width * (0.22 + 0.12 * strength)
-        core = tuple(round(c * strength) for c in (90, 165, 255))
-        draw.line((cx - half, cy, cx + half, cy), fill=core, width=max(1, round(unit * 0.003)))
-        draw.ellipse((cx - unit * 0.012, cy - unit * 0.012, cx + unit * 0.012, cy + unit * 0.012), fill=(190, 220, 255))
-        for share in (0.42, 0.7):
-            ghost_x = width * 0.5 + (width * 0.5 - cx) * share
-            r = unit * (0.012 + share * 0.008)
-            draw.ellipse((ghost_x - r, cy - r, ghost_x + r, cy + r), outline=(35, 75, 150), width=max(1, round(unit * 0.002)))
-    return _glow(image, max(1, unit * 0.012), 1.15)
+    # Work smaller: all parts are optical bloom, so smooth upscaling improves the result and keeps generation quick.
+    small_w, small_h = max(80, width // 4), max(45, height // 4)
+    ys, xs = np.mgrid[0:small_h, 0:small_w].astype(np.float32)
+    xs /= small_w; ys /= small_h
+    picture = np.zeros((small_h, small_w, 3), np.float32)
+    # One hero sweep and two dim, offset reflections. Their brightness breathes independently.
+    lights = (
+        (0.12 + (t / SECONDS) * 0.78, 0.43 + 0.035 * math.sin(t * 0.7), 0.72 + 0.18 * math.sin(t * 1.1)),
+        (0.70 - (t / SECONDS) * 0.24, 0.67, 0.28 + 0.07 * math.sin(t * 0.63 + 1.4)),
+        (0.35 + 0.06 * math.sin(t * 0.31), 0.27, 0.16 + 0.05 * math.sin(t * 0.82 + 2.1)),
+    )
+    for index, (cx, cy, strength) in enumerate(lights):
+        strength = max(0.05, strength)
+        horizontal = np.exp(-np.abs(xs - cx) / (0.24 + index * 0.05))
+        broad = np.exp(-((ys - cy) / (0.014 + index * 0.004)) ** 2) * horizontal * strength
+        fine = np.exp(-((ys - cy) / 0.0028) ** 2) * np.exp(-np.abs(xs - cx) / 0.38) * strength
+        core = np.exp(-(((xs - cx) / 0.026) ** 2 + ((ys - cy) / 0.038) ** 2)) * strength
+        # Blue centre, cyan upper fringe and faint violet lower fringe mimic coated cinema glass.
+        picture += broad[..., None] * np.array((28, 74, 175), np.float32)
+        picture += fine[..., None] * np.array((95, 170, 255), np.float32)
+        picture += core[..., None] * np.array((225, 238, 255), np.float32)
+        picture += (np.exp(-((ys - cy + 0.006) / 0.0035) ** 2) * horizontal * strength)[..., None] * np.array((10, 64, 105), np.float32)
+        picture += (np.exp(-((ys - cy - 0.007) / 0.0045) ** 2) * horizontal * strength)[..., None] * np.array((48, 12, 85), np.float32)
+    image = Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8)).resize(size, Image.BICUBIC)
+    ghosts = Image.new('RGB', size)
+    draw = ImageDraw.Draw(ghosts)
+    hero_x, hero_y = lights[0][0] * width, lights[0][1] * height
+    for share, radius, colour in ((0.32, 0.018, (12, 45, 105)), (0.55, 0.028, (18, 62, 120)), (0.78, 0.012, (54, 24, 85))):
+        gx = width * 0.5 + (width * 0.5 - hero_x) * share * 1.45
+        gy = height * 0.5 + (height * 0.5 - hero_y) * share * 0.42
+        r = unit * radius
+        draw.ellipse((gx - r, gy - r, gx + r, gy + r), outline=colour, width=max(1, round(unit * 0.002)))
+    # Tiny aperture glints near the hero source break the computer-perfect line.
+    for offset, brightness in ((-0.045, 0.32), (0.036, 0.25), (0.082, 0.16)):
+        gx = hero_x + offset * width
+        r = unit * 0.004
+        colour = tuple(round(c * brightness) for c in (190, 225, 255))
+        draw.line((gx - r * 5, hero_y, gx + r * 5, hero_y), fill=colour, width=max(1, round(r * 0.45)))
+        draw.line((gx, hero_y - r, gx, hero_y + r), fill=colour, width=max(1, round(r * 0.35)))
+    return Image.fromarray(np.clip(np.asarray(image, np.int16) + np.asarray(_glow(ghosts, max(1, unit * 0.01), 0.8), np.int16), 0, 255).astype(np.uint8))
 
 
 def light_flicker(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
