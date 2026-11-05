@@ -108,7 +108,8 @@ export const startReframe = (id: number, body: { start: number; end: number; all
 export const startScenes = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/scenes`, { method: 'POST', body: JSON.stringify(body) });
 export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string };
 export const listEffects = () => requestJson<EffectInfo[]>('/api/effects');
-export const makeEffect = (id: string, size: { width: number; height: number }) => requestJson<{ media?: Photo; job_id?: string }>(`/api/effects/${id}`, { method: 'POST', body: JSON.stringify(size) });
+export type EffectOptions = { density?: number; direction?: number; frequency?: number; brightness?: number; seed?: number };
+export const makeEffect = (id: string, size: { width: number; height: number }, options?: EffectOptions) => requestJson<{ media?: Photo; job_id?: string }>(`/api/effects/${id}`, { method: 'POST', body: JSON.stringify({ ...size, options }) });
 export type LutInfo = { id: string; name: string };
 export const listLuts = () => requestJson<{ folder: string; luts: LutInfo[] }>('/api/luts');
 export const lutAtlasUrl = (id: string) => `/api/luts/${encodeURIComponent(id)}/atlas`;

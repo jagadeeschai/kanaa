@@ -170,6 +170,7 @@
 .fx-rain .ed-quick-art{background:repeating-linear-gradient(105deg,transparent 0 7px,#b8d8f055 8px 9px,transparent 10px 15px),linear-gradient(#111b2c,#253d54)}
 .fx-lightning .ed-quick-art{background:linear-gradient(112deg,transparent 0 46%,#d9e7ff 47% 49%,transparent 50%),radial-gradient(circle at 52% 30%,#879de8aa,transparent 55%),#0b1020}
 .fx-thunder .ed-quick-art{background:radial-gradient(ellipse at 50% 85%,#59657e 0 8%,transparent 45%),linear-gradient(#101521,#252e40);position:relative}.fx-thunder .ed-quick-art::after{content:'~~~';color:#b9c8e8;font-size:18px;letter-spacing:-3px;transform:rotate(-4deg)}
+.ed-weather-settings{margin:6px 0 10px;padding:8px 9px;border:1px solid var(--hairline);border-radius:9px;background:var(--well)}.ed-weather-settings .ed-slider{margin:5px 0 8px}.ed-weather-settings .ed-chips{margin-bottom:9px}
 /* Ask AI */
 .ed-ask .ed-field{display:flex;flex-direction:column;gap:3px;font-size:12px;margin:6px 0}.ed-ask .ed-field input{padding:6px 8px;border:1px solid var(--hairline);border-radius:7px;background:var(--panel);color:var(--text)}
 .ed-ask-input{width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--hairline);border-radius:8px;background:var(--panel);color:var(--text);font:inherit;font-size:13px;resize:vertical}
@@ -187,3 +188,4 @@
 .ed-map-search li button{width:100%;text-align:left;padding:5px 6px;border:0;border-radius:6px;background:transparent;color:var(--text);font-size:12px;cursor:pointer}.ed-map-search li button:hover{background:var(--hairline)}
 .ed-map-search small,.ed-map-place small{opacity:.65}.ed-map-place{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--hairline);border-radius:7px;font-size:12px}.ed-map-place span{flex:1;min-width:0}
 .ed-map-modes{margin:4px 0 0 12px}.ed-map-modes button{display:inline-flex;align-items:center;gap:3px}
+.ed-add-row .ed-chips.ed-map-choice{width:auto;flex-wrap:nowrap}.ed-map-choice button{white-space:nowrap}

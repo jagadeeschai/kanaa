@@ -609,8 +609,12 @@ def make_effect(effect_id: str, body: dict):
             raise ValueError
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(400, 'Give the project size.') from exc
+    try:
+        options = effect_service.weather_options(effect_id, body.get('options'))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose valid weather effect settings.') from exc
     size = effect_service.work_size(width, height)
-    target = effect_service.effect_path(effect_id, size)
+    target = effect_service.effect_path(effect_id, size, options)
     known = effect_service.existing_media(target)
     if known:
         return {'media': describe(get_media(known))}
@@ -619,8 +623,9 @@ def make_effect(effect_id: str, body: dict):
     def run(should_cancel):
         ready.wait()
         update_job(job_id, status='running', phase=f'Making {effect.label}', progress=0)
-        effect_service.render_effect(effect_id, size, target, lambda progress: update_job(job_id, progress=progress), should_cancel)
-        media = effect_service.existing_media(target) or index_media(target, f'{effect.label}.mp4')['id']
+        effect_service.render_effect(effect_id, size, target, lambda progress: update_job(job_id, progress=progress), should_cancel, options)
+        suffix = f" · Variation {options.get('seed', 0) + 1}" if options else ''
+        media = effect_service.existing_media(target) or index_media(target, f'{effect.label}{suffix}.mp4')['id']
         effect_service.file_into_effects_folder(media)
         return {'progress': 100, 'phase': f'{effect.label} ready', 'media_id': media}
 

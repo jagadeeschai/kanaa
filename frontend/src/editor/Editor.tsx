@@ -889,6 +889,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const [effects, setEffects] = useState<EffectInfo[]>([]);
   const [effectBusy, setEffectBusy] = useState<{ id: string; progress: number } | null>(null);
+  const [weather, setWeather] = useState({ density: 1, direction: 'left' as 'left' | 'straight' | 'right', frequency: 3, brightness: 1, seed: 0 });
   useEffect(() => { if (leftTab === 'effects' && !effects.length) listEffects().then(setEffects).catch((problem) => setError((problem as Error).message)); }, [leftTab, effects.length]);
   /** Makes the effect once in this project's shape (later uses are instant), then lays it over the video at `dropAt` or the playhead. */
   const addEffect = async (effectId: string, dropAt?: number) => {
@@ -897,7 +898,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const format = timeline.format;
     setEffectBusy({ id: effectId, progress: 0 });
     try {
-      const made = await makeEffect(effectId, { width: format.width, height: format.height });
+      const options = effectId === 'rain' ? { density: weather.density, direction: { left: -0.35, straight: 0, right: 0.35 }[weather.direction], seed: weather.seed }
+        : effectId === 'lightning' ? { frequency: weather.frequency, brightness: weather.brightness, seed: weather.seed } : undefined;
+      const made = await makeEffect(effectId, { width: format.width, height: format.height }, options);
       let item = made.media;
       if (!item && made.job_id) {
         for (;;) {
@@ -1611,6 +1614,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
           {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
             <h3 className="ed-sub">{{ weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
+            {mood === 'weather' && <div className="ed-weather-settings">
+              <ValueSlider label="Rain density" value={weather.density} min={0.25} max={2} step={0.25} defaultValue={1} unit="%" factor={100} onChange={(density) => setWeather({ ...weather, density })}/>
+              <Chips label="Rain direction" options={[{ id: 'left' as const, label: 'Left' }, { id: 'straight' as const, label: 'Straight' }, { id: 'right' as const, label: 'Right' }]} value={weather.direction} onPick={(direction) => setWeather({ ...weather, direction })}/>
+              <ValueSlider label="Lightning flashes" value={weather.frequency} min={1} max={6} step={1} defaultValue={3} onChange={(frequency) => setWeather({ ...weather, frequency })}/>
+              <ValueSlider label="Lightning brightness" value={weather.brightness} min={0.25} max={1.5} step={0.05} defaultValue={1} unit="%" factor={100} onChange={(brightness) => setWeather({ ...weather, brightness })}/>
+              <button className="ed-button wide" disabled={Boolean(effectBusy)} onClick={() => setWeather({ ...weather, seed: (weather.seed + 1) % 100 })}><Shuffle size={13}/>New variation · {weather.seed + 1}</button>
+              <p className="ed-tip">Choose settings, then add Rain or Lightning. Each variation is cached for reuse.</p>
+            </div>}
             <div className="ed-quick ed-effects">{group.map((effect) => <button key={effect.id} className={`ed-quick-tile fx-${effect.id}`} {...draggableAs({ kind: 'effect', effect: effect.id })} disabled={!total || Boolean(effectBusy)} onClick={() => { void addEffect(effect.id); }} title={`${effect.about}. Click to add at the playhead, or drag onto the timeline.`}>
               <span className="ed-quick-art">{effectBusy?.id === effect.id && <LoaderCircle className="spin" size={14}/>}</span><b>{effect.label}</b><em lang="ta">{effect.tamil}</em></button>)}{mood === 'weather' && <button className="ed-quick-tile fx-thunder" disabled={!total || thunderBusy} onClick={() => { void addThunder(); }} title="Add locally generated thunder at the playhead. It is an editable sound clip.">
                 <span className="ed-quick-art">{thunderBusy && <LoaderCircle className="spin" size={14}/>}</span><b>Thunder</b><em lang="ta">இடி</em></button>}</div></div>; })}

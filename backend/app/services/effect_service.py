@@ -8,6 +8,8 @@ Everything is made from code on this Mac: nothing is downloaded.
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -57,8 +59,20 @@ def work_size(width: int, height: int) -> tuple[int, int]:
     return max(2, round(width * scale / 2) * 2), max(2, round(height * scale / 2) * 2)
 
 
-def effect_path(effect_id: str, size: tuple[int, int]) -> Path:
-    return settings.data_dir / 'effects' / f'{effect_id}-{size[0]}x{size[1]}-v{VERSION}.mp4'
+def weather_options(effect_id: str, raw: dict | None = None) -> dict:
+    raw = raw or {}
+    seed = max(0, min(99, int(raw.get('seed', 0))))
+    if effect_id == 'rain':
+        return {'density': max(0.25, min(2.0, float(raw.get('density', 1)))), 'direction': max(-1.0, min(1.0, float(raw.get('direction', -0.35)))), 'seed': seed}
+    if effect_id == 'lightning':
+        return {'frequency': max(1, min(6, int(raw.get('frequency', 3)))), 'brightness': max(0.25, min(1.5, float(raw.get('brightness', 1)))), 'seed': seed}
+    return {}
+
+
+def effect_path(effect_id: str, size: tuple[int, int], options: dict | None = None) -> Path:
+    config = weather_options(effect_id, options)
+    variant = f'-{hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:10]}' if config else ''
+    return settings.data_dir / 'effects' / f'{effect_id}-{size[0]}x{size[1]}{variant}-v{VERSION}.mp4'
 
 
 # Each painter draws frame `n` of `total` onto a black RGB image of `size` and returns it.
@@ -210,20 +224,21 @@ def film_burn(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
                          (0.2, 0.9, 0.4, (200, 40, 20), 0.6 * rise)])
 
 
-def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 1, direction: float = -0.35, seed: int = 0) -> Image.Image:
     """Layered diagonal rain: short sharp drops near the camera, faint fine drops behind them."""
     width, height = size
     unit = min(width, height)
-    drops = rain.cache.get(size)
+    key = (*size, round(density, 2), round(direction, 2), seed)
+    drops = rain.cache.get(key)
     if drops is None:
-        drops = rain.cache[size] = _particles(rng, 360, x=(-0.15, 1.15), phase=(0, 1), speed=(0.65, 1.5), length=(0.018, 0.065), light=(0.25, 0.9))
+        drops = rain.cache[key] = _particles(rng, round(360 * density), x=(-0.15, 1.15), phase=(0, 1), speed=(0.65, 1.5), length=(0.018, 0.065), light=(0.25, 0.9))
     image = Image.new('RGB', size)
     draw = ImageDraw.Draw(image)
     t = n / FPS
     for i in range(len(drops['x'])):
         y = ((drops['phase'][i] + t * drops['speed'][i]) % 1.15) - 0.08
         length = drops['length'][i] * unit
-        x = (drops['x'][i] - y * 0.12) * width
+        x = (drops['x'][i] + y * direction * 0.35) * width
         shade = int(210 * drops['light'][i])
         draw.line((x, y * height, x - length * 0.28, y * height + length), fill=(shade * 3 // 4, shade * 7 // 8, shade), width=max(1, round(length / 28)))
     return image
@@ -232,27 +247,27 @@ def rain(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) ->
 rain.cache = {}
 
 
-def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, frequency: int = 3, brightness: float = 1, seed: int = 0) -> Image.Image:
     """Two repeatable lightning strikes with a quick double flash and a branching bolt."""
     width, height = size
     unit = min(width, height)
     t = n / FPS
-    strikes = (1.0, 2.5, 4.15)
+    strikes = tuple(np.linspace(0.75, max(0.8, SECONDS - 0.65), frequency))
     strength = max((math.exp(-((t - at) / 0.055) ** 2) + 0.5 * math.exp(-((t - at - 0.16) / 0.04) ** 2) for at in strikes), default=0.0)
-    image = Image.new('RGB', size, tuple(int(c * min(1, strength * 0.52)) for c in (150, 175, 255)))
+    image = Image.new('RGB', size, tuple(int(min(255, c * min(1, strength * 0.52) * brightness)) for c in (150, 175, 255)))
     nearest = min(strikes, key=lambda at: abs(t - at))
     if abs(t - nearest) > 0.22:
         return image
     # Seed by the strike, not the frame, so the bolt holds still while it flashes.
-    bolt_rng = np.random.default_rng(round(nearest * 1000))
+    bolt_rng = np.random.default_rng(round(nearest * 1000) + seed * 10007)
     points = [(width * bolt_rng.uniform(0.35, 0.72), -unit * 0.02)]
     while points[-1][1] < height * 0.82:
         x, y = points[-1]
         points.append((x + bolt_rng.uniform(-0.09, 0.09) * width, y + bolt_rng.uniform(0.07, 0.14) * height))
     bolt = Image.new('RGB', size)
     draw = ImageDraw.Draw(bolt)
-    brightness = max(0.18, min(1.0, strength))
-    draw.line(points, fill=tuple(int(c * brightness) for c in (225, 235, 255)), width=max(1, round(unit * 0.006)), joint='curve')
+    bolt_light = max(0.18, min(1.0, strength * brightness))
+    draw.line(points, fill=tuple(int(c * bolt_light) for c in (225, 235, 255)), width=max(1, round(unit * 0.006)), joint='curve')
     for branch_at in (2, 4):
         if branch_at >= len(points) - 1:
             continue
@@ -262,7 +277,7 @@ def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
             x += bolt_rng.uniform(-0.12, 0.12) * width
             y += bolt_rng.uniform(0.05, 0.1) * height
             branch.append((x, y))
-        draw.line(branch, fill=tuple(int(c * brightness * 0.7) for c in (210, 225, 255)), width=max(1, round(unit * 0.003)))
+        draw.line(branch, fill=tuple(int(c * bolt_light * 0.7) for c in (210, 225, 255)), width=max(1, round(unit * 0.003)))
     return Image.fromarray(np.clip(np.asarray(image, np.float32) + np.asarray(_glow(bolt, unit * 0.018, 1.8), np.float32), 0, 255).astype(np.uint8))
 
 
@@ -280,9 +295,10 @@ EFFECT_PAINTERS: dict[str, Painter] = {
 }
 
 
-def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progress: Callable[[int], None] = lambda _: None, should_cancel: Callable[[], bool] = lambda: False) -> Path:
+def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progress: Callable[[int], None] = lambda _: None, should_cancel: Callable[[], bool] = lambda: False, options: dict | None = None) -> Path:
     paint = EFFECT_PAINTERS[effect_id]
-    rng = np.random.default_rng(sum(map(ord, effect_id)))  # The same effect looks the same every time it is made.
+    config = weather_options(effect_id, options)
+    rng = np.random.default_rng(sum(map(ord, effect_id)) + int(config.get('seed', 0)) * 1009)
     total = round(SECONDS * FPS)
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix('.part.mp4')
@@ -293,7 +309,8 @@ def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progre
         for n in range(total):
             if should_cancel():
                 raise JobCancelled()
-            process.stdin.write(paint(n, total, size, rng).convert('RGB').tobytes())
+            frame = rain(n, total, size, rng, **config) if effect_id == 'rain' else lightning(n, total, size, rng, **config) if effect_id == 'lightning' else paint(n, total, size, rng)
+            process.stdin.write(frame.convert('RGB').tobytes())
             on_progress(min(95, (n + 1) * 95 // total))
         process.stdin.close()
         if process.wait(timeout=120):

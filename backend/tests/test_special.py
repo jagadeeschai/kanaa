@@ -102,6 +102,16 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['rain'].mood, 'weather')
         self.assertEqual(found['lightning'].mood, 'weather')
 
+    def test_weather_settings_are_bounded_and_make_cached_variants(self):
+        rain = effect_service.weather_options('rain', {'density': 9, 'direction': -9, 'seed': 101})
+        lightning = effect_service.weather_options('lightning', {'frequency': 0, 'brightness': 9, 'seed': -1})
+        self.assertEqual(rain, {'density': 2.0, 'direction': -1.0, 'seed': 99})
+        self.assertEqual(lightning, {'frequency': 1, 'brightness': 1.5, 'seed': 0})
+        plain = effect_service.effect_path('rain', (1280, 720), {'density': 1, 'seed': 0})
+        heavy = effect_service.effect_path('rain', (1280, 720), {'density': 2, 'seed': 0})
+        another = effect_service.effect_path('rain', (1280, 720), {'density': 1, 'seed': 1})
+        self.assertEqual(len({plain, heavy, another}), 3)
+
 
 class Api(unittest.TestCase):
     def setUp(self):
