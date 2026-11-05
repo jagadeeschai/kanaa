@@ -1055,11 +1055,26 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (clip) {
       if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
       items.push({ label: clip.muted ? 'Turn sound on' : 'Mute clip', onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) });
-      const effects = clipEffects(clip);
-      if (effects.length) {
-        items.push('divider');
-        for (const effect of effects) items.push({ label: `${effect.on ? 'Turn off' : 'Turn on'}: ${effect.label} (${effect.detail})`, onSelect: () => change(updateClip(timeline, id, toggleEffect(clip, effect.id))) });
-        if (effects.length > 1) items.push({ label: effects.every((effect) => !effect.on) ? 'Turn all effects back on' : 'Turn all effects off', onSelect: () => change(updateClip(timeline, id, toggleAllEffects(clip))) });
+      if (clipEffects(clip).length) {
+        // Built each time the menu draws, from the clip as it is now, so ticks stay true while switches are flipped.
+        const now = () => { const latest = timelineRef.current; const found = latest && findClip(latest, id); return latest && found ? { latest, found } : null; };
+        const apply = (changes: (found: Clip) => Partial<Clip>) => { const at = now(); if (at) change(updateClip(at.latest, id, changes(at.found))); };
+        items.push('divider', {
+          label: 'Effects', submenu: () => {
+            const at = now(); if (!at) return [];
+            const effects = clipEffects(at.found);
+            const allOff = effects.every((effect) => !effect.on);
+            return [...effects.map((effect): MenuItem => ({ label: `${effect.label} · ${effect.detail}`, checked: effect.on, keepOpen: true, onSelect: () => apply((found) => toggleEffect(found, effect.id)) })),
+              'divider', { label: allOff ? 'Turn all back on' : 'Turn all off', keepOpen: true, onSelect: () => apply(toggleAllEffects) }];
+          },
+        }, {
+          label: 'Remove effects', submenu: () => {
+            const at = now(); if (!at) return [];
+            const effects = clipEffects(at.found);
+            return [...effects.map((effect): MenuItem => ({ label: `${effect.label} · ${effect.detail}`, keepOpen: effects.length > 1, onSelect: () => apply((found) => removeEffect(found, effect.id)) })),
+              'divider', { label: 'Remove all effects', danger: true, onSelect: () => apply((found) => clipEffects(found).reduce<Clip>((next, effect) => ({ ...next, ...removeEffect(next, effect.id) }), found)) }];
+          },
+        });
       }
     }
     if (sound) items.push({ label: sound.muted ? 'Turn sound on' : 'Mute sound', onSelect: () => change(updateSound(timeline, id, { muted: !sound.muted })) }, { label: sound.duck ? 'Stop dipping under speech' : 'Dip under speech', onSelect: () => change(updateSound(timeline, id, { duck: !sound.duck })) });
