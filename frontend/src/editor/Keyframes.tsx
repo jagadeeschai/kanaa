@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { ValueSlider } from './controls';
-import { ChevronLeft, ChevronRight, Diamond, Timer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Minus, Plus, Timer } from 'lucide-react';
 import { valueAt, type AnimatedProperty, type Ease, type Transform } from '../timeline/evaluate';
 import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, toggleAnimated, writeValue, type Control } from '../timeline/keyframes';
 
@@ -15,20 +15,28 @@ const LABELS: Record<Control, string> = { position: 'Position', scale: 'Size', r
 
 type PanelProps = { transform: Transform; local: number; length: number; onChange: (transform: Transform, group?: string) => void; onSeek: (t: number) => void; onGestureStart: () => void; controls?: Control[] };
 
-function Stopwatch({ control, transform, local, length, onChange, onSeek }: PanelProps & { control: Control }) {
+/** Turns animation on or off for one setting, in words: "Animate", or "Animating" when it moves. */
+function AnimateToggle({ control, transform, local, onChange }: PanelProps & { control: Control }) {
   const animated = isAnimated(transform, control);
+  const name = LABELS[control];
+  return <button className={`ed-animate ${animated ? 'on' : ''}`} aria-pressed={animated} aria-label={`${animated ? 'Stop animating' : 'Animate'} ${name}`}
+    title={animated ? 'Stop animating: removes its points and keeps the value it has now' : `Make ${name.toLowerCase()} change over time: each change you make at a new moment adds a point`}
+    onClick={() => onChange(toggleAnimated(transform, control, local))}><Timer size={12}/>{animated ? 'Animating' : 'Animate'}</button>;
+}
+
+/** Under an animated setting: how many points it has, and buttons to step between them or add and remove one here. */
+function PointBar({ control, transform, local, length, onChange, onSeek }: PanelProps & { control: Control }) {
+  if (!isAnimated(transform, control)) return null;
   const times = keyTimes(transform, control).filter((t) => t <= length);
   const here = hasKeyAt(transform, control, local);
   const before = [...times].reverse().find((t) => t < local - 0.01);
   const after = times.find((t) => t > local + 0.01);
   const name = LABELS[control];
-  return <div className="ed-key-tools">
-    {animated && <>
-      <button className="ed-icon small" disabled={before === undefined} aria-label={`Previous ${name} point`} title="Previous point" onClick={() => onSeek(before!)}><ChevronLeft size={14}/></button>
-      <button className={`ed-icon small ${here ? 'on' : ''}`} aria-pressed={here} aria-label={`${here ? 'Remove' : 'Add'} ${name} point here`} title={here ? 'Remove this point' : 'Add a point here'} onClick={() => onChange((here ? removeKey : addKey)(transform, control, local))}><Diamond size={13}/></button>
-      <button className="ed-icon small" disabled={after === undefined} aria-label={`Next ${name} point`} title="Next point" onClick={() => onSeek(after!)}><ChevronRight size={14}/></button>
-    </>}
-    <button className={`ed-icon small ${animated ? 'on' : ''}`} aria-pressed={animated} aria-label={`Animate ${name}`} title={animated ? 'Stop animating and keep this value' : 'Animate: each change adds a point'} onClick={() => onChange(toggleAnimated(transform, control, local))}><Timer size={14}/></button>
+  return <div className="ed-points" role="group" aria-label={`${name} points`}>
+    <span className="ed-points-count">{times.length} {times.length === 1 ? 'point' : 'points'}</span>
+    <button disabled={before === undefined} aria-label={`Go to the previous ${name} point`} title="Go to the previous point" onClick={() => onSeek(before!)}><ChevronLeft size={13}/>Previous</button>
+    <button className={here ? 'remove' : 'add'} aria-label={`${here ? 'Remove the' : 'Add a'} ${name} point here`} onClick={() => onChange((here ? removeKey : addKey)(transform, control, local))}>{here ? <><Minus size={12}/>Remove point</> : <><Plus size={12}/>Add point</>}</button>
+    <button disabled={after === undefined} aria-label={`Go to the next ${name} point`} title="Go to the next point" onClick={() => onSeek(after!)}>Next<ChevronRight size={13}/></button>
   </div>;
 }
 
@@ -37,14 +45,17 @@ export function MotionPanel(props: PanelProps) {
   const animated = (['position', 'scale', 'rotation', 'opacity'] as Control[]).filter((control) => isAnimated(transform, control));
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;
   return <>
-    <div className="ed-motion"><span>Position</span><Stopwatch {...props} control="position"/></div>
+    <div className="ed-motion"><span>Position</span><AnimateToggle {...props} control="position"/></div>
+    <PointBar {...props} control="position"/>
     {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a point.</p>}
+    {!animated.length && <p className="ed-tip">To make something change over time, press Animate beside it, then move the playhead and change the value. Kanaa moves smoothly between the points.</p>}
     {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).filter((control) => controls.includes(control)).map((control) => {
       const slider = SLIDERS[control];
       const value = valueAt(transform, slider.property, local);
-      return <ValueSlider key={control} label={slider.label} value={value} min={slider.min} max={slider.max} step={slider.step} defaultValue={slider.rest} unit={slider.unit} factor={slider.factor} onGestureStart={onGestureStart}
-        onChange={(next, group) => onChange(writeValue(transform, slider.property, local, next), group)} actions={<Stopwatch {...props} control={control}/>}/>;
+      return <div key={control}><ValueSlider label={slider.label} value={value} min={slider.min} max={slider.max} step={slider.step} defaultValue={slider.rest} unit={slider.unit} factor={slider.factor} onGestureStart={onGestureStart}
+        onChange={(next, group) => onChange(writeValue(transform, slider.property, local, next), group)} actions={<AnimateToggle {...props} control={control}/>}/><PointBar {...props} control={control}/></div>;
     })}
+    {ease && <span className="ed-who-title">How it moves between points</span>}
     {ease && <div className="ed-chips" role="group" aria-label="Motion style">{EASES.map((option) => <button key={option.id} className={ease === option.id ? 'on' : ''} aria-pressed={ease === option.id} onClick={() => onChange(animated.reduce((next, control) => setEase(next, control, option.id), transform))}>{option.label}</button>)}</div>}
   </>;
 }

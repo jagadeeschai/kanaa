@@ -206,6 +206,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     // Until its prepared copy is ready, a steadied or reversed clip previews the original.
     const want = clip && preparedWant(clip);
     if (want && preparedReady[preparedKey(id, ...want)]) return { url: preparedProxyUrl(id, ...want), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
+    // A new blur strength or focus is made in the background; until then the last ready blur shows, not the sharp original.
+    if (want && want[2].startsWith('blur')) {
+      const prefix = `${id}:${want[0] ? 1 : 0}:${want[1] ? 1 : 0}:blur`;
+      const earlier = Object.keys(preparedReady).find((key) => preparedReady[key] && key.startsWith(prefix));
+      if (earlier) return { url: preparedProxyUrl(id, want[0], want[1], earlier.slice(earlier.indexOf(':blur') + 1)), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
+    }
     return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size, duration: item.duration };
   }, [mediaById, ready, preparedReady]);
 
@@ -1566,7 +1572,7 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
         {backgrounds.length ? <div className="ed-media-grid ed-backgrounds">{backgrounds.map((item) => <button key={item.id} className="ed-tile-add" onClick={() => onBackground(item)} title={`Put ${item.filename} behind, filling the frame`}><img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b></span></button>)}</div>
           : <p className="ed-tip">Import a picture or video in Media, then choose it here.</p>}
         <p className="ed-tip">It fills the whole frame, behind {isMain ? 'this clip' : 'the cut-out'}. A shorter video plays slower to cover it.</p></div>}
-      {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? 'Blurring the background' : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background, and the preview shows the original until it is ready.`
+      {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? `Making the ${clip.focus_pull ? 'focus pull' : `${clip.blur_amount ?? 'medium'} blur`}` : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background${clip.cutout === 'blur' ? '; the preview keeps the previous blur until the new one is ready' : ', and the preview shows the original until it is ready'}.`
         : clip.cutout === 'blur' ? 'Who you choose stays sharp and everything else is softened, like a film camera focused on them.' : isMain ? 'The person shows over black until you choose a new background below.' : 'The person shows over whatever is under this layer.'}</p>}
     </Group>}
     <Group title="Green screen" tab="background" startOpen={Boolean(clip.chroma) || source?.kind !== 'video'} changed={Boolean(clip.chroma)} keywords="green screen chroma key transparent blue" tip="Click the green or blue in the preview to make it see-through." help="green-screen">
