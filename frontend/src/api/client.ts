@@ -69,6 +69,13 @@ export const fetchCaptionImage = async (caption: unknown, layer: unknown, lit: n
 export const previewRenderUrl = (id: number) => `/api/projects/${id}/preview-render`;
 export const startPreviewRender = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(previewRenderUrl(id), { method: 'POST', body: JSON.stringify(timeline) });
 export const setMediaFolder = (id: number, folder: string | null) => requestJson<{ folder: string | null }>(`/api/photos/${id}`, { method: 'PATCH', body: JSON.stringify({ folder }) });
+export type MediaFolderSummary = { name: string; count: number };
+export type MediaFolderIndex = { total: number; unfiled: number; folders: MediaFolderSummary[] };
+export const listMediaFolders = () => requestJson<MediaFolderIndex>('/api/media-folders');
+export const createMediaFolder = (name: string) => requestJson<MediaFolderSummary>('/api/media-folders', { method: 'POST', body: JSON.stringify({ name }) });
+export const renameMediaFolder = (name: string, next: string) => requestJson<{ name: string }>(`/api/media-folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify({ name: next }) });
+export const deleteMediaFolder = (name: string) => requestJson<void>(`/api/media-folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export const moveMediaToFolder = (ids: number[], folder: string | null) => requestJson<{ folder: string | null; updated: number }>('/api/photos/folder', { method: 'PATCH', body: JSON.stringify({ ids, folder }) });
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });

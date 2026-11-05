@@ -47,10 +47,15 @@ def init_db():
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, status TEXT NOT NULL,
             error TEXT, output_photo_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, finished_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS media_folders (
+            name TEXT PRIMARY KEY COLLATE NOCASE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         ''')
         # Added for the timeline; older databases gain them here and fill in on next use.
         existing = {row['name'] for row in conn.execute('PRAGMA table_info(photos)')}
         for column, definition in (('fps', 'REAL'), ('rotation', 'INTEGER NOT NULL DEFAULT 0'), ('has_audio', 'INTEGER NOT NULL DEFAULT 0'), ('folder', 'TEXT')):
             if column not in existing:
                 conn.execute(f'ALTER TABLE photos ADD COLUMN {column} {definition}')
+        conn.execute("INSERT OR IGNORE INTO media_folders(name) SELECT DISTINCT folder FROM photos WHERE folder IS NOT NULL AND TRIM(folder) != ''")
         conn.commit()

@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import shutil
+import sqlite3
 import threading
 import uuid
 from pathlib import Path
@@ -62,7 +63,7 @@ async def upload_media(file: UploadFile = File(...)):
 
 
 @router.get('/photos')
-def list_media(media_type: str | None = None, q: str = '', limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), collection: str | None = None):
+def list_media(media_type: str | None = None, q: str = '', folder: str | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), collection: str | None = None):
     where, args = ['1=1'], []
     if media_type:
         where.append('media_type=?'); args.append(media_type)
@@ -70,11 +71,82 @@ def list_media(media_type: str | None = None, q: str = '', limit: int = Query(10
         where.append('filename LIKE ?'); args.append('%' + q + '%')
     if collection:
         where.append('is_export=?'); args.append(int(collection == 'workspace'))
+    if folder == '__unfiled__':
+        where.append('folder IS NULL')
+    elif folder is not None:
+        where.append('folder=?'); args.append(folder)
     clause = ' AND '.join(where)
     with get_connection() as conn:
         total = conn.execute(f'SELECT COUNT(*) FROM photos WHERE {clause}', args).fetchone()[0]
         rows = conn.execute(f'SELECT * FROM photos WHERE {clause} ORDER BY id DESC LIMIT ? OFFSET ?', [*args, limit, offset]).fetchall()
     return {'photos': [describe(row) for row in rows], 'total': total, 'counts': {}}
+
+
+class FolderName(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class BulkMediaFolder(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+    folder: str | None = Field(default=None, max_length=60)
+
+
+def clean_folder(value: str | None) -> str | None:
+    return (value or '').strip() or None
+
+
+def required_folder(value: str | None) -> str:
+    name = clean_folder(value)
+    if not name: raise HTTPException(400, 'Give the folder a name.')
+    return name
+
+
+@router.get('/media-folders')
+def list_media_folders():
+    with get_connection() as conn:
+        folders = conn.execute('''SELECT f.name, COUNT(p.id) AS count FROM media_folders f
+            LEFT JOIN photos p ON p.folder=f.name AND p.is_export=0 GROUP BY f.name ORDER BY f.name COLLATE NOCASE''').fetchall()
+        total = conn.execute('SELECT COUNT(*) FROM photos WHERE is_export=0').fetchone()[0]
+        unfiled = conn.execute('SELECT COUNT(*) FROM photos WHERE is_export=0 AND folder IS NULL').fetchone()[0]
+    return {'total': total, 'unfiled': unfiled, 'folders': [dict(row) for row in folders]}
+
+
+@router.post('/media-folders')
+def create_media_folder(data: FolderName):
+    name = required_folder(data.name)
+    with get_connection() as conn:
+        try: conn.execute('INSERT INTO media_folders(name) VALUES(?)', (name,)); conn.commit()
+        except sqlite3.IntegrityError: raise HTTPException(409, 'A folder with this name already exists.')
+    return {'name': name, 'count': 0}
+
+
+@router.patch('/media-folders/{name}')
+def rename_media_folder(name: str, data: FolderName):
+    next_name = required_folder(data.name)
+    with get_connection() as conn:
+        if not conn.execute('SELECT 1 FROM media_folders WHERE name=?', (name,)).fetchone(): raise HTTPException(404, 'Folder not found.')
+        if name.casefold() != next_name.casefold() and conn.execute('SELECT 1 FROM media_folders WHERE name=?', (next_name,)).fetchone(): raise HTTPException(409, 'A folder with this name already exists.')
+        conn.execute('UPDATE photos SET folder=? WHERE folder=?', (next_name, name))
+        conn.execute('UPDATE media_folders SET name=? WHERE name=?', (next_name, name)); conn.commit()
+    return {'name': next_name}
+
+
+@router.delete('/media-folders/{name}', status_code=204)
+def delete_media_folder(name: str):
+    with get_connection() as conn:
+        if not conn.execute('SELECT 1 FROM media_folders WHERE name=?', (name,)).fetchone(): raise HTTPException(404, 'Folder not found.')
+        conn.execute('UPDATE photos SET folder=NULL WHERE folder=?', (name,))
+        conn.execute('DELETE FROM media_folders WHERE name=?', (name,)); conn.commit()
+
+
+@router.patch('/photos/folder')
+def bulk_set_media_folder(data: BulkMediaFolder):
+    folder = clean_folder(data.folder)
+    placeholders = ','.join('?' for _ in data.ids)
+    with get_connection() as conn:
+        if folder: conn.execute('INSERT OR IGNORE INTO media_folders(name) VALUES(?)', (folder,))
+        cursor = conn.execute(f'UPDATE photos SET folder=? WHERE id IN ({placeholders}) AND is_export=0', [folder, *data.ids]); conn.commit()
+    return {'folder': folder, 'updated': cursor.rowcount}
 
 
 @router.get('/photos/{identifier}')
@@ -91,6 +163,7 @@ def set_media_folder(identifier: int, data: MediaFolder):
     get_media(identifier)
     folder = (data.folder or '').strip() or None
     with get_connection() as conn:
+        if folder: conn.execute('INSERT OR IGNORE INTO media_folders(name) VALUES(?)', (folder,))
         conn.execute('UPDATE photos SET folder=? WHERE id=?', (folder, identifier))
         conn.commit()
     return {'folder': folder}

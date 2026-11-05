@@ -72,6 +72,21 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(image_edit.status_code, 200)
         self.assertEqual(self.client.get(f"/api/projects/{image_edit.json()['id']}/timeline").status_code, 200)
 
+    def test_media_folders_are_persistent_filterable_and_manageable(self):
+        red, blue = self.image('red'), self.image('blue')
+        created = self.client.post('/api/media-folders', json={'name': 'Interviews'})
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(self.client.get('/api/media-folders').json()['folders'][0], {'name': 'Interviews', 'count': 0})
+        moved = self.client.patch('/api/photos/folder', json={'ids': [red['id'], blue['id']], 'folder': 'Interviews'})
+        self.assertEqual(moved.json()['updated'], 2)
+        filtered = self.client.get('/api/photos', params={'collection': 'imports', 'folder': 'Interviews'}).json()
+        self.assertEqual(filtered['total'], 2)
+        renamed = self.client.patch('/api/media-folders/Interviews', json={'name': 'Client interviews'})
+        self.assertEqual(renamed.json()['name'], 'Client interviews')
+        self.assertEqual(self.client.get('/api/media-folders').json()['folders'][0]['count'], 2)
+        self.assertEqual(self.client.delete('/api/media-folders/Client%20interviews').status_code, 204)
+        self.assertEqual(self.client.get('/api/photos', params={'collection': 'imports', 'folder': '__unfiled__'}).json()['total'], 2)
+
     def test_video_import_trim_export_and_download(self):
         media = self.client.post('/api/media', files={'file': ('clip.mp4', self.video.read_bytes(), 'video/mp4')}).json()
         self.assertEqual(self.client.get(f"/api/photos/{media['id']}/thumbnail").status_code, 200)
