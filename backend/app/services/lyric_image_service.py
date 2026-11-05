@@ -43,7 +43,7 @@ class ScenePlan(BaseModel):
     style: Literal['cinematic', 'watercolor', 'illustration', 'dreamlike', 'photographic'] = 'cinematic'
     brief: str = Field(default='', max_length=1500)
     canvas: Literal['portrait', 'square', 'landscape'] = 'portrait'
-    purpose: Literal['scenes', 'cover'] = 'scenes'
+    purpose: Literal['scenes', 'image', 'cover'] = 'scenes'  # cover remains an API alias for older clients
 
 
 class SceneEdit(BaseModel):
@@ -108,10 +108,10 @@ def _plan_scenes(identifier, plan):
             first, end = index * len(lines) // count, (index + 1) * len(lines) // count
             excerpt = '\n'.join(lines[first:end])
             beat = STORY_BEATS[min(len(STORY_BEATS) - 1, index * len(STORY_BEATS) // count)]
-            prompt = ((f'Create one polished cover artwork for a video. English visual brief: {brief}. '
-                       'Use one clear focal subject, a memorable silhouette, and a calm title-safe area. '
+            prompt = ((f'Create one polished standalone image. English visual brief: {brief}. '
+                       'Follow the requested subject and composition precisely, with a clear focal hierarchy. '
                        f'Visual style: {STYLES[plan.style]} No words, captions, logos, or watermarks. '
-                       f'Use a visually complete {plan.canvas} composition with generous crop-safe margins.') if plan.purpose == 'cover' else
+                       f'Use a visually complete {plan.canvas} composition with crop-safe margins.') if plan.purpose != 'scenes' else
                       (f'Create scene {index + 1} of {count} for one visually continuous music video. '
                       f'English visual brief and continuity bible: {brief}. '
                       'Continuity is mandatory: keep the same recurring people with the same facial features, age, hair, skin tone, and wardrobe; '

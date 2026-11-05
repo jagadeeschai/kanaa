@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
-import CoverArtGenerator from '../components/CoverArtGenerator';
+import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
@@ -110,7 +110,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [addingMusic, setAddingMusic] = useState(false);
-  const [creatingCoverArt, setCreatingCoverArt] = useState(false);
+  const [creatingAIImage, setCreatingAIImage] = useState(false);
   // The preview alone, filling the screen. Esc or the same button leaves it.
   const stageRef = useRef<HTMLElement>(null);
   const [fullScreen, setFullScreen] = useState(false);
@@ -1095,7 +1095,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{LEFT_TABS.map((tab, index) => <button key={tab} role="tab" tabIndex={leftTab === tab ? 0 : -1} aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)} onKeyDown={(event) => { const next = nextTabIndex(index, LEFT_TABS.length, event.key, 3); if (next === index) return; event.preventDefault(); setLeftTab(LEFT_TABS[next]); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus(); }}>{LEFT_TAB_LABELS[tab]}</button>)}</div>
           <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
         {leftTab === 'media' && <>
-          <button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingCoverArt(true)}><WandSparkles size={15}/>Create AI cover art</button>
+          <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
           {folders.length > 0 && <div className="ed-chips ed-folders" role="group" aria-label="Folders"><button className={folder === null ? 'on' : ''} onClick={() => setFolder(null)}>All</button>{folders.map((name) => <button key={name} className={folder === name ? 'on' : ''} onClick={() => setFolder(name)}>{name}</button>)}</div>}
           {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
@@ -1263,10 +1263,10 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {showingHelp && <Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
     {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
-    {creatingCoverArt && timeline && <CoverArtGenerator
+    {creatingAIImage && timeline && <AIImageGenerator
       projectId={projectId}
       canvas={timeline.format.width === timeline.format.height ? 'square' : timeline.format.width > timeline.format.height ? 'landscape' : 'portrait'}
-      onClose={() => setCreatingCoverArt(false)}
+      onClose={() => setCreatingAIImage(false)}
       onCreated={(item) => { setMedia((current) => current.some((entry) => entry.id === item.id) ? current : [item, ...current]); setLeftTab('media'); }}/>
     }
   </div>;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Scissors, Sparkles } from 'lucide-react';
 import { tokenTime, type Tidy, type Token } from '../timeline/words';
 import type { Clip } from '../timeline/model';
+import KanaaSelect from '../components/KanaaSelect';
 
 export const LANGUAGES = [{ id: 'auto', label: 'Detect language' }, { id: 'ta', label: 'Tamil' }, { id: 'en', label: 'English' }, { id: 'hi', label: 'Hindi' }, { id: 'te', label: 'Telugu' }, { id: 'ml', label: 'Malayalam' }, { id: 'kn', label: 'Kannada' }];
 
@@ -43,7 +44,7 @@ export function WordsPanel({ tokens, clips, language, onLanguage, missing, busy,
   }, [tokens, clipFor, playhead]);
   const words = tokens.filter((token) => token.text).length;
   return <div className="ed-words">
-    <label className="ed-words-language"><span>Spoken language</span><select value={language} disabled={Boolean(busy)} onChange={(event) => onLanguage(event.target.value)}>{LANGUAGES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+    <label className="ed-words-language"><span>Spoken language</span><KanaaSelect aria-label="Spoken language" value={language} disabled={Boolean(busy)} onChange={(event) => onLanguage(event.target.value)}>{LANGUAGES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</KanaaSelect></label>
     {busy ? <><p className="ed-tip">{busy}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>
       : missing > 0 ? <button className="ed-primary wide" onClick={onTranscribe}>Transcribe {missing} clip{missing === 1 ? '' : 's'}</button> : null}
     {!tokens.length && !busy && <p className="ed-tip">{missing ? 'Kanaa listens to your video on this Mac and writes out the words. Nothing is uploaded.' : clips.length ? 'No speech found in your clips.' : 'Add a video to the timeline first.'}</p>}

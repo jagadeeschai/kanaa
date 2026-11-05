@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Folder, FolderPlus } from 'lucide-react';
+import { FolderPlus } from 'lucide-react';
 import { createMediaFolder, deleteMedia, deleteMediaFolder, moveMediaToFolder, renameMediaFolder, setMediaFolder, type MediaFolderSummary } from '../api/client';
 import type { Photo } from '../types/photo';
 import Dialog from './Dialog';
+import KanaaSelect from './KanaaSelect';
 
 export const folderNames = (media: Photo[]) => [...new Set(media.flatMap((item) => item.folder ?? []))].sort((a, b) => a.localeCompare(b));
 
 export function FolderDialog({ item, folders, onClose, onSaved }: { item: Photo; folders: MediaFolderSummary[] | string[]; onClose: () => void; onSaved: (folder: string | null) => void }) {
   const [name, setName] = useState('');
+  const [destination, setDestination] = useState(item.folder ?? '');
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -18,10 +20,10 @@ export function FolderDialog({ item, folders, onClose, onSaved }: { item: Photo;
   };
   return <Dialog title="Move to folder" onClose={onClose}>
     <p className="dialog-description">{item.filename}</p>
-    <div className="folder-destination-list">{destinations.map((folder) => <button key={folder.name} className={folder.name === item.folder ? 'on' : ''} disabled={busy} onClick={() => { void save(folder.name); }}><Folder size={17}/><span>{folder.name}</span>{folder.count > 0 && <small>{folder.count} item{folder.count === 1 ? '' : 's'}</small>}</button>)}</div>
+    <label className="field-label folder-picker-label">Choose destination<KanaaSelect aria-label="Destination folder" searchable searchPlaceholder="Search folders" value={destination} disabled={busy} onChange={(event) => setDestination(event.target.value)}><option value="">Unfiled</option>{destinations.map((folder) => <option key={folder.name} value={folder.name}>{folder.name}{folder.count > 0 ? ` · ${folder.count}` : ''}</option>)}</KanaaSelect></label>
     {!creating ? <button className="new-folder-row" onClick={() => setCreating(true)}><FolderPlus size={17}/>Create a new folder</button> : <label className="field-label folder-name-field">New folder name<input aria-label="Folder name" autoFocus value={name} maxLength={60} placeholder="For example, Parade" onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) void save(name); }}/></label>}
     {error && <p role="alert" className="studio-error">{error}</p>}
-    <footer>{item.folder ? <button className="secondary" disabled={busy} onClick={() => { void save(''); }}>Move to Unfiled</button> : <span/>}{creating && <button className="primary" disabled={busy || !name.trim()} onClick={() => { void save(name); }}>Create and move</button>}</footer>
+    <footer><button className="secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy || (creating ? !name.trim() : destination === (item.folder ?? ''))} onClick={() => { void save(creating ? name : destination); }}>{creating ? 'Create and move' : 'Move'}</button></footer>
   </Dialog>;
 }
 
@@ -41,9 +43,9 @@ export function CreateFolderDialog({ onClose, onCreated }: { onClose: () => void
 }
 
 export function BulkFolderDialog({ ids, folders, onClose, onSaved }: { ids: number[]; folders: MediaFolderSummary[]; onClose: () => void; onSaved: (folder: string | null) => void }) {
-  const [name, setName] = useState(''); const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [name, setName] = useState(''); const [destination, setDestination] = useState(''); const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const move = async (folder: string | null) => { if (busy) return; setBusy(true); try { const result = await moveMediaToFolder(ids, folder); onSaved(result.folder); onClose(); } catch (problem) { setError((problem as Error).message); setBusy(false); } };
-  return <Dialog title={`Move ${ids.length} items`} onClose={onClose}><div className="folder-destination-list">{folders.map((folder) => <button key={folder.name} disabled={busy} onClick={() => { void move(folder.name); }}><Folder size={17}/><span>{folder.name}</span><small>{folder.count}</small></button>)}</div>{!creating ? <button className="new-folder-row" onClick={() => setCreating(true)}><FolderPlus size={17}/>Create a new folder</button> : <label className="field-label folder-name-field">New folder name<input aria-label="Folder name" autoFocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) void move(name.trim()); }}/></label>}{error && <p role="alert" className="studio-error">{error}</p>}<footer><button className="secondary" disabled={busy} onClick={() => { void move(null); }}>Move to Unfiled</button>{creating && <button className="primary" disabled={busy || !name.trim()} onClick={() => { void move(name.trim()); }}>Create and move</button>}</footer></Dialog>;
+  return <Dialog title={`Move ${ids.length} items`} onClose={onClose}><label className="field-label folder-picker-label">Choose destination<KanaaSelect aria-label="Destination folder" searchable searchPlaceholder="Search folders" value={destination} disabled={busy} onChange={(event) => setDestination(event.target.value)}><option value="">Unfiled</option>{folders.map((folder) => <option key={folder.name} value={folder.name}>{folder.name} · {folder.count}</option>)}</KanaaSelect></label>{!creating ? <button className="new-folder-row" onClick={() => setCreating(true)}><FolderPlus size={17}/>Create a new folder</button> : <label className="field-label folder-name-field">New folder name<input aria-label="Folder name" autoFocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) void move(name.trim()); }}/></label>}{error && <p role="alert" className="studio-error">{error}</p>}<footer><button className="secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy || (creating ? !name.trim() : false)} onClick={() => { void move(creating ? name.trim() : destination || null); }}>{creating ? 'Create and move' : 'Move'}</button></footer></Dialog>;
 }
 
 export function DeleteMediaDialog({ item, onClose, onDeleted }: { item: Photo; onClose: () => void; onDeleted: () => void }) {

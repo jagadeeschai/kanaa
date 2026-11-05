@@ -253,6 +253,7 @@
 .kanaa-select-menu button.selected { background: rgba(124, 92, 240, 0.2); color: #f2eeff; }
 .kanaa-select-menu button.selected.focused { background: rgba(124, 92, 240, 0.3); }
 .kanaa-select-menu button svg { flex: none; color: rgb(181, 158, 255); }
+.kanaa-select-search{display:block;padding:.2rem .2rem .35rem}.kanaa-select-search input{width:100%;border:1px solid rgba(255,255,255,.12);border-radius:.45rem;background:rgba(0,0,0,.16);padding:.48rem .55rem;color:#ecebe9;font:inherit;outline:0}.kanaa-select-search input:focus{border-color:#8b74ec;box-shadow:0 0 0 2px rgba(124,92,240,.14)}.kanaa-select-empty{margin:0;padding:.7rem;color:#aaa3b8;font-size:.75rem;text-align:center}
 
 :root[data-theme='light'] .kanaa-select { color: #222120; }
 :root[data-theme='light'] .kanaa-select-trigger {
@@ -271,6 +272,7 @@
 :root[data-theme='light'] .kanaa-select-menu button.focused { background: #f2effb; color: #292432; }
 :root[data-theme='light'] .kanaa-select-menu button.selected { background: #ece7ff; color: #4932b8; }
 :root[data-theme='light'] .kanaa-select-menu button.selected.focused { background: #e3dcff; }
+:root[data-theme='light'] .kanaa-select-search input{border-color:rgba(52,45,75,.14);background:#f7f5fb;color:#292432}
 
 :root[data-theme='light'] .bg-brand-500\/15 {
   background-color: rgba(253, 236, 200, 0.85) !important;
