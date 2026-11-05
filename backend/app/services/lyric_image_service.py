@@ -84,12 +84,13 @@ def current_batch(identifier, batch_id=None):
     return batch
 
 
-def plan_scenes(identifier, plan):
+def plan_scenes(identifier, plan, direction=None):
+    """`direction`, from the lyric director, gives an English continuity bible and, per scene, its lyric lines and what it shows."""
     with generation_lock:
-        return _plan_scenes(identifier, plan)
+        return _plan_scenes(identifier, plan, direction)
 
 
-def _plan_scenes(identifier, plan):
+def _plan_scenes(identifier, plan, direction=None):
     require_project(identifier)
     previous = current_batch(identifier)
     if previous and previous['active']:
@@ -97,17 +98,19 @@ def _plan_scenes(identifier, plan):
     lines = [line.strip() for line in plan.lyrics.splitlines() if line.strip()]
     if not lines or len(lines) > 500 or any(len(line) > 500 for line in lines):
         raise ValueError('Use 1–500 lyric lines, with up to 500 characters per line.')
-    brief = require_english_visual_prompt(plan.brief)
+    brief = require_english_visual_prompt(direction['bible'] if direction else plan.brief)
     # Timings only attach when the supplied cues still describe these exact lyrics.
     timed = len(plan.cues) == len(lines) and all(cue.text.strip() == line for cue, line in zip(plan.cues, lines)) and all(plan.cues[index].start >= plan.cues[index - 1].end for index in range(1, len(plan.cues)))
-    count = min(plan.count, len(lines))
+    groups = [(scene['first'], scene['end']) for scene in direction['scenes']] if direction else None
+    count = len(groups) if groups else min(plan.count, len(lines))
     batch_id = uuid.uuid4().hex
     with get_connection() as conn:
-        conn.execute('INSERT INTO image_batches(id,project_id,lyrics,style,brief,canvas) VALUES(?,?,?,?,?,?)', (batch_id, identifier, plan.lyrics, plan.style, plan.brief, plan.canvas))
+        conn.execute('INSERT INTO image_batches(id,project_id,lyrics,style,brief,canvas) VALUES(?,?,?,?,?,?)', (batch_id, identifier, plan.lyrics, plan.style, brief if direction else plan.brief, plan.canvas))
         for index in range(count):
-            first, end = index * len(lines) // count, (index + 1) * len(lines) // count
+            first, end = groups[index] if groups else (index * len(lines) // count, (index + 1) * len(lines) // count)
             excerpt = '\n'.join(lines[first:end])
-            beat = STORY_BEATS[min(len(STORY_BEATS) - 1, index * len(STORY_BEATS) // count)]
+            beat = (f"this moment: {direction['scenes'][index]['visual']}" if direction else
+                    STORY_BEATS[min(len(STORY_BEATS) - 1, index * len(STORY_BEATS) // count)])
             prompt = ((f'Create one polished standalone image. English visual brief: {brief}. '
                        'Follow the requested subject and composition precisely, with a clear focal hierarchy. '
                        f'Visual style: {STYLES[plan.style]} No words, captions, logos, or watermarks. '

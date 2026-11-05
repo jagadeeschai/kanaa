@@ -1,3 +1,5 @@
+import { loopSound, needsLoop } from '../timeline/loop';
+import { placeEffects, removeEffects, titleTimes, transitionTimes } from '../timeline/sfx';
 import AskPanel from './AskPanel';
 import { applyPure, describeCommand, translateCaptions, type Options, type Proposed } from '../timeline/commands';
 import { keepCaptionsClear, type FacePath } from '../timeline/clear-faces';
@@ -7,7 +9,7 @@ import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -939,6 +941,39 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setClearNote(result.moved ? `Moved ${result.moved} caption${result.moved === 1 ? '' : 's'} clear of faces. ⌘Z undoes it. Making captions again puts them all back in place.` : 'No caption covers a face.');
     } catch (problem) { setClearNote((problem as Error).message); } finally { setClearing(false); }
   };
+  const [soundEffects, setSoundEffects] = useState<SoundEffectInfo[] | null>(null);
+  const [sfxChoice, setSfxChoice] = useState<{ whoosh: string; hit: string }>({ whoosh: 'kanaa-whoosh', hit: 'kanaa-hit' });
+  const [sfxBusy, setSfxBusy] = useState<'whoosh' | 'hit' | null>(null);
+  const [sfxNote, setSfxNote] = useState<string | null>(null);
+  useEffect(() => { if (leftTab === 'audio' && soundEffects === null) listSoundEffects().then((found) => setSoundEffects(found.effects)).catch(() => setSoundEffects([])); }, [leftTab, soundEffects]);
+  /** Whooshes on every transition, or hits on every title reveal, peaking on the moment. Again replaces the earlier ones. */
+  const addSoundEffects = async (kind: 'whoosh' | 'hit') => {
+    const current = timelineRef.current;
+    if (!current || sfxBusy) return;
+    const times = kind === 'whoosh' ? transitionTimes(current) : titleTimes(current);
+    if (!times.length) { setSfxNote(kind === 'whoosh' ? 'Add transitions between clips first (Themes tab, or a clip\'s Motion tab).' : 'Add a title first (Text tab).'); return; }
+    setSfxBusy(kind); setSfxNote(null);
+    try {
+      const effect = await fetchSoundEffect(sfxChoice[kind]);
+      const result = placeEffects(timelineRef.current ?? current, effect, times, newId);
+      change(result.timeline);
+      setSfxNote(`${result.placed} ${kind === 'whoosh' ? (result.placed === 1 ? 'whoosh' : 'whooshes') : (result.placed === 1 ? 'hit' : 'hits')} added. Each is a sound you can move, trim or mute; ⌘Z undoes them all.`);
+    } catch (problem) { setSfxNote((problem as Error).message); } finally { setSfxBusy(null); }
+  };
+  const [looping, setLooping] = useState(false);
+  /** Repeats a short song on the beat until the picture ends. */
+  const loopSelectedSound = async (soundId: string) => {
+    const current = timelineRef.current;
+    const sound = current && findSound(current, soundId)?.sound;
+    if (!current || !sound?.asset_id || looping) return;
+    setLooping(true);
+    try {
+      let beats: number[] = [];
+      try { beats = (await getSongBeats(sound.asset_id)).beats; } catch { beats = []; } // Without beats it still loops, end to start.
+      const result = loopSound(timelineRef.current ?? current, soundId, beats, newId);
+      if (result.repeats) change(result.timeline);
+    } catch (problem) { setError((problem as Error).message); } finally { setLooping(false); }
+  };
   const [beatBusy, setBeatBusy] = useState(false);
   const [beatNote, setBeatNote] = useState<string | null>(null);
   /** Ends every main-track clip on the music's nearest beat, in one Undo. */
@@ -1579,6 +1614,13 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         </>}
         {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead, or drag a track onto the timeline. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
+          <section className="ed-add" aria-label="Whooshes and hits"><h3 className="ed-sub">Whooshes and hits</h3><p className="ed-tip">A whoosh on every transition and a hit as each title appears, timed to land exactly on the moment.</p>
+            {(['whoosh', 'hit'] as const).map((kind) => { const choices = (soundEffects ?? []).filter((effect) => effect.kind === kind); const placed = timeline ? timeline.layers.some((layer) => layer.kind === 'audio' && layer.items.some((sound) => sound.name === (kind === 'whoosh' ? 'Whoosh' : 'Hit'))) : false; return <div key={kind} className="ed-sfx">
+              <label className="ed-field">{kind === 'whoosh' ? 'Whoosh' : 'Hit'}<select value={sfxChoice[kind]} onChange={(event) => setSfxChoice({ ...sfxChoice, [kind]: event.target.value })}>{choices.length ? choices.map((effect) => <option key={effect.id} value={effect.id}>{effect.name}{effect.own ? '' : ' · your library'}</option>) : <option value={`kanaa-${kind}`}>{kind === 'whoosh' ? "Kanaa's whoosh" : "Kanaa's hit"}</option>}</select></label>
+              <div className="ed-pair-small"><button className="ed-button" disabled={!total || sfxBusy !== null} onClick={() => { void addSoundEffects(kind); }}>{sfxBusy === kind ? <LoaderCircle className="spin" size={13}/> : <AudioLines size={13}/>}{kind === 'whoosh' ? 'On transitions' : 'On titles'}</button>
+                {placed && <button className="ed-icon small" aria-label={`Remove the ${kind === 'whoosh' ? 'whooshes' : 'hits'}`} title="Remove them" onClick={() => { if (timeline) change(removeEffects(timeline, kind)); }}><X size={13}/></button>}</div></div>; })}
+            {sfxNote && <p className="ed-tip" role="status">{sfxNote}</p>}
+            {soundEffects && soundEffects.every((effect) => effect.own) && <p className="ed-tip">Whooshes and hits in your music library (by name, under 30 seconds) show here too.</p>}</section>
           <section className="ed-add" aria-label="Cut to the beat"><h3 className="ed-sub">Cut to the beat</h3><p className="ed-tip">Each clip on the main track ends on the song's nearest beat, so cuts land with the music.</p>
             <button className="ed-button wide" disabled={!total || beatBusy || Boolean(timeline && mainLayer(timeline).locked)} onClick={() => { void cutClipsToBeat(); }}>{beatBusy ? <LoaderCircle className="spin" size={14}/> : <AudioLines size={14}/>}{beatBusy ? 'Listening for the beat…' : 'Cut clips to the beat'}</button>
             {beatNote && <p className="ed-tip" role="status">{beatNote}</p>}</section>
@@ -1649,7 +1691,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
         : selectedText ? <TextInspector text={selectedText} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
-        : selectedSound ? <SoundInspector sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
+        : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
@@ -1927,12 +1969,14 @@ function SoundControls({ item, length, onChange }: { item: { volume: number; fad
   </>;
 }
 
-function SoundInspector({ sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems }: { sound: Sound; timing: TimeFieldProps[]; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
+function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems }: { onLoop: (() => void) | null; looping: boolean; sound: Sound; timing: TimeFieldProps[]; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
   stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void }) {
   return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
     <p className="ed-name" title={sound.name}>{sound.name}</p>
-    <Group title="Timing" startOpen keywords="when start length duration trim" help="timing-and-trimming">
+    <Group title="Timing" startOpen keywords="when start length duration trim loop repeat" help="timing-and-trimming">
     <Timing fields={timing}/>
+    {onLoop && <><button className="ed-button wide" disabled={looping} onClick={onLoop} title="Repeats the song by whole bars, on the beat, until the video ends, then fades out">{looping ? <LoaderCircle className="spin" size={14}/> : <Music size={14}/>}{looping ? 'Finding the beat…' : 'Loop to the end of the video'}</button>
+      <p className="ed-tip">The song ends before the video does. Looping repeats it on the beat and fades out at the end.</p></>}
     </Group>
     <Group title="Volume" tab="volume" startOpen keywords="volume mute louder quiet fade speed dip duck music" tip="Set loudness and fades; music dips by itself while people talk." help="music-volume-ducking">
     <div className="ed-pair">

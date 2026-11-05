@@ -102,6 +102,8 @@ Built in cloud sessions at the owner's request; details and limits are in the pl
 - **Local ML reused:** cut to the beat (`timeline/beats.ts`), push in towards faces (`focus_service.py`), split at scene changes (`scene_service.py`), auto-reframe to follow the person (`reframe_service.py`, `timeline/reframe.ts`), best moments for stories (`moment_service.py`), captions clear of faces (`timeline/clear-faces.ts`, per-caption `position`).
 - **Special effects:** eight effects drawn in code (`effect_service.py`), laid on a Screen-blend "Effects" layer (`drop.placeEffect`).
 - **AI ready (Ask AI tab):** uses the existing AI settings (`ai_settings_service.py`: one OpenAI-compatible address and API key) with a new `text_model` beside the image model; `text_ai_service.py` calls it through the official `openai` Python library. A provider on this Mac (Ollama) needs no key. `edit_plan_service.py` turns a request into commands from a fixed catalogue, checked against the ids the editor sends; `timeline/commands.ts` checks them again and the person ticks and applies them (`runAsk` in `Editor.tsx`). Also caption translation (Tamil ⇄ English) and post words (title, description, hashtags). Only text is sent, never media. A native Claude connection (Anthropic SDK) is a possible follow-up if the owner chooses Claude.
+- **Lyric video director:** “Let AI direct the scenes” (`lyric_director_service.py`, `/image-scenes/direct`): the text model reads the lyrics, splits the song by meaning and writes an English continuity bible and a scene each; `plan_scenes(…, direction)` saves it like a hand-built plan. Lyrics go only to the text model, never into image prompts.
+- **Whooshes and hits** (`sound_effect_service.py`, `timeline/sfx.ts`): Kanaa's own (made in code) or the library's short effects by name, placed to peak on each transition or title. **Smooth music loops** (`timeline/loop.ts`): a short song repeats by whole bars on the beat to the picture's end.
 - The face finder is never downloaded without asking: `/api/face-finder` says whether it is here, and features confirm first.
 
 ## Known limits worth remembering
@@ -110,8 +112,8 @@ Built in cloud sessions at the owner's request; details and limits are in the pl
 - **Tested mostly on synthetic and test clips.** Real phone footage (hair, hands, people crossing, HDR, variable frame rate) still needs the owner's feedback. People who cross can swap numbers.
 - **Music:**
   - Moods are guessed from names and genre tags.
-  - Music shorter than the video ends rather than looping.
-  - The short sound effects in the library (whooshes, hits) are skipped; whooshes on transitions are a planned follow-up.
+  - Music shorter than the video ends rather than looping, unless Loop to the end of the video is used (on `dev_cloud`).
+  - The short sound effects in the library are skipped in the music list; on `dev_cloud`, whooshes and hits among them are used on transitions and titles.
 - **Tests:** `Api.test_transcript_is_saved_and_kept_per_language` failed once in a full run and passed on rerun, probably a race with a background job. Investigate if it recurs.
 - **Stories and themes:** photo movement from an earlier theme stays when switching themes. (On `dev_cloud`, stories pick each clip's best part.)
 

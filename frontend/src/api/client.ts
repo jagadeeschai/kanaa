@@ -44,6 +44,7 @@ export type ImageScene = { id: number; position: number; lyric: string; prompt: 
 export type ImageBatch = { id: string; project_id: number; lyrics: string; style: string; brief: string; canvas: 'portrait' | 'square' | 'landscape'; job_id: string | null; active: boolean; scenes: ImageScene[] };
 export const getImageScenes = (id: number) => requestJson<{ batch: ImageBatch | null }>(`/api/projects/${id}/image-scenes`);
 export const planImageScenes = (id: number, data: { lyrics: string; cues: { text: string; start: number; end: number }[]; count: number; style: string; brief: string; canvas: string; purpose?: 'scenes' | 'image' }) => requestJson<ImageBatch>(`/api/projects/${id}/image-scenes/plan`, { method: 'POST', body: JSON.stringify(data) });
+export const directImageScenes = (id: number, data: { lyrics: string; cues: { text: string; start: number; end: number }[]; count: number; style: string; brief: string; canvas: string; purpose?: 'scenes' | 'image' }) => requestJson<ImageBatch>(`/api/projects/${id}/image-scenes/direct`, { method: 'POST', body: JSON.stringify(data) });
 export const generateImageScenes = (id: number, batchId: string, scenes: { id: number; prompt: string }[], quality: string) => requestJson<{ job_id: string }>(`/api/projects/${id}/image-scenes/generate`, { method: 'POST', body: JSON.stringify({ batch_id: batchId, scenes, quality }) });
 
 export const saveImageScenePrompts = (id: number, batchId: string, scenes: { id: number; prompt: string }[]) => requestJson(`/api/projects/${id}/image-scenes/${batchId}`, { method: 'PATCH', body: JSON.stringify({ scenes }) });
@@ -82,6 +83,9 @@ export const getFocus = (id: number, at = 0) => requestJson<{ x: number | null; 
 export const planEdits = (body: { request: string; project: unknown; options: unknown }) => requestJson<{ summary: string; commands: unknown[]; dropped: { reason: string }[] }>('/api/ai/plan', { method: 'POST', body: JSON.stringify(body) });
 export const translateLines = (lines: string[], to: 'ta' | 'en') => requestJson<{ lines: string[] }>('/api/ai/translate', { method: 'POST', body: JSON.stringify({ lines, to }) });
 export const describeVideo = (project: unknown, language: 'ta' | 'en' | 'both') => requestJson<{ title: string; description: string; hashtags: string[] }>('/api/ai/describe', { method: 'POST', body: JSON.stringify({ project, language }) });
+export type SoundEffectInfo = { id: string; kind: 'whoosh' | 'hit'; name: string; seconds: number; own?: boolean };
+export const listSoundEffects = () => requestJson<{ effects: SoundEffectInfo[] }>('/api/sound-effects');
+export const useSoundEffect = (id: string) => requestJson<{ asset_id: string; duration: number; name: string; kind: 'whoosh' | 'hit'; peak: number }>(`/api/sound-effects/${id}/use`, { method: 'POST' });
 export const startBestMoments = (items: { media_id: number; length: number }[]) => requestJson<{ job_id: string }>('/api/best-moments', { method: 'POST', body: JSON.stringify({ items }) });
 /** Waits for a background job, reporting its progress, and returns its final fields. */
 export async function waitForJob<T>(id: string, onProgress: (progress: number) => void = () => {}): Promise<T> {

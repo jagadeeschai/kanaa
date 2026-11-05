@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -686,3 +687,21 @@ def start_best_moments(body: dict):
     job_id = enqueue_render('moments', 'Pick the best moments', run, total=100)
     ready.set()
     return {'job_id': job_id}
+
+
+@router.get('/sound-effects')
+def list_sound_effects():
+    """Whooshes and hits: Kanaa's own two, then any in the music library (only read, never changed)."""
+    from app.services import sound_effect_service
+    return {'effects': sound_effect_service.effects()}
+
+
+@router.post('/sound-effects/{effect_id}/use')
+def use_sound_effect(effect_id: str):
+    from app.services import sound_effect_service
+    if not re.fullmatch(r'kanaa-(whoosh|hit)|[0-9a-f]{16}', effect_id):
+        raise HTTPException(404, 'Unknown sound effect.')
+    try:
+        return sound_effect_service.use(effect_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc

@@ -73,6 +73,7 @@ Paste lyrics and open **Create images from lyrics**:
 2. Build scene prompts. Lyric sections are grouped locally; the image model
    interprets their meaning and imagery, including lyrics in their original language.
 3. Review and edit each visual prompt; prompt edits autosave with the scene plan.
+   Or choose **Let AI direct the scenes**: with a Text model set in AI settings, the AI reads the lyrics (in any language), splits the song by meaning and writes the scenes for you.
 4. Configure a provider in **AI settings** (the top-bar settings button, or the
    editor's AI connection panel), then choose Generate images.
 5. Select the finished images and choose Use generated images. When lyric timings

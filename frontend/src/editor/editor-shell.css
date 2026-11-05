@@ -174,3 +174,5 @@
 .ed-ask-list{list-style:none;margin:0 0 8px;padding:0}.ed-ask-list li{margin:4px 0}.ed-ask-list small{display:block;opacity:.7}
 .ed-ask-results{margin:6px 0 0;padding-left:16px;font-size:12px}.ed-ask-post{margin-top:8px;padding:8px;border:1px solid var(--hairline);border-radius:9px;font-size:13px}.ed-ask-post p{margin:6px 0}.ed-ask-tags{opacity:.8}
 .ed-ask-error{color:#e5484d}
+/* Whooshes and hits */
+.ed-sfx{display:flex;align-items:flex-end;gap:6px;margin:6px 0}.ed-sfx .ed-field{flex:1;display:flex;flex-direction:column;gap:3px;font-size:12px}.ed-sfx select{padding:5px 6px;border:1px solid var(--hairline);border-radius:7px;background:var(--panel);color:var(--text);min-width:0}

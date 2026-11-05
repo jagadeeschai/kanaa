@@ -591,6 +591,15 @@ The editor became "AI ready" on the existing AI settings: the same OpenAI-compat
 
 **Tested:** the catalogue checks, prompt contents, reply parsing, key handling and provider errors against a fake provider; in a browser against a local fake OpenAI-compatible server, a four-edit plan applied exactly (and an unknown effect was dropped). **Not yet proven:** a real model's plans, in English and Tamil, and how often they need correcting. Choosing a model and judging its answers is the owner's next step.
 
+### Lyric video director (done)
+"Let AI direct the scenes" in Create consistent AI scenes: `lyric_director_service.py` sends the numbered lyrics (any language) to the text model, which splits them into scenes by meaning (contiguous, covering every line; gaps and overlaps are joined) and writes one English continuity bible and a visual for each scene. Non-ASCII is folded out of everything that goes into image prompts, and `plan_scenes(…, direction)` saves the plan exactly as a hand-built one, so editing prompts, generating and placing images on lyric times work as before. Lyrics never reach image prompts (a test checks every prompt). **Not yet proven:** a real model's reading of Tamil lyrics, and image quality from its descriptions.
+
+### Whooshes and hits (done)
+`sound_effect_service.py` lists Kanaa's own whoosh (filtered noise swelling to 0.5 s) and hit (a falling low thump), made in code into the song store, then the library's short files whose names say whoosh, swoosh, impact, boom and so on (only read, copied when used). Each comes with its loudest moment; `timeline/sfx.ts` places one per transition (at the cut) and per title (at its start) so the peak lands on the moment, replacing earlier ones. An export check found the whoosh loudest on the cut.
+
+### Smooth music loops (done)
+`timeline/loop.ts`: Loop to the end of the video, on a song that ends before the picture does, repeats it by whole bars (4 beats from `beat_service.py`, from the last beat near its end back to the earliest bar boundary, at least 4 s) with 30 ms joins and a fade at the picture's end. Without a clear beat it repeats the whole song. **Not yet proven:** how the joins sound on real songs; a bar is assumed to be 4 beats.
+
 ## Lyric video backlog
 For later. This is an important feature, and it comes after the editing work.
 

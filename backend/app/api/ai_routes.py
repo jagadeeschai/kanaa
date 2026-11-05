@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from app.services import text_ai_service
 from app.services.ai_settings_service import public_settings, save_settings
 from app.services.lyric_image_service import ScenePlan, GenerateScenes, current_batch, plan_scenes, start_generation, require_project, save_scene_prompts, SceneEdit
 
@@ -44,6 +45,28 @@ def build_scenes(identifier: int, data: ScenePlan):
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.post('/projects/{identifier}/image-scenes/direct')
+def direct_scenes(identifier: int, data: ScenePlan):
+    """The lyric director: the text model reads the lyrics and plans the scenes; the plan is saved like a hand-built one."""
+    from app.services.lyric_director_service import direct
+    lines = [line.strip() for line in data.lyrics.splitlines() if line.strip()]
+    if not lines:
+        raise HTTPException(400, 'Paste the lyrics first.')
+    try:
+        require_project(identifier)
+        direction = direct(lines[:500], data.count, data.style, data.canvas, data.brief)
+    except text_ai_service.NotConfigured as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:  # Network trouble: say so plainly.
+        raise HTTPException(502, f'Could not reach the AI provider: {exc.__class__.__name__}.') from exc
+    try:
+        return plan_scenes(identifier, data, direction)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post('/projects/{identifier}/image-scenes/generate')
 def generate(identifier: int, data: GenerateScenes):
     try:
@@ -67,7 +90,7 @@ def update_prompts(identifier: int, batch_id: str, data: ScenePromptsUpdate):
 # ---- The AI connection for words: Ask AI, caption translation, post words. ----
 
 from typing import Any, Literal  # noqa: E402
-from app.services import edit_plan_service, text_ai_service  # noqa: E402
+from app.services import edit_plan_service  # noqa: E402
 
 
 class PlanRequest(BaseModel):
