@@ -1084,7 +1084,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
       <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
-      <button className="ed-button" onClick={() => setChoosingFormat(true)}>{timeline ? `${timeline.format.width} × ${timeline.format.height}` : 'Format'}</button>
+      <button className="ed-button" title="Project settings: shape, frame rate, look and loudness" onClick={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}>{timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'}</button>
       <button className="ed-primary" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }}><Download size={16}/>Export</button>
     </header>
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
@@ -1133,10 +1133,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         })()}
         {leftTab === 'themes' && timeline && (() => {
           const current = activeTheme(timeline);
-          const finish = timeline.finish ?? null;
-          const setFinish = (next: Finish | null, group?: string) => change({ ...timeline, finish: next }, group);
-          const part = (key: 'grade' | 'glow' | 'vignette' | 'grain', label: string) => <ValueSlider key={key} label={label} value={finish?.[key] ?? 0} min={0} max={1} step={0.05} defaultValue={CINEMATIC[key]} unit="%" factor={100}
-            onGestureStart={pauseEngine} onChange={(value, group) => setFinish({ ...(finish ?? { ...CINEMATIC, letterbox: false, grade: 0, glow: 0, vignette: 0, grain: 0 }), [key]: value }, group ?? `finish-${key}`)}/>;
           return <section className="ed-add" aria-label="Themes">
             <p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
             <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} disabled={Boolean(themeBusy)} title={`${look.label}: ${look.about}`}>
@@ -1146,14 +1142,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
             {current && (() => { const music = themeMusic(timeline); return <div className="ed-add-row"><span>{music ? <>Music: <b>{music.name.replace(/^Theme music · /, '')}</b></> : 'No music'}</span>
               <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
-            <div className="ed-cinematic">
-              <label className="ed-check"><input type="checkbox" checked={Boolean(finish)} onChange={(event) => setFinish(event.target.checked ? { ...CINEMATIC, letterbox: barShare(timeline.format) > 0 } : null)}/><span>Cinematic finish<small>Optional finishing controls after your theme: teal and orange colour, glow, darker edges and grain{barShare(timeline.format) > 0 ? ', with widescreen bars' : ''}.</small></span></label>
-              {finish && <>
-                {barShare(timeline.format) > 0 ? <label className="ed-check"><input type="checkbox" checked={finish.letterbox} onChange={(event) => setFinish({ ...finish, letterbox: event.target.checked })}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape.</small></span></label>
-                  : <p className="ed-tip">Widescreen bars are for landscape and square videos.</p>}
-                {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
-              </>}
-            </div>
+            <p className="ed-tip">The cinematic finish and frame rate are in Project settings: click the size button at the top, or an empty part of the timeline.</p>
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
         {leftTab === 'text' && <>
@@ -1237,7 +1226,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         : selected ? <Inspector backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
-          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : <div className="ed-hint"><h2>Clip settings</h2><p>Select a clip on the timeline to reframe it, animate it, or change its look, speed and sound.</p><button className="ed-button wide" onClick={() => setShowingHelp(true)}><CircleHelp size={14}/>Guide: how everything works</button></div>}</aside>
+          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: timeline.format.fps } : null} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); updateLayout({ mediaOpen: true }); }} onGuide={() => setShowingHelp(true)}/>
+          : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
       </HelpContext.Provider>
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
@@ -1274,6 +1264,50 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
 
 const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
+
+/** Settings for the whole film: its shape and frame rate, its look, and its sound. Shown when nothing is selected. */
+const FRAME_RATES = [24, 25, 30, 50, 60] as const;
+const RATE_TIPS: Record<number, string> = { 24: 'the film look', 25: 'TV in India and Europe', 30: 'most phones; a safe choice', 50: 'smooth motion, PAL', 60: 'smoothest; sport and action' };
+function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, onGuide }: { timeline: Timeline; clipFormat: Format | null; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
+  const format = timeline.format;
+  const finish = timeline.finish ?? null;
+  const theme = activeTheme(timeline);
+  const ratio = (width: number, height: number) => { const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a); const d = gcd(width, height); return `${width / d}:${height / d}`; };
+  const setFormat = (next: Partial<Format>) => onChange({ ...timeline, format: { ...format, ...next } });
+  const setFinish = (next: Finish | null, group?: string) => onChange({ ...timeline, finish: next }, group);
+  const part = (key: 'grade' | 'glow' | 'vignette' | 'grain', label: string) => <ValueSlider key={key} label={label} value={finish?.[key] ?? 0} min={0} max={1} step={0.05} defaultValue={CINEMATIC[key]} unit="%" factor={100}
+    onGestureStart={onPause} onChange={(value, group) => setFinish({ ...(finish ?? { ...CINEMATIC, letterbox: false, grade: 0, glow: 0, vignette: 0, grain: 0 }), [key]: value }, group ?? `finish-${key}`)}/>;
+  const shapes = [...FORMATS.map((item) => ({ id: item.id as string, label: item.label, width: item.width, height: item.height })), ...(clipFormat ? [{ id: 'clip', label: 'Same as my clip', width: Math.min(clipFormat.width, 3840), height: Math.min(clipFormat.height, 3840) }] : [])];
+  return <>
+    <div className="ed-project-head"><h2>Project settings</h2><span>{format.width} × {format.height} · {ratio(format.width, format.height)} · {format.fps} fps</span></div>
+    <Panel id="project" tabs={[{ id: 'format', label: 'Format', Icon: Monitor }, { id: 'look', label: 'Look', Icon: Palette, changed: Boolean(finish || theme) }, { id: 'sound', label: 'Sound', Icon: Volume2, changed: Boolean(timeline.normalize_audio) }]}>
+      <Group title="Shape and size" tab="format" startOpen keywords="canvas aspect ratio resolution size vertical reels youtube square portrait" tip="Where will you post it? Clips refit to the new shape." help="project-settings">
+        <div className="ed-shapes">{shapes.map((item) => { const on = item.width === format.width && item.height === format.height; return <button key={item.id} className={on ? 'on' : ''} aria-pressed={on} onClick={() => setFormat({ width: item.width, height: item.height })} title={`${item.width} × ${item.height}`}>
+          <i style={{ aspectRatio: `${item.width} / ${item.height}` }}/><span><b>{item.label}</b><small>{ratio(item.width, item.height)} · {item.width} × {item.height}</small></span></button>; })}</div>
+        <p className="ed-group-tip">Export can still make it 720p, 1080p or 4K; this sets the shape.</p>
+      </Group>
+      <Group title="Frame rate" tab="format" startOpen keywords="fps frame rate frames per second smooth 24 25 30 50 60" tip="How many pictures a second. Clips keep their timing when you change it." help="project-settings">
+        <Chips label="Frame rate" options={FRAME_RATES.map((rate) => ({ id: String(rate), label: `${rate} fps` }))} value={String(format.fps)} onPick={(id) => setFormat({ fps: Number(id) })}/>
+        <p className="ed-group-tip">{format.fps} fps: {RATE_TIPS[format.fps] ?? ''}.</p>
+      </Group>
+      <Group title="Theme" tab="look" startOpen keywords="theme look style wedding festival travel birthday" tip="One click dresses the whole video: colours, transitions, titles and music." help="themes">
+        <div className="ed-add-row"><span>{theme ? <>Now: <b>{theme.label}</b></> : 'No theme'}</span><button className="ed-button" onClick={onThemes}>{theme ? 'Change theme' : 'Choose a theme'}</button></div>
+      </Group>
+      <Group title="Cinematic finish" tab="look" startOpen changed={Boolean(finish)} keywords="cinematic film grade teal orange glow vignette grain bars letterbox widescreen" tip="A film look over the whole video. Captions stay on top." help="cinematic-finish">
+        <label className="ed-check"><input type="checkbox" checked={Boolean(finish)} onChange={(event) => setFinish(event.target.checked ? { ...CINEMATIC, letterbox: barShare(format) > 0 } : null)}/><span>Cinematic finish<small>Teal and orange colour, a soft glow, darker edges and film grain{barShare(format) > 0 ? ', with widescreen bars' : ''}.</small></span></label>
+        {finish && <>
+          {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={finish.letterbox} onChange={(event) => setFinish({ ...finish, letterbox: event.target.checked })}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape.</small></span></label>
+            : <p className="ed-group-tip">Widescreen bars are for landscape and square videos.</p>}
+          {part('grade', 'Teal and orange')}{part('glow', 'Glow')}<More>{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}</More>
+        </>}
+      </Group>
+      <Group title="Loudness" tab="sound" startOpen changed={Boolean(timeline.normalize_audio)} keywords="loudness normalize volume level even out audio" tip="Makes the whole video as loud as social apps expect." help="music-volume-ducking">
+        <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onChange({ ...timeline, normalize_audio: event.target.checked })}/><span>Even out loudness<small>Applied when you export.</small></span></label>
+      </Group>
+    </Panel>
+    <button className="ed-button wide ed-project-guide" onClick={onGuide}><CircleHelp size={14}/>Guide: how everything works</button>
+  </>;
+}
 
 function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | null; current: Format; onChoose: (format: Format) => void }) {
   return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Choose a format"><div className="ed-card">

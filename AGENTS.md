@@ -83,11 +83,13 @@ Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
 **Dressing a whole video:**
 - **Themes**: Wedding, Festival, Travel, Birthday, Memories, Vlog and Classic (`timeline/themes.ts`). Each sets the look, transitions, photo movement, opening and ending titles, title styles and music of its mood.
 - **Story templates** (Templates tab, `timeline/stories.ts`): seven stories of named moments in English and Tamil. Fill them and "Make my video".
-- **Cinematic finish** (top of Themes): widescreen bars (2.39:1, landscape and square only), a teal and orange grade, glow, darker edges and film grain over the whole video, under the captions (`finish_service.py` and `FINISH_FRAGMENT`).
+- **Cinematic finish** (Project settings, Look tab): widescreen bars (2.39:1, landscape and square only), a teal and orange grade, glow, darker edges and film grain over the whole video, under the captions (`finish_service.py` and `FINISH_FRAGMENT`).
 
 **Lyric videos:** a separate mode, with synced lyrics (letter-level), multi-image slideshows and 4K export. See the lyric backlog in the plan.
 
 **Phone access:** off by default. Turned on in Studio (phone icon), devices on the Wi-Fi open `http://<Mac IP>:8010` and enter a 6-digit PIN (`phone_service.py`, gate in `app/main.py`). Loopback never needs it; only the Mac can see or change it; wrong PINs are rate-limited; New PIN signs every phone out. `main.cjs` listens on 0.0.0.0 only when it's on, so turning it on needs a restart.
+
+**Project settings vs clip settings:** whole-film controls live in `ProjectInspector` (`Editor.tsx`), the right-hand panel when nothing is selected, also opened by the top-bar size button: Format (shape and size, frame rate 24/25/30/50/60), Look (theme, cinematic finish) and Sound (even out loudness). Clip panels hold only shot-specific controls (trim, speed, framing, stabilisation, a clip's own look, background, blend, clip audio, transitions, keyframes). Export defaults and safe-area guides may join Project settings later.
 
 **Settings panels and the Guide:** every inspector is a `Panel` (`editor/layout.tsx`): a search box, icon tabs, and `Group`s that each name their `tab`, search `keywords`, a one-line `tip` and a `help` article id; rarer controls sit in `More`. Clip: Frame, Look, Backdrop, Motion, Sound. Title: Words, Style, Motion. Sound: Volume, Voice. Caption: Words, Style. Blur box: Hide, Motion. Timing shows on every tab. The ⓘ on a section opens the Guide (`editor/Guide.tsx`, articles in `editor/guide-articles.ts`, with the shortcuts), also on the ? button. Keep the articles true to how features work when you change them.
 

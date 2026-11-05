@@ -129,6 +129,18 @@ class Clips(unittest.TestCase):
         return int(subprocess.run([shutil.which('ffprobe'), '-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', str(path)], capture_output=True, text=True).stdout.strip().split(',')[0])
 
 
+
+class FrameRates(Clips):
+    def test_every_project_frame_rate_exports_at_that_rate_with_the_same_timing(self):
+        for fps in (24, 25, 30, 50, 60):
+            data = {'format': {'width': 426, 'height': 240, 'fps': fps}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [
+                {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 1},
+                {'id': 'b', 'media_id': 3, 'start': 1, 'in': 0, 'out': 1, 'transition_in': {'kind': 'crossfade', 'duration': 0.4}}]}]}
+            path = self.render(data, f'rate-{fps}.mp4')
+            stream = self.video(path)
+            self.assertEqual(stream['r_frame_rate'], f'{fps}/1', fps)
+            self.assertEqual(self.frame_count(path), 2 * fps, fps)
+
 class Join(Clips):
     FORMAT = {'width': 1280, 'height': 720, 'fps': 30}
 

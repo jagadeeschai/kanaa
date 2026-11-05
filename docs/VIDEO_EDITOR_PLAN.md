@@ -477,6 +477,11 @@ At the top of the Themes tab, "Cinematic finish" puts a film look over the whole
 
 Limits: whooshes on transitions, light leaks and smooth slow motion were planned with it but are not built yet.
 
+### Project settings (done)
+Whole-film controls moved into one place: with nothing selected, the right-hand panel is Project settings, also opened by the top-bar button that now reads e.g. "1280 × 720 · 30 fps". Format: the shape (Reels, YouTube, square, portrait post, or the same shape as the clip) and the frame rate (24, 25, 30, 50, 60, each with a plain note on when to use it). Look: the current theme (with a button to the Themes tab) and the cinematic finish, moved out of the Themes tab. Sound: Even out loudness (also still offered at export). Frame rate was already part of the timeline schema; a new export test renders a two-clip edit with a crossfade at each rate and checks the stream rate and an exact frame count of 2 × fps. Clip panels keep only shot-specific controls.
+
+Limits: export defaults and safe-area guides are not in Project settings yet; changing the shape refits clips but does not reframe them around people (that is the auto-reframe task).
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 
