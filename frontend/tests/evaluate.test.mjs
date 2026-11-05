@@ -49,3 +49,12 @@ test('blue screens use blue spill removal, and picked colours become hex', () =>
   assert.equal(keyKind('#0047bb'), 2);
   assert.equal(toHex([0, 177.4, 64]), '#00b140');
 });
+
+test('a path with a key on every frame counts as followed, a few hand-placed keys do not', async () => {
+  const { isFollowed, FOLLOWED_KEYS } = await import('../src/timeline/keyframes.ts');
+  const keys = (n) => Array.from({ length: n }, (_, i) => ({ t: i / 30, v: 0.5 }));
+  const transform = (n) => ({ x: 0.5, y: 0.5, scale: 1, opacity: 1, keyframes: { x: keys(n), y: keys(n) } });
+  assert.equal(isFollowed(transform(3)), false);
+  assert.equal(isFollowed(transform(FOLLOWED_KEYS + 1)), true);
+  assert.equal(isFollowed({ x: 0.5, y: 0.5, scale: 1, opacity: 1 }), false);
+});

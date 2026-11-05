@@ -150,3 +150,20 @@ export function unfollow(transform: Transform, t: number): Transform {
   }
   return { ...transform, ...fixed, keyframes };
 }
+
+/** Of the faces found in a clip, the one under `box` (centre and size in the source, 0 to 1) at `seconds` in the source:
+ *  the face that shares the most of its area with the box, if at least a third of the smaller one. */
+export function faceUnder(faces: TrackPoint[][], box: [number, number, number, number], seconds: number): TrackPoint[] | null {
+  const [bx, by, bw, bh] = box;
+  let best: TrackPoint[] | null = null; let bestShare = 1 / 3;
+  for (const path of faces) {
+    const near = path.reduce<TrackPoint | null>((closest, point) => (!closest || Math.abs(point[0] - seconds) < Math.abs(closest[0] - seconds) ? point : closest), null);
+    if (!near || Math.abs(near[0] - seconds) > 0.25) continue;
+    const [, fx, fy, fw, fh] = near;
+    const across = Math.max(0, Math.min(bx + bw / 2, fx + fw / 2) - Math.max(bx - bw / 2, fx - fw / 2));
+    const down = Math.max(0, Math.min(by + bh / 2, fy + fh / 2) - Math.max(by - bh / 2, fy - fh / 2));
+    const share = (across * down) / Math.min(bw * bh, fw * fh);
+    if (share > bestShare) { best = path; bestShare = share; }
+  }
+  return best;
+}

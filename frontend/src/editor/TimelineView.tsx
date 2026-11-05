@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
-import { keyTimes } from '../timeline/keyframes';
+import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
@@ -153,6 +153,12 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const drawKeys = (id: string, transform: Clip['transform'], length: number, x: number, bottom: number) => {
       if (id !== props.current.selectedId) return;
       context.fillStyle = colors.current.head;
+      if (isFollowed(transform)) {
+        // Following puts a key on every frame: one thin bar shows where it follows instead of a row of diamonds.
+        const times = keyTimes(transform, 'position').filter((t) => t <= length);
+        context.globalAlpha = 0.7; context.fillRect(x + times[0] * props.current.zoom, bottom - 8, Math.max(2, (times[times.length - 1] - times[0]) * props.current.zoom), 2); context.globalAlpha = 1;
+        return;
+      }
       for (const t of keyTimes(transform)) {
         if (t > length) continue;
         const middle = x + t * props.current.zoom;

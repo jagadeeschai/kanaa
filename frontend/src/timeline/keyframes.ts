@@ -92,3 +92,8 @@ export function splitKeys(transform: Transform, t: number): [Transform, Transfor
 export function scaleKeys(transform: Transform, ratio: number): Transform {
   return mapCurves(transform, (keys) => keys.map((key) => ({ ...key, t: round(key.t * ratio) })));
 }
+
+/** More position keys than this means they came from following something, one per frame, not placed by hand. */
+export const FOLLOWED_KEYS = 12;
+/** Whether the position was set by following: too many keys to show one by one. */
+export const isFollowed = (transform: Transform) => keyTimes(transform, 'position').length > FOLLOWED_KEYS;

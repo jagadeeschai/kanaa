@@ -48,7 +48,7 @@ This file is the starting point. `docs/VIDEO_EDITOR_PLAN.md` has each feature's 
 
 Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
 
-**Editing core:** full screen preview (button or F; Esc leaves), multi-clip timeline with overlays and up to 6 video layers, trimming, splitting, magnetic main track, undo, keyframes and motion paths, blend modes, split screen, picture-in-picture corners, corner handles in the preview to resize the selected clip, right-click menus, an adjustable layout with light and dark themes, autosave, a render queue, and 4K export.
+**Editing core:** full screen preview (button or F; Esc leaves), multi-clip timeline with overlays and up to 6 video layers, trimming, splitting, magnetic main track, undo, keyframes and motion paths, blend modes, split screen, picture-in-picture corners, corner handles in the preview to resize the selected clip, one-click Follow on a blur box or overlay (a blur on a face takes that face's path from the face finder; anything else falls back to the tracker), right-click menus, an adjustable layout with light and dark themes, autosave, a render queue, and 4K export.
 
 **Clip effects:**
 - Freeze frame, reverse, speed and speed ramps.

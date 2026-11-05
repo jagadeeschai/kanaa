@@ -7,7 +7,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
+import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
@@ -18,9 +18,10 @@ import { DEFAULT_LAYOUT, Group, HelpContext, LIMITS, More, Panel, Splitter, useE
 import { Guide } from './Guide';
 import { MotionPanel, MotionPath } from './Keyframes';
 import { ResizeBox } from './ResizeBox';
+import { clipBox } from '../timeline/resize';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
-import { writeValue } from '../timeline/keyframes';
+import { isFollowed, writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
@@ -28,7 +29,7 @@ import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffec
 import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
-import { blurForFace, boxInSource, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
+import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
 import { ProjectSaveQueue, type SaveState } from './project-save';
 import { exportSpec } from './export-spec';
 import { nextTabIndex } from './tab-navigation';
@@ -78,7 +79,11 @@ type StemChoice = 'music' | 'vocals' | 'both';
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
 type Box = [number, number, number, number];
 /** `drawnAt` and `from` are the item's own seconds. A blur box drawn fresh is first placed on the drawn box. */
-type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; drawnAt: number; from: number; size: boolean; place: Box | null };
+/** An item added at the playhead can start a hair after it, from rounding; the playhead still counts as on it. */
+const ON_ITEM = 0.05;
+type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
+  /** Set while looking for a face under a blur box: where the box is in the source, and what to follow instead when no face is there. */
+  faces?: { box: Box; at: number; own: Box; grow?: number } };
 const MIN_DRAWN_BOX = 0.015;
 
 function reducer(state: History<Timeline | null>, action: Action): History<Timeline | null> {
@@ -942,7 +947,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const [x0, y0] = state.from; const [x1, y1] = state.to;
     return [(x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0)];
   };
-  const startFollowing = async (box: Box, mode: 'start' | 'continue') => {
+  const startFollowing = async (box: Box, mode: 'start' | 'continue', own = false, until?: number) => {
     if (!timeline || !followTarget) return;
     const t = playhead.current;
     const under = videoUnder(timeline, followTarget.id, t, isVideo);
@@ -952,12 +957,53 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!sourceBox) { setError('Draw the box on the video itself.'); return; }
     const toSource = (time: number) => sourceAt(under, time - under.start);
     const first = mode === 'continue' ? t : Math.max(followTarget.start, under.start);
-    const last = Math.min(followTarget.start + followTarget.length, under.start + clipLength(under));
+    const last = until ?? Math.min(followTarget.start + followTarget.length, under.start + clipLength(under));
     try {
       const { job_id } = await startTracking(under.media_id, { at: toSource(t), start: Math.min(toSource(first), toSource(last)), end: Math.max(toSource(first), toSource(last)), box: sourceBox });
       const drawnAt = t - followTarget.start;
-      setFollowJob({ itemId: followTarget.id, underId: under.id, jobId: job_id, progress: 0, drawnAt, from: mode === 'continue' ? drawnAt : 0, size: followSize, place: selectedBlur ? box : null });
+      setFollowJob({ itemId: followTarget.id, underId: under.id, jobId: job_id, progress: 0, drawnAt, from: mode === 'continue' ? drawnAt : 0, size: followSize, place: selectedBlur ? box : null, own, grew: until !== undefined });
     } catch (problem) { setError((problem as Error).message); }
+  };
+  /** Where the selected blur box or overlay sits now, so it can follow whatever is under it without drawing. Titles have none. */
+  const ownBox = (): Box | null => {
+    if (!timeline) return null;
+    if (selectedBlur) { const size = valueAt(selectedBlur.transform, 'scale', blurLocal); return [valueAt(selectedBlur.transform, 'x', blurLocal), valueAt(selectedBlur.transform, 'y', blurLocal), selectedBlur.width * size, selectedBlur.height * size]; }
+    if (selected && selectedLayer && selectedLayer !== mainLayer(timeline)) {
+      const source = sourceFor(selected.media_id);
+      if (!source) return null;
+      const box = clipBox(selected, source, timeline.format, local);
+      return [box.x, box.y, box.width, box.height];
+    }
+    return null;
+  };
+  /** Follow what is under the blur box or overlay: no drawing, it starts from where the item sits. */
+  const followHere = async (mode: 'start' | 'continue') => {
+    if (!timeline || !followTarget) return;
+    engineRef.current?.pause();
+    let t = playhead.current;
+    if (t < followTarget.start - ON_ITEM || t >= followTarget.start + followTarget.length) { setError('Move the playhead onto the selected item first.'); return; }
+    if (t < followTarget.start) { t = followTarget.start; seek(t); playhead.current = t; }
+    if (!videoUnder(timeline, followTarget.id, playhead.current, isVideo)) { setError('There is no video under it to follow.'); return; }
+    const box = ownBox();
+    if (!box) { startDrawing(mode); return; }
+    setFollowNote(null);
+    // A blur follows for as long as the video under it lasts, not just its first few seconds; it ends where the face is lost.
+    const under = videoUnder(timeline, followTarget.id, t, isVideo)!;
+    const end = under.start + clipLength(under);
+    const grow = selectedBlur && mode === 'start' && end > selectedBlur.start + selectedBlur.length + 0.05 ? end : undefined;
+    const own: Box = [box[0], box[1], Math.min(1, box[2]), Math.min(1, box[3])];
+    // On a face, the face finder follows it far better than following the square: it does not drift onto hair or background.
+    const source = sourceFor(under.media_id);
+    const sourceBox = selectedBlur && mode === 'start' && source ? boxInSource(under, source, timeline.format, t - under.start, own) : null;
+    if (selectedBlur && sourceBox) {
+      try {
+        const { job_id } = await startFaces(under.media_id, { start: under.in, end: under.out });
+        setFollowJob({ itemId: selectedBlur.id, underId: under.id, jobId: job_id, progress: 0, drawnAt: t - selectedBlur.start, from: 0, size: followSize, place: own, own: true, grew: false, faces: { box: sourceBox, at: sourceAt(under, t - under.start), own, grow } });
+      } catch (problem) { setError((problem as Error).message); }
+      return;
+    }
+    if (grow !== undefined && selectedBlur) updateSelectedBlur({ length: grow - selectedBlur.start });
+    void startFollowing(own, mode, true, grow);
   };
   const finishDrawing = (event: React.PointerEvent<HTMLElement>) => {
     const box = drawnBox({ mode: 'start', from: drawStart.current ?? undefined, to: frameAt(event) });
@@ -970,8 +1016,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!followJob) return;
     const timer = setTimeout(async () => {
       try {
-        const status = await getJobStatus(followJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; track?: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean } };
+        const status = await getJobStatus(followJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; track?: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean }; faces?: TrackPoint[][] };
         if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not follow that.'); setFollowJob(null); return; }
+        if (followJob.faces && status.status === 'done') { setFollowJob(null); applyFaces(followJob, status.faces ?? []); return; }
         if (status.status !== 'done' || !status.track) { setFollowJob({ ...followJob, progress: status.progress }); return; }
         setFollowJob(null);
         applyFollow(followJob, status.track);
@@ -979,6 +1026,25 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, 600);
     return () => clearTimeout(timer);
   });
+  /** A blur on a face takes that face's path; on anything else it follows what is in its square instead. */
+  const applyFaces = (job: FollowJob, faces: TrackPoint[][]) => {
+    const current = timelineRef.current;
+    const under = current && findClip(current, job.underId);
+    const source = under && sourceFor(under.media_id);
+    const blur = current && findBlur(current, job.itemId)?.blur;
+    if (!current || !under || !source || !blur || !job.faces) return;
+    const path = faceUnder(faces, job.faces.box, job.faces.at);
+    const found = path && blurForFace(path, under, source, current.format, blur.id);
+    if (found) {
+      change(updateBlur(current, blur.id, { start: found.start, length: found.length, width: found.width, height: found.height, transform: found.transform }));
+      setFollowNote({ itemId: blur.id, text: `Found the face. The blur follows it from ${timecode(found.start)} to ${timecode(found.start + found.length)}. Press Play to check.` });
+      return;
+    }
+    if (selectedBlur?.id !== blur.id) return;
+    const { grow, own } = job.faces;
+    if (grow !== undefined) updateSelectedBlur({ length: grow - blur.start });
+    void startFollowing(own, 'start', true, grow);
+  };
   const applyFollow = (job: FollowJob, track: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean }) => {
     const current = timelineRef.current;
     const under = current && findClip(current, job.underId);
@@ -998,11 +1064,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (job.from === 0) placed = { width: Math.max(0.02, Math.min(1, w / scale)), height: Math.max(0.02, Math.min(1, h / scale)) };
     }
     const followed = followPath({ start: item.start, length: item.length, transform }, under, source, current.format, track.points, { size: job.size, drawnAt: job.drawnAt, from: job.from });
-    change(clip ? updateClip(current, clip.id, { transform: followed }) : blur ? updateBlur(current, blur.id, { ...placed, transform: followed }) : updateText(current, text!.id, { transform: followed }));
     const timeOf = (point: TrackPoint) => under.start + localAt(under, point[0]);
-    const lost = track.lost_after ? `Lost it at ${timecode(timeOf(track.points[track.points.length - 1]))}. Move the playhead there, then choose Continue from here.`
+    // A blur Follow stretched to the end of the video ends where the face was lost, rather than sitting still over nothing.
+    const lostAt = timeOf(track.points[track.points.length - 1]);
+    const cut = Boolean(blur && job.grew && track.lost_after && lostAt > blur.start + MIN_CLIP_SECONDS);
+    if (cut) placed = { ...placed, length: lostAt - blur!.start };
+    change(clip ? updateClip(current, clip.id, { transform: followed }) : blur ? updateBlur(current, blur.id, { ...placed, transform: followed }) : updateText(current, text!.id, { transform: followed }));
+    if (cut) { setFollowNote({ itemId: job.itemId, text: `Followed until ${timecode(lostAt)}, where the face was lost, so the blur ends there. Press Play to check.` }); return; }
+    const lost = track.lost_after ? `Lost it at ${timecode(timeOf(track.points[track.points.length - 1]))}. Move the playhead there${job.own ? ', put it back over what it covers,' : ','} then choose Continue from here.`
       : track.lost_before ? `Lost it before ${timecode(timeOf(track.points[0]))}. It stays still until then.` : '';
-    setFollowNote({ itemId: job.itemId, text: lost || 'Following. Play it back to check, and drag any keyframe that is off.' });
+    setFollowNote({ itemId: job.itemId, text: lost || (job.own ? 'Done: it now follows what is under it. Press Play to check.' : 'Done: it now follows what you drew around. Press Play to check.') });
   };
 
   const generalItems = (): MenuItem[] => [
@@ -1031,7 +1102,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
-    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { setLeftTab('text'); updateLayout({ mediaOpen: true }); void blurFaces(); } });
+    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
+    if (followTarget && ownBox() && !followJob) items.push('divider', { label: selectedBlur ? 'Follow what is under this blur' : 'Follow what is under this', onSelect: () => { void followHere('start'); } });
     setMenu({ x: event.clientX, y: event.clientY, items });
   };
   const openMediaMenu = (event: React.MouseEvent, item: Photo) => {
@@ -1106,8 +1178,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '32px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '32px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && !mainLayer(timeline).items.length;
-const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
-    following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => startDrawing('start')} onContinue={() => startDrawing('continue')}
+const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} own={Boolean(selectedBlur || (selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline)))} onDraw={() => startDrawing('start')} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
+    following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => { void followHere('start'); }} onContinue={() => { void followHere('continue'); }}
     onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
   return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     <header className="ed-top">
@@ -1217,8 +1289,18 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected ? 'movable' : ''}/>
           {selected && !selectedLayer?.locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
           {selected && !selectedLayer?.locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
-          {selectedText && !selectedLayer?.locked && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
+          {selectedText && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
           {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
+          {followTarget && !selectedLayer?.locked && !followJob && !drawing && !shaping && !pickingKey && now >= followTarget.start - ON_ITEM && now < followTarget.start + followTarget.length && !isFollowed(followTarget.transform) && (() => {
+            const box = ownBox();
+            if (!box) return null;
+            return <button className="ed-follow-chip" style={{ left: `clamp(48px, ${box[0] * 100}%, calc(100% - 48px))`, top: `clamp(20px, ${(box[1] + box[3] / 2) * 100}%, calc(100% - 20px))` }} onPointerDown={(event) => event.stopPropagation()} onClick={() => { void followHere('start'); }} title="Kanaa finds what is under it and keeps it covered as it moves"><Crosshair size={13}/>Follow</button>;
+          })()}
+          {(faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
+            {faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
+              : followJob ? <><span>Following… {followJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
+              : <><span>{faceNote || followNote?.text}</span><button aria-label="Close" onClick={() => { setFaceNote(''); setFollowNote(null); }}>×</button></>}
+          </div>}
           {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
           {shaping && <svg className="ed-shape" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label={shaping.mode === 'ground' ? 'Click along the top of the ground' : 'Click around the shape'}
             onPointerDown={(event) => {
@@ -1521,7 +1603,7 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
     <Group title="Moves" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-    <Group title="Follow movement" tab="motion" startOpen={Boolean(text.transform?.keyframes?.x?.length)} keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>
+    <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>
   </Panel>;
 }
 
@@ -1648,7 +1730,7 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </More>
     </Group>
-    {follow && <Group title="Follow movement" tab="motion" startOpen={Boolean(clip.transform.keyframes?.x?.length)} keywords="track follow stick moving person" tip="Draw a box around something and this follows it as it moves." help="follow-movement">{follow}</Group>}
+    {follow && <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and this follows it as it moves." help="follow-movement">{follow}</Group>}
     {source?.kind === 'video' && clip.freeze == null && <Group title="Speed and sound" tab="sound" startOpen changed={clip.speed !== 1 || clip.muted || clip.volume !== 1 || clip.fade_in > 0 || clip.fade_out > 0 || Boolean(clip.reverse)} keywords="volume mute louder quiet slow motion fast reverse backwards noise clean voice speed" tip="Loudness and speed; Clean voice removes fan and AC hum." help="speed-and-sound">
       <button className={`ed-button wide ${clip.muted ? 'on' : ''}`} onClick={() => onChange({ muted: !clip.muted })}>{clip.muted ? <VolumeX size={15}/> : <Volume2 size={15}/>}{clip.muted ? 'Muted' : 'Mute this clip'}</button>
       <SoundControls item={clip} length={(clip.out - clip.in) / clip.speed} onChange={onChange}/>
@@ -1678,15 +1760,19 @@ function RampCurve({ ramp, at }: { ramp: RampPoint[]; at: number }) {
   return <svg className="ed-ramp" viewBox="0 0 200 60" role="img" aria-label="Speed through the clip"><path d={`${line} L200,60 L0,60 Z`} className="fill"/><path d={line} className="line"/><line x1={at * 200} x2={at * 200} y1="0" y2="60" className="head"/></svg>;
 }
 
-function FollowPanel({ blur, drawing, job, busy, note, following, size, onSize, onStart, onContinue, onCancel, onStop }: { blur: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
-  onSize: (on: boolean) => void; onStart: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
+function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onSize, onStart, onDraw, onContinue, onCancel, onStop }: { blur: boolean; own: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
+  onSize: (on: boolean) => void; onStart: () => void; onDraw: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
   if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Following… {job.progress}%</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
+  const what = blur ? 'the blur' : 'it';
   return <>
-    <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : blur ? 'Put the playhead on a frame where the face or plate is clear, then draw a box around it.' : 'Put the playhead where the subject is clear, place this item where it should sit, then draw a box around the subject.'}</p>
-    <label className="ed-check"><input type="checkbox" checked={size} onChange={(event) => onSize(event.target.checked)}/><span>Follow its size too<small>Grows and shrinks as the subject comes closer or moves away.</small></span></label>
-    <button className={`ed-button wide ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{following ? 'Follow something else' : 'Follow something'}</button>
+    <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : own ? `Put ${what} over what should be followed, a face or a number plate, then click Follow. Kanaa keeps ${what} on it as it moves.` : 'Place the title where it should sit, then click Follow and drag a box around the person or thing it should move with.'}</p>
+    <button className={`ed-button wide primary ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{own ? (following ? 'Follow again from here' : 'Follow') : following ? 'Follow something else' : 'Follow something'}</button>
     {following && <div className="ed-pair"><button className="ed-button" disabled={busy} onClick={onContinue}>Continue from here</button><button className="ed-button" disabled={busy} onClick={onStop}>Stop following</button></div>}
-    {note && <p className="ed-tip" role="status">{note}</p>}
+    {note && <p className="ed-tip ed-follow-note" role="status">{note}</p>}
+    <More>
+      <label className="ed-check"><input type="checkbox" checked={size} onChange={(event) => onSize(event.target.checked)}/><span>Follow its size too<small>Grows and shrinks as the subject comes closer or moves away.</small></span></label>
+      {own && <button className="ed-button wide" disabled={busy} onClick={onDraw}>Draw around something else</button>}
+    </More>
   </>;
 }
 
@@ -1726,7 +1812,7 @@ function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, fo
       <ValueSlider label="Height" value={blur.height} min={0.02} max={1} step={0.005} defaultValue={DEFAULT_BLUR.height} unit="%" factor={100} decimals={1} onChange={(height, group) => onChange({ height }, group)}/>
       </More>
     </Group>
-    <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw around a face, and the blur follows it as it moves." help="follow-movement">{follow}</Group>
+    <Group title="Follow movement" tab="hide" startOpen keywords="track follow stick moving person face plate" tip="Put the blur on a face, click Follow, and it stays on the face." help="follow-movement">{follow}</Group>
     <Group title="Moves" tab="motion" keywords="move position size animate keyframe" help="animations-and-moves" changed={Object.keys(blur.transform.keyframes ?? {}).length > 0}>
       <MotionPanel transform={blur.transform} local={local} length={blur.length} controls={['position', 'scale']} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>

@@ -122,3 +122,13 @@ test('a found face becomes a blur box on the face, for the part of it inside the
   assert.equal(videoAt(timeline, 1, () => true).id, 'a');
   assert.equal(videoAt(timeline, 1, () => false), null);
 });
+
+test('the face under a blur box is the one it covers most, at that moment', async () => {
+  const { faceUnder } = await import('../src/timeline/tracking.ts');
+  const path = (x, y, from = 0, to = 2) => Array.from({ length: (to - from) * 10 + 1 }, (_, i) => [from + i / 10, x, y, 0.1, 0.15]);
+  const left = path(0.3, 0.4); const right = path(0.7, 0.4); const later = path(0.3, 0.4, 5, 6);
+  assert.equal(faceUnder([left, right], [0.71, 0.42, 0.2, 0.2], 1), right);
+  assert.equal(faceUnder([left, right], [0.32, 0.38, 0.2, 0.2], 1), left);
+  assert.equal(faceUnder([left, right], [0.5, 0.9, 0.1, 0.1], 1), null, 'nothing under the box');
+  assert.equal(faceUnder([later], [0.3, 0.4, 0.2, 0.2], 1), null, 'that face is not there yet');
+});

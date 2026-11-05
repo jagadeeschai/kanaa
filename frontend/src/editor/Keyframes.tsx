@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { ValueSlider } from './controls';
 import { ChevronLeft, ChevronRight, Minus, Plus, Timer } from 'lucide-react';
 import { valueAt, type AnimatedProperty, type Ease, type Transform } from '../timeline/evaluate';
-import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, toggleAnimated, writeValue, type Control } from '../timeline/keyframes';
+import { addKey, hasKeyAt, isAnimated, isFollowed, keyTimes, moveKey, removeKey, setEase, toggleAnimated, writeValue, type Control } from '../timeline/keyframes';
 
 const SAMPLES_PER_SECOND = 30;
 const EASES: { id: Ease; label: string }[] = [{ id: 'easeInOut', label: 'Smooth' }, { id: 'easeOut', label: 'Slow down' }, { id: 'linear', label: 'Steady' }];
@@ -75,7 +75,8 @@ export function MotionPath({ transform, length, onChange, onSeek }: { transform:
   };
   return <svg ref={box} className="ed-path" aria-label="Motion path">
     <svg viewBox="0 0 1 1" preserveAspectRatio="none" width="100%" height="100%"><polyline points={points} vectorEffect="non-scaling-stroke"/></svg>
-    {keyTimes(transform, 'position').filter((t) => t <= length).map((t) => <circle key={t} cx={`${valueAt(transform, 'x', t) * 100}%`} cy={`${valueAt(transform, 'y', t) * 100}%`} r="7" role="button" aria-label={`Keyframe at ${t.toFixed(2)} seconds`}
+    {/* A followed path has a key on every frame; its dots would bury the picture, so only the line shows. */}
+    {!isFollowed(transform) && keyTimes(transform, 'position').filter((t) => t <= length).map((t) => <circle key={t} cx={`${valueAt(transform, 'x', t) * 100}%`} cy={`${valueAt(transform, 'y', t) * 100}%`} r="7" role="button" aria-label={`Keyframe at ${t.toFixed(2)} seconds`}
       onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { t, group: `path-${Date.now()}` }; onSeek(t); }} onPointerMove={move} onPointerUp={() => { drag.current = null; }}/>)}
   </svg>;
 }

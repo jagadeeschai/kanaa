@@ -140,3 +140,11 @@
 .ed-resize-handle:hover,.ed-resize-handle:focus-visible{transform:translate(-50%,-50%) scale(1.25);outline:none}
 .ed-resize-size{position:absolute;transform:translate(-50%,-50%);padding:2px 7px;border-radius:6px;background:#000000b0;color:#fff;font-size:11px;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .15s}
 .ed-resize:has(.ed-resize-handle:active) .ed-resize-size{opacity:1}
+/* One-click Follow under the selected blur box or overlay, and the status of finding faces or following, on the preview itself. */
+.ed-follow-chip{position:absolute;transform:translate(-50%,8px);display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border:0;border-radius:999px;background:#6d5cff;color:#fff;font:600 12px/1 inherit;box-shadow:0 2px 10px #0000008c;cursor:pointer;white-space:nowrap}
+.ed-follow-chip:hover{background:#5a48f0}.ed-follow-chip:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.ed-status{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:calc(100% - 24px);padding:6px 8px 6px 12px;border-radius:9px;background:#000000c4;color:#fff;font-size:12px;line-height:1.35;box-shadow:0 4px 14px #00000066}
+.ed-status-bar{display:block;flex:0 0 70px;height:4px;border-radius:2px;background:#ffffff33;overflow:hidden}.ed-status-bar b{display:block;height:100%;background:#8b7cff}
+.ed-status button{flex:none;padding:3px 8px;border:0;border-radius:6px;background:#ffffff26;color:#fff;font:inherit;cursor:pointer}.ed-status button:hover{background:#ffffff40}
+.ed-follow-note{color:var(--accent)}
+.ed-button.primary{background:var(--accent);color:#fff;box-shadow:none}.ed-button.primary:hover:not(:disabled){filter:brightness(1.08);background-image:none}
