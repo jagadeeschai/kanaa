@@ -215,6 +215,8 @@ class Caption(Strict):
     start: float = Field(ge=0)
     length_: float = Field(gt=0, alias='length')
     words: List[CaptionWord] = Field(min_length=1, max_length=30)
+    # This caption's own place, when it differs from its layer's (moved clear of a face). Mirrors model.ts.
+    position: Optional[Literal['top', 'center', 'bottom']] = None
 
     @model_validator(mode='after')
     def ordered(self):

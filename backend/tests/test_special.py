@@ -156,3 +156,82 @@ class Api(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Reframe(unittest.TestCase):
+    def test_follows_the_biggest_face_smoothly(self):
+        from app.services.reframe_service import subject_path
+        self.assertEqual(subject_path([], 0, 4), [])
+        # A big face walks from the left to the right over 4 seconds; a small one stays put on the right.
+        walker = [[t / 30, 0.2 + 0.6 * (t / 120), 0.4, 0.2, 0.3] for t in range(121)]
+        bystander = [[t / 30, 0.9, 0.5, 0.05, 0.08] for t in range(121)]
+        path = subject_path([bystander, walker], 0, 4)
+        self.assertEqual([point[0] for point in path], [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4])
+        xs = [point[1] for point in path]
+        self.assertTrue(all(b >= a - 1e-6 for a, b in zip(xs, xs[1:])), xs)  # Moves one way only, no jitter.
+        self.assertLess(xs[0], 0.35); self.assertGreater(xs[-1], 0.65)
+        self.assertAlmostEqual(path[4][1], 0.5, delta=0.06)
+
+    def test_holds_still_for_small_movements_and_fills_gaps(self):
+        from app.services.reframe_service import subject_path
+        nodding = [[t / 30, 0.5 + 0.02 * (t % 2), 0.5, 0.2, 0.3] for t in range(61)]
+        self.assertEqual({point[1] for point in subject_path([nodding], 0, 2)}, {0.5})
+        # Seen only in the second half: the first half holds where they will be.
+        late = [[1 + t / 30, 0.7, 0.4, 0.2, 0.3] for t in range(31)]
+        self.assertEqual({point[1] for point in subject_path([late], 0, 2)}, {0.7})
+
+
+class Moments(unittest.TestCase):
+    def test_the_sharp_steady_well_lit_stretch_wins(self):
+        from app.services import moment_service
+        rng = np.random.default_rng(3)
+        detail = rng.integers(0, 255, (108, 192, 1)).repeat(3, axis=2).astype(np.uint8)
+        dark = (detail // 8).astype(np.uint8)
+        blurry = np.full((108, 192, 3), 128, np.uint8)
+        # 2 s dark, 2 s sharp and bright, 2 s featureless.
+        pictures = [dark] * 10 + [detail] * 10 + [blurry] * 10
+        scores = moment_service.frame_scores(iter(pictures))
+        self.assertEqual(moment_service.best_start(scores, 6, 2), 2.0)
+        # All alike: the middle, as before.
+        self.assertEqual(moment_service.best_start([1.0] * 30, 6, 2), 2.0)
+        self.assertEqual(moment_service.best_start([1.0] * 30, 6, 8), 0.0)
+
+    def test_faces_count_when_the_finder_is_there(self):
+        from app.services import moment_service
+        plain = np.full((108, 192, 3), 120, np.uint8)
+        face_from = 20
+        frames = iter([plain] * 30)
+        seen = iter(range(30))
+        scores = moment_service.frame_scores(frames, lambda picture: [((0.5, 0.5, 0.2, 0.3), 0.9)] if next(seen) >= face_from else [])
+        self.assertEqual(moment_service.best_start(scores, 6, 2), 4.0)
+
+    def test_a_real_video_is_searched_past_its_edges(self):
+        from app.services import moment_service
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'clip.mp4'
+            ffmpeg('-f', 'lavfi', '-i', 'color=c=black:s=192x108:r=30:d=3', '-f', 'lavfi', '-i', 'testsrc2=s=192x108:r=30:d=3',
+                   '-filter_complex', '[0][1]concat=n=2:v=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path))
+            start = moment_service.find_best(path, 6, 2)
+        self.assertGreaterEqual(start, 3.0)
+        self.assertLessEqual(start, 4.0)
+
+    def test_the_api_picks_moments_as_a_job(self):
+        api = Api('test_effects_are_made_once_and_filed_together')
+        api.setUp()
+        try:
+            video = api.root / 'clip.mp4'
+            ffmpeg('-f', 'lavfi', '-i', 'color=c=black:s=192x108:r=30:d=3', '-f', 'lavfi', '-i', 'testsrc2=s=192x108:r=30:d=3', '-filter_complex', '[0][1]concat=n=2:v=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(video))
+            media = api.client.post('/api/media', files={'file': ('clip.mp4', video.read_bytes(), 'video/mp4')}).json()
+            stream = api.root / 'photo.png'; Image.new('RGB', (100, 100), 'white').save(stream)
+            photo = api.client.post('/api/media', files={'file': ('photo.png', stream.read_bytes(), 'image/png')}).json()
+            self.assertEqual(api.client.post('/api/best-moments', json={'items': []}).status_code, 400)
+            job = api.client.post('/api/best-moments', json={'items': [{'media_id': media['id'], 'length': 2}, {'media_id': photo['id'], 'length': 3}]}).json()
+            status = api.wait(job['job_id'])
+            self.assertEqual(status['status'], 'done', status)
+            self.assertIsNone(status['starts'][1])
+            self.assertGreaterEqual(status['starts'][0], 3.0)
+            self.assertFalse(status['faces'])
+            self.assertEqual(api.client.get('/api/face-finder').json(), {'ready': False})
+            self.assertEqual(api.client.post(f"/api/photos/{media['id']}/reframe", json={'start': 0, 'end': 2}).status_code, 409, 'never downloads without asking')
+        finally:
+            api.tearDown()

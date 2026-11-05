@@ -611,3 +611,78 @@ def make_effect(effect_id: str, body: dict):
     job_id = enqueue_render('effect', f'Make {effect.label}', run, total=100)
     ready.set()
     return {'job_id': job_id}
+
+
+@router.get('/face-finder')
+def face_finder_status():
+    """Whether the face finder is on this Mac yet. Features ask before fetching it (about 230 KB, once)."""
+    from app.services.face_service import MODEL_NAME
+    return {'ready': (settings.model_cache_dir / 'face' / MODEL_NAME).is_file()}
+
+
+@router.post('/photos/{identifier}/reframe')
+def start_reframe(identifier: int, body: dict):
+    """The main person's path between `start` and `end`, source seconds, for auto-reframe."""
+    from app.services.face_service import MODEL_NAME
+    from app.services.reframe_service import subject_path
+    row = get_media(identifier)
+    if row['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos can be reframed to follow someone.')
+    try:
+        start, end = float(body['start']), float(body['end'])
+        if not 0 <= start < end:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a part of a video to reframe.') from exc
+    if not body.get('allow_download') and not (settings.model_cache_dir / 'face' / MODEL_NAME).is_file():
+        raise HTTPException(409, 'The face finder is not on this Mac yet.')
+    facts = media_facts(identifier)
+    key = content_key(facts.path)
+    source = folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Finding who to follow', progress=0)
+        found = find_faces(source, (facts.width or 1920, facts.height or 1080), start, end, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        return {'progress': 100, 'phase': 'Ready to follow', 'path': subject_path(found['faces'], start, end)}
+
+    job_id = enqueue_render('reframe', 'Find who to follow', run, total=100)
+    ready.set()
+    return {'job_id': job_id}
+
+
+@router.post('/best-moments')
+def start_best_moments(body: dict):
+    """The best stretch of each video for a story: [{media_id, length}] in, the start of each (or null for photos) out."""
+    from app.services.face_service import MODEL_NAME, yunet
+    from app.services.moment_service import WORK_SIZE, find_best
+    try:
+        items = [(int(item['media_id']), float(item['length'])) for item in body['items']]
+        if not 0 < len(items) <= 50 or any(length <= 0 for _, length in items):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose the clips to look through.') from exc
+    rows = [(get_media(media_id), length) for media_id, length in items]
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Picking the best moments', progress=0)
+        # Faces count only when the face finder is already here: picking moments never downloads it.
+        detect = yunet(WORK_SIZE) if (settings.model_cache_dir / 'face' / MODEL_NAME).is_file() else None
+        starts: list[float | None] = []
+        for number, (row, length) in enumerate(rows):
+            if row['media_type'] != 'video':
+                starts.append(None)
+            else:
+                facts = media_facts(row['id'])
+                key = content_key(facts.path)
+                source = folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
+                starts.append(find_best(source, float(facts.duration or row['duration'] or 0), length, detect, should_cancel))
+            update_job(job_id, progress=min(99, (number + 1) * 100 // len(rows)))
+        return {'progress': 100, 'phase': 'Picked the best moments', 'starts': starts, 'faces': detect is not None}
+
+    job_id = enqueue_render('moments', 'Pick the best moments', run, total=100)
+    ready.set()
+    return {'job_id': job_id}

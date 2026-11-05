@@ -44,13 +44,13 @@ export const STORIES: Story[] = [
 /** Total length when every moment is filled. */
 export const storySeconds = (story: Story) => story.slots.reduce((sum, item) => sum + item.seconds, 0);
 
-/** The clip for one moment: a video's middle stretch of the moment's length, or a photo for that long. */
-export function slotClip(item: Slot, source: SourceFacts, id: string): Clip {
+/** The clip for one moment: a video's best stretch of the moment's length (`best`, from the backend), else its middle, or a photo for that long. */
+export function slotClip(item: Slot, source: SourceFacts, id: string, best?: number | null): Clip {
   const clip = newClip(source, id);
   if (source.media_type === 'image') return { ...clip, out: item.seconds };
   const available = source.duration ?? item.seconds;
   if (available <= item.seconds) return { ...clip, in: 0, out: round(available) };
-  const start = round((available - item.seconds) / 2);
+  const start = round(best != null ? Math.min(Math.max(0, best), available - item.seconds) : (available - item.seconds) / 2);
   return { ...clip, in: start, out: round(start + item.seconds) };
 }
 
@@ -58,14 +58,14 @@ export function slotClip(item: Slot, source: SourceFacts, id: string): Clip {
  * The story's clips on the main track, in its order, in place of whatever was there. Other layers stay. Empty moments
  * are skipped. `fills[i]` is what goes in the story's moment i.
  */
-export function buildStory(timeline: Timeline, story: Story, fills: (SourceFacts | null)[], newId: () => string): Timeline {
+export function buildStory(timeline: Timeline, story: Story, fills: (SourceFacts | null)[], newId: () => string, best: (number | null)[] = []): Timeline {
   const main = mainLayer(timeline);
   let cursor = 0;
   const clips: Clip[] = [];
   story.slots.forEach((item, index) => {
     const source = fills[index];
     if (!source) return;
-    const fitted = slotClip(item, source, newId());
+    const fitted = slotClip(item, source, newId(), best[index]);
     const scale = source.width && source.height ? round(fillScale({ width: source.width, height: source.height }, 0, timeline.format)) : 1;
     const clip = { ...fitted, start: round(cursor), transform: { ...fitted.transform, scale } };
     cursor += clipLength(clip);

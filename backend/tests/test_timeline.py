@@ -1761,3 +1761,23 @@ class NewVideoProjects(Clips):
         self.assertAlmostEqual(items[1]['out'], video['duration'], delta=0.05)
         self.assertEqual((timeline['format']['width'], timeline['format']['height']), (640, 360))
         Timeline.model_validate(timeline)  # A valid timeline, ready to edit and export.
+
+
+class CaptionPlaces(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def test_one_caption_can_move_to_the_top_and_the_preview_image_agrees(self):
+        captions = [{'id': 'low', 'start': 0, 'length': 1, 'words': [{'w': 'HELLO', 's': 0}]},
+                    {'id': 'high', 'start': 1, 'length': 1, 'words': [{'w': 'HELLO', 's': 0}], 'position': 'top'}]
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 6, 'start': 0, 'in': 0, 'out': 2}]},
+                                                   {'id': 'subs', 'kind': 'captions', 'size': 60, 'highlight': None, 'items': captions}]}
+        target = self.render(data, 'caption-places.mp4')
+
+        def white_rows(picture):
+            rows = np.where((picture.min(axis=2) > 225).sum(axis=1) > 3)[0]
+            self.assertTrue(len(rows), 'the caption is drawn')
+            return rows.mean() / picture.shape[0]
+        self.assertGreater(white_rows(self.frame(target, 15, (640, 360))), 0.6, 'the layer puts captions at the bottom')
+        self.assertLess(white_rows(self.frame(target, 45, (640, 360))), 0.4, 'this caption moved to the top')
+        with self.assertRaises(ValidationError):
+            Timeline.model_validate({**data, 'layers': [data['layers'][0], {**data['layers'][1], 'items': [{**captions[1], 'position': 'left'}]}]})

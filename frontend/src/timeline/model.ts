@@ -29,7 +29,8 @@ export type BlurBox = { id: string; start: number; length: number; style: 'blur'
 export type BlurLayer = { id: string; kind: 'blur'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
 /** One caption line. `s` is each word's time from the caption's start. The layer holds the look. */
 export type CaptionWord = { w: string; s: number };
-export type Caption = { id: string; start: number; length: number; words: CaptionWord[] };
+/** `position`, when set, places this one caption elsewhere than its layer (for example above a face). */
+export type Caption = { id: string; start: number; length: number; words: CaptionWord[]; position?: 'top' | 'center' | 'bottom' | null };
 export type CaptionLook = { style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; highlight: string | null; size: number };
 export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
 export const DEFAULT_CAPTION_LOOK: CaptionLook = { style: 'outline', position: 'bottom', color: '#ffffff', highlight: '#ffd400', size: 48 };

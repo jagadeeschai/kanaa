@@ -667,7 +667,7 @@ class Builder:
         cues, marks = [], []
         for item in sorted(layer.items, key=lambda caption: caption.start):
             for start, end, lit in caption_states(item, bool(layer.highlight)):
-                cues.append({'start': item.start + start, 'end': item.start + end, 'text': item.text})
+                cues.append({'start': item.start + start, 'end': item.start + end, 'text': item.text, **({'position': item.position} if item.position else {})})
                 marks.append(lit)
         if not cues:
             return base

@@ -95,6 +95,14 @@ Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
 
 **Settings panels and the Guide:** every inspector is a `Panel` (`editor/layout.tsx`): a search box, icon tabs, and `Group`s that each name their `tab`, search `keywords`, a one-line `tip` and a `help` article id; rarer controls sit in `More`. Clip: Frame, Look, Backdrop, Motion, Sound. Title: Words, Style, Motion. Sound: Volume, Voice. Caption: Words, Style. Blur box: Hide, Motion. Timing shows on every tab. The ⓘ on a section opens the Guide (`editor/Guide.tsx`, articles in `editor/guide-articles.ts`, with the shortcuts), also on the ? button. Keep the articles true to how features work when you change them.
 
+## Phase 2 work on `dev_cloud` (not yet merged or checked on the Mac)
+
+Built in cloud sessions at the owner's request; details and limits are in the plan's "Phase 2 on dev_cloud" section.
+- **Ease:** drag and drop from the side panel onto the timeline (`timeline/drop.ts`), a Simple / Pro switch (`SimpleContext` in `layout.tsx`), and in the lyric editor song drops and lyric lines dropped on images.
+- **Local ML reused:** cut to the beat (`timeline/beats.ts`), push in towards faces (`focus_service.py`), split at scene changes (`scene_service.py`), auto-reframe to follow the person (`reframe_service.py`, `timeline/reframe.ts`), best moments for stories (`moment_service.py`), captions clear of faces (`timeline/clear-faces.ts`, per-caption `position`).
+- **Special effects:** eight effects drawn in code (`effect_service.py`), laid on a Screen-blend "Effects" layer (`drop.placeEffect`).
+- The face finder is never downloaded without asking: `/api/face-finder` says whether it is here, and features confirm first.
+
 ## Known limits worth remembering
 
 - **Apple-only parts:** Vision masks, the Mac's English fonts, and the Mac app. On Windows the plan is to swap Vision for an ONNX model behind the same helper protocol (count byte plus masks on stdout), and bundle English fonts.
@@ -104,7 +112,7 @@ Each has a section, and its limits, in `docs/VIDEO_EDITOR_PLAN.md`.
   - Music shorter than the video ends rather than looping.
   - The short sound effects in the library (whooshes, hits) are skipped; whooshes on transitions are a planned follow-up.
 - **Tests:** `Api.test_transcript_is_saved_and_kept_per_language` failed once in a full run and passed on rerun, probably a race with a background job. Investigate if it recurs.
-- **Stories and themes:** a story keeps each clip's middle stretch (it doesn't pick the best part yet), and photo movement from an earlier theme stays when switching themes.
+- **Stories and themes:** photo movement from an earlier theme stays when switching themes. (On `dev_cloud`, stories pick each clip's best part.)
 
 ## Candidates for the next phase (after feedback)
 

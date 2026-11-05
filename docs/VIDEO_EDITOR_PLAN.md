@@ -558,6 +558,34 @@ For speech, Whisper runs one pass at temperature 0 with beam 1. On Tamil that wa
 
 **Not yet proven:** real human speech, especially Tamil, and long videos. Titles, overlays and separate sounds don't move when words are cut.
 
+## Phase 2 on `dev_cloud` (built in a cloud session, not yet checked on the Mac)
+
+Everything here was tested with generated clips on Linux only. None of it has met real footage, real faces or the Mac app yet.
+
+### Drag and drop, and Simple / Pro (done)
+`timeline/drop.ts` holds the drop logic: a JSON payload per tile (media, look, transition, title, music track, effect) and where it lands on the timeline (main track inserts at the drop point; below it adds on top). `TimelineView.tsx` draws a line and a hint while dragging and refuses drops that can't work (locked layers, a transition on the first clip). Every drop is one Undo. The lyric editor takes a song dropped anywhere, and a lyric line dropped on an image starts that image with the line (`slides.startImageAt`, saved as the storyboard). Simple mode (`layout.simple`, `SimpleContext`) hides keyframes, More sections, Green screen and frame rate; a Pro group already in use stays visible. It is off by default.
+
+### Cut to the beat (done)
+`timeline/beats.ts`: each main-track clip ends on the nearest beat of the longest song (beats from `beat_service.py`). Clips may grow up to their source's end or shrink to 0.5 s. With a 120 bpm click track the cuts landed about 0.03 s before each beat (under a frame).
+
+### Push in towards faces (done)
+`focus_service.py` finds the main faces in a photo or a video frame with YuNet; `presets.applyMove` zooms about that point, so the face stays put while the picture grows, and themes do the same for photos. It never downloads the face finder: until Blur faces (or a feature that asks) has fetched it, moves aim at the middle as before. **Not yet proven:** real photos of people.
+
+### Split at scene changes (done)
+`scene_service.py` compares small colour histograms frame to frame; a cut is a jump above 0.35 and three times the recent average, at least a second from the last. A 3-shot test video split at exactly 3.0 and 6.0 seconds. A pan is not a cut.
+
+### Special effects (done)
+`effect_service.py` draws eight effects in code on black (Confetti, Sparkles, Flower shower, Bokeh lights, Fireworks, Light leak, Film burn, Snow), 5 s at 720p on the short side, once per project shape (1–8 s each), filed in the Effects folder. `drop.placeEffect` puts each on an "Effects" overlay layer with the Screen blend, so preview and export use the existing overlay path and match without new code. **Not yet proven:** an exported MP4 with an effect, and whether the strength suits real footage.
+
+### Auto-reframe: follow the person (done)
+`reframe_service.subject_path` takes the face finder's paths, picks the biggest face at each half second, holds gaps, ignores movement under 4% of the picture and smooths over 1.5 s. `timeline/reframe.ts` turns it into x/y keyframes at the fill scale, never uncovering an edge. Offered when a clip's shape differs from the frame's (Frame tab, right-click). It asks before fetching the face finder. **Not yet proven:** real people walking, two people talking.
+
+### Best moments for stories (done)
+`moment_service.py` samples 5 frames a second and scores sharpness, exposure, steadiness and (when the face finder is already here) faces; a story moment uses the best-scoring stretch instead of the middle, skipping the first and last 0.3 s. Ties go to the middle. If it fails, stories fall back to the middle.
+
+### Captions clear of faces (done)
+A caption can now carry its own `position` (schema and `model.ts`), passed to libass per line, so preview images and export agree (a render test checks the moved caption is at the top). `timeline/clear-faces.ts` moves a caption that would cover a face to the top, else the middle, for that caption only. Making captions again resets them.
+
 ## Lyric video backlog
 For later. This is an important feature, and it comes after the editing work.
 

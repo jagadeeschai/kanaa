@@ -79,6 +79,20 @@ export const moveMediaToFolder = (ids: number[], folder: string | null) => reque
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const getFocus = (id: number, at = 0) => requestJson<{ x: number | null; y: number | null; faces: number; model?: boolean }>(`/api/photos/${id}/focus?at=${at.toFixed(2)}`);
+export const startBestMoments = (items: { media_id: number; length: number }[]) => requestJson<{ job_id: string }>('/api/best-moments', { method: 'POST', body: JSON.stringify({ items }) });
+/** Waits for a background job, reporting its progress, and returns its final fields. */
+export async function waitForJob<T>(id: string, onProgress: (progress: number) => void = () => {}): Promise<T> {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const status = await getJobStatus(id) as unknown as { status?: string; progress: number; error?: string | null };
+    if (status.status === 'failed') throw new Error(status.error ?? 'That did not work.');
+    if (status.status === 'cancelled') throw new Error('Cancelled.');
+    if (status.status === 'done') return status as unknown as T;
+    onProgress(status.progress);
+  }
+}
+export const faceFinderReady = () => requestJson<{ ready: boolean }>('/api/face-finder');
+export const startReframe = (id: number, body: { start: number; end: number; allow_download: boolean }) => requestJson<{ job_id: string }>(`/api/photos/${id}/reframe`, { method: 'POST', body: JSON.stringify(body) });
 export const startScenes = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/scenes`, { method: 'POST', body: JSON.stringify(body) });
 export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string };
 export const listEffects = () => requestJson<EffectInfo[]>('/api/effects');
