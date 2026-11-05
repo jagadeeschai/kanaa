@@ -186,7 +186,7 @@ export function clipAt(timeline: Timeline, t: number): Clip | undefined {
 export function newClip(source: SourceFacts, id: string): Clip {
   const length = source.media_type === 'image' ? PHOTO_SECONDS : source.duration ?? PHOTO_SECONDS;
   return { id, media_id: source.media_id, start: 0, in: 0, out: length, speed: 1, volume: 1, muted: false,
-    fade_in: 0, fade_out: 0, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 }, adjust: { ...DEFAULT_ADJUST } };
+    fade_in: 0, fade_out: 0, transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 }, adjust: { ...DEFAULT_ADJUST }, frame_locked: true };
 }
 
 const SOUND_DEFAULTS = { speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: '' };
@@ -204,7 +204,7 @@ export function normalizeTimeline(timeline: Timeline): Timeline {
     const items = layer.items.map((item) => {
       const partial = item as Partial<Clip> & Pick<Clip, 'id' | 'media_id' | 'in' | 'out'>;
       const clip: Clip = { ...partial, start: partial.start ?? 0, speed: partial.speed ?? 1, volume: partial.volume ?? 1, muted: partial.muted ?? false, fade_in: partial.fade_in ?? 0, fade_out: partial.fade_out ?? 0,
-        transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, ...partial.transform }, adjust: { ...DEFAULT_ADJUST, ...partial.adjust } };
+        transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, ...partial.transform }, adjust: { ...DEFAULT_ADJUST, ...partial.adjust }, frame_locked: partial.frame_locked ?? true };
       if (layer.magnetic) clip.start = cursor;
       cursor = clip.start + clipLength(clip);
       return clip;

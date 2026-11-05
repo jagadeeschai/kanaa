@@ -101,6 +101,9 @@ class Effects(unittest.TestCase):
         found = {effect.id: effect for effect in effect_service.EFFECTS}
         self.assertEqual(found['rain'].mood, 'weather')
         self.assertEqual(found['lightning'].mood, 'weather')
+        self.assertEqual(found['fog'].mood, 'weather')
+        self.assertEqual(found['dust'].mood, 'travel')
+        self.assertEqual(found['lens-flare'].mood, 'travel')
 
     def test_weather_settings_are_bounded_and_make_cached_variants(self):
         rain = effect_service.weather_options('rain', {'density': 9, 'direction': -9, 'seed': 101})

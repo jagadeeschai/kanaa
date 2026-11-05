@@ -50,6 +50,9 @@ EFFECTS = [
     Effect('snow', 'Snow', 'பனி', 'travel', 'Gentle snow, for hills and winter trips'),
     Effect('rain', 'Rain', 'மழை', 'weather', 'Diagonal rain with a soft wet glow'),
     Effect('lightning', 'Lightning', 'மின்னல்', 'weather', 'A bright sky flash with a branching lightning bolt'),
+    Effect('fog', 'Fog', 'மூடுபனி', 'weather', 'Soft banks of mist drifting across the frame'),
+    Effect('dust', 'Dust', 'தூசி', 'travel', 'Warm floating dust caught in sunlight'),
+    Effect('lens-flare', 'Lens flare', 'லென்ஸ் ஒளி', 'travel', 'A cinematic flare sweeping across the lens'),
 ]
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
@@ -281,12 +284,65 @@ def lightning(n: int, total: int, size: tuple[int, int], rng: np.random.Generato
     return Image.fromarray(np.clip(np.asarray(image, np.float32) + np.asarray(_glow(bolt, unit * 0.018, 1.8), np.float32), 0, 255).astype(np.uint8))
 
 
+def fog(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Wide, dim mist banks; Screen blend makes them translucent over the shot."""
+    t = n / FPS
+    return _field(size, [
+        (-0.25 + (t * 0.055) % 1.5, 0.30, 0.42, (185, 200, 210), 0.34),
+        (1.20 - (t * 0.040) % 1.5, 0.62, 0.50, (215, 220, 220), 0.28),
+        (-0.10 + (t * 0.028) % 1.35, 0.88, 0.38, (165, 185, 195), 0.22),
+    ]).filter(ImageFilter.GaussianBlur(max(2, min(size) * 0.025)))
+
+
+def dust(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    particles = dust.cache.get(size)
+    if particles is None:
+        particles = dust.cache[size] = _particles(rng, 120, x=(0, 1), y=(0, 1), phase=(0, 6.28), speed=(0.018, 0.07), size=(0.001, 0.0045), light=(0.25, 0.85))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(particles['x'])):
+        x = (particles['x'][i] + t * particles['speed'][i] + 0.018 * math.sin(t + particles['phase'][i])) % 1.04 - 0.02
+        y = (particles['y'][i] - t * particles['speed'][i] * 0.35) % 1.04 - 0.02
+        pulse = 0.45 + 0.55 * max(0, math.sin(t * 1.7 + particles['phase'][i]))
+        radius = particles['size'][i] * unit * (0.7 + pulse)
+        light = particles['light'][i] * pulse
+        colour = (int(255 * light), int(205 * light), int(125 * light))
+        draw.ellipse((x * width - radius, y * height - radius, x * width + radius, y * height + radius), fill=colour)
+    return _glow(image, max(1, unit * 0.004), 0.8)
+
+
+dust.cache = {}
+
+
+def lens_flare(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    t = n / max(1, total - 1)
+    x, y = (-0.08 + 1.16 * t) * width, (0.28 + 0.10 * math.sin(t * math.pi)) * height
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    for radius, colour in ((0.018, (255, 250, 220)), (0.045, (255, 185, 105)), (0.09, (160, 95, 255))):
+        r = unit * radius
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=colour)
+    for amount, radius, colour in ((0.35, 0.026, (80, 120, 210)), (0.55, 0.042, (180, 75, 80)), (0.78, 0.018, (90, 190, 170))):
+        gx, gy = x + (width / 2 - x) * amount * 2, y + (height / 2 - y) * amount * 2
+        r = unit * radius
+        draw.ellipse((gx - r, gy - r, gx + r, gy + r), outline=colour, width=max(1, round(unit * 0.004)))
+    return _glow(image, max(2, unit * 0.035), 1.7)
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
     'snow': falling([(235, 240, 255), (200, 210, 230)], 160, (0.002, 0.006), 0.02, 0.5, 'petal'),
     'rain': rain,
     'lightning': lightning,
+    'fog': fog,
+    'dust': dust,
+    'lens-flare': lens_flare,
     'sparkles': sparkles,
     'fireworks': fireworks,
     'bokeh': bokeh,
