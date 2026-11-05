@@ -138,6 +138,7 @@ class Clip(Strict):
     fade_out: float = Field(default=0, ge=0)
     transform: Transform = Field(default_factory=Transform)
     adjust: Adjust = Field(default_factory=Adjust)
+    frame_locked: bool = False  # Prevents accidental position, size, and rotation changes in the editor.
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
     transition_in: Optional[Transition] = None
