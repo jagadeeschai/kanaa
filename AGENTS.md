@@ -34,7 +34,7 @@ This file is the starting point. `docs/VIDEO_EDITOR_PLAN.md` has each feature's 
   2. Test against throwaway servers (API on 8011 with a scratch data folder, Vite on 5191 with `MOTION_API_TARGET`).
   3. `git add` only the files you mean, commit, and fast-forward `main`.
   4. Remove the worktree and build.
-- Git: the remote is `origin`, `https://gitlab.com/jagadeesch1981/kanaa.git`. Only push when the owner says "push".
+- Git: on the Mac, `origin` is GitLab (`https://gitlab.com/jagadeesch1981/kanaa.git`) and `github` is GitHub (`https://github.com/jagadeeschai/kanaa.git`, public). Only push when the owner says "push", and then push `main` to both. Cloud sessions work on GitHub through pull requests; see CLAUDE.md.
 
 ## The owner's standing rules
 
