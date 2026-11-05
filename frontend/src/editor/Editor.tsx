@@ -1783,6 +1783,7 @@ const RATE_TIPS: Record<number, string> = { 24: 'the film look', 25: 'TV in Indi
 function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, onGuide }: { timeline: Timeline; clipFormat: Format | null; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
   const format = timeline.format;
   const finish = timeline.finish ?? null;
+  const cinematicOn = Boolean(finish && (finish.grade || finish.glow || finish.vignette || finish.grain));
   const theme = activeTheme(timeline);
   const [luts, setLuts] = useState<LutInfo[]>([]);
   const [lutFolder, setLutFolder] = useState('');
@@ -1809,13 +1810,15 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
       <Group title="Theme" tab="look" startOpen keywords="theme look style wedding festival travel birthday" tip="One click dresses the whole video: colours, transitions, titles and music." help="themes">
         <div className="ed-add-row"><span>{theme ? <>Now: <b>{theme.label}</b></> : 'No theme'}</span><button className="ed-button" onClick={onThemes}>{theme ? 'Change theme' : 'Choose a theme'}</button></div>
       </Group>
-      <Group title="Cinematic finish" tab="look" startOpen changed={Boolean(finish)} keywords="cinematic film grade teal orange glow vignette grain bars letterbox widescreen" tip="A film look over the whole video. Captions stay on top." help="cinematic-finish">
-        <label className="ed-check"><input type="checkbox" checked={Boolean(finish)} onChange={(event) => setFinish(event.target.checked ? { ...CINEMATIC, letterbox: barShare(format) > 0 } : null)}/><span>Cinematic finish<small>Teal and orange colour, a soft glow, darker edges and film grain{barShare(format) > 0 ? ', with widescreen bars' : ''}.</small></span></label>
-        {finish && <>
-          {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={finish.letterbox} onChange={(event) => setFinish({ ...finish, letterbox: event.target.checked })}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape.</small></span></label>
-            : <p className="ed-group-tip">Widescreen bars are for landscape and square videos.</p>}
+      <Group title="Cinematic finish" tab="look" startOpen changed={cinematicOn} keywords="cinematic film grade teal orange glow vignette grain" tip="A film look over the whole video. It does not change the frame shape." help="cinematic-finish">
+        <label className="ed-check"><input type="checkbox" checked={cinematicOn} onChange={(event) => { const letterbox = Boolean(finish?.letterbox); setFinish(event.target.checked ? { ...CINEMATIC, letterbox } : letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null); }}/><span>Cinematic finish<small>Teal and orange colour, a soft glow, darker edges and film grain. Your selected aspect ratio stays unchanged.</small></span></label>
+        {cinematicOn && <>
           {part('grade', 'Teal and orange')}{part('glow', 'Glow')}<More>{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}</More>
         </>}
+      </Group>
+      <Group pro title="Widescreen framing" tab="look" changed={Boolean(finish?.letterbox)} keywords="bars letterbox widescreen 2.39 framing" tip="Optional 2.39:1 bars, independent from the Cinematic finish." help="cinematic-finish">
+        {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape. This is not enabled by Cinematic finish.</small></span></label>
+          : <p className="ed-group-tip">Widescreen bars are available for landscape and square projects.</p>}
       </Group>
       <Group title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
         <input className="ed-input" type="search" value={lutQuery} onChange={(event) => setLutQuery(event.target.value)} placeholder={`Search ${luts.length || ''} LUTs…`} aria-label="Search LUTs"/>

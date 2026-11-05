@@ -88,7 +88,7 @@ export const ARTICLES: Article[] = [
     where: 'The right-hand panel when nothing is selected.',
     tips: ['Match the frame rate to your phone: most shoot 30 fps; slow-motion footage looks best in a 30 fps film.'], related: ['themes', 'cinematic-finish'] },
   { id: 'cinematic-finish', topic: 'Whole video', title: 'Cinematic finish', summary: 'A film look over the whole video.',
-    points: ['Widescreen bars, teal and orange colour, a soft glow, darker edges and film grain, each with a slider.', 'Bars are for landscape and square videos.', 'Captions stay on top of the finish.'],
+    points: ['Teal and orange colour, a soft glow, darker edges and film grain, each with a slider.', 'Widescreen bars are a separate optional project control for landscape and square videos; Cinematic finish never turns them on.', 'Captions stay on top of the finish.'],
     where: 'Project settings, Look tab: click the size button at the top or an empty part of the timeline.',
     related: ['themes', 'colour-and-looks'] },
   { id: 'story-templates', topic: 'Whole video', title: 'Story templates', tamil: 'கதை வார்ப்புகள்', summary: 'Pick a story, fill its moments, and Kanaa makes the video.',
