@@ -61,6 +61,10 @@ EFFECTS = [
     Effect('fog', 'Fog', 'மூடுபனி', 'weather', 'Soft banks of mist drifting across the frame'),
     Effect('dust', 'Dust', 'தூசி', 'travel', 'Warm floating dust caught in sunlight'),
     Effect('lens-flare', 'Lens flare', 'லென்ஸ் ஒளி', 'travel', 'A cinematic flare sweeping across the lens'),
+    Effect('sun-rays', 'Sun rays', 'சூரியக் கதிர்கள்', 'travel', 'Soft beams drifting from one corner'),
+    Effect('prism-leak', 'Prism leak', 'வானவில் ஒளி', 'travel', 'A thin rainbow edge moving across the frame'),
+    Effect('anamorphic', 'Anamorphic streaks', 'நீல ஒளிக் கோடுகள்', 'travel', 'Fine blue horizontal cinematic flares'),
+    Effect('light-flicker', 'Light flicker', 'ஒளித் துடிப்பு', 'travel', 'Gentle old-projector brightness variation'),
 ]
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
@@ -613,6 +617,75 @@ def hearts(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) 
 hearts.cache = {}
 
 
+def sun_rays(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    image = Image.new('RGB', size)
+    beams = Image.new('RGB', size)
+    draw = ImageDraw.Draw(beams)
+    origin = (-unit * 0.08, -unit * 0.05)
+    breathe = 0.72 + 0.18 * math.sin(t * 0.45)
+    for i, (angle, spread, strength) in enumerate((
+        (0.38, 0.085, 0.20), (0.54, 0.055, 0.14), (0.70, 0.11, 0.11), (0.88, 0.07, 0.09))):
+        drift = 0.025 * math.sin(t * 0.32 + i * 1.7)
+        reach = math.hypot(width, height) * 1.25
+        a0, a1 = angle + drift - spread, angle + drift + spread
+        colour = tuple(round(c * strength * breathe) for c in (255, 224, 168))
+        draw.polygon((origin, (origin[0] + math.cos(a0) * reach, origin[1] + math.sin(a0) * reach),
+                      (origin[0] + math.cos(a1) * reach, origin[1] + math.sin(a1) * reach)), fill=colour)
+    beams = beams.filter(ImageFilter.GaussianBlur(max(4, unit * 0.045)))
+    haze = _field(size, [(-0.03, -0.03, 0.38, (255, 226, 175), 0.34 * breathe)])
+    return Image.fromarray(np.clip(np.asarray(beams, np.int16) + np.asarray(haze, np.int16), 0, 255).astype(np.uint8))
+
+
+def prism_leak(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    t = n / max(1, total - 1)
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    centre = (-0.18 + t * 1.36) * width
+    slope = height * 0.18
+    colours = ((220, 45, 75), (245, 145, 35), (225, 220, 65), (70, 190, 125), (65, 135, 225), (155, 75, 205))
+    band = max(2, unit * 0.012)
+    for index, colour in enumerate(colours):
+        offset = (index - 2.5) * band
+        points = ((centre + offset - band, -height * 0.1), (centre + offset + band, -height * 0.1),
+                  (centre + slope + offset + band, height * 1.1), (centre + slope + offset - band, height * 1.1))
+        draw.polygon(points, fill=tuple(round(c * 0.34) for c in colour))
+    return image.filter(ImageFilter.GaussianBlur(max(1, unit * 0.01)))
+
+
+def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    lights = ((0.28 + 0.08 * math.sin(t * 0.37), 0.34, 0.72), (0.72 + 0.05 * math.sin(t * 0.29 + 2), 0.66, 0.48))
+    for x, y, strength in lights:
+        cx, cy = x * width, y * height
+        half = width * (0.22 + 0.12 * strength)
+        core = tuple(round(c * strength) for c in (90, 165, 255))
+        draw.line((cx - half, cy, cx + half, cy), fill=core, width=max(1, round(unit * 0.003)))
+        draw.ellipse((cx - unit * 0.012, cy - unit * 0.012, cx + unit * 0.012, cy + unit * 0.012), fill=(190, 220, 255))
+        for share in (0.42, 0.7):
+            ghost_x = width * 0.5 + (width * 0.5 - cx) * share
+            r = unit * (0.012 + share * 0.008)
+            draw.ellipse((ghost_x - r, cy - r, ghost_x + r, cy + r), outline=(35, 75, 150), width=max(1, round(unit * 0.002)))
+    return _glow(image, max(1, unit * 0.012), 1.15)
+
+
+def light_flicker(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    t = n / FPS
+    # Several incommensurate waves avoid a mechanical on/off pulse. Screen blend only lifts exposure.
+    amount = 0.19 + 0.07 * math.sin(t * 7.1) + 0.045 * math.sin(t * 13.7 + 1.3) + 0.025 * math.sin(t * 23.9 + 0.4)
+    amount = max(0.065, min(0.32, amount))
+    warm = (round(255 * amount), round(238 * amount), round(210 * amount))
+    return Image.new('RGB', size, warm)
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
@@ -624,6 +697,10 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'balloons': balloons,
     'glitter-burst': glitter_burst,
     'hearts': hearts,
+    'sun-rays': sun_rays,
+    'prism-leak': prism_leak,
+    'anamorphic': anamorphic,
+    'light-flicker': light_flicker,
     'snow': snow,
     'rain': rain,
     'lightning': lightning,

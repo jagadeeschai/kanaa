@@ -112,6 +112,10 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['balloons'].mood, 'celebration')
         self.assertEqual(found['glitter-burst'].mood, 'celebration')
         self.assertEqual(found['hearts'].mood, 'celebration')
+        self.assertEqual(found['sun-rays'].mood, 'travel')
+        self.assertEqual(found['prism-leak'].mood, 'travel')
+        self.assertEqual(found['anamorphic'].mood, 'travel')
+        self.assertEqual(found['light-flicker'].mood, 'travel')
 
     def test_weather_settings_are_bounded_and_make_cached_variants(self):
         rain = effect_service.weather_options('rain', {'density': 9, 'direction': -9, 'seed': 101})
