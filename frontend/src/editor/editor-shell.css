@@ -166,6 +166,9 @@
 .fx-diya .ed-quick-art{background:radial-gradient(ellipse at 50% 80%,#ff8b22 0 6%,#ffcf5b66 18%,transparent 48%),linear-gradient(#100b08,#2b170d)}
 .fx-sparkler .ed-quick-art{background:repeating-conic-gradient(from 10deg at 58% 52%,#fff7c8 0 1deg,transparent 2deg 16deg),radial-gradient(circle at 58% 52%,#fff 0 2px,#ffc85788 6px,transparent 18px),#0b0b10}
 .fx-kolam .ed-quick-art{background:radial-gradient(circle,#fff 0 1px,transparent 2px) 0 0/12px 12px,radial-gradient(circle at 50% 50%,transparent 0 12px,#f5f4e8 13px 14px,transparent 15px),#273033}
+.fx-balloons .ed-quick-art{background:radial-gradient(ellipse at 28% 62%,#ff879f 0 9px,transparent 10px),radial-gradient(ellipse at 60% 38%,#59aee4 0 11px,transparent 12px),radial-gradient(ellipse at 82% 72%,#ffc461 0 8px,transparent 9px),#16131e}
+.fx-glitter-burst .ed-quick-art{background:repeating-conic-gradient(from 5deg at 50% 50%,#ffd76a 0 1deg,transparent 2deg 13deg),radial-gradient(circle at 50% 50%,#fff 0 2px,#ffc94f77 8px,transparent 24px),#0b0b10}
+.fx-hearts .ed-quick-art{background:radial-gradient(circle at 30% 65%,#e85d83 0 5px,transparent 6px),radial-gradient(circle at 64% 36%,#f49ab2 0 7px,transparent 8px),radial-gradient(circle at 80% 72%,#c84270 0 4px,transparent 5px),#1f1119}
 .fx-sparkles .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),radial-gradient(circle at 70% 60%,#fff 0 1.5px,#ffecbe55 3px,transparent 7px),#0b0b10}
 .fx-fireworks .ed-quick-art{background:radial-gradient(circle at 50% 45%,transparent 0 8px,#ffc83d 9px,transparent 12px),radial-gradient(circle at 50% 45%,#ffc83d55,transparent 20px),#0b0b10}
 .fx-bokeh .ed-quick-art{background:radial-gradient(circle at 30% 60%,#ffc47899 0 8px,transparent 10px),radial-gradient(circle at 65% 35%,#ff96aa88 0 10px,transparent 12px),#0b0b10}

@@ -48,6 +48,9 @@ EFFECTS = [
     Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
     Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
     Effect('sparkles', 'Sparkles', 'மின்னல்', 'celebration', 'Little stars that twinkle'),
+    Effect('balloons', 'Balloons rising', 'பலூன்கள்', 'celebration', 'Soft glossy balloons floating upwards'),
+    Effect('glitter-burst', 'Glitter burst', 'மினுமினுப்பு', 'celebration', 'A quick golden burst for a title or transition'),
+    Effect('hearts', 'Hearts', 'இதயங்கள்', 'celebration', 'Soft hearts drifting upwards for weddings and anniversaries'),
     Effect('fireworks', 'Fireworks', 'பட்டாசு', 'festival', 'Bursts of light, for Diwali and new year'),
     Effect('bokeh', 'Bokeh lights', 'ஒளிப் புள்ளிகள்', 'wedding', 'Soft out-of-focus lights rising'),
     Effect('light-leak', 'Light leak', 'ஒளிக் கசிவு', 'travel', 'Warm film light drifting across'),
@@ -522,6 +525,94 @@ def kolam(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -
     return _glow(image, max(1, unit * 0.006), 0.75)
 
 
+def balloons(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    items = balloons.cache.get(size)
+    if items is None:
+        items = balloons.cache[size] = {**_particles(rng, 18, x=(0.05, 0.95), phase=(0, 1.35), rise=(0.035, 0.075), size=(0.025, 0.065), sway=(0, 6.28), depth=(0.45, 1)),
+                                             'colour': rng.integers(0, 6, 18)}
+    colours = [(220, 55, 88), (244, 154, 45), (65, 155, 215), (147, 92, 205), (60, 174, 126), (232, 106, 161)]
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    order = np.argsort(items['depth'])
+    for index in order:
+        y = 1.16 - ((items['phase'][index] + t * items['rise'][index]) % 1.4)
+        x = items['x'][index] + math.sin(t * 0.55 + items['sway'][index]) * 0.025
+        depth = items['depth'][index]
+        radius = items['size'][index] * unit * depth
+        cx, cy = x * width, y * height
+        colour = tuple(round(channel * (0.62 + depth * 0.35)) for channel in colours[items['colour'][index]])
+        draw.ellipse((cx - radius * 0.82, cy - radius, cx + radius * 0.82, cy + radius), fill=colour)
+        draw.ellipse((cx - radius * 0.42, cy - radius * 0.68, cx - radius * 0.18, cy - radius * 0.35), fill=tuple(min(255, c + 80) for c in colour))
+        draw.polygon(((cx - radius * 0.12, cy + radius * 0.92), (cx + radius * 0.12, cy + radius * 0.92), (cx, cy + radius * 1.18)), fill=colour)
+        draw.line((cx, cy + radius * 1.15, cx + math.sin(t + index) * radius * 0.18, cy + radius * 2.5), fill=(95, 95, 105), width=max(1, round(unit * 0.0015)))
+    return image.filter(ImageFilter.GaussianBlur(max(0.15, unit * 0.0006)))
+
+
+balloons.cache = {}
+
+
+def glitter_burst(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    particles = glitter_burst.cache.get(size)
+    if particles is None:
+        particles = glitter_burst.cache[size] = _particles(rng, 190, angle=(0, 6.28), speed=(0.035, 0.24), delay=(0, 0.18), size=(0.001, 0.0045), turn=(0, 6.28))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    # Two short pops make the five-second clip useful at a title or between shots.
+    age = min(((t - at) if t >= at else 99) for at in (0.72, 3.18))
+    for i in range(len(particles['angle'])):
+        local = age - particles['delay'][i]
+        if not 0 <= local <= 1.25:
+            continue
+        fade = (1 - local / 1.25) ** 1.3
+        travel = particles['speed'][i] * unit * (1 - math.exp(-local * 3.4)) * 4.4
+        x = width * 0.5 + math.cos(particles['angle'][i]) * travel
+        y = height * 0.5 + math.sin(particles['angle'][i]) * travel + unit * 0.07 * local * local
+        radius = particles['size'][i] * unit * (0.6 + fade)
+        colour = (round(255 * fade), round(214 * fade), round(92 * fade))
+        if i % 4:
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=colour)
+        else:
+            draw.line((x - radius * 2, y, x + radius * 2, y), fill=colour, width=max(1, round(radius * 0.5)))
+            draw.line((x, y - radius * 2, x, y + radius * 2), fill=colour, width=max(1, round(radius * 0.5)))
+    return _glow(image, max(1, unit * 0.007), 1.0)
+
+
+glitter_burst.cache = {}
+
+
+def hearts(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    items = hearts.cache.get(size)
+    if items is None:
+        items = hearts.cache[size] = _particles(rng, 34, x=(0.02, 0.98), phase=(0, 1.25), rise=(0.035, 0.085), size=(0.008, 0.025), sway=(0, 6.28), light=(0.35, 0.85))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(items['x'])):
+        y = 1.12 - ((items['phase'][i] + t * items['rise'][i]) % 1.3)
+        x = items['x'][i] + math.sin(t * 0.65 + items['sway'][i]) * 0.025
+        scale = items['size'][i] * unit
+        points = []
+        for sample in range(28):
+            angle = math.tau * sample / 28
+            hx = 16 * math.sin(angle) ** 3
+            hy = 13 * math.cos(angle) - 5 * math.cos(2 * angle) - 2 * math.cos(3 * angle) - math.cos(4 * angle)
+            points.append((x * width + hx * scale / 16, y * height - hy * scale / 16))
+        light = items['light'][i]
+        draw.polygon(points, fill=(round(245 * light), round(92 * light), round(135 * light)))
+    return _glow(image, max(0.6, unit * 0.0025), 0.45)
+
+
+hearts.cache = {}
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
@@ -530,6 +621,9 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'diya': diya,
     'sparkler': sparkler,
     'kolam': kolam,
+    'balloons': balloons,
+    'glitter-burst': glitter_burst,
+    'hearts': hearts,
     'snow': snow,
     'rain': rain,
     'lightning': lightning,
