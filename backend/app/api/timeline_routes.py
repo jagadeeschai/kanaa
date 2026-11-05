@@ -451,6 +451,9 @@ def get_timeline(identifier: int):
     row = project_for(identifier)
     media = get_media(row['media_id'])
     recipe = json.loads(row['recipe']) if row['recipe'] else None
+    if recipe and recipe.get('fresh'):
+        # A new project's first timeline: the marker only tells the editor to ask for the format; it is not timeline data.
+        recipe = {key: value for key, value in recipe.items() if key != 'fresh'}
     return upgrade_edit_recipe(recipe, row['media_id'], media['duration'] or 1, media['width'], media['height'])
 
 

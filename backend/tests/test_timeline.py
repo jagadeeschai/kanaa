@@ -1718,3 +1718,46 @@ class EffectSwitches(Clips):
     def test_a_switched_off_background_needs_no_person_mask(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 1, 'cutout': 'remove', 'bypass': ['background']}]}]}
         self.assertTrue(self.render(data, 'switch-background-off.mp4').is_file())  # No masks callback: it would raise if a mask were needed.
+
+
+class NewVideoProjects(Clips):
+    def setUp(self):
+        super().setUp()
+        self.patches = [patch.object(settings, 'data_dir', self.out / 'data'), patch.object(settings, 'edit_workspace_dir', self.out / 'data' / 'exports'), patch.object(settings, 'thumbnail_dir', self.out / 'data' / 'thumbnails')]
+        for item in self.patches:
+            item.start()
+        self.client = TestClient(app)
+        self.client.__enter__()
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        for item in reversed(self.patches):
+            item.stop()
+        super().tearDown()
+
+    def upload(self, name, data, kind):
+        return self.client.post('/api/media', files={'file': (name, data, kind)}).json()
+
+    def test_a_video_project_can_start_blank_or_with_clips_and_photos_in_order(self):
+        blank = self.client.post('/api/projects', json={'name': 'Empty', 'kind': 'edit'})
+        self.assertEqual(blank.status_code, 200, blank.text)
+        timeline = self.client.get(f"/api/projects/{blank.json()['id']}/timeline").json()
+        self.assertEqual(timeline['layers'][0]['items'], [])
+        self.assertNotIn('fresh', timeline)
+        self.assertTrue(self.client.get(f"/api/projects/{blank.json()['id']}").json()['recipe']['fresh'])
+        again = self.client.post('/api/projects', json={'name': 'Empty 2', 'kind': 'edit'}).json()
+        self.assertEqual(again['media_id'], blank.json()['media_id'])  # One shared stand-in, not a new canvas each time.
+
+        video = self.upload('red.mp4', (self.root / 'red.mp4').read_bytes(), 'video/mp4')
+        picture = io.BytesIO()
+        Image.new('RGB', (640, 360), (0, 0, 255)).save(picture, 'PNG')
+        photo = self.upload('blue.png', picture.getvalue(), 'image/png')
+        mixed = self.client.post('/api/projects', json={'name': 'Mixed', 'kind': 'edit', 'media_id': photo['id'], 'media_ids': [photo['id'], video['id']]}).json()
+        timeline = self.client.get(f"/api/projects/{mixed['id']}/timeline").json()
+        items = timeline['layers'][0]['items']
+        self.assertEqual([item['media_id'] for item in items], [photo['id'], video['id']])
+        self.assertEqual([item['start'] for item in items], [0, 5])
+        self.assertEqual(items[0]['out'], 5)
+        self.assertAlmostEqual(items[1]['out'], video['duration'], delta=0.05)
+        self.assertEqual((timeline['format']['width'], timeline['format']['height']), (640, 360))
+        Timeline.model_validate(timeline)  # A valid timeline, ready to edit and export.

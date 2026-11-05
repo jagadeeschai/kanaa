@@ -298,10 +298,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     let cancelled = false;
     void (async () => {
       try {
-        const [project, upgraded, library] = await Promise.all([getVideoProject<{ version?: number }>(projectId, 'edit'), getProjectTimeline<Timeline>(projectId), listPhotos({ collection: 'imports', limit: 500 })]);
+        const [project, upgraded, library] = await Promise.all([getVideoProject<{ version?: number; fresh?: boolean }>(projectId, 'edit'), getProjectTimeline<Timeline>(projectId), listPhotos({ collection: 'imports', limit: 500 })]);
         if (cancelled) return;
         setMedia((current) => [...current, ...library.photos.filter((item) => !current.some((entry) => entry.id === item.id))]);
-        const started = project.recipe?.version === 2;
+        // A new project's first timeline is marked fresh until its first save, so the editor still asks where it will be posted.
+        const started = project.recipe?.version === 2 && !project.recipe.fresh;
         const loaded = normalizeTimeline(upgraded);
         saveQueue.current!.load(started ? JSON.stringify(loaded) : '');
         dispatch({ type: 'load', timeline: loaded });
@@ -795,6 +796,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setSelectedId(clip.id);
     } catch (problem) { setError((problem as Error).message); }
   };
+  /** "Same as my clip": the first clip on the main track, not the project's starting file (a blank project has none). */
+  const firstClip = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start)[0] : undefined;
+  const firstMedia = firstClip ? mediaById.get(firstClip.media_id) : undefined;
+  const firstClipFormat: Format | null = firstMedia?.width && firstMedia.height ? { width: firstMedia.width - firstMedia.width % 2, height: firstMedia.height - firstMedia.height % 2, fps: 30 } : null;
   const chooseFormat = (format: Format) => {
     if (!timeline) return;
     change({ ...timeline, format });
@@ -1231,7 +1236,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
             {(() => { const box = drawnBox(drawing); return box && <i style={{ left: `${(box[0] - box[2] / 2) * 100}%`, top: `${(box[1] - box[3] / 2) * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }}/>; })()}
           </div>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
-          {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick a video in the Media panel</span></div>}
+          {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick videos or photos in the Media panel</span></div>}
         </div>
         <div className="ed-transport">
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
@@ -1254,7 +1259,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
         : selected ? <Inspector backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
-          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: timeline.format.fps } : null} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); updateLayout({ mediaOpen: true }); }} onGuide={() => setShowingHelp(true)}/>
+          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); updateLayout({ mediaOpen: true }); }} onGuide={() => setShowingHelp(true)}/>
           : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
       </HelpContext.Provider>
     </div>
@@ -1279,7 +1284,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
     {showingHelp && <Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
-    {choosingFormat && timeline && <FormatDialog clipFormat={photo.width && photo.height ? { width: photo.width - photo.width % 2, height: photo.height - photo.height % 2, fps: 30 } : null} current={timeline.format} onChoose={chooseFormat}/>}
+    {choosingFormat && timeline && <FormatDialog clipFormat={firstClipFormat} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
     {creatingAIImage && timeline && <AIImageGenerator
       projectId={projectId}

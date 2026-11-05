@@ -487,6 +487,11 @@ Every clip's effects can be listed, switched off and on, or removed. "Active on 
 
 Limits: plain speed, freeze frames and drawn shapes are not listed as effects (they change timing or are the clip's purpose); titles, sounds and blur boxes have no effect switches yet.
 
+### Three ways to start a video (done)
+New video offers: **Blank project** (the default when nothing is picked), **pick clips** (videos and photos together, numbered in the order they are clicked, up to 200), or **Use a folder** (every video and photo in a media folder, in name order). The server builds the first timeline (`starting_timeline` in `api/routes.py`): clips in order on the main track, whole videos, photos for 5 s, framed like the first clip; a blank project uses one shared "Blank canvas.png" record as its required starting media and an empty main track. The recipe carries `fresh: true` until the editor's first save, so the editor still asks "Where will you post this?"; the timeline route strips the marker, so the strict schema never sees it. "Same as my clip" now uses the first clip on the main track, and is not offered for an empty project. Test: a blank start, a shared canvas, and a photo-then-video start in order with the right lengths and a valid timeline.
+
+Limits: "Blank canvas.png" shows in Media (shared, one file); a folder start takes the media list loaded in Studio (the first 100 imports plus any loaded with Load more).
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

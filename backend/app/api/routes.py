@@ -270,7 +270,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     kind: Literal['edit', 'lyric']
     media_id: int | None = None
-    media_ids: list[int] = Field(default_factory=list, max_length=50)
+    media_ids: list[int] = Field(default_factory=list, max_length=200)
 
 
 class ProjectSave(BaseModel):
@@ -299,8 +299,9 @@ def list_projects():
 @router.post('/projects')
 def create_project(data: ProjectCreate):
     if not data.name.strip(): raise HTTPException(400, 'Give your project a name.')
+    if data.kind == 'edit':
+        return create_video_project(data)
     if data.media_id is None:
-        if data.kind != 'lyric': raise HTTPException(400, 'Import a video to start this project.')
         directory = settings.data_dir / 'media'; directory.mkdir(parents=True, exist_ok=True)
         path = directory / f'canvas-{uuid.uuid4().hex}.png'
         Image.new('RGB', (720, 1280), '#282334').save(path)
@@ -318,6 +319,56 @@ def create_project(data: ProjectCreate):
         recipe = json.dumps({'version': 1, 'clips': [{'photo_id': identifier} for identifier in data.media_ids]})
     with get_connection() as conn:
         cursor = conn.execute('INSERT INTO projects(name,kind,media_id,recipe) VALUES(?,?,?,?)', (data.name.strip(), data.kind, data.media_id, recipe))
+        conn.commit()
+        identifier = cursor.lastrowid
+    return dict(project_row(identifier))
+
+
+PHOTO_SECONDS = 5  # Matches PHOTO_SECONDS in frontend/src/timeline/model.ts.
+BLANK_CANVAS = 'Blank canvas.png'
+
+
+def blank_canvas() -> int:
+    """One shared stand-in image for video projects started empty; the project needs a media record, the timeline does not use it."""
+    with get_connection() as conn:
+        found = conn.execute('SELECT id, absolute_path FROM photos WHERE filename = ? ORDER BY id', (BLANK_CANVAS,)).fetchall()
+    for row in found:
+        if Path(row['absolute_path']).is_file():
+            return row['id']
+    directory = settings.data_dir / 'media'; directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f'canvas-{uuid.uuid4().hex}.png'
+    Image.new('RGB', (720, 1280), '#282334').save(path)
+    return index_media(path, BLANK_CANVAS)['id']
+
+
+def starting_timeline(media_ids: list[int]) -> dict:
+    """The first timeline of a new video project: the chosen clips in order on the main track, whole videos and photos
+    for PHOTO_SECONDS, framed like the first one. `fresh` makes the editor ask where it will be posted when first opened;
+    the editor's first save drops it."""
+    items, start = [], 0.0
+    for number, identifier in enumerate(media_ids, start=1):
+        media = get_media(identifier)
+        if media['media_type'] not in {'video', 'image'}:
+            raise HTTPException(400, 'Choose videos or photos for a video project.')
+        length = float(media['duration'] or PHOTO_SECONDS) if media['media_type'] == 'video' else PHOTO_SECONDS
+        items.append({'id': f'clip-{number}', 'media_id': identifier, 'start': round(start, 3), 'in': 0, 'out': round(length, 3)})
+        start += length
+    first = get_media(media_ids[0]) if media_ids else None
+    width, height = (first['width'] or 1920, first['height'] or 1080) if first else (1080, 1920)
+    longest = max(width, height)
+    if longest > 3840:
+        width, height = round(width * 3840 / longest), round(height * 3840 / longest)
+    return {'version': 2, 'fresh': True, 'format': {'width': max(240, width - width % 2), 'height': max(240, height - height % 2), 'fps': 30},
+            'layers': [{'id': 'main', 'kind': 'video', 'name': 'Main', 'magnetic': True, 'items': items}]}
+
+
+def create_video_project(data: ProjectCreate):
+    """A blank video project, or one that starts with the chosen videos and photos in order."""
+    ids = list(dict.fromkeys(data.media_ids or ([data.media_id] if data.media_id is not None else [])))
+    recipe = starting_timeline(ids)
+    primary = ids[0] if ids else blank_canvas()
+    with get_connection() as conn:
+        cursor = conn.execute('INSERT INTO projects(name,kind,media_id,recipe) VALUES(?,?,?,?)', (data.name.strip(), 'edit', primary, json.dumps(recipe)))
         conn.commit()
         identifier = cursor.lastrowid
     return dict(project_row(identifier))
