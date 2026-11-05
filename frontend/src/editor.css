@@ -184,6 +184,94 @@
   color: #222120;
 }
 
+.kanaa-select {
+  position: relative;
+  width: 100%;
+  color: #ecebe9;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.kanaa-select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 0.55rem 0.7rem 0.55rem 0.8rem;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.kanaa-select-trigger:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
+.kanaa-select-trigger[aria-expanded='true'] {
+  border-color: rgb(139, 116, 236);
+  box-shadow: 0 0 0 3px rgba(124, 92, 240, 0.16);
+}
+.kanaa-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kanaa-select-trigger svg { flex: none; color: rgb(167, 155, 194); transition: transform 140ms ease; }
+.kanaa-select-trigger[aria-expanded='true'] svg { transform: rotate(180deg); color: rgb(186, 167, 255); }
+
+.kanaa-select-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  width: max(100%, 11rem);
+  max-height: 15rem;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 0.75rem;
+  background: #29272e;
+  padding: 0.35rem;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.kanaa-select-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  padding: 0.48rem 0.65rem;
+  color: #ddd9e6;
+  font: inherit;
+  text-align: left;
+}
+.kanaa-select-menu button.focused { background: rgba(255, 255, 255, 0.075); color: #fff; }
+.kanaa-select-menu button.selected { background: rgba(124, 92, 240, 0.2); color: #f2eeff; }
+.kanaa-select-menu button.selected.focused { background: rgba(124, 92, 240, 0.3); }
+.kanaa-select-menu button svg { flex: none; color: rgb(181, 158, 255); }
+
+:root[data-theme='light'] .kanaa-select { color: #222120; }
+:root[data-theme='light'] .kanaa-select-trigger {
+  border-color: rgba(34, 33, 32, 0.14);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1px 2px rgba(34, 33, 32, 0.06), inset 0 1px 0 #fff;
+}
+:root[data-theme='light'] .kanaa-select-trigger:hover:not(:disabled) { background: #f7f5fc; }
+:root[data-theme='light'] .kanaa-select-trigger svg { color: #716b80; }
+:root[data-theme='light'] .kanaa-select-menu {
+  border-color: rgba(52, 45, 75, 0.13);
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(42, 35, 65, 0.2), 0 2px 8px rgba(42, 35, 65, 0.08);
+}
+:root[data-theme='light'] .kanaa-select-menu button { color: #3d3948; }
+:root[data-theme='light'] .kanaa-select-menu button.focused { background: #f2effb; color: #292432; }
+:root[data-theme='light'] .kanaa-select-menu button.selected { background: #ece7ff; color: #4932b8; }
+:root[data-theme='light'] .kanaa-select-menu button.selected.focused { background: #e3dcff; }
+
 :root[data-theme='light'] .bg-brand-500\/15 {
   background-color: rgba(253, 236, 200, 0.85) !important;
 }
