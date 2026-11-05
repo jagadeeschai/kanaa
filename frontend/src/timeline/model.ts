@@ -40,7 +40,7 @@ export type Format = { width: number; height: number; fps: number };
 /** A cinematic look over the whole video, under the captions. Each amount 0 (off) to 1. */
 export type Finish = { letterbox: boolean; grade: number; glow: number; vignette: number; grain: number };
 export const CINEMATIC: Finish = { letterbox: true, grade: 0.7, glow: 0.35, vignette: 0.55, grain: 0.3 };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer)[]; normalize_audio?: boolean; finish?: Finish | null };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer)[]; normalize_audio?: boolean; finish?: Finish | null; lut?: string | null; lut_amount?: number };
 
 /** Each letterbox bar's height as a share of the frame: bars to 2.39:1, only on a landscape or square frame. Matches bar_share in finish_service.py. */
 export function barShare(format: { width: number; height: number }): number {

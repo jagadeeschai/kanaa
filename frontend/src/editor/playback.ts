@@ -5,6 +5,7 @@ import { AudioMixer } from './audio';
 import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
+import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
@@ -38,14 +39,19 @@ const FINISH_VERTEX = `#version 300 es
 in vec2 p; void main(){ gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
 const FINISH_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D backdrop; uniform vec2 viewport;
+uniform sampler2D lutTex; uniform int useLut; uniform float lutAmount;
 uniform float grade, glow, vignette, grain, bars, seed;
 float luma(vec3 c){ return dot(c, vec3(.2126, .7152, .0722)); }
+vec3 lookup(vec3 c){ float n=float(textureSize(lutTex,0).y); float blue=clamp(c.b,0.,1.)*(n-1.); float lo=floor(blue), hi=min(n-1.,lo+1.);
+  float y=(clamp(c.g,0.,1.)*(n-1.)+.5)/n; float red=clamp(c.r,0.,1.)*(n-1.);
+  vec3 a=texture(lutTex,vec2((lo*n+red+.5)/(n*n),y)).rgb; vec3 b=texture(lutTex,vec2((hi*n+red+.5)/(n*n),y)).rgb; return mix(a,b,fract(blue)); }
 vec3 tone(vec3 c){ float l = luma(c); float shadow = 1. - smoothstep(0., .55, l); float high = smoothstep(.45, 1., l);
   return clamp(c + grade * (shadow * vec3(-.06, .02, .07) + high * vec3(.08, .02, -.07)), 0., 1.); }
+vec3 graded(vec2 at){ vec3 c=texture(backdrop,at).rgb; if(useLut==1)c=mix(c,lookup(c),lutAmount); return tone(c); }
 float hash(vec2 q){ return fract(sin(dot(q, vec2(12.9898, 78.233)) + seed * 7.13) * 43758.5453); }
 void main(){
   vec2 at = gl_FragCoord.xy / viewport; float aspect = viewport.x / viewport.y;
-  vec3 c = tone(texture(backdrop, at).rgb);
+  vec3 c = graded(at);
   if (glow > 0.) {
     // The highlights, blurred: a Gaussian of sigma 3% of the height, sampled on a spiral.
     vec3 sum = vec3(0.); float total = 0.;
@@ -53,7 +59,7 @@ void main(){
       float r = sqrt((float(i) + .5) / 40.) * 2.5; float a = float(i) * 2.39996;
       vec2 off = vec2(cos(a), sin(a)) * r * .03 * vec2(1. / aspect, 1.);
       float w = exp(-.5 * r * r);
-      sum += clamp((tone(texture(backdrop, at + off).rgb) - .5) * 2., 0., 1.) * w; total += w;
+      sum += clamp((graded(at + off) - .5) * 2., 0., 1.) * w; total += w;
     }
     c = 1. - (1. - c) * (1. - sum / total * glow);
   }
@@ -155,6 +161,8 @@ export class PlaybackEngine {
   private main!: WebGLProgram;
   private finishing!: WebGLProgram;
   private finishUniforms: Record<string, WebGLUniformLocation | null> = {};
+  private lutTexture: WebGLTexture | null = null;
+  private lutId: string | null = null;
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
   private timeline: Timeline | null = null;
@@ -192,7 +200,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(finishing, position, 'p');
     gl.linkProgram(finishing);
     this.finishing = finishing;
-    for (const name of ['backdrop', 'viewport', 'grade', 'glow', 'vignette', 'grain', 'bars', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
+    for (const name of ['backdrop', 'viewport', 'lutTex', 'useLut', 'lutAmount', 'grade', 'glow', 'vignette', 'grain', 'bars', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -229,6 +237,7 @@ export class PlaybackEngine {
 
   setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
     this.timeline = timeline;
+    if ((timeline.lut ?? null) !== this.lutId) this.loadLut(timeline.lut ?? null);
     this.textUrl = textUrl;
     this.captionUrl = captionUrl;
     this.sources = sources;
@@ -241,6 +250,22 @@ export class PlaybackEngine {
     if (this.time > duration(timeline)) this.time = duration(timeline);
     this.syncSlots();
     this.requestDraw();
+  }
+
+  private loadLut(id: string | null) {
+    this.lutId = id; this.lutTexture = null;
+    if (!id) { this.requestDraw(); return; }
+    const image = new Image();
+    image.onload = () => {
+      if (this.lutId !== id) return;
+      const { gl } = this; const texture = gl.createTexture()!;
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      this.lutTexture = texture; gl.activeTexture(gl.TEXTURE0); this.requestDraw();
+    };
+    image.src = lutAtlasUrl(id);
   }
 
   get currentTime() { return this.time; }
@@ -582,7 +607,8 @@ export class PlaybackEngine {
   /** The cinematic finish over everything drawn so far, as the export does it, before the captions. */
   private drawFinish() {
     const finish = this.timeline?.finish;
-    if (!finish || !(finish.letterbox || finish.grade || finish.glow || finish.vignette || finish.grain)) return;
+    const lut = Boolean(this.timeline?.lut && this.lutTexture && (this.timeline.lut_amount ?? 1) > 0);
+    if ((!finish || !(finish.letterbox || finish.grade || finish.glow || finish.vignette || finish.grain)) && !lut) return;
     const { gl } = this;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.backdrop);
@@ -591,9 +617,10 @@ export class PlaybackEngine {
     gl.useProgram(this.finishing);
     const u = this.finishUniforms;
     gl.uniform1i(u.backdrop, 1);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.lutTexture); gl.uniform1i(u.lutTex, 2); gl.uniform1i(u.useLut, lut ? 1 : 0); gl.uniform1f(u.lutAmount, this.timeline?.lut_amount ?? 1); gl.activeTexture(gl.TEXTURE0);
     gl.uniform2f(u.viewport, this.canvas.width, this.canvas.height);
-    gl.uniform1f(u.grade, finish.grade); gl.uniform1f(u.glow, finish.glow); gl.uniform1f(u.vignette, finish.vignette); gl.uniform1f(u.grain, finish.grain);
-    gl.uniform1f(u.bars, finish.letterbox ? barShare(this.timeline!.format) : 0);
+    gl.uniform1f(u.grade, finish?.grade ?? 0); gl.uniform1f(u.glow, finish?.glow ?? 0); gl.uniform1f(u.vignette, finish?.vignette ?? 0); gl.uniform1f(u.grain, finish?.grain ?? 0);
+    gl.uniform1f(u.bars, finish?.letterbox ? barShare(this.timeline!.format) : 0);
     gl.uniform1f(u.seed, Math.floor(this.time * this.timeline!.format.fps) % 997);
     gl.disable(gl.BLEND);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

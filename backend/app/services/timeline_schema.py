@@ -339,6 +339,8 @@ class Timeline(Strict):
     layers: List[Layer] = Field(default_factory=list)
     normalize_audio: bool = False
     finish: Optional[Finish] = None
+    lut: Optional[str] = Field(default=None, pattern=r'^[a-z0-9-]{1,64}$')
+    lut_amount: float = Field(default=1, ge=0, le=1)
 
     @model_validator(mode='after')
     def limits(self):

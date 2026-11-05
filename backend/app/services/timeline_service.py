@@ -709,6 +709,14 @@ class Builder:
     def add_finish(self, current: str) -> str:
         """The cinematic finish over everything so far: captions come after it, above the bars."""
         finish = self.timeline.finish
+        if self.timeline.lut and self.timeline.lut_amount > 0:
+            from app.services.lut_service import resolve
+            path = str(resolve(self.timeline.lut)).replace("'", "'\\''")
+            amount = self.timeline.lut_amount
+            graded, mixed, original = 'project_lut', 'project_lut_mix', 'project_lut_source'
+            self.graph += [f'{current}split=2[{original}][{graded}]', f'[{graded}]lut3d=file=\'{path}\':interp=tetrahedral[{graded}done]',
+                           f'[{original}][{graded}done]blend=all_expr=\'A*{1 - amount:.6f}+B*{amount:.6f}\'[{mixed}]']
+            current = f'[{mixed}]'
         if finish is None or not (finish.letterbox or finish.grade or finish.glow or finish.vignette or finish.grain):
             return current
         steps, out, inputs = finish_filters(finish, self.fmt.width, self.fmt.height, self.folder, 'finish', current)

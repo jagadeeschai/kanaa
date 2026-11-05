@@ -109,6 +109,9 @@ export const startScenes = (id: number, body: { start: number; end: number }) =>
 export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string };
 export const listEffects = () => requestJson<EffectInfo[]>('/api/effects');
 export const makeEffect = (id: string, size: { width: number; height: number }) => requestJson<{ media?: Photo; job_id?: string }>(`/api/effects/${id}`, { method: 'POST', body: JSON.stringify(size) });
+export type LutInfo = { id: string; name: string };
+export const listLuts = () => requestJson<{ folder: string; luts: LutInfo[] }>('/api/luts');
+export const lutAtlasUrl = (id: string) => `/api/luts/${encodeURIComponent(id)}/atlas`;
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });
 /** A steadied and/or reversed copy of a video, made once on the server. */
 export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`, { method: 'POST' });

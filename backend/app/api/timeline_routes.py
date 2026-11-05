@@ -581,6 +581,21 @@ def list_effects():
     return [{'id': effect.id, 'label': effect.label, 'tamil': effect.tamil, 'mood': effect.mood, 'about': effect.about} for effect in EFFECTS]
 
 
+@router.get('/luts')
+def list_luts():
+    from app.services import lut_service
+    return {'folder': str(lut_service.SOURCE), 'luts': lut_service.library()}
+
+
+@router.get('/luts/{lut_id}/atlas')
+def lut_atlas(lut_id: str):
+    from app.services import lut_service
+    try:
+        return FileResponse(lut_service.atlas(lut_id), media_type='image/png')
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @router.post('/effects/{effect_id}')
 def make_effect(effect_id: str, body: dict):
     """An effect clip in the project's shape: the media at once if it was made before, otherwise a job that makes it."""
