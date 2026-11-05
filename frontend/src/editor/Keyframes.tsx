@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useContext, useRef } from 'react';
+import { SimpleContext } from './layout';
 import { ValueSlider } from './controls';
 import { ChevronLeft, ChevronRight, Minus, Plus, Timer } from 'lucide-react';
 import { valueAt, type AnimatedProperty, type Ease, type Transform } from '../timeline/evaluate';
@@ -40,7 +41,12 @@ function PointBar({ control, transform, local, length, onChange, onSeek }: Panel
   </div>;
 }
 
+/** Keyframes are a Pro control: Simple mode hides them (moves, animations and Follow still work). */
 export function MotionPanel(props: PanelProps) {
+  return useContext(SimpleContext) ? null : <KeyframePanel {...props}/>;
+}
+
+function KeyframePanel(props: PanelProps) {
   const { transform, local, onChange, onGestureStart, controls = ['position', 'scale', 'rotation', 'opacity'] } = props;
   const animated = (['position', 'scale', 'rotation', 'opacity'] as Control[]).filter((control) => isAnimated(transform, control));
   const ease = animated.length ? transform.keyframes?.[animated[0] === 'position' ? 'x' : animated[0] as AnimatedProperty]?.[0]?.ease ?? 'easeInOut' : null;

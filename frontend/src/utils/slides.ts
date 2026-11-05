@@ -68,3 +68,21 @@ export function slideTransform(animation: ImageAnimation, index: number, starts:
   if (motion === 'pan-right') return `scale(1.12) translateX(${(2 * progress - 1) * 5.35}%)`;
   return undefined;
 }
+
+/**
+ * A lyric line dragged onto an image: that image now starts when the line starts.
+ * Returns new storyboard starts, or null when it can't go there (the first image always starts at 0,
+ * and each image keeps at least a second between its neighbours).
+ */
+export function startImageAt(starts: number[], index: number, time: number, duration: number): number[] | null {
+  if (index <= 0 || index >= starts.length) return null;
+  const earliest = starts[index - 1] + MIN_SLIDE_SECONDS;
+  const latest = (index + 1 < starts.length ? starts[index + 1] : duration) - MIN_SLIDE_SECONDS;
+  if (time < earliest - 1e-6 || time > latest + 1e-6) return null;
+  const next = [...starts];
+  next[index] = Math.round(time * 1000) / 1000;
+  return next;
+}
+
+/** Audio files can be dropped onto the lyric editor to use as its song. */
+export const isSongFile = (file: { type: string; name: string }) => file.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(file.name);

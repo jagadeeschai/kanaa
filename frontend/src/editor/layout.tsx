@@ -27,8 +27,9 @@ export function useAppTheme() {
   return { choice, next, theme };
 }
 
-export type Layout = { media: number; inspector: number; timeline: number; mediaOpen: boolean; inspectorOpen: boolean };
-export const DEFAULT_LAYOUT: Layout = { media: 240, inspector: 280, timeline: 230, mediaOpen: true, inspectorOpen: true };
+/** `simple` hides rarely used controls (keyframes, More sections, Pro-only groups) for an easier editor. */
+export type Layout = { media: number; inspector: number; timeline: number; mediaOpen: boolean; inspectorOpen: boolean; simple: boolean };
+export const DEFAULT_LAYOUT: Layout = { media: 240, inspector: 280, timeline: 230, mediaOpen: true, inspectorOpen: true, simple: false };
 export const LIMITS = { media: [180, 360], inspector: [240, 420], timeline: [128, 620] } as const;
 
 export function useEditorLayout() {
@@ -36,7 +37,7 @@ export function useEditorLayout() {
     try { return { ...DEFAULT_LAYOUT, ...JSON.parse(read(LAYOUT_KEY) ?? '{}') }; } catch { return DEFAULT_LAYOUT; }
   });
   const update = useCallback((changes: Partial<Layout>) => setLayout((current) => { const next = { ...current, ...changes }; write(LAYOUT_KEY, JSON.stringify(next)); return next; }), []);
-  const reset = useCallback(() => update(DEFAULT_LAYOUT), [update]);
+  const reset = useCallback(() => setLayout((current) => { const next = { ...DEFAULT_LAYOUT, simple: current.simple }; write(LAYOUT_KEY, JSON.stringify(next)); return next; }), []);
   return { layout, update, reset };
 }
 
@@ -66,6 +67,8 @@ const opened = new Map<string, boolean>();
 
 /** A settings group. Several can stay open, and each remembers its state until the page reloads. */
 /** Opens the guide at an article. Set by the editor; panels call it from their ⓘ buttons. */
+/** True in Simple mode: Pro-only groups, More sections and keyframes are hidden. */
+export const SimpleContext = createContext(false);
 export const HelpContext = createContext<(article: string) => void>(() => {});
 
 /** Which tab of a settings panel shows, and what's being searched for. Groups read it to decide whether they show. */
@@ -93,10 +96,13 @@ export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; ch
  * A section of settings. In a Panel it shows on its own tab, or when its title or keywords match the search (then open).
  * `tip` is one plain sentence under the title; `help` opens the guide's article on it.
  */
-export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; children: ReactNode }) {
+export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
   const panel = useContext(PanelContext);
   const openHelp = useContext(HelpContext);
+  const simple = useContext(SimpleContext);
+  // A Pro group already in use stays visible, so Simple mode never hides a setting that is changing the video.
+  if (simple && pro && !changed) return null;
   const matches = panel?.query ? `${title} ${keywords} ${tip ?? ''}`.toLowerCase().includes(panel.query) : null;
   if (panel && (matches === false || (matches === null && tab && tab !== panel.tab))) return null;
   const showing = open || Boolean(matches);
@@ -113,6 +119,7 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
 export function More({ label = 'More options', children }: { label?: string; children: ReactNode }) {
   const panel = useContext(PanelContext);
   const [open, setOpen] = useState(false);
+  if (useContext(SimpleContext)) return null;
   const showing = open || Boolean(panel?.query);
   return <div className={`ed-more ${showing ? 'open' : ''}`}>
     <button className="ed-more-head" aria-expanded={showing} onClick={() => setOpen(!open)}><ChevronRight size={13}/>{label}</button>

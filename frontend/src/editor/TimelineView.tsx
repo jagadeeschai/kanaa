@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
+import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
@@ -11,6 +12,8 @@ type Props = {
   onSelect: (id: string | null) => void; onSeek: (t: number) => void;
   onChange: (next: Timeline, group: string) => void; onScrubStart: () => void;
   onItemMenu: (id: string | null, t: number, x: number, y: number) => void;
+  /** Something from the side panel was dropped on the timeline. */
+  onDropPayload?: (payload: DragPayload, target: DropTarget) => void;
 };
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
@@ -25,7 +28,7 @@ const readColors = (element: HTMLElement) => {
 
 const soundTop = (row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + row * (SOUND_HEIGHT + SOUND_GAP);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
@@ -34,6 +37,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const colors = useRef(TOKENS);
   useLayoutEffect(() => { colors.current = readColors(hostRef.current!); }, [theme]);
   const groupCount = useRef(0);
+  /** Where a dragged tile would land, drawn as a line and a hint while it hovers. */
+  const dropRef = useRef<{ x: number; zone: DropTarget['zone']; hint: string; clipId: string | null } | null>(null);
 
   const xOf = (t: number) => PAD + t * props.current.zoom;
   const timeOf = (x: number) => Math.max(0, (x - PAD) / props.current.zoom);
@@ -220,6 +225,22 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
         veil(layer.hidden, soundTop(row), SOUND_HEIGHT);
       });
+      const drop = dropRef.current;
+      if (drop) {
+        context.fillStyle = colors.current.selected;
+        const target = drop.clipId ? [mainLayer(shown), ...overlayLayers(shown)].flatMap((layer) => layer.items).find((clip) => clip.id === drop.clipId) : undefined;
+        if (target && drop.zone === 'main' && drop.hint !== 'Insert here') {
+          context.globalAlpha = 0.25; context.fillRect(xOf(target.start), TRACK_TOP, clipLength(target) * scale, TRACK_HEIGHT); context.globalAlpha = 1;
+        } else {
+          const y = drop.zone === 'main' ? TRACK_TOP : TRACK_TOP + TRACK_HEIGHT;
+          context.fillRect(drop.x - 1.5, drop.zone === 'main' ? y : RULER, 3, drop.zone === 'main' ? TRACK_HEIGHT : height - RULER);
+        }
+        context.font = '600 12px Inter, system-ui, sans-serif';
+        const label = drop.hint; const w = context.measureText(label).width + 14;
+        const lx = Math.min(Math.max(drop.x + 6, 4), width - w - 4);
+        context.beginPath(); context.roundRect(lx, RULER + 2, w, 20, 6); context.fill();
+        context.fillStyle = colors.current.rulerBg; context.fillText(label, lx + 7, RULER + 12);
+      }
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
@@ -338,6 +359,33 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     onItemMenu(item, timeOf(x), event.clientX, event.clientY);
   };
   const onPointerUp = () => { dragRef.current = null; };
+  /** Main track (and the ruler above it) inserts; anything below goes on top as an overlay, title or sound. */
+  const dropTarget = (event: React.DragEvent<HTMLCanvasElement>): DropTarget => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x = event.clientX - rect.left; const y = event.clientY - rect.top;
+    const zone = y <= TRACK_TOP + TRACK_HEIGHT ? 'main' as const : 'above' as const;
+    const time = timeOf(x);
+    const timeline = props.current.timeline;
+    const clip = clipAt(timeline, time, zone) ?? (zone === 'above' ? clipAt(timeline, time, 'main') : null);
+    return { zone, time, clipId: clip?.id ?? null };
+  };
+  const onDragOver = (event: React.DragEvent<HTMLCanvasElement>) => {
+    const payload = activeDrag();
+    if (!payload || !onDropPayload) return;
+    const target = dropTarget(event);
+    const hint = dropHint(props.current.timeline, payload, target);
+    if (!hint) { dropRef.current = null; event.dataTransfer.dropEffect = 'none'; return; }
+    event.preventDefault(); event.dataTransfer.dropEffect = 'copy';
+    dropRef.current = { x: xOf(target.time), zone: target.zone, hint, clipId: target.clipId };
+  };
+  const onDrop = (event: React.DragEvent<HTMLCanvasElement>) => {
+    const payload = decodePayload(event.dataTransfer.getData(DRAG_TYPE)) ?? activeDrag();
+    dropRef.current = null; setActiveDrag(null);
+    if (!payload || !onDropPayload) return;
+    event.preventDefault();
+    const target = dropTarget(event);
+    if (dropHint(props.current.timeline, payload, target)) onDropPayload(payload, target);
+  };
 
   const tracks = trackLayers(timeline);
   const main = mainLayer(timeline);
@@ -349,7 +397,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.length * (SOUND_HEIGHT + SOUND_GAP) }}>
       <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, soundTop(row), SOUND_HEIGHT))}</div>
       <div className="tl-scroll" ref={hostRef}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}/>
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}
+          onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
       </div>
     </div>
   </div>;

@@ -9,7 +9,7 @@ import { useVideoProject } from '../hooks/useVideoProject';
 import ImportArea from './ImportArea';
 import LyricImageGenerator from './LyricImageGenerator';
 import KanaaSelect from './KanaaSelect';
-import { computeSlideStarts, crossfadeSeconds, slideIndexAt, slideTransform, type ImageAnimation, type SlideTiming } from '../utils/slides';
+import { isSongFile, startImageAt, computeSlideStarts, crossfadeSeconds, slideIndexAt, slideTransform, type ImageAnimation, type SlideTiming } from '../utils/slides';
 import { nextTabIndex } from '../editor/tab-navigation';
 import { mediaCanvas, type LyricCanvas } from '../editor/lyric-canvas';
 import { lyricEditorTimeline } from '../editor/lyric-handoff';
@@ -80,6 +80,8 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+const LINE_TYPE = 'application/x-kanaa-lyric-line';
+
 export default function LyricalVideoCreator({ photo, projectId, projectName, onClose, onOpenOutput, onContinueInEditor }: { photo: Photo; projectId: number; projectName: string; onClose: () => void; onOpenOutput?: (id: number) => void; onContinueInEditor: (project: Project) => void }) {
   const [backgrounds, setBackgrounds] = useState<Photo[]>([photo]);
   const [backgroundType, setBackgroundType] = useState<'image' | 'video'>(photo.media_type === 'video' ? 'video' : 'image');
@@ -119,6 +121,9 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [stage, setStage] = useState<LyricStage>('song');
+  /** A song file being dragged over the window, and the image a lyric line is hovering. */
+  const [songOver, setSongOver] = useState(false);
+  const [lineOver, setLineOver] = useState<number | null>(null);
   const [stageSize, setStageSize] = useState({ width: 600, height: 500 });
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -306,8 +311,32 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
     setCues((previous) => previous.map((cue, current) => current === index ? { ...cue, ...changes, review: false } : cue));
   };
 
+  const hasFiles = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
+  /** Drop a song anywhere in the lyric editor. */
+  const onSongDrop = (event: React.DragEvent) => {
+    setSongOver(false);
+    // The media import area takes its own drops (pictures and videos).
+    if (!hasFiles(event) || event.defaultPrevented) return;
+    event.preventDefault();
+    const file = Array.from(event.dataTransfer.files).find(isSongFile);
+    if (!file) { setError('Drop an audio file (MP3, WAV, M4A, AAC, FLAC or OGG) to use it as the song.'); return; }
+    void upload(file);
+  };
+  /** Drop a lyric line onto an image: the image starts with that line. */
+  const onLineDrop = (event: React.DragEvent, index: number) => {
+    setLineOver(null);
+    const line = Number(event.dataTransfer.getData(LINE_TYPE));
+    if (!event.dataTransfer.types.includes(LINE_TYPE) || !cues[line]) return;
+    event.preventDefault();
+    const next = startImageAt(slideStarts, index, cues[line].start, duration);
+    if (!next) { setError(`Image ${index + 1} can't start there: it must come at least a second after image ${index} and before the next image.`); return; }
+    pause(); setStoryboardStarts(next); setSlideTiming('storyboard'); setError(null);
+    setNotice(`Image ${index + 1} now starts with “${cues[line].text.slice(0, 40)}”.`);
+  };
+
   return createPortal(<>
-    <div className="theme-overlay fixed inset-0 z-[110] bg-black/70 sm:p-4">
+    <div className="theme-overlay fixed inset-0 z-[110] bg-black/70 sm:p-4" onDragOver={(event) => { if (!hasFiles(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setSongOver(true); }} onDragLeave={(event) => { if (event.currentTarget === event.target) setSongOver(false); }} onDrop={onSongDrop}>
+      {songOver && <div className="pointer-events-none fixed inset-4 z-[120] grid place-items-center rounded-2xl border-2 border-dashed border-brand-400 bg-black/60 text-lg font-medium text-brand-100">{uploading ? 'Adding song…' : 'Drop your song to use it here'}</div>}
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Lyrical video creator" className="theme-modal flex h-full flex-col overflow-hidden border border-white/10 bg-slate-950 outline-none sm:rounded-2xl">
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3"><div><h2 className="text-base font-semibold text-slate-100">{projectName}</h2><p className="text-xs text-slate-400">{LYRIC_STAGES.find((item) => item.id === stage)?.label} · {project.saveFailed ? 'Save failed' : project.saving ? 'Saving…' : 'Saved'}</p></div><button onClick={close} aria-label="Close lyrical creator" className={buttonClass}><span className="flex items-center gap-2"><span className="hidden sm:inline">Back to studio</span><X className="h-4 w-4" /></span></button></header>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
@@ -332,9 +361,10 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
                 <h3 className="text-sm font-medium text-slate-200">Background</h3>
                 <label className="block text-xs text-slate-400">Video format<KanaaSelect aria-label="Lyrical video format" value={canvas} onChange={(event) => { const next = event.target.value as LyricCanvasChoice; setCanvas(next); const format = next === 'auto' ? mediaCanvas(firstBackground?.width, firstBackground?.height) : next; setFontSize(format === 'landscape' ? LANDSCAPE_LYRIC_SIZE : DEFAULT_LYRIC_SIZE); }} className="mt-1"><option value="auto">Match media ({resolvedCanvas === 'portrait' ? '9:16 portrait' : resolvedCanvas === 'square' ? '1:1 square' : '16:9 landscape'})</option><option value="portrait">Portrait 9:16</option><option value="square">Square 1:1</option><option value="landscape">Landscape 16:9</option></KanaaSelect></label>
                 <div className="flex gap-2">{(['image', 'video'] as const).map((type) => <button key={type} aria-pressed={backgroundType === type} onClick={() => { pause(); setBackgroundType(type); setPickerOpen(true); setPickerPage(0); setPickerSearch(''); setPickerPhotos([]); setJob(null); if (backgrounds[0]?.media_type !== type) { setBackgrounds([]); setPosition(0); } }} className={`${buttonClass} ${backgroundType === type ? 'border-brand-400 text-brand-300' : ''}`}>{type === 'image' ? 'Images / slideshow' : 'Video'}</button>)}</div>
-                {backgrounds.map((item, index) => <div key={`${item.id}-${index}`} className="flex items-center gap-2 text-xs text-slate-300"><img src={photoThumbUrl(item.id)} alt="" className="h-10 w-10 rounded object-cover" /><span className="min-w-0 flex-1 truncate">{index + 1}. {item.filename}</span>{!isVideo && <><button aria-label={`Move image ${index + 1} earlier`} disabled={index === 0} onClick={() => { pause(); setBackgrounds((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; }); }} className={buttonClass}>↑</button><button aria-label={`Remove image ${index + 1}`} onClick={() => { pause(); setBackgrounds((items) => items.filter((_, i) => i !== index)); }} className={buttonClass}>×</button></>}</div>)}
+                {backgrounds.map((item, index) => <div key={`${item.id}-${index}`} onDragOver={(event) => { if (isVideo || index === 0 || !event.dataTransfer.types.includes(LINE_TYPE)) return; event.preventDefault(); setLineOver(index); }} onDragLeave={() => setLineOver(null)} onDrop={(event) => onLineDrop(event, index)} className={`flex items-center gap-2 rounded text-xs text-slate-300 ${lineOver === index ? 'outline outline-2 outline-brand-400' : ''}`}><img src={photoThumbUrl(item.id)} alt="" className="h-10 w-10 rounded object-cover" /><span className="min-w-0 flex-1 truncate">{index + 1}. {item.filename}{!isVideo && slideStarts[index] !== undefined && <em className="block not-italic text-slate-500">from {slideStarts[index].toFixed(1)}s</em>}</span>{!isVideo && <><button aria-label={`Move image ${index + 1} earlier`} disabled={index === 0} onClick={() => { pause(); setBackgrounds((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; }); }} className={buttonClass}>↑</button><button aria-label={`Remove image ${index + 1}`} onClick={() => { pause(); setBackgrounds((items) => items.filter((_, i) => i !== index)); }} className={buttonClass}>×</button></>}</div>)}
                 <button onClick={() => { setPickerOpen(!pickerOpen); }} className={buttonClass}>{pickerOpen ? 'Close media picker' : backgroundType === 'image' ? 'Add images from media' : 'Choose video from media'}</button>
                 {pickerOpen && <div className="space-y-2"><ImportArea compact videoOnly={backgroundType === 'video'} onImported={(items) => { pause(); const matching = items.filter((item) => item.media_type === backgroundType); if (!matching.length) { setNotice(`Imported media. Switch to ${items[0]?.media_type === 'video' ? 'Video' : 'Images'} to use it.`); return; } setBackgrounds((previous) => backgroundType === 'video' ? matching.slice(0, 1) : [...previous, ...matching].slice(0, 50)); setPickerOpen(false); setJob(null); }} /><input aria-label="Search background media" placeholder="Search your media" value={pickerSearch} onChange={(event) => { setPickerSearch(event.target.value); setPickerPage(0); }} className={inputClass} />{pickerLoading ? <p role="status" className="text-xs text-slate-400">Loading media…</p> : <><div className="grid grid-cols-3 gap-2">{pickerPhotos.map((item) => <button key={item.id} aria-label={`Choose ${item.filename}`} disabled={backgroundType === 'image' && (backgrounds.some((selected) => selected.id === item.id) || backgrounds.length >= 50)} onClick={() => { pause(); setJob(null); setPosition(0); if (backgroundType === 'video') { setBackgrounds([item]); setPickerOpen(false); } else setBackgrounds((items) => [...items, item]); }} className="overflow-hidden rounded border border-white/10 text-left disabled:opacity-30"><img src={photoThumbUrl(item.id)} alt="" className="h-16 w-full object-cover" /><span className="block truncate p-1 text-xs text-slate-300">{item.filename}</span></button>)}</div>{pickerPhotos.length === 0 && <p className="text-xs text-slate-400">No matching media in your media.</p>}<div className="flex items-center justify-between text-xs text-slate-400"><button disabled={pickerPage === 0} onClick={() => setPickerPage((page) => page - 1)} className={buttonClass}>Previous</button><span>{pickerPage + 1} / {Math.max(1, Math.ceil(pickerTotal / 24))}</span><button disabled={(pickerPage + 1) * 24 >= pickerTotal} onClick={() => setPickerPage((page) => page + 1)} className={buttonClass}>Next</button></div></>}</div>}
+                {!isVideo && backgrounds.length > 1 && cues.length > 0 && <div aria-label="Lyric lines to place" className="space-y-1"><p className="text-xs text-slate-400">Drag a lyric line onto an image (from image 2) to start that image with the line.</p><div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">{cues.map((cue, line) => <span key={line} draggable onDragStart={(event) => { event.dataTransfer.setData(LINE_TYPE, String(line)); event.dataTransfer.effectAllowed = 'copy'; }} title={`Starts at ${cue.start.toFixed(1)}s`} className="cursor-grab rounded-full border border-white/15 px-2 py-0.5 text-xs text-slate-200 hover:border-brand-400">{cue.start.toFixed(1)}s · {cue.text.slice(0, 28)}</span>)}</div></div>}
                 <p className="text-xs text-slate-400">{backgroundType === 'image' ? `Up to 50 images, shown in order for equal portions of the song.${song && backgrounds.length ? ` ${(song.duration / backgrounds.length).toFixed(1)} seconds each.` : ''}` : 'The chosen video loops to the song’s length.'}</p>
               </section>
               <LyricImageGenerator initiallyOpen={photo.filename === 'Blank canvas.png'} projectId={projectId} lyrics={plainLyricLines(lyrics).join('\n')} cues={valid ? cues : []} canvas={resolvedCanvas} disabled={busy || !project.loaded || !lyrics.trim()} onUse={(images, starts) => {
@@ -346,7 +376,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               {!lyrics.trim() && <p className="text-xs text-slate-400">Paste lyrics in Song & words before creating images from them.</p>}
               </>}
               {stage === 'song' && <>
-              <div><label className="mb-2 block text-sm font-medium text-slate-200">1. Upload song<input aria-label="Upload song" type="file" accept="audio/*,video/mp4,.mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} className="mt-2 block w-full text-xs text-slate-400" /></label><p className="text-xs text-slate-400">{song ? song.name : isVideo ? 'Or keep the background video’s audio with imported/manual timings.' : 'Upload a song to turn this photo into a lyrical video.'}</p></div>
+              <div><label className="mb-2 block text-sm font-medium text-slate-200">1. Upload song<input aria-label="Upload song" type="file" accept="audio/*,video/mp4,.mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} className="mt-2 block w-full text-xs text-slate-400" /></label><p className="text-xs text-slate-400">{song ? song.name : isVideo ? 'Or keep the background video’s audio with imported/manual timings.' : 'Upload a song, or drop one anywhere here, to turn this photo into a lyrical video.'}</p></div>
               <label className="block text-sm text-slate-200">2. Paste lyrics<textarea aria-label="Song lyrics" value={lyrics} onFocus={() => { if (cues.length) setUndoLyrics({ lyrics, cues }); }} onChange={(event) => { changeLyrics(event.target.value); }} maxLength={30000} rows={5} placeholder="One lyric line per line" className={`${inputClass} mt-2 resize-y`} /></label>
               <label className="block text-xs text-slate-400">Song language<KanaaSelect aria-label="Song language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-1"><option value="">Detect automatically</option><option value="ta">Tamil</option><option value="en">English</option><option value="hi">Hindi</option><option value="te">Telugu</option><option value="ml">Malayalam</option><option value="kn">Kannada</option><option value="es">Spanish</option></KanaaSelect></label>
               {undoLyrics && undoLyrics.cues !== cues && <button onClick={() => { setLyrics(undoLyrics.lyrics); setCues(undoLyrics.cues); setUndoLyrics(null); setNotice('Lyrics and timings restored.'); }} className={buttonClass}>Undo lyric changes</button>}

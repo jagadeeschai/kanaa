@@ -1,5 +1,6 @@
+import { applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Eye, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import AIImageGenerator from '../components/CoverArtGenerator';
@@ -14,7 +15,7 @@ import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
-import { DEFAULT_LAYOUT, Group, HelpContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
+import { DEFAULT_LAYOUT, Group, HelpContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
 import { MotionPanel, MotionPath } from './Keyframes';
 import { ResizeBox } from './ResizeBox';
@@ -99,6 +100,13 @@ const isTyping = (target: EventTarget | null) => target instanceof HTMLElement &
 const buttonTakesSpace = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('button') !== null;
 /** Without this, Space after clicking a media tile would add the clip again instead of playing. */
 const releaseClickedButton = (event: React.MouseEvent) => { if (event.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur(); };
+/** Makes a side-panel tile draggable onto the timeline. Clicking still works as before. */
+const draggableAs = (payload: DragPayload) => ({
+  draggable: true,
+  onDragStart: (event: React.DragEvent) => { setActiveDrag(payload); event.dataTransfer.setData(DRAG_TYPE, encodePayload(payload)); event.dataTransfer.effectAllowed = 'copy'; },
+  onDragEnd: () => setActiveDrag(null),
+});
+
 const RESTART_MESSAGE = 'Kanaa was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
 export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme }: Props) {
@@ -578,12 +586,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!track) { setError('No music in your library suits this theme yet.'); return; }
     try { change(addThemeMusic(timeline, await librarySong(track), [newId(), newId()])); setThemeTrack(track.id); } catch (problem) { setError((problem as Error).message); }
   };
-  const addLibraryTrack = async (track: LibraryTrack) => {
+  const addLibraryTrack = async (track: LibraryTrack, dropAt?: number) => {
     if (!timeline) return;
     setAddingMusic(true);
     try {
       const song = await librarySong(track);
-      const at = Math.round(engineRef.current ? engineRef.current.currentTime * 1000 : 0) / 1000;
+      const at = Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000;
       const left = duration(timeline) - at;
       const length = left >= MIN_MUSIC_SECONDS ? Math.min(left, song.duration) : song.duration;
       const sound: Sound = { id: newId(), asset_id: song.asset_id, start: at, in: 0, out: length, speed: 1, volume: MUSIC_VOLUME, muted: false, fade_in: 0, fade_out: 0, duck: true, name: song.name.slice(0, 120), source_length: song.duration };
@@ -597,9 +605,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setMyStyles(next); saveStyles(next);
   };
   const forgetStyle = (id: string) => { const next = myStyles.filter((style) => style.id !== id); setMyStyles(next); saveStyles(next); };
-  const addTitle = (title: Template) => {
+  const addTitle = (title: Template, dropAt?: number) => {
     if (!timeline) return;
-    const text: TextItem = { ...title.look, id: newId(), start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
+    const text: TextItem = { ...title.look, id: newId(), start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
     change(addText(timeline, text, newId()));
     setSelectedId(text.id);
     // A title starts hidden behind its enter animation, so show it at rest.
@@ -792,15 +800,45 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(insertClip(timeline, clip));
     setSelectedId(clip.id);
   };
-  const addOverlayMedia = (item: Photo) => {
+  const addOverlayMedia = (item: Photo, dropAt?: number) => {
     if (!timeline) return;
     const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
     const base = newClip(source, newId());
-    const clip = { ...base, start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, transform: { ...base.transform, scale: OVERLAY_SCALE } };
+    const clip = { ...base, start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, transform: { ...base.transform, scale: OVERLAY_SCALE } };
     try {
       change(addOverlay(timeline, clip, newId()));
       setSelectedId(clip.id);
     } catch (problem) { setError((problem as Error).message); }
+  };
+  /** Something dragged from the side panel landed on the timeline. */
+  const onDropPayload = (payload: DragPayload, target: DropTarget) => {
+    if (!timeline) return;
+    if (payload.kind === 'media') {
+      const item = mediaById.get(payload.id);
+      if (!item) return;
+      if (target.zone === 'above') { addOverlayMedia(item, target.time); return; }
+      const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
+      const clip = newClip(source, newId());
+      change(dropClip(timeline, clip, target.time));
+      setSelectedId(clip.id);
+    } else if (payload.kind === 'look' || payload.kind === 'transition') {
+      if (!target.clipId || isLocked(timeline, target.clipId)) return;
+      const next = applyClipDrop(timeline, payload, target.clipId);
+      if (next !== timeline) { change(next); setSelectedId(target.clipId); }
+    } else if (payload.kind === 'title') {
+      const template = [...TEMPLATES, ...myStyles].find((each) => each.id === payload.template);
+      if (template) addTitle(template, target.time);
+    } else {
+      const track = library?.find((each) => each.id === payload.track);
+      if (track) void addLibraryTrack(track, target.time);
+    }
+  };
+  /** Clicking a look or transition tile applies it to the selected clip; dragging puts it on any clip. */
+  const applyToSelected = (payload: DragPayload) => {
+    if (!timeline || !selected) { setError('Select a clip first, or drag this onto a clip in the timeline.'); return; }
+    if (isLocked(timeline, selected.id)) return;
+    const next = applyClipDrop(timeline, payload, selected.id);
+    if (next === timeline) setError('A transition goes on a clip that comes after another one on the main track.'); else change(next);
   };
   /** "Same as my clip": the first clip on the main track, not the project's starting file (a blank project has none). */
   const firstClip = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start)[0] : undefined;
@@ -1181,12 +1219,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} own={Boolean(selectedBlur || (selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline)))} onDraw={() => startDrawing('start')} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
     following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => { void followHere('start'); }} onContinue={() => { void followHere('continue'); }}
     onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
-  return <div className="ed" ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
+  return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''}`} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     <header className="ed-top">
       <button className="ed-icon" onClick={() => { void closeEditor(); }} aria-label="Back to projects"><ArrowLeft size={18}/></button>
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
+      <div className="ed-mode" role="group" aria-label="Editor mode">
+        <button aria-pressed={layout.simple} className={layout.simple ? 'on' : ''} onClick={() => updateLayout({ simple: true })} title="Simple: the main controls only. Drag, drop and done.">Simple</button>
+        <button aria-pressed={!layout.simple} className={layout.simple ? '' : 'on'} onClick={() => updateLayout({ simple: false })} title="Pro: every control, including keyframes and More options">Pro</button>
+      </div>
       <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
@@ -1205,7 +1247,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
           {folders.length > 0 && <div className="ed-chips ed-folders" role="group" aria-label="Folders"><button className={folder === null ? 'on' : ''} onClick={() => setFolder(null)}>All</button>{folders.map((name) => <button key={name} className={folder === name ? 'on' : ''} onClick={() => setFolder(name)}>{name}</button>)}</div>}
           {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
-            <button className="ed-tile-add" onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
+            <button className="ed-tile-add" {...draggableAs({ kind: 'media', id: item.id })} onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}, or drag it onto the timeline. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}
@@ -1248,15 +1290,19 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             {current && (() => { const music = themeMusic(timeline); return <div className="ed-add-row"><span>{music ? <>Music: <b>{music.name.replace(/^Theme music · /, '')}</b></> : 'No music'}</span>
               <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
+            <h3 className="ed-sub">One clip</h3>
+            <p className="ed-tip">Drag a look or a transition onto a clip in the timeline, or click it to use it on the selected clip.</p>
+            <div className="ed-quick" role="group" aria-label="Looks">{LOOK_NAMES.map((look) => <button key={look.id} className={`ed-quick-tile look-${look.id}`} {...draggableAs({ kind: 'look', look: look.id })} onClick={() => applyToSelected({ kind: 'look', look: look.id })} title={`${look.label} look`}><span className="ed-quick-art"/>{look.label}</button>)}</div>
+            <div className="ed-quick" role="group" aria-label="Transitions">{TRANSITIONS.map((item) => <button key={item.id} className="ed-quick-tile transition" {...draggableAs({ kind: 'transition', transition: item.id })} onClick={() => applyToSelected({ kind: 'transition', transition: item.id })} title={`${item.label} into a clip`}><Shuffle size={13}/>{item.label}</button>)}</div>
             <p className="ed-tip">The cinematic finish and frame rate are in Project settings: click the size button at the top, or an empty part of the timeline.</p>
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
         {leftTab === 'text' && <>
-          <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Adds a title at the playhead. Then type your own words.</p>
-            <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
+          <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add a title at the playhead, or drag one onto the timeline. Then type your own words.</p>
+            <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" {...draggableAs({ kind: 'title', template: template.id })} onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
               <span className="ed-template-art">{thumbs[template.id] ? <img src={thumbs[template.id]} alt=""/> : <Type size={16}/>}</span><span>{template.label}</span></button>)}</div>
             {myStyles.length > 0 && <><h3 className="ed-sub">My styles</h3><div className="ed-templates">{myStyles.map((style) => <div key={style.id} className="ed-template-wrap">
-              <button className="ed-template" onClick={() => addTitle(style)} title="Add a title in this style"><span className="ed-template-art">{thumbs[style.id] ? <img src={thumbs[style.id]} alt=""/> : <Type size={16}/>}</span><span>{style.label}</span></button>
+              <button className="ed-template" {...draggableAs({ kind: 'title', template: style.id })} onClick={() => addTitle(style)} title="Add a title in this style"><span className="ed-template-art">{thumbs[style.id] ? <img src={thumbs[style.id]} alt=""/> : <Type size={16}/>}</span><span>{style.label}</span></button>
               <button className="ed-icon small ed-template-forget" aria-label={`Forget the style ${style.label}`} title="Forget this style" onClick={() => forgetStyle(style.id)}><X size={12}/></button></div>)}</div></>}</section>
           <section className="ed-add" aria-label="Captions"><h3 className="ed-sub">Captions</h3><p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
             <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
@@ -1271,12 +1317,12 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             </div>
             {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>
         </>}
-        {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
+        {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead, or drag a track onto the timeline. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
           <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
           <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music</h3>
             {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : <>
               <div className="ed-chips" role="group" aria-label="Mood">{([null, ...MOODS] as (Mood | null)[]).map((mood) => <button key={mood ?? 'all'} className={musicMood === mood ? 'on' : ''} aria-pressed={musicMood === mood} onClick={() => setMusicMood(mood)}>{mood ? MOOD_LABELS[mood] : 'All'}</button>)}</div>
-              <ul className="ed-tracks">{library.filter((track) => !musicMood || track.mood === musicMood).map((track) => <li key={track.id}>
+              <ul className="ed-tracks">{library.filter((track) => !musicMood || track.mood === musicMood).map((track) => <li key={track.id} {...draggableAs({ kind: 'track', track: track.id })} title="Drag onto the timeline to add it there">
                 <button className="ed-icon small" aria-label={`${listening === track.id ? 'Stop' : 'Listen to'} ${track.name}`} onClick={() => listen(track.id)}>{listening === track.id ? <Pause size={13}/> : <Play size={13}/>}</button>
                 <span><b>{track.name}</b><small>{[track.genre, timecode(track.seconds).replace(/\.\d+$/, '')].filter(Boolean).join(' · ')}</small></span>
                 <button className="ed-icon small" aria-label={`Add ${track.name} at the playhead`} title="Add at the playhead" disabled={addingMusic} onClick={() => { void addLibraryTrack(track); }}><Plus size={14}/></button></li>)}</ul>
@@ -1362,7 +1408,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         <button className="ed-button" aria-label="More view and help actions" onClick={openViewMenu}><MoreHorizontal size={15}/>More</button>
       </span>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()}/>}
+    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}/>}
     </div></div>
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
@@ -1376,7 +1422,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       onClose={() => setCreatingAIImage(false)}
       onCreated={(item) => { setMedia((current) => current.some((entry) => entry.id === item.id) ? current : [item, ...current]); setLeftTab('media'); }}/>
     }
-  </div>;
+  </div></SimpleContext.Provider>;
 }
 
 const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
@@ -1418,7 +1464,7 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
           <i style={{ aspectRatio: `${item.width} / ${item.height}` }}/><span><b>{item.label}</b><small>{ratio(item.width, item.height)} · {item.width} × {item.height}</small></span></button>; })}</div>
         <p className="ed-group-tip">Export can still make it 720p, 1080p or 4K; this sets the shape.</p>
       </Group>
-      <Group title="Frame rate" tab="format" startOpen keywords="fps frame rate frames per second smooth 24 25 30 50 60" tip="How many pictures a second. Clips keep their timing when you change it." help="project-settings">
+      <Group pro title="Frame rate" tab="format" startOpen keywords="fps frame rate frames per second smooth 24 25 30 50 60" tip="How many pictures a second. Clips keep their timing when you change it." help="project-settings">
         <Chips label="Frame rate" options={FRAME_RATES.map((rate) => ({ id: String(rate), label: `${rate} fps` }))} value={String(format.fps)} onPick={(id) => setFormat({ fps: Number(id) })}/>
         <p className="ed-group-tip">{format.fps} fps: {RATE_TIPS[format.fps] ?? ''}.</p>
       </Group>
@@ -1702,7 +1748,7 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
       {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? `Making the ${clip.focus_pull ? 'focus pull' : `${clip.blur_amount ?? 'medium'} blur`}` : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background${clip.cutout === 'blur' ? '; the preview keeps the previous blur until the new one is ready' : ', and the preview shows the original until it is ready'}.`
         : clip.cutout === 'blur' ? 'Who you choose stays sharp and everything else is softened, like a film camera focused on them.' : isMain ? 'The person shows over black until you choose a new background below.' : 'The person shows over whatever is under this layer.'}</p>}
     </Group>}
-    <Group title="Green screen" tab="background" startOpen={Boolean(clip.chroma) || source?.kind !== 'video'} changed={Boolean(clip.chroma)} keywords="green screen chroma key transparent blue" tip="Click the green or blue in the preview to make it see-through." help="green-screen">
+    <Group pro title="Green screen" tab="background" startOpen={Boolean(clip.chroma) || source?.kind !== 'video'} changed={Boolean(clip.chroma)} keywords="green screen chroma key transparent blue" tip="Click the green or blue in the preview to make it see-through." help="green-screen">
     {clip.chroma ? <>
       <div className="ed-key-color"><label><span className="ed-key-swatch" style={{ background: clip.chroma.color }}/><input type="color" aria-label="Colour to remove" value={clip.chroma.color} onChange={(event) => onChange({ chroma: { ...clip.chroma!, color: event.target.value } }, `key-colour-${clip.id}`)}/></label>
         <button className={`ed-button ${picking ? 'on' : ''}`} onClick={onPick}><Pipette size={14}/>{picking ? 'Click the preview' : 'Pick from preview'}</button></div>
