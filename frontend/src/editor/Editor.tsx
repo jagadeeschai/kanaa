@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { Eye, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
 import { cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import AIImageGenerator from '../components/CoverArtGenerator';
@@ -23,6 +23,7 @@ import { writeValue } from '../timeline/keyframes';
 import { applyMove, slotPlacement, type MovePreset } from '../timeline/presets';
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
+import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
 import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
@@ -334,7 +335,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (!timeline) return;
     const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
-    if (!flat) { engineRef.current?.setTimeline(timeline, sourceFor, soundUrl, textUrl, captionUrl); return; }
+    if (!flat) { engineRef.current?.setTimeline(playingTimeline(timeline), sourceFor, soundUrl, textUrl, captionUrl); return; }
     // The rendered copy plays as one clip, so nothing else has to keep up.
     const length = duration(timeline);
     const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');
@@ -356,7 +357,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [renderJob, projectId]);
 
   const preparedNeeded = useMemo(() => [...new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.flatMap((clip) => {
-    const want = mediaById.get(clip.media_id)?.media_type === 'video' && preparedWant(clip);
+    const want = mediaById.get(clip.media_id)?.media_type === 'video' && preparedWant(applyBypass(clip));
     return want ? [preparedKey(clip.media_id, ...want)] : [];
   }) : [])) : [])].join(','), [timeline, mediaById]);
   useEffect(() => {
@@ -1054,6 +1055,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (clip) {
       if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
       items.push({ label: clip.muted ? 'Turn sound on' : 'Mute clip', onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) });
+      const effects = clipEffects(clip);
+      if (effects.length) {
+        items.push('divider');
+        for (const effect of effects) items.push({ label: `${effect.on ? 'Turn off' : 'Turn on'}: ${effect.label} (${effect.detail})`, onSelect: () => change(updateClip(timeline, id, toggleEffect(clip, effect.id))) });
+        if (effects.length > 1) items.push({ label: effects.every((effect) => !effect.on) ? 'Turn all effects back on' : 'Turn all effects off', onSelect: () => change(updateClip(timeline, id, toggleAllEffects(clip))) });
+      }
     }
     if (sound) items.push({ label: sound.muted ? 'Turn sound on' : 'Mute sound', onSelect: () => change(updateSound(timeline, id, { muted: !sound.muted })) }, { label: sound.duck ? 'Stop dipping under speech' : 'Dip under speech', onSelect: () => change(updateSound(timeline, id, { duck: !sound.duck })) });
     items.push('divider');
@@ -1270,6 +1277,21 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} dr
 
 const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
+
+/** What is active on this clip, each with a switch to compare with and without it, and Remove. */
+function ActiveEffects({ clip, onChange }: { clip: Clip; onChange: (changes: Partial<Clip>) => void }) {
+  const effects = clipEffects(clip);
+  if (!effects.length) return null;
+  const allOff = effects.every((effect) => !effect.on);
+  return <section className="ed-effects" aria-label="Active on this clip">
+    <div className="ed-effects-head"><span>Active on this clip</span>{effects.length > 1 && <button className="ed-link" onClick={() => onChange(toggleAllEffects(clip))}>{allOff ? 'All back on' : 'All off'}</button>}</div>
+    <ul>{effects.map((effect) => <li key={effect.id} className={effect.on ? '' : 'off'}>
+      <button className="ed-effect-switch" role="switch" aria-checked={effect.on} aria-label={`${effect.label}: ${effect.on ? 'on' : 'off'}`} title={effect.on ? 'Turn off to compare; its settings are kept' : 'Turn back on'} onClick={() => onChange(toggleEffect(clip, effect.id))}>{effect.on ? <Eye size={13}/> : <EyeOff size={13}/>}</button>
+      <span className="ed-effect-name"><b>{effect.label}</b><small>{effect.on ? effect.detail : `off · ${effect.detail}`}</small></span>
+      <button className="ed-icon small" aria-label={`Remove ${effect.label}`} title="Remove it (undo brings it back)" onClick={() => onChange(removeEffect(clip, effect.id))}><X size={12}/></button>
+    </li>)}</ul>
+  </section>;
+}
 
 /** Settings for the whole film: its shape and frame rate, its look, and its sound. Shown when nothing is selected. */
 const FRAME_RATES = [24, 25, 30, 50, 60] as const;
@@ -1529,6 +1551,7 @@ function Inspector({ backgrounds, onBackground, clip, source, format, onChange, 
   const filling = Math.abs(size - fill) < 0.01;
   const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
   return <>
+    <ActiveEffects clip={clip} onChange={onChange}/>
     <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: Palette, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: WandSparkles, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" startOpen keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>

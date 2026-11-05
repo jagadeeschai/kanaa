@@ -151,6 +151,7 @@ class Clip(Strict):
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
+    bypass: Optional[List[Literal['look', 'colour', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=11)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 

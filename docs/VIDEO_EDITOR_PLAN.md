@@ -482,6 +482,11 @@ Whole-film controls moved into one place: with nothing selected, the right-hand 
 
 Limits: export defaults and safe-area guides are not in Project settings yet; changing the shape refits clips but does not reframe them around people (that is the auto-reframe task).
 
+### Effects on and off (done)
+Every clip's effects can be listed, switched off and on, or removed. "Active on this clip" at the top of the clip panel lists only what the clip has (Look, Colour, Background, Green screen, Steady, Backwards, Speed effect, Animation with its point count, Enter and exit, Transition in, Clean voice), each with an eye switch and ✕; "All off" and "All back on". Right-clicking a clip on the timeline gives the same switches. A switched-off effect is kept in `clip.bypass`, so its settings survive; one rule set on each side leaves it out of what plays (frontend `playingTimeline`, backend `playing_timeline` before compiling), so preview, preview renders and export agree, and a switched-off background needs no mask or blurred copy. Tests: export frames with a look, a green screen and animation switched off match the plain clip; a switched-off removed background exports without a mask; frontend tests for listing, switching, all off and remove. Browser check: switching Mono off brought the sky's colour back in the preview, and undo restored it.
+
+Limits: plain speed, freeze frames and drawn shapes are not listed as effects (they change timing or are the clip's purpose); titles, sounds and blur boxes have no effect switches yet.
+
 ### Clean voice (done)
 A switch on any clip (Speed and sound) or sound. `voice_service.py` makes a cleaned whole-file copy once (FLAC, 48 kHz) with a high-pass at 80 Hz and ffmpeg's `afftdn` (24 dB, noise floor -30 dB, tracking the noise as it changes). The filter runs 1199 samples late, so that much is trimmed and padded back; the copy lines up with the picture within a sample. Export reads the copy (`voices` in `render_timeline`); the preview mutes the video's own sound and plays the copy through the mixer as a sound at the clip's place, speed, volume and fades, so it still ducks music.
 

@@ -1681,3 +1681,40 @@ class CinematicFinish(Clips):
         from app.services.timeline_service import compile_timeline
         graph = compile_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, self.out).graph
         self.assertLess(graph.index('blend=all_mode=multiply'), graph.index('subtitles=') if 'subtitles=' in graph else graph.index('ass='))
+
+
+class EffectSwitches(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def setUp(self):
+        super().setUp()
+        picture = np.zeros((360, 640, 3), np.uint8)
+        picture[:, :] = (220, 40, 40)
+        picture[150:210, 290:350] = (40, 200, 60)
+        path = self.root / 'switch-scene.png'
+        Image.fromarray(picture).save(path)
+        self.facts[96] = MediaFacts(path=path, media_type='image', width=640, height=360)
+
+    def shot(self, name, **clip):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, **clip}]}]}
+        return self.frame(self.render(data, name), 15, (640, 360))
+
+    def test_a_switched_off_effect_is_left_out_of_the_export_and_kept_in_the_timeline(self):
+        plain = self.shot('switch-plain.mp4')
+        mono = self.shot('switch-mono.mp4', look='mono')
+        off = self.shot('switch-mono-off.mp4', look='mono', bypass=['look'])
+        self.assertGreater(abs(int(plain[50, 50, 0]) - int(mono[50, 50, 0])), 40)  # Mono takes the red away...
+        self.assertLess(np.abs(off.astype(int) - plain.astype(int)).mean(), 2)  # ...and switched off, the clip is as it was.
+        keyed = self.shot('switch-key.mp4', chroma={'color': '#28c83c', 'similarity': 0.2, 'softness': 0.05, 'spill': 0})
+        unkeyed = self.shot('switch-key-off.mp4', chroma={'color': '#28c83c', 'similarity': 0.2, 'softness': 0.05, 'spill': 0}, bypass=['green_screen'])
+        self.assertLess(keyed[180, 320].max(), 30)  # The green patch is keyed out to black...
+        self.assertGreater(int(unkeyed[180, 320, 1]), 150)  # ...and comes back with the green screen switched off.
+        moving = {'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0, 'keyframes': {'x': [{'t': 0, 'v': 0.2}, {'t': 1, 'v': 0.8}]}}}
+        still = self.shot('switch-motion-off.mp4', bypass=['motion'], **moving)
+        self.assertLess(np.abs(still.astype(int) - plain.astype(int)).mean(), 2)
+        saved = Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, 'look': 'mono', 'bypass': ['look']}]}]})
+        self.assertEqual(saved.layers[0].items[0].look, 'mono')
+
+    def test_a_switched_off_background_needs_no_person_mask(self):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 1, 'cutout': 'remove', 'bypass': ['background']}]}]}
+        self.assertTrue(self.render(data, 'switch-background-off.mp4').is_file())  # No masks callback: it would raise if a mask were needed.

@@ -370,6 +370,7 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
 
 class Builder:
     def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None):
+        timeline = playing_timeline(timeline)
         self.timeline, self.media, self.audio_asset, self.folder, self.prepared, self.masks, self.voices = timeline, media, audio_asset, folder, prepared, masks, voices
         self.fmt = timeline.format
         self.args: list[str] = []
@@ -743,6 +744,46 @@ class Builder:
         total = self.total_frames / fmt.fps
         self.mix_tracks(total)
         return Compiled(self.args, ';'.join(self.graph), total, self.audio_args, ';'.join(self.audio_graph), self.timeline.normalize_audio)
+
+
+def apply_bypass(clip):
+    """The clip as it plays: effects switched off (`bypass`) left out, their settings kept in the saved timeline.
+    frontend/src/timeline/effects.ts applyBypass does the same for the preview."""
+    if not clip.bypass:
+        return clip
+    changes: dict[str, Any] = {}
+    for effect in clip.bypass:
+        if effect == 'look':
+            changes['look'] = 'none'
+        elif effect == 'colour':
+            changes['adjust'] = clip.adjust.model_copy(update={'brightness': 1, 'contrast': 1, 'saturation': 1})
+        elif effect == 'background':
+            changes.update(cutout=None, cutout_pick=None, focus_pull=None)
+        elif effect == 'green_screen':
+            changes['chroma'] = None
+        elif effect == 'steady':
+            changes['stabilise'] = False
+        elif effect == 'reverse':
+            changes['reverse'] = False
+        elif effect == 'speed_effect':
+            changes['ramp'] = None
+        elif effect == 'motion':
+            changes['transform'] = clip.transform.model_copy(update={'keyframes': {}})
+        elif effect == 'enter_exit':
+            changes.update(enter=None, exit=None)
+        elif effect == 'transition':
+            changes['transition_in'] = None
+        elif effect == 'clean_voice':
+            changes['clean_voice'] = False
+    return clip.model_copy(update=changes)
+
+
+def playing_timeline(timeline: Timeline) -> Timeline:
+    """The timeline with every clip's switched-off effects left out."""
+    if not any(layer.kind == 'video' and any(clip.bypass for clip in layer.items) for layer in timeline.layers):
+        return timeline
+    layers = [layer.model_copy(update={'items': [apply_bypass(clip) for clip in layer.items]}) if layer.kind == 'video' else layer for layer in timeline.layers]
+    return timeline.model_copy(update={'layers': layers})
 
 
 def compile_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> Compiled:
