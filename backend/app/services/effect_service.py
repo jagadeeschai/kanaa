@@ -65,6 +65,11 @@ EFFECTS = [
     Effect('prism-leak', 'Prism leak', 'வானவில் ஒளி', 'travel', 'A thin rainbow edge moving across the frame'),
     Effect('anamorphic', 'Anamorphic streaks', 'நீல ஒளிக் கோடுகள்', 'travel', 'Fine blue horizontal cinematic flares'),
     Effect('light-flicker', 'Light flicker', 'ஒளித் துடிப்பு', 'travel', 'Gentle old-projector brightness variation'),
+    Effect('fireflies', 'Fireflies', 'மின்மினிப் பூச்சிகள்', 'travel', 'Slow green-gold lights blinking through an evening scene'),
+    Effect('lanterns', 'Floating lanterns', 'வான விளக்குகள்', 'travel', 'Warm sky lanterns drifting up and away'),
+    Effect('leaves', 'Falling leaves', 'உதிரும் இலைகள்', 'travel', 'Depth-layered leaves turning gently as they fall'),
+    Effect('caustics', 'Water caustics', 'நீர் ஒளி அலைகள்', 'travel', 'Soft moving light patterns for water and boats'),
+    Effect('sea-sparkle', 'Sea sparkle', 'கடல் மினுமினுப்பு', 'travel', 'Sun glints dancing across the water'),
 ]
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
@@ -686,6 +691,130 @@ def light_flicker(n: int, total: int, size: tuple[int, int], rng: np.random.Gene
     return Image.new('RGB', size, warm)
 
 
+def fireflies(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    bugs = fireflies.cache.get(size)
+    if bugs is None:
+        bugs = fireflies.cache[size] = _particles(rng, 42, x=(0.03, 0.97), y=(0.12, 0.92), phase=(0, 6.28), rate=(0.7, 1.8), drift=(0, 6.28), size=(0.002, 0.006), green=(0.55, 0.9))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(bugs['x'])):
+        glow = max(0, math.sin(t * bugs['rate'][i] + bugs['phase'][i])) ** 4
+        if glow < 0.025:
+            continue
+        x = bugs['x'][i] + 0.018 * math.sin(t * 0.4 + bugs['drift'][i])
+        y = bugs['y'][i] + 0.012 * math.sin(t * 0.31 + bugs['drift'][i] * 1.7)
+        radius = bugs['size'][i] * unit * (0.55 + glow)
+        colour = (round(235 * glow), round((170 + 70 * bugs['green'][i]) * glow), round(72 * glow))
+        draw.ellipse((x * width - radius, y * height - radius, x * width + radius, y * height + radius), fill=colour)
+    return _glow(image, max(1, unit * 0.009), 1.6)
+
+
+fireflies.cache = {}
+
+
+def lanterns(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    items = lanterns.cache.get(size)
+    if items is None:
+        items = lanterns.cache[size] = _particles(rng, 19, x=(0.04, 0.96), phase=(0, 1.4), rise=(0.025, 0.07), size=(0.012, 0.04), sway=(0, 6.28), depth=(0.45, 1))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in np.argsort(items['depth']):
+        y = 1.18 - ((items['phase'][i] + t * items['rise'][i]) % 1.42)
+        x = items['x'][i] + math.sin(t * 0.38 + items['sway'][i]) * 0.018
+        depth = items['depth'][i]
+        half_w = items['size'][i] * unit * depth
+        half_h = half_w * 1.28
+        cx, cy = x * width, y * height
+        shell = (round(205 * depth), round(92 * depth), round(28 * depth))
+        draw.rounded_rectangle((cx - half_w, cy - half_h, cx + half_w, cy + half_h), radius=max(1, half_w * 0.38), fill=shell)
+        core = half_w * 0.42
+        draw.ellipse((cx - core, cy - core * 0.7, cx + core, cy + core * 0.7), fill=(round(255 * depth), round(218 * depth), round(105 * depth)))
+        draw.line((cx - half_w * 0.7, cy + half_h, cx + half_w * 0.7, cy + half_h), fill=(115, 55, 22), width=max(1, round(unit * 0.002)))
+    return _glow(image, max(1, unit * 0.012), 1.1)
+
+
+lanterns.cache = {}
+
+
+def leaves(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    items = leaves.cache.get(size)
+    if items is None:
+        items = leaves.cache[size] = {**_particles(rng, 58, x=(-0.05, 1.05), phase=(0, 1.18), fall=(0.06, 0.15), size=(0.008, 0.022), sway=(0, 6.28), spin=(-2.2, 2.2), depth=(0.45, 1)),
+                                          'colour': rng.integers(0, 5, 58)}
+    colours = ((190, 62, 28), (224, 113, 24), (235, 163, 35), (125, 104, 35), (152, 45, 31))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in np.argsort(items['depth']):
+        y = ((items['phase'][i] + t * items['fall'][i]) % 1.22) - 0.1
+        x = items['x'][i] + 0.045 * math.sin(t * 0.8 + items['sway'][i])
+        depth = items['depth'][i]
+        radius = items['size'][i] * unit * depth
+        angle = items['sway'][i] + t * items['spin'][i]
+        squash = 0.28 + 0.72 * abs(math.cos(angle * 0.8))
+        cx, cy = x * width, y * height
+        c, s = math.cos(angle), math.sin(angle)
+        raw = ((0, -radius), (radius * 0.65 * squash, 0), (0, radius), (-radius * 0.65 * squash, 0))
+        points = [(cx + px * c - py * s, cy + px * s + py * c) for px, py in raw]
+        colour = tuple(round(channel * (0.62 + depth * 0.38)) for channel in colours[items['colour'][i]])
+        draw.polygon(points, fill=colour)
+        draw.line((points[0][0], points[0][1], points[2][0], points[2][1]), fill=tuple(round(c * 0.55) for c in colour), width=1)
+    return image
+
+
+leaves.cache = {}
+
+
+def caustics(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    small = (max(48, width // 8), max(32, height // 8))
+    ys, xs = np.mgrid[0:small[1], 0:small[0]].astype(np.float32)
+    xs /= small[0]; ys /= small[1]
+    t = n / FPS
+    a = np.sin(xs * 24 + ys * 9 + t * 1.15)
+    b = np.sin(xs * 15 - ys * 19 - t * 0.86)
+    c = np.sin(xs * 31 + ys * 25 + t * 0.54)
+    # Thin interference ridges resemble refracted sunlight rather than soft bokeh blobs.
+    ridges = np.clip(np.exp(-np.abs(a + b) * 9) * 0.22 + np.exp(-np.abs(b + c) * 11) * 0.18, 0, 0.3)
+    colour = np.array([96, 202, 238], np.float32)
+    picture = np.clip(ridges[..., None] * colour, 0, 255).astype(np.uint8)
+    return Image.fromarray(picture).resize(size, Image.BICUBIC).filter(ImageFilter.GaussianBlur(max(1, min(size) * 0.006)))
+
+
+def sea_sparkle(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    width, height = size
+    unit = min(size)
+    points = sea_sparkle.cache.get(size)
+    if points is None:
+        points = sea_sparkle.cache[size] = _particles(rng, 125, x=(0.08, 0.92), y=(0.42, 0.94), phase=(0, 6.28), rate=(1.2, 4.2), size=(0.002, 0.009), stretch=(1.5, 6))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    t = n / FPS
+    for i in range(len(points['x'])):
+        flash = max(0, math.sin(t * points['rate'][i] + points['phase'][i])) ** 7
+        if flash < 0.03:
+            continue
+        y = points['y'][i]
+        # Perspective: glints near the horizon are smaller and closer together.
+        perspective = 0.25 + (y - 0.42) / 0.52 * 0.75
+        half = points['size'][i] * unit * points['stretch'][i] * perspective * flash
+        x = points['x'][i] * width
+        colour = tuple(round(c * flash) for c in (255, 240, 188))
+        draw.line((x - half, y * height, x + half, y * height), fill=colour, width=max(1, round(unit * 0.002 * perspective)))
+    return _glow(image, max(0.7, unit * 0.003), 0.65)
+
+
+sea_sparkle.cache = {}
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
@@ -701,6 +830,11 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'prism-leak': prism_leak,
     'anamorphic': anamorphic,
     'light-flicker': light_flicker,
+    'fireflies': fireflies,
+    'lanterns': lanterns,
+    'leaves': leaves,
+    'caustics': caustics,
+    'sea-sparkle': sea_sparkle,
     'snow': snow,
     'rain': rain,
     'lightning': lightning,

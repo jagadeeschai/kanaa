@@ -116,6 +116,11 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['prism-leak'].mood, 'travel')
         self.assertEqual(found['anamorphic'].mood, 'travel')
         self.assertEqual(found['light-flicker'].mood, 'travel')
+        self.assertEqual(found['fireflies'].mood, 'travel')
+        self.assertEqual(found['lanterns'].mood, 'travel')
+        self.assertEqual(found['leaves'].mood, 'travel')
+        self.assertEqual(found['caustics'].mood, 'travel')
+        self.assertEqual(found['sea-sparkle'].mood, 'travel')
 
     def test_weather_settings_are_bounded_and_make_cached_variants(self):
         rain = effect_service.weather_options('rain', {'density': 9, 'direction': -9, 'seed': 101})
