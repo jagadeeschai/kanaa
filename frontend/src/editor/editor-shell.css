@@ -166,3 +166,11 @@
 .fx-light-leak .ed-quick-art{background:radial-gradient(circle at 25% 40%,#ff7828,transparent 70%),radial-gradient(circle at 80% 20%,#ffd278,transparent 50%),#0b0b10}
 .fx-film-burn .ed-quick-art{background:radial-gradient(circle at 60% 50%,#fff 0 4px,#ffd278 10px,#ff6e1e 22px,transparent 40px),#0b0b10}
 .fx-snow .ed-quick-art{background:radial-gradient(circle at 20% 30%,#fff 0 1px,transparent 2px),radial-gradient(circle at 55% 60%,#fff 0 1.5px,transparent 2px),radial-gradient(circle at 80% 25%,#fff 0 1px,transparent 2px),radial-gradient(circle at 40% 80%,#fff 0 1px,transparent 2px),#1b2333}
+/* Ask AI */
+.ed-ask .ed-field{display:flex;flex-direction:column;gap:3px;font-size:12px;margin:6px 0}.ed-ask .ed-field input{padding:6px 8px;border:1px solid var(--hairline);border-radius:7px;background:var(--panel);color:var(--text)}
+.ed-ask-input{width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--hairline);border-radius:8px;background:var(--panel);color:var(--text);font:inherit;font-size:13px;resize:vertical}
+.ed-ask-examples{margin:6px 0}.ed-ask-examples button{font-size:11px;text-align:left}
+.ed-ask-plan{margin:8px 0;padding:8px;border:1px solid var(--hairline);border-radius:9px}.ed-ask-plan>p{margin:0 0 6px;font-size:13px}
+.ed-ask-list{list-style:none;margin:0 0 8px;padding:0}.ed-ask-list li{margin:4px 0}.ed-ask-list small{display:block;opacity:.7}
+.ed-ask-results{margin:6px 0 0;padding-left:16px;font-size:12px}.ed-ask-post{margin-top:8px;padding:8px;border:1px solid var(--hairline);border-radius:9px;font-size:13px}.ed-ask-post p{margin:6px 0}.ed-ask-tags{opacity:.8}
+.ed-ask-error{color:#e5484d}

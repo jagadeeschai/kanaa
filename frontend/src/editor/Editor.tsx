@@ -1,3 +1,5 @@
+import AskPanel from './AskPanel';
+import { applyPure, describeCommand, translateCaptions, type Options, type Proposed } from '../timeline/commands';
 import { keepCaptionsClear, type FacePath } from '../timeline/clear-faces';
 import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/reframe';
 import { splitAtCuts } from '../timeline/scenes';
@@ -5,7 +7,7 @@ import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
-import { startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
@@ -43,8 +45,8 @@ type Props = { projectId: number; projectName: string; photo: Photo; onClose: ()
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
-const LEFT_TABS = ['media', 'templates', 'themes', 'effects', 'text', 'audio', 'words'] as const;
-const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', templates: 'Templates', themes: 'Themes', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
+const LEFT_TABS = ['media', 'ask', 'templates', 'themes', 'effects', 'text', 'audio', 'words'] as const;
+const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Templates', themes: 'Themes', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
@@ -579,7 +581,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   /** The story's clips in its order, then its theme and music, as one change. */
   const makeStory = async () => {
     if (!timeline || !story) return;
-    const fills = story.fills.map((id) => (id === null ? null : facts(id) ?? null));
+    await buildStoryVideo(story.story, story.fills.map((id) => (id === null ? null : facts(id) ?? null)));
+  };
+  /** A story's video from its filled moments: best moments, then its theme and music. */
+  const buildStoryVideo = async (chosenStory: (typeof STORIES)[number], fills: (SourceFacts | null)[]) => {
+    const base = timelineRef.current;
+    if (!base) return;
+    const story = { story: chosenStory };
     if (!fills.some(Boolean)) { setError('Put a clip or photo in at least one moment.'); return; }
     const look = THEMES.find((item) => item.id === story.story.theme) ?? THEMES[0];
     // Each video's best stretch (sharp, steady, well lit, with faces) instead of its middle. If that fails, the middle still works.
@@ -593,7 +601,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         best = story.story.slots.map((slot) => { const at = wanted.findIndex((entry) => entry.slot === slot); return at < 0 ? null : starts[at]; });
       } catch { best = []; } finally { setMomentProgress(null); }
     }
-    await chooseTheme(look, buildStory(timeline, story.story, fills, newId, best), `story-${story.story.id}`);
+    await chooseTheme(look, buildStory(base, story.story, fills, newId, best), `story-${story.story.id}`);
     setStory(null);
   };
   /** The theme's music: the next suitable track, or none. */
@@ -624,9 +632,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setMyStyles(next); saveStyles(next);
   };
   const forgetStyle = (id: string) => { const next = myStyles.filter((style) => style.id !== id); setMyStyles(next); saveStyles(next); };
-  const addTitle = (title: Template, dropAt?: number) => {
+  const addTitle = (title: Template, dropAt?: number, words?: string) => {
     if (!timeline) return;
-    const text: TextItem = { ...title.look, id: newId(), start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
+    const text: TextItem = { ...title.look, ...(words ? { text: words, subtitle: '' } : {}), id: newId(), start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
     change(addText(timeline, text, newId()));
     setSelectedId(text.id);
     // A title starts hidden behind its enter animation, so show it at rest.
@@ -769,11 +777,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setWordSelection(new Set());
   }, [timeline, tokens, change]);
   /** Captions from the main track's speech. Clips not transcribed yet are transcribed first, then the captions follow. */
-  const makeCaptions = useCallback(() => {
+  const makeCaptions = useCallback((words?: number) => {
     if (!timeline) return;
     if (missingWords.length) { setCaptionsWaiting(true); if (!wordJob) void transcribeClips(); return; }
     setCaptionsWaiting(false);
-    const items = buildCaptions(mainClips, (id) => transcripts[`${id}:${language}`], newId, { ...DEFAULT_CAPTION_OPTIONS, words: captionWords });
+    const items = buildCaptions(mainClips, (id) => transcripts[`${id}:${language}`], newId, { ...DEFAULT_CAPTION_OPTIONS, words: words ?? captionWords });
     if (!items.length) { setError('No speech was found in the main track to caption.'); return; }
     change(setCaptions(timeline, items, newId()));
   }, [timeline, missingWords.length, wordJob, mainClips, transcripts, language, captionWords, change]);
@@ -1398,6 +1406,64 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '32px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '32px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && !mainLayer(timeline).items.length;
+  // ---- Ask AI ----
+  useEffect(() => { if (leftTab === 'ask' && !effects.length) listEffects().then(setEffects).catch(() => { /* Effects just won't be offered. */ }); }, [leftTab, effects.length]);
+  const askOptions: Options = {
+    themes: THEMES.map((theme) => ({ id: theme.id, label: theme.label })), looks: LOOK_NAMES.map((look) => ({ id: look.id, label: look.label })),
+    transitions: TRANSITIONS.map((item) => ({ id: item.id, label: item.label })), effects: effects.map((effect) => ({ id: effect.id, label: effect.label })),
+    formats: FORMATS.map((format) => ({ id: format.id, label: `${format.label} (${format.ratio})` })), stories: STORIES.map((item) => ({ id: item.id, label: item.label })),
+    title_styles: TEMPLATES.map((template) => ({ id: template.id, label: template.label })),
+  };
+  /** What the AI is told about the project: shape, clips, titles and captions as text. Never the media itself. */
+  const askProject = () => {
+    const current = timelineRef.current;
+    if (!current) return {};
+    const clips = [...mainLayer(current).items].sort((a, b) => a.start - b.start);
+    const format = FORMATS.find((item) => item.width === current.format.width && item.height === current.format.height);
+    const theme = activeTheme(current);
+    return {
+      format: format ? `${format.label} (${format.ratio})` : `${current.format.width}×${current.format.height}`, duration: duration(current), clip_count: clips.length,
+      clips: clips.map((clip) => ({ kind: mediaById.get(clip.media_id)?.media_type ?? 'clip', name: mediaById.get(clip.media_id)?.filename ?? '', length: clipLength(clip), start: clip.start })),
+      theme: theme?.label ?? '', music: audioLayers(current).flatMap((layer) => layer.items.map((sound) => sound.name)),
+      titles: textLayers(current).flatMap((layer) => layer.items.map((text) => text.text)),
+      captions: captionLayers(current).flatMap((layer) => layer.items.slice(0, 30).map((caption) => captionText(caption))),
+      media: media.filter((item) => !usedIds.has(item.id) && item.folder !== 'Effects').slice(0, 20).map((item) => item.filename),
+    };
+  };
+  const actions = useRef({ chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change });
+  actions.current = { chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change };
+  /** Runs Ask AI's ticked edits one by one, each on the timeline as the edit before left it. */
+  const runAsk = async (commands: Proposed[]): Promise<string[]> => {
+    const done: string[] = [];
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 120)); // Lets the editor redraw with the last edit before the next.
+    for (const command of commands) {
+      const current = timelineRef.current;
+      const act = actions.current;
+      if (!current) break;
+      try {
+        const pure = applyPure(current, command);
+        if (pure) { if (pure !== current) act.change(pure); done.push(`✓ ${describeCommand(command, askOptions)}`); }
+        else if (command.name === 'set_theme') { const theme = THEMES.find((item) => item.id === command.args.theme); if (theme) { await act.chooseTheme(theme, current); done.push(`✓ ${theme.label} theme`); } }
+        else if (command.name === 'add_title') { act.addTitle(TEMPLATES.find((item) => item.id === command.args.style) ?? TEMPLATES[0], command.args.at, command.args.text); done.push(`✓ Title “${command.args.text}”`); }
+        else if (command.name === 'add_effect') { await act.addEffect(command.args.effect, command.args.at); done.push(`✓ ${describeCommand(command, askOptions)}`); }
+        else if (command.name === 'cut_to_beat') { await act.cutClipsToBeat(); done.push('✓ Cut to the beat (see the Audio tab for details)'); }
+        else if (command.name === 'add_captions') { setCaptionWords(command.args.words); act.makeCaptions(command.args.words); done.push('✓ Captions: they appear once Kanaa has listened to the speech'); }
+        else if (command.name === 'keep_captions_clear') { await act.keepClearOfFaces(); done.push('✓ Captions checked against faces'); }
+        else if (command.name === 'make_story') {
+          const chosen = STORIES.find((item) => item.id === command.args.story);
+          const pool = act.storyMedia.map((item) => act.facts(item.id)).filter((item): item is SourceFacts => Boolean(item));
+          if (chosen) { await act.buildStoryVideo(chosen, fillRest(chosen, chosen.slots.map(() => null), pool)); done.push(`✓ Made as “${chosen.label}”`); }
+        } else if (command.name === 'translate_captions') {
+          const captions = captionLayers(current).flatMap((layer) => layer.items);
+          const { lines } = await translateLines(captions.map((caption) => captionText(caption)), command.args.to);
+          act.change(translateCaptions(timelineRef.current ?? current, new Map(captions.map((caption, index) => [caption.id, lines[index]]))));
+          done.push(`✓ ${captions.length} captions translated`);
+        }
+      } catch (problem) { done.push(`✗ ${(problem as Error).message}`); }
+      await settle();
+    }
+    return done;
+  };
 const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} own={Boolean(selectedBlur || (selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline)))} onDraw={() => startDrawing('start')} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
     following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => { void followHere('start'); }} onContinue={() => { void followHere('continue'); }}
     onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
@@ -1479,6 +1545,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <p className="ed-tip">The cinematic finish and frame rate are in Project settings: click the size button at the top, or an empty part of the timeline.</p>
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
+        {leftTab === 'ask' && timeline && <AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/>}
         {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
           <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
           {(['celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
@@ -1498,7 +1565,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           <section className="ed-add" aria-label="Captions"><h3 className="ed-sub">Captions</h3><p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
             <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
             {captionsWaiting && wordJob ? <><div className="ed-progress"><i style={{ width: `${wordJob.progress}%` }}/></div><p className="ed-tip">Listening to your video… {wordJob.progress}%. The captions follow.</p></>
-              : <button className="ed-button wide" disabled={!total} onClick={makeCaptions}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
+              : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
             {timeline && captionLayers(timeline).some((layer) => layer.items.length) && <button className="ed-button wide" disabled={clearing} onClick={() => { void keepClearOfFaces(); }} title="A caption that would cover someone's face moves to the top for that moment"><ScanFace size={14}/>{clearing ? 'Looking for faces…' : 'Keep captions clear of faces'}</button>}
             {clearNote && <p className="ed-tip" role="status">{clearNote}</p>}</section>
           <section className="ed-add" aria-label="Hide something"><h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>

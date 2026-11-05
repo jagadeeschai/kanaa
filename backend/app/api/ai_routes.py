@@ -61,3 +61,71 @@ def update_prompts(identifier: int, batch_id: str, data: ScenePromptsUpdate):
         return save_scene_prompts(identifier, batch_id, data.scenes)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+# ---- The AI connection for words: Ask AI, caption translation, post words. ----
+
+from typing import Any, Literal  # noqa: E402
+from app.services import edit_plan_service, text_ai_service  # noqa: E402
+
+
+class TextAISettingsUpdate(BaseModel):
+    base_url: str = Field(min_length=1, max_length=500)
+    model: str = Field(min_length=1, max_length=120)
+    api_key: str | None = Field(default=None, max_length=500)
+    clear_key: bool = False
+
+
+class PlanRequest(BaseModel):
+    request: str = Field(min_length=1, max_length=1000)
+    project: dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
+
+
+class TranslateRequest(BaseModel):
+    lines: list[str] = Field(min_length=1, max_length=400)
+    to: Literal['ta', 'en']
+
+
+class DescribeRequest(BaseModel):
+    project: dict[str, Any] = Field(default_factory=dict)
+    language: Literal['ta', 'en', 'both'] = 'en'
+
+
+def _ai(work):
+    try:
+        return work()
+    except text_ai_service.NotConfigured as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:  # Network trouble: say so plainly.
+        raise HTTPException(502, f'Could not reach the AI provider: {exc.__class__.__name__}.') from exc
+
+
+@router.get('/ai-text-settings')
+def get_text_settings():
+    return text_ai_service.public_settings()
+
+
+@router.put('/ai-text-settings')
+def update_text_settings(data: TextAISettingsUpdate):
+    try:
+        return text_ai_service.save_settings(data.base_url, data.model, data.api_key, data.clear_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/ai/plan')
+def plan_edits(data: PlanRequest):
+    return _ai(lambda: edit_plan_service.plan(data.request, data.project, data.options))
+
+
+@router.post('/ai/translate')
+def translate_lines(data: TranslateRequest):
+    return _ai(lambda: {'lines': edit_plan_service.translate([line[:500] for line in data.lines], data.to)})
+
+
+@router.post('/ai/describe')
+def describe_video(data: DescribeRequest):
+    return _ai(lambda: edit_plan_service.describe(data.project, data.language))

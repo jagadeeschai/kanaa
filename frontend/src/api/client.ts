@@ -79,6 +79,12 @@ export const moveMediaToFolder = (ids: number[], folder: string | null) => reque
 export const deleteMedia = (id: number) => requestJson(`/api/photos/${id}`, { method: 'DELETE' });
 export const getWords = (id: number, language: string) => requestJson<{ words: { w: string; s: number; e: number }[] | null }>(`/api/photos/${id}/words?language=${language}`);
 export const getFocus = (id: number, at = 0) => requestJson<{ x: number | null; y: number | null; faces: number; model?: boolean }>(`/api/photos/${id}/focus?at=${at.toFixed(2)}`);
+export type TextAISettings = { configured: boolean; base_url: string; model: string; has_key: boolean; local: boolean };
+export const getTextAISettings = () => requestJson<TextAISettings>('/api/ai-text-settings');
+export const saveTextAISettings = (body: { base_url: string; model: string; api_key?: string; clear_key?: boolean }) => requestJson<TextAISettings>('/api/ai-text-settings', { method: 'PUT', body: JSON.stringify(body) });
+export const planEdits = (body: { request: string; project: unknown; options: unknown }) => requestJson<{ summary: string; commands: unknown[]; dropped: { reason: string }[] }>('/api/ai/plan', { method: 'POST', body: JSON.stringify(body) });
+export const translateLines = (lines: string[], to: 'ta' | 'en') => requestJson<{ lines: string[] }>('/api/ai/translate', { method: 'POST', body: JSON.stringify({ lines, to }) });
+export const describeVideo = (project: unknown, language: 'ta' | 'en' | 'both') => requestJson<{ title: string; description: string; hashtags: string[] }>('/api/ai/describe', { method: 'POST', body: JSON.stringify({ project, language }) });
 export const startBestMoments = (items: { media_id: number; length: number }[]) => requestJson<{ job_id: string }>('/api/best-moments', { method: 'POST', body: JSON.stringify({ items }) });
 /** Waits for a background job, reporting its progress, and returns its final fields. */
 export async function waitForJob<T>(id: string, onProgress: (progress: number) => void = () => {}): Promise<T> {

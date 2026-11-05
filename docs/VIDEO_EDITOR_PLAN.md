@@ -586,6 +586,11 @@ Everything here was tested with generated clips on Linux only. None of it has me
 ### Captions clear of faces (done)
 A caption can now carry its own `position` (schema and `model.ts`), passed to libass per line, so preview images and export agree (a render test checks the moved caption is at the top). `timeline/clear-faces.ts` moves a caption that would cover a face to the top, else the middle, for that caption only. Making captions again resets them.
 
+### Ask AI (done)
+The editor became "AI ready": a separate text AI connection (`text_ai_service.py`) that works with any OpenAI-compatible chat API, in the cloud with a key or on this Mac without one (Ollama, LM Studio). `edit_plan_service.py` gives the model a fixed catalogue of eleven commands (theme, look, transition, title, effect, cut to the beat, captions, captions clear of faces, shape, story template, caption translation) and the editor's real ids, then checks every command it returns; the editor checks again (`timeline/commands.ts`) and shows them as a ticked list. The person applies them; each runs through the editor's own action on the latest timeline and is one Undo. Caption translation keeps each caption's time and shares it evenly between the new words. "Words to post" writes a title, description and hashtags. Only text leaves the Mac: the request, file names, titles and captions.
+
+**Tested:** the catalogue checks, prompt contents, reply parsing, key handling and provider errors against a fake provider; in a browser against a local fake OpenAI-compatible server, a four-edit plan applied exactly (and an unknown effect was dropped). **Not yet proven:** a real model's plans, in English and Tamil, and how often they need correcting. Choosing a model and judging its answers is the owner's next step.
+
 ## Lyric video backlog
 For later. This is an important feature, and it comes after the editing work.
 
