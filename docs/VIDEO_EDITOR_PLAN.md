@@ -332,6 +332,7 @@ No UI yet. The editor screen still uses version 1 recipes until Phase 3.
 - Lock blocks dragging, trimming, splitting, deleting, motion path dots and the inspector.
 - Blend modes per overlay layer: multiply, screen, overlay, darken, lighten. Export blends color, then applies the layer's alpha. Preview copies what's underneath into a backdrop texture for the shader.
 - Picture-in-picture: corner buttons with an even margin, working on any overlay, video or image.
+- Resize in the preview: the selected clip shows its outline with a handle at each corner. Dragging one changes Size (and Position, so the opposite corner stays put; Option keeps the middle still). It writes the same transform as the Size slider, so export needs nothing new, and a drag is one undo step. Handles stay inside the frame when a corner is off-screen, and follow the pointer from the real corner. The math is in `frontend/src/timeline/resize.ts`.
 - The limit stays at 6 video layers, refused in plain words.
 - `PlaybackEngine.onStruggling`: a plain message when video has to resync or frames run slow repeatedly, with Render preview. Render preview is also always available. `POST /projects/{id}/preview-render` makes a 540p draft outside the library. It plays as one clip until the next edit.
 - Small overlays are worked on at their shown size.

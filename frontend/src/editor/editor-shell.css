@@ -132,3 +132,11 @@
 /* Submenus and tick items in right-click menus. */
 .ed-menu-parent{position:relative}.ed-menu-parent>button svg{flex:0 0 auto;color:var(--muted)}.ed-submenu{z-index:21;min-width:220px}
 .ed-menu button.checkable{justify-content:flex-start;gap:8px}.ed-menu-check{display:inline-grid;place-items:center;flex:0 0 auto;width:14px;height:14px;color:var(--accent-text,#8b7cff)}.ed-menu button.checkable kbd{margin-left:auto}
+/* The selected clip's outline in the preview, with corner handles to resize it. Only the handles take the pointer, so dragging the picture still moves it. */
+.ed-resize{position:absolute;inset:0;pointer-events:none}.ed-resize svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ed-resize polygon{fill:none;stroke:#8b7cff;stroke-width:1.5;filter:drop-shadow(0 0 1px #000000a0)}
+.ed-resize-handle{position:absolute;width:14px;height:14px;padding:0;border-radius:4px;border:2px solid #fff;background:#6d5cff;box-shadow:0 1px 4px #00000080;pointer-events:all;touch-action:none;transform:translate(-50%,-50%)}
+.ed-resize-handle.down{cursor:nwse-resize}.ed-resize-handle.up{cursor:nesw-resize}
+.ed-resize-handle:hover,.ed-resize-handle:focus-visible{transform:translate(-50%,-50%) scale(1.25);outline:none}
+.ed-resize-size{position:absolute;transform:translate(-50%,-50%);padding:2px 7px;border-radius:6px;background:#000000b0;color:#fff;font-size:11px;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .15s}
+.ed-resize:has(.ed-resize-handle:active) .ed-resize-size{opacity:1}
