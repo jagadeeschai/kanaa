@@ -600,6 +600,9 @@ The editor became "AI ready" on the existing AI settings: the same OpenAI-compat
 ### Smooth music loops (done)
 `timeline/loop.ts`: Loop to the end of the video, on a song that ends before the picture does, repeats it by whole bars (4 beats from `beat_service.py`, from the last beat near its end back to the earliest bar boundary, at least 4 s) with 30 ms joins and a fade at the picture's end. Without a clear beat it repeats the whole song. **Not yet proven:** how the joins sound on real songs; a bar is assumed to be 4 beats.
 
+### Travel maps (done)
+Effects → Travel map: 2 to 6 places, Flight/Road/Train/Boat per leg, Light/Night/Vintage, names in English, Tamil or both. Data: Natural Earth 10m countries in India's point of view (13 MB), 50m states, lakes and rivers, and GeoNames cities over 15,000 (CC BY 4.0), fetched once after a confirm and checked (zip or GeoJSON, never an error page). Search runs on this Mac, matching old and Tamil names. Flights follow the great circle; roads come from the OSRM demo server (no key, only the two points sent, cached per pair) with a curve fallback; trains use the road. `travel_map_render.py` draws Web Mercator outlines (culled and simplified per frame, 2× supersampled), the route drawing behind the vehicle, pins and Tamil-shaped labels (raqm), a credit line, and a camera that pulls back and settles on the destination: about 8 s for one leg, 40–60 s to render at 720p. **Not yet proven:** GeoNames and OSRM from the Mac (both blocked in the cloud session), real road routes, and long multi-stop trips.
+
 ## Lyric video backlog
 For later. This is an important feature, and it comes after the editing work.
 
