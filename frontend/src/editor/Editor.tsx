@@ -911,6 +911,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const [effects, setEffects] = useState<EffectInfo[]>([]);
   const [effectBusy, setEffectBusy] = useState<{ id: string; progress: number } | null>(null);
+  const [effectSection, setEffectSection] = useState<string | null>('clip-Film');
   const [weather, setWeather] = useState({ rainDensity: 1, rainSpeed: 1, rainDirection: 'left' as 'left' | 'straight' | 'right', frequency: 3, brightness: 0.8,
     fogDensity: 0.65, fogSpeed: 0.55, fogDirection: 'right' as 'left' | 'straight' | 'right', snowDensity: 0.8, snowSpeed: 0.8, snowDirection: 'right' as 'left' | 'straight' | 'right', seed: 0 });
   useEffect(() => { if (leftTab === 'effects' && !effects.length) listEffects().then(setEffects).catch((problem) => setError((problem as Error).message)); }, [leftTab, effects.length]);
@@ -1631,12 +1632,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
           <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">Clip selected</span>}</div>
           {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
-          {(['Film', 'Signal', 'Lens'] as const).map((group) => <div key={group} className="ed-effect-category">
-            <h3 className="ed-sub">{group}</h3><div className="ed-clip-effect-grid">{CLIP_EFFECT_PRESETS.filter((preset) => preset.group === group).map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} disabled={!selected} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Reapply' : 'Apply'} ${preset.label} to the selected clip` : 'Select a clip on the timeline first'}>
+          {(['Film', 'Signal', 'Lens'] as const).map((group) => { const section = `clip-${group}`; const open = effectSection === section; return <div key={group} className="ed-effect-category">
+            <button className="ed-effect-category-head" aria-expanded={open} onClick={() => setEffectSection(open ? null : section)}><span><b>{group}</b><small>{CLIP_EFFECT_PRESETS.filter((preset) => preset.group === group).map((preset) => preset.label).join(' · ')}</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
+            {open && <div className="ed-clip-effect-grid">{CLIP_EFFECT_PRESETS.filter((preset) => preset.group === group).map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} disabled={!selected} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip` : 'Select a clip on the timeline first'}>
               <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
-          </div>)}
+            }
+          </div>; })}
         </section>}
-        {leftTab === 'effects' && timeline && <TravelMapPanel format={timeline.format} onMade={async (mediaId) => {
+        {leftTab === 'effects' && timeline && <section className="ed-add ed-effect-tool"><button className="ed-effect-category-head" aria-expanded={effectSection === 'travel-map'} onClick={() => setEffectSection(effectSection === 'travel-map' ? null : 'travel-map')}><span><b>Travel map</b><small>Animated route between places</small></span>{effectSection === 'travel-map' ? <Minus size={14}/> : <Plus size={14}/>}</button>{effectSection === 'travel-map' && <TravelMapPanel compact format={timeline.format} onMade={async (mediaId) => {
           const item = await getPhoto(mediaId);
           setMedia((current) => [item, ...current.filter((each) => each.id !== item.id)]);
           const current = timelineRef.current;
@@ -1644,13 +1647,13 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           const clip = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());
           change(dropClip(current, clip, engineRef.current?.currentTime ?? 0));
           setSelectedId(clip.id);
-        }}/>}
+        }}/>}</section>}
         {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
           <h3>Add an overlay</h3><p className="ed-tip">Weather, light and celebration sit above your video as separate timeline layers. Click to add at the playhead, or drag onto the timeline.</p>
-          {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
-            <h3 className="ed-sub">{{ weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
-            {mood === 'weather' && <div className="ed-weather-settings">
-              <details className="ed-weather-block" open><summary>Rain</summary>
+          {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); const label = { weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]; const section = `overlay-${mood}`; const open = effectSection === section; return group.length > 0 && <div key={mood} className="ed-effect-category">
+            <button className="ed-effect-category-head" aria-expanded={open} onClick={() => setEffectSection(open ? null : section)}><span><b>{label}</b><small>{group.length + (mood === 'weather' ? 1 : 0)} effects</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
+            {open && <>{mood === 'weather' && <details className="ed-weather-custom"><summary>Customize weather</summary><div className="ed-weather-settings">
+              <details className="ed-weather-block"><summary>Rain</summary>
                 <ValueSlider label="Amount" value={weather.rainDensity} min={0.25} max={2} step={0.25} defaultValue={1} unit="%" factor={100} onChange={(rainDensity) => setWeather({ ...weather, rainDensity })}/>
                 <ValueSlider label="Fall speed" value={weather.rainSpeed} min={0.6} max={1.6} step={0.1} defaultValue={1} unit="×" decimals={1} onChange={(rainSpeed) => setWeather({ ...weather, rainSpeed })}/>
                 <Chips label="Wind" options={[{ id: 'left' as const, label: 'Left' }, { id: 'straight' as const, label: 'Still' }, { id: 'right' as const, label: 'Right' }]} value={weather.rainDirection} onPick={(rainDirection) => setWeather({ ...weather, rainDirection })}/></details>
@@ -1666,11 +1669,12 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
                 <ValueSlider label="Fall speed" value={weather.snowSpeed} min={0.4} max={1.5} step={0.1} defaultValue={0.8} unit="×" decimals={1} onChange={(snowSpeed) => setWeather({ ...weather, snowSpeed })}/>
                 <Chips label="Wind" options={[{ id: 'left' as const, label: 'Left' }, { id: 'straight' as const, label: 'Still' }, { id: 'right' as const, label: 'Right' }]} value={weather.snowDirection} onPick={(snowDirection) => setWeather({ ...weather, snowDirection })}/></details>
               <button className="ed-button wide" disabled={Boolean(effectBusy)} onClick={() => setWeather({ ...weather, seed: (weather.seed + 1) % 100 })}><Shuffle size={13}/>New variation · {weather.seed + 1}</button>
-              <p className="ed-tip">Choose natural-looking settings, then add the effect. Each variation is cached for reuse.</p>
-            </div>}
+              <p className="ed-tip">Optional controls for the next weather effect you add.</p>
+            </div></details>}
             <div className="ed-quick ed-effects">{group.map((effect) => <button key={effect.id} className={`ed-quick-tile fx-${effect.id}`} {...draggableAs({ kind: 'effect', effect: effect.id })} disabled={!total || Boolean(effectBusy)} onClick={() => { void addEffect(effect.id); }} title={`${effect.about}. Click to add at the playhead, or drag onto the timeline.`}>
               <span className="ed-quick-art">{effectBusy?.id === effect.id && <LoaderCircle className="spin" size={14}/>}</span><b>{effect.label}</b><em lang="ta">{effect.tamil}</em></button>)}{mood === 'weather' && <button className="ed-quick-tile fx-thunder" disabled={!total || thunderBusy} onClick={() => { void addThunder(); }} title="Add locally generated thunder at the playhead. It is an editable sound clip.">
-                <span className="ed-quick-art">{thunderBusy && <LoaderCircle className="spin" size={14}/>}</span><b>Thunder</b><em lang="ta">இடி</em></button>}</div></div>; })}
+                <span className="ed-quick-art">{thunderBusy && <LoaderCircle className="spin" size={14}/>}</span><b>Thunder</b><em lang="ta">இடி</em></button>}</div></>}
+          </div>; })}
           {effectBusy && <p className="ed-tip" role="status">Making the effect for this video's shape… {effectBusy.progress}%. Next time it's instant.</p>}
           {!effects.length && <p className="ed-tip">Loading effects…</p>}
         </section>}

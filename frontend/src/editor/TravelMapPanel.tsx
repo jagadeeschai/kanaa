@@ -25,7 +25,7 @@ function PlaceField({ label, value, onPick, onClear }: { label: string; value: M
 }
 
 /** Travel map: places, how each part is travelled, a look; Kanaa draws the route as a clip. */
-export default function TravelMapPanel({ format, onMade }: { format: { width: number; height: number }; onMade: (mediaId: number) => Promise<void> }) {
+export default function TravelMapPanel({ format, onMade, compact = false }: { format: { width: number; height: number }; onMade: (mediaId: number) => Promise<void>; compact?: boolean }) {
   const [status, setStatus] = useState<{ ready: boolean; size_mb: number; sources: string } | null>(null);
   const [stops, setStops] = useState<(MapPlace | null)[]>([null, null]);
   const [modes, setModes] = useState<string[]>(['flight']);
@@ -53,9 +53,9 @@ export default function TravelMapPanel({ format, onMade }: { format: { width: nu
     } catch (problem) { setNote((problem as Error).message); } finally { setProgress(null); }
   };
 
-  return <section className="ed-add ed-map" aria-label="Travel map">
-    <h3 className="ed-sub">Travel map</h3>
-    <p className="ed-tip">The way from one place to the next: a plane along its arc, or a car along the road, with the names on the map.</p>
+  return <section className={`ed-map ${compact ? 'compact' : 'ed-add'}`} aria-label="Travel map">
+    {!compact && <h3 className="ed-sub">Travel map</h3>}
+    <p className="ed-tip">Choose two or more places, then show the journey by plane, road, train or boat.</p>
     {status && !status.ready ? <><button className="ed-button wide" disabled={Boolean(progress)} onClick={() => { void download(); }}><MapPin size={14}/>Get map data ({status.size_mb} MB, once)</button>
       <p className="ed-tip">Free map outlines and place names ({status.sources}). Kanaa asks before downloading.</p></>
     : status && <>
