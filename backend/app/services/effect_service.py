@@ -48,6 +48,7 @@ EFFECTS = [
     Effect('thoranam', 'Thoranam', 'தோரணம்', 'wedding', 'Mango leaves and marigolds swaying gently across the top'),
     Effect('diya', 'Diya glow', 'தீப ஒளி', 'festival', 'A row of oil-lamp flames flickering along the bottom'),
     Effect('incense-smoke', 'Camphor and incense smoke', 'கற்பூர தூபப் புகை', 'festival', 'Soft fragrant smoke curling upwards for aarti and temple scenes'),
+    Effect('embers', 'Rising embers', 'எழும் தீப்பொறிகள்', 'festival', 'Glowing sparks drifting up from a fire, for Bhogi and night scenes'),
     Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
     Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
     Effect('sparkles', 'Sparkles', 'மின்னல்', 'celebration', 'Little stars that twinkle'),
@@ -945,6 +946,69 @@ def sea_sparkle(n: int, total: int, size: tuple[int, int], rng: np.random.Genera
 sea_sparkle.cache = {}
 
 
+# An ember cools as it climbs: white-yellow at the fire, through orange, to a dull red just before it dies.
+EmberHeat = [(0.0, (255, 236, 170)), (0.25, (255, 168, 60)), (0.6, (235, 92, 24)), (1.0, (150, 32, 10))]
+
+
+def _ember_colour(age: float) -> tuple[float, float, float]:
+    for (a0, c0), (a1, c1) in zip(EmberHeat, EmberHeat[1:]):
+        if age <= a1:
+            k = (age - a0) / (a1 - a0)
+            return tuple(x + (y - x) * k for x, y in zip(c0, c1))
+    return EmberHeat[-1][1]
+
+
+def embers(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Sparks rising from a fire below: quick, swaying in the heat, cooling and flickering out, near ones larger and soft."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    sparks = embers.cache.get(size)
+    if sparks is None:
+        sparks = embers.cache[size] = _particles(rng, 95, x=(0.05, 0.95), phase=(0, 1), life=(1.6, 3.4), rise=(0.32, 0.6), drift=(-0.06, 0.06),
+                                                 sway=(0, 6.28), wobble=(1.2, 3.4), size=(0.0012, 0.0042), depth=(0, 1), flicker=(7, 16))
+    far, near = Image.new('RGB', size), Image.new('RGB', size)
+    far_draw, near_draw = ImageDraw.Draw(far), ImageDraw.Draw(near)
+    for i in range(len(sparks['x'])):
+        life = sparks['life'][i]
+        # Each spark lives part of a loop and is born again at the fire, so the effect starts already burning.
+        age = ((t / life + sparks['phase'][i]) % 1.0)
+        depth = sparks['depth'][i]
+        lift = sparks['rise'][i] * (0.6 + 0.6 * depth)
+
+        def where(a: float) -> tuple[float, float]:
+            climbed = lift * life * a * (1 - 0.25 * a)  # Quick off the fire, slowing as it cools.
+            # Hot air swirls: two slow waves and a quicker flutter, growing as the spark rises, so no two paths are straight.
+            s = a * life
+            heat = (math.sin(s * sparks['wobble'][i] + sparks['sway'][i]) * 0.045 + math.sin(s * sparks['wobble'][i] * 2.7 + sparks['sway'][i] * 3) * 0.018) * (0.3 + a)
+            return (sparks['x'][i] + sparks['drift'][i] * a * 2 + heat) * width, (1.04 - climbed) * height
+
+        x, y = where(age)
+        if y < -0.05 * height:
+            continue
+        glow = (1 - age) ** 1.3 * min(1.0, age / 0.06)  # Bright at birth, fading out; never pops on.
+        glow *= 0.72 + 0.28 * math.sin(t * sparks['flicker'][i] + sparks['sway'][i] * 5)
+        glow *= 0.55 + 0.45 * depth
+        if glow < 0.03:
+            continue
+        colour = tuple(int(c * glow) for c in _ember_colour(age))
+        r = max(0.6, sparks['size'][i] * unit * (0.5 + 1.1 * depth) * (1.15 - 0.4 * age))
+        draw = near_draw if depth > 0.7 else far_draw
+        tx, ty = where(max(0.0, age - 0.012 / life))  # A short streak, as a camera sees a fast spark.
+        draw.line((tx, ty, x, y), fill=tuple(int(c * 0.6) for c in colour), width=max(1, round(r * 1.5)))
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=colour)
+    far = far.filter(ImageFilter.GaussianBlur(max(0.5, unit * 0.0012)))
+    near = near.filter(ImageFilter.GaussianBlur(max(0.9, unit * 0.003)))  # Close to the lens, so a little out of focus.
+    picture = np.asarray(far, np.float32) + np.asarray(near, np.float32)
+    # The fire itself sits below the frame; only its warm light reaches the bottom edge, breathing with the flames.
+    breathe = 0.2 + 0.05 * math.sin(t * 3.3) + 0.03 * math.sin(t * 7.9)
+    picture += np.asarray(_field(size, [(0.5, 1.12, 0.38, (255, 110, 30), breathe), (0.3, 1.1, 0.2, (255, 150, 60), breathe * 0.6)]), np.float32)
+    return _glow(Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8)), max(1.0, unit * 0.006), 0.9)
+
+
+embers.cache = {}
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
@@ -953,6 +1017,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'thoranam': thoranam,
     'diya': diya,
     'incense-smoke': incense_smoke,
+    'embers': embers,
     'sparkler': sparkler,
     'kolam': kolam,
     'balloons': balloons,
