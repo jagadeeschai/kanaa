@@ -106,6 +106,7 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['lens-flare'].mood, 'travel')
         self.assertEqual(found['jasmine'].mood, 'wedding')
         self.assertEqual(found['akshatai'].mood, 'wedding')
+        self.assertEqual(found['thoranam'].mood, 'wedding')
         self.assertEqual(found['diya'].mood, 'festival')
         self.assertEqual(found['sparkler'].mood, 'festival')
         self.assertEqual(found['kolam'].mood, 'festival')

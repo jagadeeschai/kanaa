@@ -45,6 +45,7 @@ EFFECTS = [
     Effect('petals', 'Flower shower', 'பூ மழை', 'wedding', 'Marigold and rose petals drifting down'),
     Effect('jasmine', 'Jasmine shower', 'மல்லிகை மழை', 'wedding', 'Small white jasmine buds falling gently'),
     Effect('akshatai', 'Rice and turmeric', 'அட்சதை', 'wedding', 'Blessed yellow rice grains arc upwards and fall'),
+    Effect('thoranam', 'Thoranam', 'தோரணம்', 'wedding', 'Mango leaves and marigolds swaying gently across the top'),
     Effect('diya', 'Diya glow', 'தீப ஒளி', 'festival', 'A row of oil-lamp flames flickering along the bottom'),
     Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
     Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
@@ -165,6 +166,53 @@ def sparkles(n: int, total: int, size: tuple[int, int], rng: np.random.Generator
 
 
 sparkles.cache = {}
+
+
+def thoranam(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """A layered mango-leaf and marigold garland with independent, restrained movement."""
+    width, height = size
+    unit = min(size)
+    count = max(9, round(width / unit * 10))
+    t = n / FPS
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    rope_y = unit * .038
+    sag = unit * .025
+    rope = []
+    for step in range(81):
+        x = width * step / 80
+        y = rope_y + sag * math.sin(math.pi * step / 80) + math.sin(t * .65 + step * .12) * unit * .0015
+        rope.append((x, y))
+    draw.line(rope, fill=(158, 105, 35), width=max(2, round(unit * .004)))
+    for i in range(count):
+        x = width * (i + .5) / count
+        share = (i + .5) / count
+        anchor_y = rope_y + sag * math.sin(math.pi * share)
+        phase = i * 1.73
+        swing = math.sin(t * .9 + phase) * .11 + math.sin(t * .37 + phase * .7) * .035
+        length = unit * (.105 + .018 * math.sin(i * 2.1))
+        tip_x = x + math.sin(swing) * length
+        tip_y = anchor_y + math.cos(swing) * length
+        normal_x, normal_y = math.cos(swing), -math.sin(swing)
+        half = unit * (.018 + .003 * (i % 3))
+        leaf = [(x, anchor_y), (x + normal_x * half, anchor_y + normal_y * half + length * .28),
+                (tip_x + normal_x * half * .18, tip_y + normal_y * half * .18), (tip_x, tip_y + unit * .012),
+                (tip_x - normal_x * half * .18, tip_y - normal_y * half * .18),
+                (x - normal_x * half, anchor_y - normal_y * half + length * .28)]
+        green = (40 + (i % 3) * 8, 128 + (i % 2) * 22, 52 + (i % 4) * 5)
+        draw.polygon(leaf, fill=green)
+        draw.line((x, anchor_y, tip_x, tip_y), fill=(112, 178, 75), width=max(1, round(unit * .0015)))
+        flower_x = width * (i + 1) / count
+        flower_y = rope_y + sag * math.sin(math.pi * min(1, (i + 1) / count)) + unit * .008
+        flower_y += math.sin(t * .8 + phase) * unit * .002
+        radius = unit * (.011 if i % 2 else .014)
+        for petal in range(8):
+            angle = petal * math.pi / 4 + t * .08 * (-1 if i % 2 else 1)
+            px, py = flower_x + math.cos(angle) * radius * .55, flower_y + math.sin(angle) * radius * .55
+            r = radius * .55
+            draw.ellipse((px - r, py - r, px + r, py + r), fill=(238, 133 + (i % 2) * 35, 20))
+        draw.ellipse((flower_x - radius * .45, flower_y - radius * .45, flower_x + radius * .45, flower_y + radius * .45), fill=(255, 196, 38))
+    return _glow(image, max(.6, unit * .0015), .12)
 
 
 def fireworks(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
@@ -847,6 +895,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
     'jasmine': jasmine,
     'akshatai': akshatai,
+    'thoranam': thoranam,
     'diya': diya,
     'sparkler': sparkler,
     'kolam': kolam,
