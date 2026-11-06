@@ -75,6 +75,7 @@ uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
 uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, signalScanlines, signalNoise;
 uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
 uniform float splashAmount, splashTolerance, splashSoftness; uniform vec3 splashColor;
+uniform float dreamyAmount, dreamySoftness, dreamyWarmth;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -163,6 +164,20 @@ void main(){
     vec2 targetChroma = vec2((splashColor.b - targetLuma) / 1.8556, (splashColor.r - targetLuma) / 1.5748);
     float keep = 1. - smoothstep(splashTolerance, splashTolerance + splashSoftness, length(chroma - targetChroma));
     rgb = mix(rgb, vec3(luma), splashAmount * (1. - keep));
+  }
+  if (dreamyAmount > 0.) {
+    vec3 bloom = vec3(0.); float bloomWeight = 0.;
+    for (int i = 0; i < 24; i++) {
+      float r = sqrt((float(i) + .5) / 24.); float a = float(i) * 2.399963;
+      vec2 at = s + vec2(cos(a), sin(a)) * r * mix(.004, .025, dreamySoftness) * blurAspect;
+      vec4 sampleColor = pick(at); vec3 sampleRgb = sampleColor.a > 0. ? sampleColor.rgb / sampleColor.a : vec3(0.);
+      float highlight = smoothstep(.48, .92, dot(sampleRgb, vec3(.2126, .7152, .0722)));
+      float weight = exp(-2. * r * r); bloom += sampleRgb * highlight * weight; bloomWeight += weight;
+    }
+    bloom /= max(bloomWeight, .001);
+    bloom *= vec3(1. + dreamyWarmth * .12, 1. + dreamyWarmth * .035, 1. - dreamyWarmth * .08);
+    rgb = clamp(1. - (1. - rgb) * (1. - bloom * dreamyAmount * .72), 0., 1.);
+    rgb = mix(rgb, vec3(dot(rgb, vec3(.2126, .7152, .0722))) + rgb * .82, dreamyAmount * dreamySoftness * .08);
   }
   if (oldFilm > 0.) {
     float flicker = (filmHash(vec2(floor(oldSeed), 17.)) - .5) * .10 * oldFilm;
@@ -258,7 +273,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -525,6 +540,10 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.splashTolerance, splash?.tolerance ?? 0);
     gl.uniform1f(uniforms.splashSoftness, splash?.softness ?? 0.001);
     gl.uniform3f(uniforms.splashColor, splashRgb[0], splashRgb[1], splashRgb[2]);
+    const dreamy = clip.dreamy_glow;
+    gl.uniform1f(uniforms.dreamyAmount, dreamy?.intensity ?? 0);
+    gl.uniform1f(uniforms.dreamySoftness, dreamy?.softness ?? 0);
+    gl.uniform1f(uniforms.dreamyWarmth, dreamy?.warmth ?? 0);
     gl.uniform3f(uniforms.tint, red, green, blue);
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
@@ -533,7 +552,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -544,6 +563,7 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.signalMode, 0);
     gl.uniform1i(uniforms.lensMode, 0);
     gl.uniform1f(uniforms.splashAmount, 0);
+    gl.uniform1f(uniforms.dreamyAmount, 0);
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
   }

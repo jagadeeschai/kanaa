@@ -18,7 +18,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_COLOUR_SPLASH, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -63,6 +63,7 @@ const PREVIEW_SHORT_SIDE = 540;
 const RENDERED_ID = -1;
 const CLIP_EFFECT_PRESETS = [
   { id: 'colour-splash', group: 'Colour', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
+  { id: 'dreamy-glow', group: 'Colour', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
   { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
   { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
   { id: 'vhs', group: 'Signal', label: 'VHS tape', about: 'Tape jitter, scanlines, softness and analogue noise.' },
@@ -711,6 +712,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const updateSelected = (changes: Partial<Clip>, group?: string) => { if (timeline && selected) change(changes.speed !== undefined ? setSpeed(timeline, selected.id, changes.speed) : updateClip(timeline, selected.id, changes), group); };
   const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
     id === 'colour-splash' ? selected.colour_splash
+      : id === 'dreamy-glow' ? selected.dreamy_glow
       : id === 'old-film' ? selected.old_film
       : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
         : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
@@ -719,6 +721,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!selected) return;
     if (clipEffectApplied(id)) { updateLayout({ inspectorOpen: true }); return; }
     const changes: Partial<Clip> = id === 'colour-splash' ? { colour_splash: { ...DEFAULT_COLOUR_SPLASH } }
+      : id === 'dreamy-glow' ? { dreamy_glow: { ...DEFAULT_DREAMY_GLOW } }
       : id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
       : id === 'glitch' || id === 'vhs' ? { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: id } }
         : { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: id === 'lens-dirt' ? 'dirt' : 'raindrops' } };
@@ -2186,6 +2189,14 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       </More>
       <button className="ed-button wide" onClick={() => onChange({ colour_splash: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ colour_splash: { ...DEFAULT_COLOUR_SPLASH } })}>Add colour splash</button>}
+    </Group>
+    <Group title="Dreamy glow" tab="look" startOpen={Boolean(clip.dreamy_glow)} changed={Boolean(clip.dreamy_glow)} keywords="dreamy glow soft focus bloom portrait skin wedding romantic" tip="Add a gentle warm bloom to highlights while keeping faces readable.">
+    {clip.dreamy_glow ? <>
+      <ValueSlider label="Glow" value={clip.dreamy_glow.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, intensity } }, group)}/>
+      <ValueSlider label="Softness" value={clip.dreamy_glow.softness} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.softness} unit="%" factor={100} onChange={(softness, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, softness } }, group)}/>
+      <More><ValueSlider label="Warmth" value={clip.dreamy_glow.warmth} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.warmth} unit="%" factor={100} onChange={(warmth, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, warmth } }, group)}/></More>
+      <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}>Add dreamy glow</button>}
     </Group>
     <Group title="Old film" tab="look" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>

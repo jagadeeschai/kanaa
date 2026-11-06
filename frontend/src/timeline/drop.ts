@@ -5,11 +5,11 @@
  * Kept free of React and the DOM so it can be tested on its own.
  */
 import type { LookName, TransitionKind } from './animation.ts';
-import { DEFAULT_COLOUR_SPLASH, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, clipLength, insertClip, mainLayer, MAX_VIDEO_LAYERS, overlayLayers, updateClip, type Clip, type Timeline, type VideoLayer } from './model.ts';
+import { DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, clipLength, insertClip, mainLayer, MAX_VIDEO_LAYERS, overlayLayers, updateClip, type Clip, type Timeline, type VideoLayer } from './model.ts';
 
 export const DRAG_TYPE = 'application/x-kanaa';
 export const TRANSITION_SECONDS = 0.6;
-export type ClipEffectPreset = 'colour-splash' | 'old-film' | 'glitch' | 'vhs' | 'raindrops' | 'lens-dirt';
+export type ClipEffectPreset = 'colour-splash' | 'dreamy-glow' | 'old-film' | 'glitch' | 'vhs' | 'raindrops' | 'lens-dirt';
 
 export type DragPayload =
   | { kind: 'media'; id: number }
@@ -32,7 +32,7 @@ export function decodePayload(raw: string | null | undefined): DragPayload | nul
     if (value?.kind === 'media' && Number.isInteger(value.id)) return value;
     if (value?.kind === 'look' && typeof value.look === 'string') return value;
     if (value?.kind === 'transition' && typeof value.transition === 'string') return value;
-    if (value?.kind === 'clip_effect' && ['colour-splash', 'old-film', 'glitch', 'vhs', 'raindrops', 'lens-dirt'].includes(value.effect)) return value;
+    if (value?.kind === 'clip_effect' && ['colour-splash', 'dreamy-glow', 'old-film', 'glitch', 'vhs', 'raindrops', 'lens-dirt'].includes(value.effect)) return value;
     if (value?.kind === 'title' && typeof value.template === 'string') return value;
     if (value?.kind === 'track' && typeof value.track === 'string') return value;
     if (value?.kind === 'effect' && typeof value.effect === 'string') return value;
@@ -76,6 +76,7 @@ export function applyClipDrop(timeline: Timeline, payload: DragPayload, clipId: 
   if (payload.kind === 'look') return updateClip(timeline, clipId, { look: payload.look });
   if (payload.kind === 'clip_effect') {
     if (payload.effect === 'colour-splash') return updateClip(timeline, clipId, { colour_splash: { ...DEFAULT_COLOUR_SPLASH } });
+    if (payload.effect === 'dreamy-glow') return updateClip(timeline, clipId, { dreamy_glow: { ...DEFAULT_DREAMY_GLOW } });
     if (payload.effect === 'old-film') return updateClip(timeline, clipId, { old_film: { ...DEFAULT_OLD_FILM } });
     if (payload.effect === 'glitch' || payload.effect === 'vhs') return updateClip(timeline, clipId, { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: payload.effect } });
     return updateClip(timeline, clipId, { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: payload.effect === 'lens-dirt' ? 'dirt' : 'raindrops' } });
@@ -89,7 +90,7 @@ export function applyClipDrop(timeline: Timeline, payload: DragPayload, clipId: 
   return timeline;
 }
 
-const clipEffectLabel = (effect: ClipEffectPreset) => ({ 'colour-splash': 'Colour splash', 'old-film': 'Old film', glitch: 'Digital glitch', vhs: 'VHS tape', raindrops: 'Raindrops', 'lens-dirt': 'Lens dirt' })[effect];
+const clipEffectLabel = (effect: ClipEffectPreset) => ({ 'colour-splash': 'Colour splash', 'dreamy-glow': 'Dreamy glow', 'old-film': 'Old film', glitch: 'Digital glitch', vhs: 'VHS tape', raindrops: 'Raindrops', 'lens-dirt': 'Lens dirt' })[effect];
 
 function findAny(timeline: Timeline, id: string): Clip | null {
   for (const layer of [mainLayer(timeline), ...overlayLayers(timeline)]) { const found = layer.items.find((clip) => clip.id === id); if (found) return found; }

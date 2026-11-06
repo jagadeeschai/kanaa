@@ -6,7 +6,7 @@ import { RAMPS } from './ramp.ts';
  * compared with and without it. A switched-off effect is left out of the preview and the export alike:
  * backend/app/services/timeline_service.py applies the same rules (apply_bypass) before compiling.
  */
-export type EffectId = 'look' | 'colour' | 'old_film' | 'signal_damage' | 'lens_surface' | 'colour_splash' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
+export type EffectId = 'look' | 'colour' | 'old_film' | 'signal_damage' | 'lens_surface' | 'colour_splash' | 'dreamy_glow' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
 export type ActiveEffect = { id: EffectId; label: string; detail: string; on: boolean };
 
 const RAMP_NAMES: Record<string, string> = Object.fromEntries(Object.entries(RAMPS).map(([name, ramp]) => [JSON.stringify(ramp), name.replace('-', ' ')]));
@@ -23,6 +23,7 @@ export function clipEffects(clip: Clip): ActiveEffect[] {
   if (clip.signal_damage) list.push({ id: 'signal_damage', label: 'Signal damage', detail: clip.signal_damage.mode === 'vhs' ? 'VHS tape' : 'digital glitch' });
   if (clip.lens_surface) list.push({ id: 'lens_surface', label: 'Lens surface', detail: clip.lens_surface.mode === 'raindrops' ? 'raindrops' : 'lens dirt' });
   if (clip.colour_splash) list.push({ id: 'colour_splash', label: 'Colour splash', detail: `${clip.colour_splash.color} preserved` });
+  if (clip.dreamy_glow) list.push({ id: 'dreamy_glow', label: 'Dreamy glow', detail: 'soft warm highlights' });
   if (clip.cutout) list.push({ id: 'background', label: 'Background', detail: clip.cutout === 'blur' ? `${title(clip.blur_amount ?? 'medium')} blur${clip.focus_pull ? ', focus pull' : ''}` : 'removed' });
   if (clip.chroma) list.push({ id: 'green_screen', label: 'Green screen', detail: 'colour removed' });
   if (clip.stabilise) list.push({ id: 'steady', label: 'Steady', detail: 'shake smoothed' });
@@ -47,6 +48,7 @@ export function applyBypass(clip: Clip): Clip {
     if (id === 'signal_damage') next.signal_damage = null;
     if (id === 'lens_surface') next.lens_surface = null;
     if (id === 'colour_splash') next.colour_splash = null;
+    if (id === 'dreamy_glow') next.dreamy_glow = null;
     if (id === 'background') Object.assign(next, { cutout: null, cutout_pick: null, focus_pull: null });
     if (id === 'green_screen') next.chroma = null;
     if (id === 'steady') next.stabilise = false;
@@ -84,7 +86,7 @@ export function removeEffect(clip: Clip, id: EffectId): Partial<Clip> {
   const stripped = applyBypass({ ...clip, bypass: [id] });
   const rest = (clip.bypass ?? []).filter((item) => item !== id);
   const changes: Partial<Clip> = { bypass: rest.length ? rest : null };
-  for (const key of ['look', 'adjust', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
+  for (const key of ['look', 'adjust', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
     if (stripped[key] !== clip[key]) (changes as Record<string, unknown>)[key] = stripped[key];
   }
   return changes;

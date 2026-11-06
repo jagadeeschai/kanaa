@@ -54,6 +54,8 @@ test('clip effects can be dropped directly on any clip', () => {
   assert.equal(mainLayer(wet).items[0].lens_surface.mode, 'raindrops');
   const splash = applyClipDrop(t, { kind: 'clip_effect', effect: 'colour-splash' }, 'b');
   assert.equal(mainLayer(splash).items[1].colour_splash.color, '#d52836');
+  const dreamy = applyClipDrop(t, { kind: 'clip_effect', effect: 'dreamy-glow' }, 'b');
+  assert.equal(mainLayer(dreamy).items[1].dreamy_glow.intensity, 0.45);
 });
 
 test('a lyric line dropped on an image starts it there, keeping order', () => {

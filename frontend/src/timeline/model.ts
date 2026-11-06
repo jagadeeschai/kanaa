@@ -12,12 +12,13 @@ export type OldFilm = { intensity: number; grain: number; scratches: number; dus
 export type SignalDamage = { mode: 'glitch' | 'vhs'; intensity: number; rgb_split: number; jitter: number; scanlines: number; noise: number };
 export type LensSurface = { mode: 'dirt' | 'raindrops'; intensity: number; amount: number; refraction: number; softness: number };
 export type ColourSplash = { color: string; intensity: number; tolerance: number; softness: number };
+export type DreamyGlow = { intensity: number; softness: number; warmth: number };
 /** Which of the people, or objects, a cut-out keeps. ids are from the clip's list of them; null keeps them all. */
 export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -62,6 +63,7 @@ export const DEFAULT_OLD_FILM: OldFilm = { intensity: 0.65, grain: 0.55, scratch
 export const DEFAULT_SIGNAL_DAMAGE: SignalDamage = { mode: 'glitch', intensity: 0.6, rgb_split: 0.5, jitter: 0.45, scanlines: 0.35, noise: 0.3 };
 export const DEFAULT_LENS_SURFACE: LensSurface = { mode: 'raindrops', intensity: 0.6, amount: 0.5, refraction: 0.55, softness: 0.4 };
 export const DEFAULT_COLOUR_SPLASH: ColourSplash = { color: '#d52836', intensity: 1, tolerance: 0.12, softness: 0.08 };
+export const DEFAULT_DREAMY_GLOW: DreamyGlow = { intensity: 0.45, softness: 0.5, warmth: 0.2 };
 
 export const FORMATS = [
   { id: 'reels', label: 'Reels, Shorts, TikTok', ratio: '9:16', width: 1080, height: 1920 },

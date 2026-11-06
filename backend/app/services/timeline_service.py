@@ -263,6 +263,20 @@ def colour_splash_filters(effect) -> list[str]:
     return [f"geq=r='{channel(r)}':g='{channel(g)}':b='{channel(b)}':a='alpha(X,Y)'"]
 
 
+def dreamy_glow_filters(effect) -> list[str]:
+    """Gently soften detail and lift warm highlights without washing out the whole shot."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    radius = 3 + round(effect.softness * 8)
+    soften = -.25 - effect.intensity * .9
+    lift = 1 + effect.intensity * .035
+    red = effect.warmth * effect.intensity * .045
+    blue = -effect.warmth * effect.intensity * .025
+    return [f'unsharp=luma_msize_x={radius | 1}:luma_msize_y={radius | 1}:luma_amount={soften:.4f}',
+            f'eq=brightness={lift - 1:.4f}:saturation={1 + effect.intensity * .04:.4f}',
+            f'colorbalance=rs={red:.4f}:bs={blue:.4f}:pl=1']
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -286,7 +300,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash)]
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash), *dreamy_glow_filters(clip.dreamy_glow)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -870,6 +884,8 @@ def apply_bypass(clip):
             changes['lens_surface'] = None
         elif effect == 'colour_splash':
             changes['colour_splash'] = None
+        elif effect == 'dreamy_glow':
+            changes['dreamy_glow'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':
