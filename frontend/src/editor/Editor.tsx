@@ -18,7 +18,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { DEFAULT_COLOUR_SPLASH, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -62,6 +62,7 @@ const MIN_MUSIC_SECONDS = 1;
 const PREVIEW_SHORT_SIDE = 540;
 const RENDERED_ID = -1;
 const CLIP_EFFECT_PRESETS = [
+  { id: 'colour-splash', group: 'Colour', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
   { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
   { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
   { id: 'vhs', group: 'Signal', label: 'VHS tape', about: 'Tape jitter, scanlines, softness and analogue noise.' },
@@ -709,14 +710,16 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const updateSelected = (changes: Partial<Clip>, group?: string) => { if (timeline && selected) change(changes.speed !== undefined ? setSpeed(timeline, selected.id, changes.speed) : updateClip(timeline, selected.id, changes), group); };
   const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
-    id === 'old-film' ? selected.old_film
+    id === 'colour-splash' ? selected.colour_splash
+      : id === 'old-film' ? selected.old_film
       : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
         : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
   ));
   const applyClipEffect = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => {
     if (!selected) return;
     if (clipEffectApplied(id)) { updateLayout({ inspectorOpen: true }); return; }
-    const changes: Partial<Clip> = id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
+    const changes: Partial<Clip> = id === 'colour-splash' ? { colour_splash: { ...DEFAULT_COLOUR_SPLASH } }
+      : id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
       : id === 'glitch' || id === 'vhs' ? { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: id } }
         : { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: id === 'lens-dirt' ? 'dirt' : 'raindrops' } };
     updateSelected(changes);
@@ -1641,7 +1644,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
           <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">{activeClipEffects.length ? `${activeClipEffects.length} applied` : 'Clip selected'}</span>}</div>
           {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
-          {(['Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
+          {(['Colour', 'Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{group}</b><small>{matches.map((preset) => preset.label).join(' · ')}</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
             {open && <div className="ed-clip-effect-grid">{matches.map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} {...draggableAs({ kind: 'clip_effect', effect: preset.id })} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip, or drag it onto another clip` : `Drag ${preset.label} onto a timeline clip`}>
               <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
@@ -2172,6 +2175,17 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
     <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
     <ValueSlider label="Colour strength" value={clip.adjust.saturation} min={0} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(saturation, group) => adjust({ saturation }, group)}/>
     </More>
+    </Group>
+    <Group title="Colour splash" tab="look" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
+    {clip.colour_splash ? <>
+      <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>
+      <ValueSlider label="Black and white strength" value={clip.colour_splash.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_COLOUR_SPLASH.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ colour_splash: { ...clip.colour_splash!, intensity } }, group)}/>
+      <More>
+        <ValueSlider label="Colour range" value={clip.colour_splash.tolerance} min={0.01} max={0.5} step={0.01} defaultValue={DEFAULT_COLOUR_SPLASH.tolerance} unit="%" factor={100} onChange={(tolerance, group) => onChange({ colour_splash: { ...clip.colour_splash!, tolerance } }, group)}/>
+        <ValueSlider label="Edge softness" value={clip.colour_splash.softness} min={0.001} max={0.3} step={0.005} defaultValue={DEFAULT_COLOUR_SPLASH.softness} unit="%" factor={100} decimals={1} onChange={(softness, group) => onChange({ colour_splash: { ...clip.colour_splash!, softness } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ colour_splash: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ colour_splash: { ...DEFAULT_COLOUR_SPLASH } })}>Add colour splash</button>}
     </Group>
     <Group title="Old film" tab="look" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>

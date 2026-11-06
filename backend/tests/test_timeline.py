@@ -1736,6 +1736,11 @@ class EffectSwitches(Clips):
         dry = self.shot('switch-lens-off.mp4', lens_surface=lens, bypass=['lens_surface'])
         self.assertGreater(np.abs(wet.astype(int) - plain.astype(int)).mean(), 1)
         self.assertLess(np.abs(dry.astype(int) - plain.astype(int)).mean(), 2)
+        splash = {'color': '#d52836', 'intensity': 1, 'tolerance': 0.12, 'softness': 0.08}
+        selective = self.shot('switch-colour-splash.mp4', colour_splash=splash)
+        splash_off = self.shot('switch-colour-splash-off.mp4', colour_splash=splash, bypass=['colour_splash'])
+        self.assertGreater(np.abs(selective.astype(int) - plain.astype(int)).mean(), 1)
+        self.assertLess(np.abs(splash_off.astype(int) - plain.astype(int)).mean(), 2)
         saved = Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, 'look': 'mono', 'bypass': ['look']}]}]})
         self.assertEqual(saved.layers[0].items[0].look, 'mono')
 

@@ -247,6 +247,22 @@ def lens_surface_filters(effect, canvas: tuple[int, int]) -> list[str]:
     return [f"geq=r='clip(r({sx},{sy})+255*{lift:.4f}*{edge},0,255)':g='clip(g({sx},{sy})+255*{lift:.4f}*{edge},0,255)':b='clip(b({sx},{sy})+255*{lift * 1.2:.4f}*{edge},0,255)':a='alpha(X,Y)'"]
 
 
+def colour_splash_filters(effect) -> list[str]:
+    """Keep pixels near one chroma in colour and desaturate everything else."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    red, green, blue = (int(effect.color[at:at + 2], 16) / 255 for at in (1, 3, 5))
+    target_luma = LUMA_RED * red + LUMA_GREEN * green + LUMA_BLUE * blue
+    target_cb, target_cr = (blue - target_luma) / 1.8556, (red - target_luma) / 1.5748
+    r, g, b = 'r(X,Y)', 'g(X,Y)', 'b(X,Y)'
+    luma = f'({LUMA_RED}*{r}+{LUMA_GREEN}*{g}+{LUMA_BLUE}*{b})'
+    cb, cr = f'(({b}-{luma})/1.8556/255)', f'(({r}-{luma})/1.5748/255)'
+    distance = f'hypot({cb}-{target_cb:.6f},{cr}-{target_cr:.6f})'
+    fade = f'({effect.intensity:.6f}*clip(({distance}-{effect.tolerance:.6f})/{effect.softness:.6f},0,1))'
+    channel = lambda source: f'({source}*(1-{fade})+{luma}*{fade})'
+    return [f"geq=r='{channel(r)}':g='{channel(g)}':b='{channel(b)}':a='alpha(X,Y)'"]
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -270,7 +286,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas)]
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -852,6 +868,8 @@ def apply_bypass(clip):
             changes['signal_damage'] = None
         elif effect == 'lens_surface':
             changes['lens_surface'] = None
+        elif effect == 'colour_splash':
+            changes['colour_splash'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':
