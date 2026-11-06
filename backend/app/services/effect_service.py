@@ -47,6 +47,7 @@ EFFECTS = [
     Effect('akshatai', 'Rice and turmeric', 'அட்சதை', 'wedding', 'Blessed yellow rice grains arc upwards and fall'),
     Effect('thoranam', 'Thoranam', 'தோரணம்', 'wedding', 'Mango leaves and marigolds swaying gently across the top'),
     Effect('diya', 'Diya glow', 'தீப ஒளி', 'festival', 'A row of oil-lamp flames flickering along the bottom'),
+    Effect('incense-smoke', 'Camphor and incense smoke', 'கற்பூர தூபப் புகை', 'festival', 'Soft fragrant smoke curling upwards for aarti and temple scenes'),
     Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
     Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
     Effect('sparkles', 'Sparkles', 'மின்னல்', 'celebration', 'Little stars that twinkle'),
@@ -380,6 +381,60 @@ def fog(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, den
 
 
 fog.cache = {}
+
+
+def incense_smoke(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Fine layered plumes that curl upward from below, unlike broad horizontal weather fog."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    plumes = incense_smoke.cache.get(size)
+    if plumes is None:
+        plumes = incense_smoke.cache[size] = [
+            {'x': x, 'phase': phase, 'rate': rate, 'lean': lean, 'width': stroke}
+            for x, phase, rate, lean, stroke in zip(
+                rng.uniform(.18, .82, 7), rng.uniform(0, 1, 7), rng.uniform(.055, .09, 7),
+                rng.uniform(-.035, .035, 7), rng.uniform(.010, .020, 7))]
+    far = Image.new('L', size)
+    near = Image.new('L', size)
+    far_draw, near_draw = ImageDraw.Draw(far), ImageDraw.Draw(near)
+    for index, plume in enumerate(plumes):
+        progress = (plume['phase'] + t * plume['rate']) % 1.18
+        # Each plume occupies only part of the cycle: it grows, thins and disappears before looping.
+        length = min(1, progress / .22) * max(0, 1 - max(0, progress - .78) / .4)
+        if length <= .02:
+            continue
+        points = []
+        segments = 34
+        for step in range(segments):
+            share = step / (segments - 1) * length
+            y = 1.06 - share * .72
+            curl = math.sin(share * 8.5 + t * .72 + index * 1.9) * (.012 + share * .035)
+            curl += math.sin(share * 18 - t * .31 + index) * share * .009
+            x = plume['x'] + plume['lean'] * share + curl
+            points.append((x * width, y * height))
+        fade = max(.16, 1 - progress * .62)
+        value = round(150 * fade)
+        line_width = max(3, round(plume['width'] * unit * (1.5 + progress)))
+        target = near_draw if index % 3 else far_draw
+        target.line(points, fill=value, width=line_width, joint='curve')
+        # A fainter neighbouring filament breaks the computer-perfect centre line into a soft ribbon.
+        echo = [(x + math.sin(step * .43 + index) * unit * .009, y) for step, (x, y) in enumerate(points)]
+        target.line(echo, fill=round(value * .42), width=max(2, line_width // 2), joint='curve')
+    far = far.filter(ImageFilter.GaussianBlur(max(3, unit * .036)))
+    near = near.filter(ImageFilter.GaussianBlur(max(2, unit * .019)))
+    smoke = np.asarray(far, np.float32) * .68 + np.asarray(near, np.float32)
+    picture = np.zeros((height, width, 3), np.float32)
+    picture[..., 0] = smoke * .94
+    picture[..., 1] = smoke * .97
+    picture[..., 2] = smoke
+    # A small camphor warmth at the source grounds the otherwise cool-white smoke.
+    glow = _field(size, [(.5, 1.04, .12, (255, 133, 45), .16 + .03 * math.sin(t * 4.1))])
+    picture += np.asarray(glow, np.float32)
+    return Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8))
+
+
+incense_smoke.cache = {}
 
 
 def snow(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, density: float = 0.8, speed: float = 0.8, direction: float = 0.12, seed: int = 0) -> Image.Image:
@@ -897,6 +952,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'akshatai': akshatai,
     'thoranam': thoranam,
     'diya': diya,
+    'incense-smoke': incense_smoke,
     'sparkler': sparkler,
     'kolam': kolam,
     'balloons': balloons,
