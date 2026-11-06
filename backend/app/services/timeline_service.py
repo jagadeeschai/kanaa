@@ -537,9 +537,9 @@ class Builder:
                 halves[number] = min(round(clip.transition_in.duration * fps / 2), self.frames(before.length) // 2, self.frames(clip.length) // 2)
         return halves
 
-    def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str) -> str:
+    def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str, beat_pulse=None) -> str:
         """Place one item on a transparent full frame. `lead` is how many seconds of the stream come before the item's own start."""
-        if transform.is_default and not enter and not exit_ and canvas_scale == 1:
+        if transform.is_default and not enter and not exit_ and canvas_scale == 1 and not beat_pulse:
             return label
         W, H = self.fmt.width, self.fmt.height
         first, last = shared_fit(enter, exit_, length)
@@ -561,6 +561,12 @@ class Builder:
         if blur := self.blur_commands(enter, exit_, first, last, length, frames, lead, name):
             filters.append(blur)
         x, y, scale = property_expression(transform, 'x', clock), property_expression(transform, 'y', clock), property_expression(transform, 'scale', clock)
+        if beat_pulse:
+            interval = 60 / beat_pulse.bpm
+            # A fast ease-out zoom at each beat. The phase is stored in clip-local seconds.
+            phase = f'mod(max(0,{clock}-{beat_pulse.offset:.6f}),{interval:.6f})'
+            pulse = f'if(gte({clock},{beat_pulse.offset:.6f}),max(0,1-{phase}/0.180000),0)'
+            scale = f'({scale})*(1+{beat_pulse.size * beat_pulse.strength:.6f}*{pulse})'
         sized, back, posed = f'{name}_sized', f'{name}_back', f'{name}_posed'
         spread = 1.0
         if transform.rotation or 'rotation' in transform.keyframes:
@@ -679,7 +685,7 @@ class Builder:
                                f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True)}[{label}]']
             else:
                 self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
-            shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label)
+            shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label, clip.beat_pulse)
             if clip.shape_mask:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
             if head:
@@ -886,6 +892,8 @@ def apply_bypass(clip):
             changes['colour_splash'] = None
         elif effect == 'dreamy_glow':
             changes['dreamy_glow'] = None
+        elif effect == 'beat_pulse':
+            changes['beat_pulse'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':

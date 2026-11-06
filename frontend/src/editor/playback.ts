@@ -485,7 +485,11 @@ export class PlaybackEngine {
     const local = this.time - clip.start;
     const frame = look.scale * zoom;
     const moved = look.scale !== 1 || look.dx !== 0 || look.dy !== 0;
-    const scale = valueAt(clip.transform, 'scale', local) * frame;
+    const pulse = clip.beat_pulse;
+    const interval = pulse ? 60 / pulse.bpm : 1;
+    const phase = pulse && local >= pulse.offset ? (local - pulse.offset) % interval : 1;
+    const beatZoom = pulse ? 1 + pulse.size * pulse.strength * Math.max(0, 1 - phase / 0.18) : 1;
+    const scale = valueAt(clip.transform, 'scale', local) * frame * beatZoom;
     const fitted = fittedSize(source, clip.adjust.rotation, format);
     const [red, green, blue, contrast, saturation] = LOOKS[clip.look ?? 'none'];
     const height = fitted.height * scale;

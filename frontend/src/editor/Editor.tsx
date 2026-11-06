@@ -18,7 +18,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -64,6 +64,7 @@ const RENDERED_ID = -1;
 const CLIP_EFFECT_PRESETS = [
   { id: 'colour-splash', group: 'Colour', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
   { id: 'dreamy-glow', group: 'Colour', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
+  { id: 'beat-pulse', group: 'Motion', label: 'Beat pulse', about: 'A quick camera push synchronized to the music.' },
   { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
   { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
   { id: 'vhs', group: 'Signal', label: 'VHS tape', about: 'Tape jitter, scanlines, softness and analogue noise.' },
@@ -713,13 +714,25 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
     id === 'colour-splash' ? selected.colour_splash
       : id === 'dreamy-glow' ? selected.dreamy_glow
+      : id === 'beat-pulse' ? selected.beat_pulse
       : id === 'old-film' ? selected.old_film
       : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
         : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
   ));
-  const applyClipEffect = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => {
+  const applyClipEffect = async (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => {
     if (!selected) return;
     if (clipEffectApplied(id)) { updateLayout({ inspectorOpen: true }); return; }
+    if (id === 'beat-pulse') {
+      let beat_pulse = { ...DEFAULT_BEAT_PULSE };
+      const song = timeline && beatSound(timeline);
+      if (song) try {
+        const found = await getSongBeats(song.asset_id);
+        const beats = timelineBeats(song, found.beats);
+        const first = beats.find((beat) => beat >= selected.start && beat < selected.start + clipLength(selected));
+        beat_pulse = { ...beat_pulse, bpm: Math.max(30, Math.min(300, found.bpm)), offset: first === undefined ? 0 : first - selected.start };
+      } catch { /* The editable 120 BPM default remains available when analysis fails. */ }
+      updateSelected({ beat_pulse }); updateLayout({ inspectorOpen: true }); return;
+    }
     const changes: Partial<Clip> = id === 'colour-splash' ? { colour_splash: { ...DEFAULT_COLOUR_SPLASH } }
       : id === 'dreamy-glow' ? { dreamy_glow: { ...DEFAULT_DREAMY_GLOW } }
       : id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
@@ -2197,6 +2210,17 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       <More><ValueSlider label="Warmth" value={clip.dreamy_glow.warmth} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.warmth} unit="%" factor={100} onChange={(warmth, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, warmth } }, group)}/></More>
       <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}>Add dreamy glow</button>}
+    </Group>
+    <Group title="Beat pulse" tab="motion" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
+    {clip.beat_pulse ? <>
+      <ValueSlider label="Strength" value={clip.beat_pulse.strength} min={0} max={1} step={0.01} defaultValue={DEFAULT_BEAT_PULSE.strength} unit="%" factor={100} onChange={(strength, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, strength } }, group)}/>
+      <ValueSlider label="Tempo" value={clip.beat_pulse.bpm} min={30} max={300} step={1} defaultValue={DEFAULT_BEAT_PULSE.bpm} unit=" BPM" onChange={(bpm, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, bpm } }, group)}/>
+      <More>
+        <ValueSlider label="Pulse size" value={clip.beat_pulse.size} min={0.005} max={0.15} step={0.005} defaultValue={DEFAULT_BEAT_PULSE.size} unit="%" factor={100} decimals={1} onChange={(size, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, size } }, group)}/>
+        <ValueSlider label="First beat" value={clip.beat_pulse.offset} min={0} max={Math.min(60, clipLength(clip))} step={0.01} defaultValue={0} unit="s" decimals={2} onChange={(offset, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, offset } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ beat_pulse: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ beat_pulse: { ...DEFAULT_BEAT_PULSE } })}>Add beat pulse</button>}
     </Group>
     <Group title="Old film" tab="look" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>
