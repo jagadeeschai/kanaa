@@ -98,7 +98,7 @@ class Api(unittest.TestCase):
         for name, filters in (('Swoosh Fast', "aevalsrc='sin(2*PI*900*t)*if(lt(t,0.8),t/0.8,max(0,(1.2-t)/0.4))':d=1.2"), ('Big Impact 02', 'sine=f=60:d=1'), ('Calm Piano', 'sine=f=440:d=2')):
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', filters, '-c:a', 'libmp3lame', str(self.root / 'music' / f'{name}.mp3')], check=True)
         effects = self.client.get('/api/sound-effects').json()['effects']
-        self.assertEqual([(effect['kind'], effect['name']) for effect in effects], [('whoosh', "Kanaa's whoosh"), ('hit', "Kanaa's hit"), ('thunder', 'Thunder'), ('hit', 'Big Impact 02'), ('whoosh', 'Swoosh Fast')])
+        self.assertEqual([(effect['kind'], effect['name']) for effect in effects], [('whoosh', "Kanaa's whoosh"), ('hit', "Kanaa's hit"), ('thunder', 'Thunder'), ('hit', 'Camera shutter'), ('hit', 'Big Impact 02'), ('whoosh', 'Swoosh Fast')])
         own = self.client.post('/api/sound-effects/kanaa-whoosh/use').json()
         self.assertEqual((own['kind'], own['peak']), ('whoosh', 0.5))
         self.assertEqual(self.client.get(f"/api/video-audio/{own['asset_id']}").status_code, 200)
@@ -114,6 +114,9 @@ class Api(unittest.TestCase):
         self.assertAlmostEqual(np.argmax(envelope) / sound_effect_service.RATE, 0.5, delta=0.08)
         hit = sound_effect_service.make_hit()
         self.assertGreater(np.abs(hit[:4410]).mean(), np.abs(hit[-4410:]).mean() * 10, 'a hit dies away')
+        shutter = sound_effect_service.make_shutter()
+        self.assertEqual(len(shutter), round(.36 * sound_effect_service.RATE))
+        self.assertGreater(np.abs(shutter[:7000]).mean(), np.abs(shutter[-3000:]).mean() * 10)
         thunder = sound_effect_service.make_thunder()
         self.assertEqual(len(thunder), 5 * sound_effect_service.RATE)
         self.assertGreater(float(np.max(np.abs(thunder))), 0.5)

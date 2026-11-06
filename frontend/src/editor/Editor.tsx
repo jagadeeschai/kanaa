@@ -19,6 +19,7 @@ import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/Medi
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { snapshotFrame } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -781,6 +782,17 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (next === timeline) { setError('Put the playhead on a video clip in the main track to freeze a frame.'); return; }
     change(next);
   }, [timeline, playhead, change]);
+  const snapshot = async (t = playhead.current) => {
+    if (!timeline || mainLayer(timeline).locked) return;
+    let next = snapshotFrame(timeline, t, [newId(), newId()], FREEZE_SECONDS);
+    if (next === timeline) { setError('Put the playhead inside a video clip to make a snapshot.'); return; }
+    try {
+      const shutter = await fetchSoundEffect('kanaa-shutter');
+      const sound: Sound = { id: newId(), asset_id: shutter.asset_id, start: Math.max(0, t), in: 0, out: shutter.duration, speed: 1, volume: 0.72, muted: false, fade_in: 0, fade_out: 0, duck: false, name: 'Camera shutter', source_length: shutter.duration };
+      next = addSound(next, sound, newId());
+    } catch { /* The visual snapshot remains useful if its generated sound cannot be prepared. */ }
+    change(next);
+  };
   const mainClips = useMemo(() => (timeline ? mainLayer(timeline).items : []), [timeline]);
   const spokenIds = useMemo(() => [...new Set(mainClips.map((clip) => clip.media_id))].filter((id) => mediaById.get(id)?.media_type === 'video'), [mainClips, mediaById]);
   const missingWords = spokenIds.filter((id) => !transcripts[`${id}:${language}`]);
@@ -1463,7 +1475,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) items.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
     if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) items.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
     items.push({ label: 'Duplicate', onSelect: () => { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } });
-    if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) });
+    if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) }, { label: 'Snapshot freeze here', onSelect: () => { void snapshot(t); } });
     if (clip) {
       if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
       items.push({ label: clip.muted ? 'Turn sound on' : 'Mute clip', onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) });
@@ -1822,6 +1834,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
         <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
         <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
+        <button className="ed-button" onClick={() => { void snapshot(); }} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Flash, shutter sound and a two-second printed-photo freeze"><ScanFace size={15}/>Snapshot</button>
         <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       </span>
       <div className="ed-spacer"/>

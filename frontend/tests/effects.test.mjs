@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { applyMove, slotPlacement } from '../src/timeline/presets.ts';
 import { valueAt } from '../src/timeline/evaluate.ts';
 import { dipWeights } from '../src/timeline/animation.ts';
-import { emptyTimeline, freezeFrame, insertClip, mainLayer, newClip, splitClip, trimClip } from '../src/timeline/model.ts';
+import { emptyTimeline, freezeFrame, snapshotFrame, insertClip, mainLayer, newClip, splitClip, trimClip } from '../src/timeline/model.ts';
 import { buildTokens } from '../src/timeline/words.ts';
 
 const format = { width: 1080, height: 1920, fps: 30 };
@@ -60,6 +60,15 @@ test('freeze frame holds the playhead frame between the two halves, silently', (
   assert.equal(clips[1].muted, true);
   assert.deepEqual([clips[1].start, clips[2].start], [1.5, 3.5]);
   assert.equal(buildTokens(clips, () => [{ w: 'hi', s: 2.4, e: 2.6 }]).filter((token) => token.clipId === 'f').length, 0);
+});
+
+test('snapshot freeze adds an editable flash and printed-photo pose', () => {
+  const timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
+  const clips = mainLayer(snapshotFrame(timeline, 1.5, ['photo', 'after'])).items;
+  assert.equal(clips[1].freeze, 2.5);
+  assert.deepEqual(clips[1].transition_in, { kind: 'flash', duration: 0.24 });
+  assert.equal(clips[1].transform.scale, 0.9);
+  assert.equal(clips[1].transform.rotation, -2);
 });
 
 test('a reversed clip splits and trims from its far end', () => {

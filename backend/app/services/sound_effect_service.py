@@ -24,8 +24,8 @@ RATE = 44100
 MAX_SECONDS = 30.0
 KINDS = {'whoosh': re.compile(r'whoosh|woosh|swoosh|swish|swipe|whip|sweep|riser|transition', re.I),
          'hit': re.compile(r'\bhit|impact|boom|thud|punch|slam|drum ?hit|braam|stinger', re.I)}
-OWN = {'kanaa-whoosh': ('whoosh', "Kanaa's whoosh"), 'kanaa-hit': ('hit', "Kanaa's hit"), 'kanaa-thunder': ('thunder', 'Thunder')}
-VERSION = 1
+OWN = {'kanaa-whoosh': ('whoosh', "Kanaa's whoosh"), 'kanaa-hit': ('hit', "Kanaa's hit"), 'kanaa-thunder': ('thunder', 'Thunder'), 'kanaa-shutter': ('hit', 'Camera shutter')}
+VERSION = 2
 
 
 def _store(asset_id: str) -> Path:
@@ -71,6 +71,20 @@ def make_hit(seconds: float = 0.8) -> np.ndarray:
     click = rng.standard_normal(count) * np.exp(-t / 0.008) * 0.35
     out = body + click
     return out / (np.abs(out).max() or 1) * 0.9
+
+
+def make_shutter(seconds: float = 0.36) -> np.ndarray:
+    """Two short mechanical clicks: the shutter closes, then releases."""
+    rng = np.random.default_rng(43)
+    count = int(seconds * RATE)
+    t = np.arange(count) / RATE
+    out = np.zeros(count)
+    for at, level, pitch in ((0.0, .95, 1850), (.105, .72, 1250)):
+        age = t - at
+        active = age >= 0
+        click = (np.sin(2 * np.pi * pitch * age) * .35 + rng.standard_normal(count) * .65) * np.exp(-np.maximum(age, 0) / .012)
+        out += np.where(active, click * level, 0)
+    return out / (np.abs(out).max() or 1) * .8
 
 
 def make_thunder(seconds: float = 5.0) -> np.ndarray:
@@ -139,8 +153,8 @@ def use(effect_id: str) -> dict:
         asset_id = hashlib.sha256(f'{effect_id}-v{VERSION}'.encode()).hexdigest()[:32]
         target = _store(asset_id)
         if not target.is_file():
-            _write_wav(target, make_whoosh() if kind == 'whoosh' else make_hit() if kind == 'hit' else make_thunder())
-        duration = {'whoosh': 0.9, 'hit': 0.8, 'thunder': 5.0}[kind]
+            _write_wav(target, make_shutter() if effect_id == 'kanaa-shutter' else make_whoosh() if kind == 'whoosh' else make_hit() if kind == 'hit' else make_thunder())
+        duration = 0.36 if effect_id == 'kanaa-shutter' else {'whoosh': 0.9, 'hit': 0.8, 'thunder': 5.0}[kind]
         return {'asset_id': asset_id, 'duration': duration, 'name': name, 'kind': kind, 'peak': 0.5 if kind == 'whoosh' else 0.0}
     item = next((entry for entry in library_effects() if entry['id'] == effect_id), None)
     if item is None:

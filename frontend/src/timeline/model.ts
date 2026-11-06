@@ -266,6 +266,15 @@ export function freezeFrame(timeline: Timeline, t: number, ids: [string, string]
   return insertClip(split, still, index);
 }
 
+/** A reel-style freeze: flash into a slightly tilted, inset still so it reads like a printed snapshot. */
+export function snapshotFrame(timeline: Timeline, t: number, ids: [string, string], seconds = 2): Timeline {
+  const frozen = freezeFrame(timeline, t, ids, seconds);
+  if (frozen === timeline) return timeline;
+  const still = findClip(frozen, ids[0]);
+  if (!still) return frozen;
+  return updateClip(frozen, still.id, { transition_in: { kind: 'flash', duration: 0.24 }, transform: { ...still.transform, scale: still.transform.scale * 0.9, rotation: -2 } });
+}
+
 export function splitClip(timeline: Timeline, t: number, newId: string): Timeline {
   const clips = mainLayer(timeline).items;
   const index = clips.findIndex((clip) => t > clip.start + MIN_CLIP_SECONDS / clip.speed && t < clip.start + clipLength(clip) - MIN_CLIP_SECONDS / clip.speed);
