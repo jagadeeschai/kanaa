@@ -73,6 +73,7 @@ precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
 uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
 uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, signalScanlines, signalNoise;
+uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -112,6 +113,19 @@ void main(){
   if (hideMode > 0) { color = hidden(); return; }
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
+  float lensMask = 0.; float lensRim = 0.;
+  if (lensMode > 0) {
+    float cells = mix(5., 12., lensCount); vec2 grid = vec2(cells, cells * .62);
+    vec2 cell = floor(s * grid); vec2 local = fract(s * grid);
+    vec2 centre = vec2(.18 + .64 * filmHash(cell + 7.), .18 + .64 * filmHash(cell.yx + 29.));
+    vec2 delta = local - centre; delta.x *= viewport.x / viewport.y;
+    float radius = mix(.08, .20, filmHash(cell + 53.)) * mix(.72, 1.2, lensCount);
+    float distanceToDrop = length(delta); float edge = mix(.015, .08, lensSoftness);
+    lensMask = 1. - smoothstep(radius - edge, radius + edge, distanceToDrop);
+    lensRim = smoothstep(radius - edge * 2., radius, distanceToDrop) * (1. - smoothstep(radius, radius + edge, distanceToDrop));
+    if (lensMode == 2 && lensMask > 0.) s += normalize(delta + vec2(.0001)) * lensRefraction * lensAmount * .018 * (1. - distanceToDrop / radius);
+    else if (lensMode == 1 && lensMask > 0.) s += delta * lensRefraction * lensAmount * .004;
+  }
   if (oldFilm > 0. && oldWeave > 0.) {
     float beat = floor(oldSeed * .5);
     s += (vec2(filmHash(vec2(beat, 3.)), filmHash(vec2(beat, 9.))) - .5) * vec2(.008, .004) * oldWeave * oldFilm;
@@ -163,6 +177,11 @@ void main(){
     float snow = filmHash(gl_FragCoord.xy + vec2(oldSeed * 37., oldSeed * 11.)) - .5;
     rgb = clamp(rgb + snow * signalNoise * signalAmount * (signalMode == 2 ? .28 : .16), 0., 1.);
     if (signalMode == 2) rgb = mix(rgb, vec3(dot(rgb, vec3(.299, .587, .114))), .08 * signalAmount);
+  }
+  if (lensMode == 1) rgb *= 1. - lensMask * lensAmount * .34;
+  if (lensMode == 2) {
+    rgb = mix(rgb, rgb * vec3(.86, .94, 1.06), lensMask * lensAmount * .24);
+    rgb = clamp(rgb + lensRim * lensAmount * .32, 0., 1.);
   }
   float a = alpha * opacity;
   // A drawn shape keeps only part of the frame. The picture has the frame's top at its first row.
@@ -231,7 +250,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -467,6 +486,7 @@ export class PlaybackEngine {
       gl.uniform1f(uniforms.keySpill, key.spill);
     }
     gl.uniform2f(uniforms.frame, format.width, format.height);
+    gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
     gl.uniform1f(uniforms.opacity, Math.max(0, Math.min(1, valueAt(clip.transform, 'opacity', local))) * look.opacity * opacity);
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
     gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
@@ -485,6 +505,12 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.signalJitter, signal?.jitter ?? 0);
     gl.uniform1f(uniforms.signalScanlines, signal?.scanlines ?? 0);
     gl.uniform1f(uniforms.signalNoise, signal?.noise ?? 0);
+    const lens = clip.lens_surface;
+    gl.uniform1i(uniforms.lensMode, lens ? (lens.mode === 'dirt' ? 1 : 2) : 0);
+    gl.uniform1f(uniforms.lensAmount, lens?.intensity ?? 0);
+    gl.uniform1f(uniforms.lensCount, lens?.amount ?? 0);
+    gl.uniform1f(uniforms.lensRefraction, lens?.refraction ?? 0);
+    gl.uniform1f(uniforms.lensSoftness, lens?.softness ?? 0);
     gl.uniform3f(uniforms.tint, red, green, blue);
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
@@ -493,7 +519,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -502,6 +528,7 @@ export class PlaybackEngine {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.uniform1f(uniforms.oldFilm, 0);
     gl.uniform1i(uniforms.signalMode, 0);
+    gl.uniform1i(uniforms.lensMode, 0);
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
   }

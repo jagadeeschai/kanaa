@@ -224,6 +224,29 @@ def signal_damage_filters(effect, canvas: tuple[int, int]) -> list[str]:
     return filters
 
 
+def lens_surface_filters(effect, canvas: tuple[int, int]) -> list[str]:
+    """Procedural soft lens spots; raindrops additionally refract pixels inside each drop."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    W, H = canvas
+    cell = max(48, round(min(W, H) / (3.5 + effect.amount * 5)))
+    radius = cell * (.13 + effect.amount * .07)
+    dx = f'(mod(X+sin(floor(Y/{cell})*12.37)*{cell * .31:.3f},{cell})-{cell / 2:.3f})'
+    dy = f'(mod(Y+sin(floor(X/{cell})*7.91)*{cell * .27:.3f},{cell})-{cell / 2:.3f})'
+    distance = f'hypot({dx},{dy})'
+    inside = f'lt({distance},{radius:.3f})'
+    if effect.mode == 'dirt':
+        shade = max(.55, 1 - effect.intensity * .34)
+        factor = f'if({inside},{shade:.4f},1)'
+        return [f"geq=r='r(X,Y)*{factor}':g='g(X,Y)*{factor}':b='b(X,Y)*{factor}':a='alpha(X,Y)'"]
+    shift = 11 * effect.refraction * effect.intensity
+    sx = f'X+{dx}/max({distance},1)*{shift:.3f}*{inside}'
+    sy = f'Y+{dy}/max({distance},1)*{shift:.3f}*{inside}'
+    edge = f'between({distance},{radius * (1 - .18 * (1 + effect.softness)):.3f},{radius:.3f})'
+    lift = .16 * effect.intensity
+    return [f"geq=r='clip(r({sx},{sy})+255*{lift:.4f}*{edge},0,255)':g='clip(g({sx},{sy})+255*{lift:.4f}*{edge},0,255)':b='clip(b({sx},{sy})+255*{lift * 1.2:.4f}*{edge},0,255)':a='alpha(X,Y)'"]
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -247,7 +270,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas)]
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -827,6 +850,8 @@ def apply_bypass(clip):
             changes['old_film'] = None
         elif effect == 'signal_damage':
             changes['signal_damage'] = None
+        elif effect == 'lens_surface':
+            changes['lens_surface'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':

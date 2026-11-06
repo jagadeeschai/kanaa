@@ -1731,6 +1731,11 @@ class EffectSwitches(Clips):
         signal_off = self.shot('switch-signal-off.mp4', signal_damage=signal, bypass=['signal_damage'])
         self.assertGreater(np.abs(damaged.astype(int) - plain.astype(int)).mean(), 2)
         self.assertLess(np.abs(signal_off.astype(int) - plain.astype(int)).mean(), 2)
+        lens = {'mode': 'raindrops', 'intensity': 0.9, 'amount': 0.7, 'refraction': 0.8, 'softness': 0.4}
+        wet = self.shot('switch-lens.mp4', lens_surface=lens)
+        dry = self.shot('switch-lens-off.mp4', lens_surface=lens, bypass=['lens_surface'])
+        self.assertGreater(np.abs(wet.astype(int) - plain.astype(int)).mean(), 1)
+        self.assertLess(np.abs(dry.astype(int) - plain.astype(int)).mean(), 2)
         saved = Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, 'look': 'mono', 'bypass': ['look']}]}]})
         self.assertEqual(saved.layers[0].items[0].look, 'mono')
 

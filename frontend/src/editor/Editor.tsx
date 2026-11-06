@@ -17,7 +17,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -2153,6 +2153,18 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       </More>
       <button className="ed-button wide" onClick={() => onChange({ signal_damage: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ signal_damage: DEFAULT_SIGNAL_DAMAGE })}>Add signal damage</button>}
+    </Group>
+    <Group title="Lens surface" tab="look" startOpen={Boolean(clip.lens_surface)} changed={Boolean(clip.lens_surface)} keywords="lens dirt raindrops water glass refraction droplets" tip="Put dirt or refracting water drops on the camera lens.">
+    {clip.lens_surface ? <>
+      <Chips label="Surface" options={[{ id: 'raindrops' as const, label: 'Raindrops' }, { id: 'dirt' as const, label: 'Lens dirt' }]} value={clip.lens_surface.mode} onPick={(mode) => onChange({ lens_surface: { ...clip.lens_surface!, mode } })}/>
+      <ValueSlider label="Intensity" value={clip.lens_surface.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ lens_surface: { ...clip.lens_surface!, intensity } }, group)}/>
+      <ValueSlider label="Amount" value={clip.lens_surface.amount} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.amount} unit="%" factor={100} onChange={(amount, group) => onChange({ lens_surface: { ...clip.lens_surface!, amount } }, group)}/>
+      <More>
+        <ValueSlider label="Refraction" value={clip.lens_surface.refraction} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.refraction} unit="%" factor={100} onChange={(refraction, group) => onChange({ lens_surface: { ...clip.lens_surface!, refraction } }, group)}/>
+        <ValueSlider label="Softness" value={clip.lens_surface.softness} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.softness} unit="%" factor={100} onChange={(softness, group) => onChange({ lens_surface: { ...clip.lens_surface!, softness } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ lens_surface: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ lens_surface: DEFAULT_LENS_SURFACE })}>Add lens surface</button>}
     </Group>
     {source?.kind === 'video' && <Group title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
       <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
