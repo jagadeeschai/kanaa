@@ -4,14 +4,14 @@ import { newClip } from '../src/timeline/model.ts';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../src/timeline/effects.ts';
 import { RAMPS } from '../src/timeline/ramp.ts';
 
-const busy = () => ({ ...newClip({ media_id: 1, media_type: 'video', duration: 10 }, 'c'), look: 'warm', cutout: 'blur', blur_amount: 'strong', ramp: RAMPS.hero, transition_in: { kind: 'whip', duration: 0.4 },
+const busy = () => ({ ...newClip({ media_id: 1, media_type: 'video', duration: 10 }, 'c'), look: 'warm', old_film: { intensity: .65, grain: .55, scratches: .45, dust: .35, weave: .25 }, cutout: 'blur', blur_amount: 'strong', ramp: RAMPS.hero, transition_in: { kind: 'whip', duration: 0.4 },
   transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, keyframes: { x: [{ t: 0, v: 0.2 }, { t: 1, v: 0.8 }, { t: 2, v: 0.5 }] } } });
 
 test('only the effects a clip has are listed, named plainly', () => {
   assert.deepEqual(clipEffects(newClip({ media_id: 1, media_type: 'video', duration: 5 }, 'p')), []);
   const list = clipEffects(busy());
-  assert.deepEqual(list.map((effect) => effect.id), ['look', 'background', 'speed_effect', 'motion', 'transition']);
-  assert.deepEqual(list.map((effect) => effect.detail), ['Warm', 'Strong blur', 'Hero', '3 points', 'Whip']);
+  assert.deepEqual(list.map((effect) => effect.id), ['look', 'old_film', 'background', 'speed_effect', 'motion', 'transition']);
+  assert.deepEqual(list.map((effect) => effect.detail), ['Warm', 'grain, scratches and weave', 'Strong blur', 'Hero', '3 points', 'Whip']);
   assert.ok(list.every((effect) => effect.on));
 });
 
@@ -26,12 +26,13 @@ test('switching an effect off leaves it out of what plays and keeps its settings
   const still = applyBypass({ ...busy(), bypass: ['motion', 'background'] });
   assert.equal(still.transform.keyframes, undefined);
   assert.equal(still.cutout, null);
+  assert.equal(applyBypass({ ...busy(), bypass: ['old_film'] }).old_film, null);
 });
 
 test('all off, all back on, remove for good, and the timeline as it plays', () => {
   const clip = busy();
   const allOff = { ...clip, ...toggleAllEffects(clip) };
-  assert.equal(allOff.bypass.length, 5);
+  assert.equal(allOff.bypass.length, 6);
   assert.equal({ ...allOff, ...toggleAllEffects(allOff) }.bypass, null);
   const removed = { ...clip, bypass: ['transition'], ...removeEffect({ ...clip, bypass: ['transition'] }, 'transition') };
   assert.equal(removed.transition_in, null);

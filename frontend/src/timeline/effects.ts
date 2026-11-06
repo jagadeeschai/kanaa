@@ -6,7 +6,7 @@ import { RAMPS } from './ramp.ts';
  * compared with and without it. A switched-off effect is left out of the preview and the export alike:
  * backend/app/services/timeline_service.py applies the same rules (apply_bypass) before compiling.
  */
-export type EffectId = 'look' | 'colour' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
+export type EffectId = 'look' | 'colour' | 'old_film' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
 export type ActiveEffect = { id: EffectId; label: string; detail: string; on: boolean };
 
 const RAMP_NAMES: Record<string, string> = Object.fromEntries(Object.entries(RAMPS).map(([name, ramp]) => [JSON.stringify(ramp), name.replace('-', ' ')]));
@@ -19,6 +19,7 @@ export function clipEffects(clip: Clip): ActiveEffect[] {
   const list: Omit<ActiveEffect, 'on'>[] = [];
   if (clip.look && clip.look !== 'none') list.push({ id: 'look', label: 'Look', detail: title(clip.look) });
   if (clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1) list.push({ id: 'colour', label: 'Colour', detail: 'adjusted' });
+  if (clip.old_film) list.push({ id: 'old_film', label: 'Old film', detail: 'grain, scratches and weave' });
   if (clip.cutout) list.push({ id: 'background', label: 'Background', detail: clip.cutout === 'blur' ? `${title(clip.blur_amount ?? 'medium')} blur${clip.focus_pull ? ', focus pull' : ''}` : 'removed' });
   if (clip.chroma) list.push({ id: 'green_screen', label: 'Green screen', detail: 'colour removed' });
   if (clip.stabilise) list.push({ id: 'steady', label: 'Steady', detail: 'shake smoothed' });
@@ -39,6 +40,7 @@ export function applyBypass(clip: Clip): Clip {
   for (const id of off) {
     if (id === 'look') next.look = 'none';
     if (id === 'colour') next.adjust = { ...next.adjust, brightness: 1, contrast: 1, saturation: 1 };
+    if (id === 'old_film') next.old_film = null;
     if (id === 'background') Object.assign(next, { cutout: null, cutout_pick: null, focus_pull: null });
     if (id === 'green_screen') next.chroma = null;
     if (id === 'steady') next.stabilise = false;
@@ -76,7 +78,7 @@ export function removeEffect(clip: Clip, id: EffectId): Partial<Clip> {
   const stripped = applyBypass({ ...clip, bypass: [id] });
   const rest = (clip.bypass ?? []).filter((item) => item !== id);
   const changes: Partial<Clip> = { bypass: rest.length ? rest : null };
-  for (const key of ['look', 'adjust', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
+  for (const key of ['look', 'adjust', 'old_film', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
     if (stripped[key] !== clip[key]) (changes as Record<string, unknown>)[key] = stripped[key];
   }
   return changes;

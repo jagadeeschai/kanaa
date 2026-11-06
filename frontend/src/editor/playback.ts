@@ -71,6 +71,8 @@ void main(){
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
+uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
+float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
   if (keyType > 0) {
@@ -109,6 +111,10 @@ void main(){
   if (hideMode > 0) { color = hidden(); return; }
   vec2 q = mix(uv, 1. - uv, flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
+  if (oldFilm > 0. && oldWeave > 0.) {
+    float beat = floor(oldSeed * .5);
+    s += (vec2(filmHash(vec2(beat, 3.)), filmHash(vec2(beat, 9.))) - .5) * vec2(.008, .004) * oldWeave * oldFilm;
+  }
   vec4 c = pick(s);
   if (blur > 0.) {
     // A Gaussian-weighted spiral. One pass, and close enough to the export's Gaussian blur for a moving frame.
@@ -125,6 +131,21 @@ void main(){
   rgb = (clamp(rgb, 0., 1.) - .5) * contrast + .5;
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
+  if (oldFilm > 0.) {
+    float flicker = (filmHash(vec2(floor(oldSeed), 17.)) - .5) * .10 * oldFilm;
+    vec3 aged = mix(vec3(luma), vec3(luma * 1.08, luma, luma * .82), .42);
+    rgb = clamp(mix(rgb, aged, .42 * oldFilm) + flicker, 0., 1.);
+    float grainNoise = filmHash(gl_FragCoord.xy + vec2(oldSeed * 19.7, oldSeed * 7.3)) - .5;
+    rgb = clamp(rgb + grainNoise * .24 * oldGrain * oldFilm, 0., 1.);
+    float scratchCell = floor(gl_FragCoord.x / 3.);
+    float scratchLife = filmHash(vec2(scratchCell, floor(oldSeed / 3.)));
+    float scratch = step(1. - oldScratches * .035, scratchLife) * (.35 + .65 * filmHash(vec2(scratchCell, floor(gl_FragCoord.y / 19.))));
+    rgb = clamp(rgb + vec3(scratch * .48 * oldFilm), 0., 1.);
+    vec2 dustCell = floor(gl_FragCoord.xy / 28.);
+    vec2 dustAt = fract(gl_FragCoord.xy / 28.) - vec2(filmHash(dustCell + oldSeed), filmHash(dustCell.yx + oldSeed + 31.));
+    float dust = step(length(dustAt), .055 + .08 * oldDust) * step(1. - oldDust * .28, filmHash(dustCell + floor(oldSeed / 2.)));
+    rgb *= 1. - dust * .65 * oldFilm;
+  }
   float a = alpha * opacity;
   // A drawn shape keeps only part of the frame. The picture has the frame's top at its first row.
   if (useShape == 1) a *= texture(shapeTex, vec2(gl_FragCoord.x / viewport.x, 1. - gl_FragCoord.y / viewport.y)).a;
@@ -192,7 +213,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -432,6 +453,13 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
     gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
     gl.uniform1f(uniforms.saturation, clip.adjust.saturation * saturation);
+    const old = clip.old_film;
+    gl.uniform1f(uniforms.oldFilm, old?.intensity ?? 0);
+    gl.uniform1f(uniforms.oldGrain, old?.grain ?? 0);
+    gl.uniform1f(uniforms.oldScratches, old?.scratches ?? 0);
+    gl.uniform1f(uniforms.oldDust, old?.dust ?? 0);
+    gl.uniform1f(uniforms.oldWeave, old?.weave ?? 0);
+    gl.uniform1f(uniforms.oldSeed, Math.floor(this.time * format.fps) % 997);
     gl.uniform3f(uniforms.tint, red, green, blue);
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
@@ -440,13 +468,14 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
     }
     gl.uniform1i(uniforms.useShape, shape ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1f(uniforms.oldFilm, 0);
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
   }

@@ -124,6 +124,15 @@ class ShapeMask(Strict):
         return points
 
 
+class OldFilm(Strict):
+    """Clip-level distressed film stock. Values are strengths from off to strong."""
+    intensity: float = Field(default=0.65, ge=0, le=1)
+    grain: float = Field(default=0.55, ge=0, le=1)
+    scratches: float = Field(default=0.45, ge=0, le=1)
+    dust: float = Field(default=0.35, ge=0, le=1)
+    weave: float = Field(default=0.25, ge=0, le=1)
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -144,6 +153,7 @@ class Clip(Strict):
     exit: Optional[Animation] = None
     transition_in: Optional[Transition] = None
     look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
+    old_film: Optional[OldFilm] = None
     chroma: Optional[Chroma] = None
     freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
     reverse: bool = False  # Plays in..out backwards, without sound.
@@ -153,7 +163,7 @@ class Clip(Strict):
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
-    bypass: Optional[List[Literal['look', 'colour', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=11)  # Effects switched off, their settings kept.
+    bypass: Optional[List[Literal['look', 'colour', 'old_film', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=12)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 

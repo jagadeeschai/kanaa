@@ -168,6 +168,36 @@ def picture_filters(adjust: Adjust, look: str) -> list[str]:
     return ['format=rgba', *filters] if filters else []
 
 
+def old_film_filters(effect, canvas: tuple[int, int]) -> list[str]:
+    """Animated distressed-stock filters. Keep this after fps/scale so frame texture has stable output pixels."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    W, H = canvas
+    strength = effect.intensity
+    grain = max(0.1, 26 * effect.grain * strength)
+    filters = [
+        # Gently faded warm stock, with temporal luma/chroma grain. c3 keeps source transparency intact.
+        f'colorchannelmixer=rr={1 - .03 * strength:.5f}:rg={.035 * strength:.5f}:gg={1 - .045 * strength:.5f}:gb={.02 * strength:.5f}:bb={1 - .13 * strength:.5f}',
+        f'noise=c0s={grain:.3f}:c1s={grain:.3f}:c2s={grain:.3f}:c3s=0:allf=t+u',
+    ]
+    if effect.scratches > 0:
+        alpha = .10 + .35 * effect.scratches * strength
+        for offset, speed in ((.17, 83), (.53, 47), (.81, 109)):
+            filters.append(f"drawbox=x='mod(t*{speed}+iw*{offset},iw)':y=0:w=1:h=ih:color=white@{alpha:.3f}:t=fill")
+    if effect.dust > 0:
+        alpha = .18 + .42 * effect.dust * strength
+        for ox, oy, speed in ((.23, .31, 61), (.67, .72, 89), (.42, .13, 127)):
+            filters.append(f"drawbox=x='mod(t*{speed}+iw*{ox},iw)':y='mod(t*{speed * .37:.3f}+ih*{oy},ih)':w=3:h=3:color=black@{alpha:.3f}:t=fill")
+    if effect.weave > 0:
+        edge_x = max(2, round(W * .008 * effect.weave * strength))
+        edge_y = max(2, round(H * .004 * effect.weave * strength))
+        filters.extend([
+            f"crop={W - edge_x * 2}:{H - edge_y * 2}:x='{edge_x}+sin(t*19)*{edge_x}':y='{edge_y}+sin(t*13)*{edge_y}'",
+            f'scale={W}:{H}:flags=bicubic',
+        ])
+    return filters
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -191,7 +221,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1']
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -767,6 +797,8 @@ def apply_bypass(clip):
             changes['look'] = 'none'
         elif effect == 'colour':
             changes['adjust'] = clip.adjust.model_copy(update={'brightness': 1, 'contrast': 1, 'saturation': 1})
+        elif effect == 'old_film':
+            changes['old_film'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':

@@ -17,6 +17,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
+import { DEFAULT_OLD_FILM } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -2127,6 +2128,18 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
     <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
     <ValueSlider label="Colour strength" value={clip.adjust.saturation} min={0} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(saturation, group) => adjust({ saturation }, group)}/>
     </More>
+    </Group>
+    <Group title="Old film" tab="look" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
+    {clip.old_film ? <>
+      <ValueSlider label="Intensity" value={clip.old_film.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ old_film: { ...clip.old_film!, intensity } }, group)}/>
+      <ValueSlider label="Grain" value={clip.old_film.grain} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.grain} unit="%" factor={100} onChange={(grain, group) => onChange({ old_film: { ...clip.old_film!, grain } }, group)}/>
+      <More>
+        <ValueSlider label="Scratches" value={clip.old_film.scratches} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.scratches} unit="%" factor={100} onChange={(scratches, group) => onChange({ old_film: { ...clip.old_film!, scratches } }, group)}/>
+        <ValueSlider label="Dust" value={clip.old_film.dust} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.dust} unit="%" factor={100} onChange={(dust, group) => onChange({ old_film: { ...clip.old_film!, dust } }, group)}/>
+        <ValueSlider label="Gate weave" value={clip.old_film.weave} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.weave} unit="%" factor={100} onChange={(weave, group) => onChange({ old_film: { ...clip.old_film!, weave } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ old_film: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ old_film: DEFAULT_OLD_FILM })}>Add old film</button>}
     </Group>
     {source?.kind === 'video' && <Group title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
       <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
