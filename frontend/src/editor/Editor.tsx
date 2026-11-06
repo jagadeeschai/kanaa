@@ -60,6 +60,13 @@ const MAX_FADE_SECONDS = 5;
 const MIN_MUSIC_SECONDS = 1;
 const PREVIEW_SHORT_SIDE = 540;
 const RENDERED_ID = -1;
+const CLIP_EFFECT_PRESETS = [
+  { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
+  { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
+  { id: 'vhs', group: 'Signal', label: 'VHS tape', about: 'Tape jitter, scanlines, softness and analogue noise.' },
+  { id: 'raindrops', group: 'Lens', label: 'Raindrops', about: 'Water drops that bend and highlight the picture.' },
+  { id: 'lens-dirt', group: 'Lens', label: 'Lens dirt', about: 'Soft optical dirt and dark lens contamination.' },
+] as const;
 const BLENDS: { id: BlendMode; label: string }[] = [{ id: 'normal', label: 'Normal' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' }, { id: 'overlay', label: 'Overlay' }, { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }];
 const CORNERS: { id: Corner; label: string }[] = [{ id: 'top-left', label: 'Top left' }, { id: 'top-right', label: 'Top right' }, { id: 'bottom-left', label: 'Bottom left' }, { id: 'bottom-right', label: 'Bottom right' }];
 const FIT_MARGIN = 48;
@@ -698,6 +705,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
   };
   const updateSelected = (changes: Partial<Clip>, group?: string) => { if (timeline && selected) change(changes.speed !== undefined ? setSpeed(timeline, selected.id, changes.speed) : updateClip(timeline, selected.id, changes), group); };
+  const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
+    id === 'old-film' ? selected.old_film
+      : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
+        : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
+  ));
+  const applyClipEffect = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => {
+    if (!selected) return;
+    if (clipEffectApplied(id)) { updateLayout({ inspectorOpen: true }); return; }
+    const changes: Partial<Clip> = id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
+      : id === 'glitch' || id === 'vhs' ? { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: id } }
+        : { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: id === 'lens-dirt' ? 'dirt' : 'raindrops' } };
+    updateSelected(changes);
+    updateLayout({ inspectorOpen: true });
+  };
   const fps = timeline?.format.fps ?? 30;
   const sourceLimit = (mediaId: number) => { const item = mediaById.get(mediaId); return item?.media_type === 'video' ? item.duration ?? undefined : MAX_PHOTO_SECONDS; };
   const clipTiming = (clip: Clip): TimeFieldProps[] => {
@@ -1607,6 +1628,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
         })()}
         {leftTab === 'ask' && timeline && <AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/>}
+        {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
+          <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">Clip selected</span>}</div>
+          {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
+          {(['Film', 'Signal', 'Lens'] as const).map((group) => <div key={group} className="ed-effect-category">
+            <h3 className="ed-sub">{group}</h3><div className="ed-clip-effect-grid">{CLIP_EFFECT_PRESETS.filter((preset) => preset.group === group).map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} disabled={!selected} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Reapply' : 'Apply'} ${preset.label} to the selected clip` : 'Select a clip on the timeline first'}>
+              <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
+          </div>)}
+        </section>}
         {leftTab === 'effects' && timeline && <TravelMapPanel format={timeline.format} onMade={async (mediaId) => {
           const item = await getPhoto(mediaId);
           setMedia((current) => [item, ...current.filter((each) => each.id !== item.id)]);
@@ -1617,7 +1646,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           setSelectedId(clip.id);
         }}/>}
         {leftTab === 'effects' && <section className="ed-add" aria-label="Special effects">
-          <p className="ed-tip">Light and celebration over your video. Click to add at the playhead, or drag onto the timeline. Each sits on an Effects layer and can be trimmed, moved or faded like any clip.</p>
+          <h3>Add an overlay</h3><p className="ed-tip">Weather, light and celebration sit above your video as separate timeline layers. Click to add at the playhead, or drag onto the timeline.</p>
           {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = effects.filter((effect) => effect.mood === mood); return group.length > 0 && <div key={mood}>
             <h3 className="ed-sub">{{ weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]}</h3>
             {mood === 'weather' && <div className="ed-weather-settings">
