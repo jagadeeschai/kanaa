@@ -5,15 +5,17 @@
  * Kept free of React and the DOM so it can be tested on its own.
  */
 import type { LookName, TransitionKind } from './animation.ts';
-import { clipLength, insertClip, mainLayer, MAX_VIDEO_LAYERS, overlayLayers, updateClip, type Clip, type Timeline, type VideoLayer } from './model.ts';
+import { DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, clipLength, insertClip, mainLayer, MAX_VIDEO_LAYERS, overlayLayers, updateClip, type Clip, type Timeline, type VideoLayer } from './model.ts';
 
 export const DRAG_TYPE = 'application/x-kanaa';
 export const TRANSITION_SECONDS = 0.6;
+export type ClipEffectPreset = 'old-film' | 'glitch' | 'vhs' | 'raindrops' | 'lens-dirt';
 
 export type DragPayload =
   | { kind: 'media'; id: number }
   | { kind: 'look'; look: LookName }
   | { kind: 'transition'; transition: TransitionKind }
+  | { kind: 'clip_effect'; effect: ClipEffectPreset }
   | { kind: 'title'; template: string }
   | { kind: 'track'; track: string }
   | { kind: 'effect'; effect: string };
@@ -30,6 +32,7 @@ export function decodePayload(raw: string | null | undefined): DragPayload | nul
     if (value?.kind === 'media' && Number.isInteger(value.id)) return value;
     if (value?.kind === 'look' && typeof value.look === 'string') return value;
     if (value?.kind === 'transition' && typeof value.transition === 'string') return value;
+    if (value?.kind === 'clip_effect' && ['old-film', 'glitch', 'vhs', 'raindrops', 'lens-dirt'].includes(value.effect)) return value;
     if (value?.kind === 'title' && typeof value.template === 'string') return value;
     if (value?.kind === 'track' && typeof value.track === 'string') return value;
     if (value?.kind === 'effect' && typeof value.effect === 'string') return value;
@@ -61,6 +64,7 @@ export function dropHint(timeline: Timeline, payload: DragPayload, target: DropT
     case 'media': return target.zone === 'main' ? (mainLayer(timeline).locked ? null : 'Insert here') : 'Add on top';
     case 'look': return clip ? 'Colour this clip' : null;
     case 'transition': return clip && isMainAfterFirst(timeline, clip.id) ? 'Transition into this clip' : null;
+    case 'clip_effect': return clip ? `Apply ${clipEffectLabel(payload.effect)}` : null;
     case 'title': return 'Add a title here';
     case 'track': return 'Add music here';
     case 'effect': return 'Add effect here';
@@ -70,6 +74,11 @@ export function dropHint(timeline: Timeline, payload: DragPayload, target: DropT
 /** Applies a look or transition dropped on a clip. Media, titles and music need the editor (ids, uploads), so it handles those. */
 export function applyClipDrop(timeline: Timeline, payload: DragPayload, clipId: string): Timeline {
   if (payload.kind === 'look') return updateClip(timeline, clipId, { look: payload.look });
+  if (payload.kind === 'clip_effect') {
+    if (payload.effect === 'old-film') return updateClip(timeline, clipId, { old_film: { ...DEFAULT_OLD_FILM } });
+    if (payload.effect === 'glitch' || payload.effect === 'vhs') return updateClip(timeline, clipId, { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: payload.effect } });
+    return updateClip(timeline, clipId, { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: payload.effect === 'lens-dirt' ? 'dirt' : 'raindrops' } });
+  }
   if (payload.kind === 'transition') {
     if (!isMainAfterFirst(timeline, clipId)) return timeline;
     const clip = findAny(timeline, clipId)!;
@@ -78,6 +87,8 @@ export function applyClipDrop(timeline: Timeline, payload: DragPayload, clipId: 
   }
   return timeline;
 }
+
+const clipEffectLabel = (effect: ClipEffectPreset) => ({ 'old-film': 'Old film', glitch: 'Digital glitch', vhs: 'VHS tape', raindrops: 'Raindrops', 'lens-dirt': 'Lens dirt' })[effect];
 
 function findAny(timeline: Timeline, id: string): Clip | null {
   for (const layer of [mainLayer(timeline), ...overlayLayers(timeline)]) { const found = layer.items.find((clip) => clip.id === id); if (found) return found; }

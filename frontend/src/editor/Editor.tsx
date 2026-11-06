@@ -875,7 +875,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const clip = newClip(source, newId());
       change(dropClip(timeline, clip, target.time));
       setSelectedId(clip.id);
-    } else if (payload.kind === 'look' || payload.kind === 'transition') {
+    } else if (payload.kind === 'look' || payload.kind === 'transition' || payload.kind === 'clip_effect') {
       if (!target.clipId || isLocked(timeline, target.clipId)) return;
       const next = applyClipDrop(timeline, payload, target.clipId);
       if (next !== timeline) { change(next); setSelectedId(target.clipId); }
@@ -1641,7 +1641,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
           {(['Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{group}</b><small>{matches.map((preset) => preset.label).join(' · ')}</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
-            {open && <div className="ed-clip-effect-grid">{matches.map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} disabled={!selected} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip` : 'Select a clip on the timeline first'}>
+            {open && <div className="ed-clip-effect-grid">{matches.map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} {...draggableAs({ kind: 'clip_effect', effect: preset.id })} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip, or drag it onto another clip` : `Drag ${preset.label} onto a timeline clip`}>
               <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
             }
           </div>; })}

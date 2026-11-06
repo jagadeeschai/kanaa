@@ -9,7 +9,7 @@ const three = () => ['a', 'b', 'c'].reduce((t, id) => insertClip(t, newClip(sour
 const order = (t) => [...mainLayer(t).items].sort((x, y) => x.start - y.start).map((clip) => clip.id);
 
 test('payloads round-trip and anything else is ignored', () => {
-  for (const payload of [{ kind: 'media', id: 7 }, { kind: 'look', look: 'warm' }, { kind: 'transition', transition: 'wipe' }, { kind: 'title', template: 'clean' }, { kind: 'track', track: 'x1' }]) assert.deepEqual(decodePayload(encodePayload(payload)), payload);
+  for (const payload of [{ kind: 'media', id: 7 }, { kind: 'look', look: 'warm' }, { kind: 'transition', transition: 'wipe' }, { kind: 'clip_effect', effect: 'vhs' }, { kind: 'title', template: 'clean' }, { kind: 'track', track: 'x1' }]) assert.deepEqual(decodePayload(encodePayload(payload)), payload);
   assert.equal(decodePayload('not json'), null);
   assert.equal(decodePayload('{"kind":"media","id":"7"}'), null);
   assert.equal(decodePayload(null), null);
@@ -32,6 +32,7 @@ test('drop hints say what will happen, and refuse what cannot', () => {
   assert.equal(dropHint(t, { kind: 'look', look: 'warm' }, { zone: 'main', time: 50, clipId: null }), null);
   assert.equal(dropHint(t, { kind: 'transition', transition: 'wipe' }, { zone: 'main', time: 1, clipId: 'a' }), null, 'the first clip has nothing to blend from');
   assert.ok(dropHint(t, { kind: 'transition', transition: 'wipe' }, { zone: 'main', time: 5, clipId: 'b' }));
+  assert.equal(dropHint(t, { kind: 'clip_effect', effect: 'old-film' }, { zone: 'main', time: 5, clipId: 'b' }), 'Apply Old film');
 });
 
 test('looks and transitions dropped on a clip change only that clip', () => {
@@ -41,6 +42,16 @@ test('looks and transitions dropped on a clip change only that clip', () => {
   const blended = applyClipDrop(t, { kind: 'transition', transition: 'whip' }, 'c');
   assert.deepEqual(mainLayer(blended).items.find((clip) => clip.id === 'c').transition_in, { kind: 'whip', duration: 0.6 });
   assert.equal(applyClipDrop(t, { kind: 'transition', transition: 'whip' }, 'a'), t);
+});
+
+test('clip effects can be dropped directly on any clip', () => {
+  const t = three();
+  const aged = applyClipDrop(t, { kind: 'clip_effect', effect: 'old-film' }, 'b');
+  assert.equal(mainLayer(aged).items[1].old_film.intensity, 0.65);
+  const vhs = applyClipDrop(t, { kind: 'clip_effect', effect: 'vhs' }, 'c');
+  assert.equal(mainLayer(vhs).items[2].signal_damage.mode, 'vhs');
+  const wet = applyClipDrop(t, { kind: 'clip_effect', effect: 'raindrops' }, 'a');
+  assert.equal(mainLayer(wet).items[0].lens_surface.mode, 'raindrops');
 });
 
 test('a lyric line dropped on an image starts it there, keeping order', () => {
