@@ -1726,6 +1726,11 @@ class EffectSwitches(Clips):
         clean_again = self.shot('switch-old-film-off.mp4', old_film=old_film, bypass=['old_film'])
         self.assertGreater(np.abs(aged.astype(int) - plain.astype(int)).mean(), 2)
         self.assertLess(np.abs(clean_again.astype(int) - plain.astype(int)).mean(), 2)
+        signal = {'mode': 'vhs', 'intensity': 0.9, 'rgb_split': 0.8, 'jitter': 0.7, 'scanlines': 0.7, 'noise': 0.6}
+        damaged = self.shot('switch-signal.mp4', signal_damage=signal)
+        signal_off = self.shot('switch-signal-off.mp4', signal_damage=signal, bypass=['signal_damage'])
+        self.assertGreater(np.abs(damaged.astype(int) - plain.astype(int)).mean(), 2)
+        self.assertLess(np.abs(signal_off.astype(int) - plain.astype(int)).mean(), 2)
         saved = Timeline.model_validate({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, 'look': 'mono', 'bypass': ['look']}]}]})
         self.assertEqual(saved.layers[0].items[0].look, 'mono')
 

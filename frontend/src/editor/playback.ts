@@ -72,6 +72,7 @@ const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
 uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
+uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, signalScanlines, signalNoise;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -115,7 +116,17 @@ void main(){
     float beat = floor(oldSeed * .5);
     s += (vec2(filmHash(vec2(beat, 3.)), filmHash(vec2(beat, 9.))) - .5) * vec2(.008, .004) * oldWeave * oldFilm;
   }
+  if (signalMode > 0 && signalJitter > 0.) {
+    float band = floor(s.y * (signalMode == 1 ? 18. : 42.));
+    float burst = filmHash(vec2(band, floor(oldSeed / (signalMode == 1 ? 2. : 4.))));
+    s.x += (burst - .5) * .055 * signalJitter * signalAmount * step(signalMode == 1 ? .62 : .35, burst);
+  }
   vec4 c = pick(s);
+  if (signalMode > 0 && signalSplit > 0.) {
+    float split = .012 * signalSplit * signalAmount;
+    vec4 left = pick(s - vec2(split, 0.)); vec4 right = pick(s + vec2(split, 0.));
+    c.r = right.r; c.b = left.b;
+  }
   if (blur > 0.) {
     // A Gaussian-weighted spiral. One pass, and close enough to the export's Gaussian blur for a moving frame.
     float total = 1.; const float tau = 6.2831853;
@@ -145,6 +156,13 @@ void main(){
     vec2 dustAt = fract(gl_FragCoord.xy / 28.) - vec2(filmHash(dustCell + oldSeed), filmHash(dustCell.yx + oldSeed + 31.));
     float dust = step(length(dustAt), .055 + .08 * oldDust) * step(1. - oldDust * .28, filmHash(dustCell + floor(oldSeed / 2.)));
     rgb *= 1. - dust * .65 * oldFilm;
+  }
+  if (signalMode > 0) {
+    float line = sin(gl_FragCoord.y * (signalMode == 2 ? 3.14159265 : 1.5707963));
+    rgb *= 1. - signalScanlines * signalAmount * (signalMode == 2 ? .16 : .08) * (.5 + .5 * line);
+    float snow = filmHash(gl_FragCoord.xy + vec2(oldSeed * 37., oldSeed * 11.)) - .5;
+    rgb = clamp(rgb + snow * signalNoise * signalAmount * (signalMode == 2 ? .28 : .16), 0., 1.);
+    if (signalMode == 2) rgb = mix(rgb, vec3(dot(rgb, vec3(.299, .587, .114))), .08 * signalAmount);
   }
   float a = alpha * opacity;
   // A drawn shape keeps only part of the frame. The picture has the frame's top at its first row.
@@ -213,7 +231,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -460,6 +478,13 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.oldDust, old?.dust ?? 0);
     gl.uniform1f(uniforms.oldWeave, old?.weave ?? 0);
     gl.uniform1f(uniforms.oldSeed, Math.floor(this.time * format.fps) % 997);
+    const signal = clip.signal_damage;
+    gl.uniform1i(uniforms.signalMode, signal ? (signal.mode === 'glitch' ? 1 : 2) : 0);
+    gl.uniform1f(uniforms.signalAmount, signal?.intensity ?? 0);
+    gl.uniform1f(uniforms.signalSplit, signal?.rgb_split ?? 0);
+    gl.uniform1f(uniforms.signalJitter, signal?.jitter ?? 0);
+    gl.uniform1f(uniforms.signalScanlines, signal?.scanlines ?? 0);
+    gl.uniform1f(uniforms.signalNoise, signal?.noise ?? 0);
     gl.uniform3f(uniforms.tint, red, green, blue);
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
@@ -468,7 +493,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -476,6 +501,7 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.useShape, shape ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.uniform1f(uniforms.oldFilm, 0);
+    gl.uniform1i(uniforms.signalMode, 0);
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
   }

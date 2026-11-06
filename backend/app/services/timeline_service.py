@@ -198,6 +198,32 @@ def old_film_filters(effect, canvas: tuple[int, int]) -> list[str]:
     return filters
 
 
+def signal_damage_filters(effect, canvas: tuple[int, int]) -> list[str]:
+    """Digital glitch or analogue VHS damage, applied to the clip pixels rather than as an overlay."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    W, H = canvas
+    amount = effect.intensity
+    filters = []
+    if effect.rgb_split > 0:
+        shift = max(1, round(W * .012 * effect.rgb_split * amount))
+        filters.append(f'rgbashift=rh={shift}:bh=-{shift}:edge=smear')
+    if effect.jitter > 0:
+        edge = max(2, round(W * .025 * effect.jitter * amount))
+        rate = 29 if effect.mode == 'glitch' else 13
+        filters.extend([f"crop={W - edge * 2}:{H}:x='{edge}+sin(t*{rate})*{edge}':y=0", f'scale={W}:{H}:flags=bicubic'])
+    if effect.scanlines > 0:
+        alpha = effect.scanlines * amount * (.20 if effect.mode == 'vhs' else .11)
+        spacing = 3 if effect.mode == 'vhs' else 5
+        filters.append(f'drawgrid=w=iw:h={spacing}:t=1:color=black@{alpha:.3f}')
+    if effect.noise > 0:
+        strength = 30 * effect.noise * amount * (1.25 if effect.mode == 'vhs' else .75)
+        filters.append(f'noise=c0s={strength:.3f}:c1s={strength:.3f}:c2s={strength:.3f}:c3s=0:allf=t+u')
+    if effect.mode == 'vhs':
+        filters.extend(['gblur=sigma=0.35:steps=1', f'eq=saturation={max(.75, 1 - .18 * amount):.3f}'])
+    return filters
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -221,7 +247,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas)]
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -799,6 +825,8 @@ def apply_bypass(clip):
             changes['adjust'] = clip.adjust.model_copy(update={'brightness': 1, 'contrast': 1, 'saturation': 1})
         elif effect == 'old_film':
             changes['old_film'] = None
+        elif effect == 'signal_damage':
+            changes['signal_damage'] = None
         elif effect == 'background':
             changes.update(cutout=None, cutout_pick=None, focus_pull=None)
         elif effect == 'green_screen':

@@ -17,7 +17,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_OLD_FILM } from '../timeline/model';
+import { DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline } from '../timeline/model';
 import { PlaybackEngine, type PlaybackSource } from './playback';
@@ -2140,6 +2140,19 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       </More>
       <button className="ed-button wide" onClick={() => onChange({ old_film: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ old_film: DEFAULT_OLD_FILM })}>Add old film</button>}
+    </Group>
+    <Group title="Signal damage" tab="look" startOpen={Boolean(clip.signal_damage)} changed={Boolean(clip.signal_damage)} keywords="glitch rgb split vhs tape scanlines jitter noise retro" tip="Break up the clip like a digital signal or worn VHS tape.">
+    {clip.signal_damage ? <>
+      <Chips label="Style" options={[{ id: 'glitch' as const, label: 'Glitch' }, { id: 'vhs' as const, label: 'VHS' }]} value={clip.signal_damage.mode} onPick={(mode) => onChange({ signal_damage: { ...clip.signal_damage!, mode } })}/>
+      <ValueSlider label="Intensity" value={clip.signal_damage.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ signal_damage: { ...clip.signal_damage!, intensity } }, group)}/>
+      <ValueSlider label="RGB separation" value={clip.signal_damage.rgb_split} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.rgb_split} unit="%" factor={100} onChange={(rgb_split, group) => onChange({ signal_damage: { ...clip.signal_damage!, rgb_split } }, group)}/>
+      <More>
+        <ValueSlider label="Horizontal jitter" value={clip.signal_damage.jitter} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.jitter} unit="%" factor={100} onChange={(jitter, group) => onChange({ signal_damage: { ...clip.signal_damage!, jitter } }, group)}/>
+        <ValueSlider label="Scanlines" value={clip.signal_damage.scanlines} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.scanlines} unit="%" factor={100} onChange={(scanlines, group) => onChange({ signal_damage: { ...clip.signal_damage!, scanlines } }, group)}/>
+        <ValueSlider label="Noise" value={clip.signal_damage.noise} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.noise} unit="%" factor={100} onChange={(noise, group) => onChange({ signal_damage: { ...clip.signal_damage!, noise } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ signal_damage: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ signal_damage: DEFAULT_SIGNAL_DAMAGE })}>Add signal damage</button>}
     </Group>
     {source?.kind === 'video' && <Group title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
       <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
