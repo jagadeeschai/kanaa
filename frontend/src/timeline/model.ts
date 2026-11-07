@@ -346,7 +346,17 @@ export function groundRiseBehind(timeline: Timeline, textId: string, what: 'pers
   const refreshed = findText(animated, textId)!;
   const nextLayer = animated.layers[animated.layers.indexOf(refreshed.layer) + 1];
   const expected = what === 'person' ? 'Person' : 'Object';
-  if (nextLayer?.kind === 'video' && nextLayer.name === expected) return animated;
+  if (nextLayer?.kind === 'video' && nextLayer.name === expected) {
+    const changes: Partial<Clip> = what === 'person'
+      ? { cutout: 'remove', cutout_pick: null }
+      : { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } };
+    return { ...animated, layers: animated.layers.map((layer) => layer !== nextLayer ? layer : { ...layer, items: layer.items.map((clip) => ({
+      ...clip,
+      ...changes,
+      enabled: true,
+      bypass: clip.bypass?.some((effect) => effect !== 'background') ? clip.bypass.filter((effect) => effect !== 'background') : null,
+    })) }) };
+  }
   return (what === 'person' ? putBehindPerson : putBehindObject)(animated, textId, ids);
 }
 

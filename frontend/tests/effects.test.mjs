@@ -101,7 +101,10 @@ test('ground rise works behind either people or objects without duplicating its 
   const people = groundRiseBehind(timeline, 't', 'person', ['p', 'people']);
   assert.equal(people.layers[1].items[0].enter.preset, 'ground-rise');
   assert.deepEqual([people.layers[2].name, people.layers[2].items[0].cutout], ['Person', 'remove']);
-  assert.equal(groundRiseBehind(people, 't', 'person', ['unused', 'unused-layer']).layers.length, 3);
+  const inactive = { ...people, layers: people.layers.map((layer) => layer.name === 'Person' ? { ...layer, items: layer.items.map((clip) => ({ ...clip, enabled: false, bypass: ['background'] })) } : layer) };
+  const restored = groundRiseBehind(inactive, 't', 'person', ['unused', 'unused-layer']);
+  assert.equal(restored.layers.length, 3);
+  assert.deepEqual([restored.layers[2].items[0].enabled, restored.layers[2].items[0].bypass], [true, null]);
   const object = groundRiseBehind(timeline, 't', 'object', ['o', 'object']);
   assert.deepEqual([object.layers[2].name, object.layers[2].items[0].cutout_pick.kind], ['Object', 'objects']);
 });
