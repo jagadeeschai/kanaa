@@ -2177,10 +2177,11 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
         <button className="ed-button" onClick={() => onGroundRise('person')} title="The title rises from the ground and people pass in front of it."><Users size={14}/>People</button>
         <button className="ed-button" onClick={() => onGroundRise('object')} title="The title rises from the ground and a chosen object passes in front of it."><Car size={14}/>An object</button>
       </div>
-      <Chips label="Subject gap" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3)}/>
+      <Chips label="Edge clearance" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3)}/>
       <ValueSlider label="Enter time" value={text.enter?.preset === 'ground-rise' ? text.enter.duration : 1.1} min={0.2} max={3} step={0.1} defaultValue={1.1} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { preset: 'ground-rise', duration } }, group ?? `ground-enter-${text.id}`)}/>
       <ValueSlider label="Exit time" value={text.exit?.duration ?? 0.5} min={0.2} max={3} step={0.1} defaultValue={0.5} unit="s" decimals={1} onChange={(duration, group) => onChange({ exit: { preset: text.exit?.preset ?? 'fade', duration } }, group ?? `ground-exit-${text.id}`)}/>
-      <p className="ed-group-tip">Camera → people or object → title → background. The title stays fixed while the foreground moves past it.</p>
+      <p className="ed-group-tip">Place the title at the distance you want, then track the person or object below. The title keeps that distance as the subject moves.</p>
+      {follow}
     </Group>
     <Group title="Other depth effects" tab="motion" keywords="behind depth mountain person in front object car skyline" tip="Keep people, cars or scenery in front of a title without the ground-rise animation." help="title-behind">
     <div className="ed-add-grid">
@@ -2194,7 +2195,7 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
     <Group title="Moves" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-    <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>
+    {text.enter?.preset !== 'ground-rise' && <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>}
   </Panel>;
 }
 
@@ -2450,7 +2451,7 @@ function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onS
   const what = blur ? 'the blur' : 'it';
   return <>
     <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : own ? `Put ${what} over what should be followed, a face or a number plate, then click Follow. Kanaa keeps ${what} on it as it moves.` : 'Place the title where it should sit, then click Follow and drag a box around the person or thing it should move with.'}</p>
-    <button className={`ed-button wide primary ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{own ? (following ? 'Follow again from here' : 'Follow') : following ? 'Follow something else' : 'Follow something'}</button>
+    <button className={`ed-button wide primary ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{own ? (following ? 'Follow again from here' : 'Follow') : following ? 'Track a different subject' : 'Track person or object'}</button>
     {following && <div className="ed-pair"><button className="ed-button" disabled={busy} onClick={onContinue}>Continue from here</button><button className="ed-button" disabled={busy} onClick={onStop}>Stop following</button></div>}
     {note && <p className="ed-tip ed-follow-note" role="status">{note}</p>}
     <More>
