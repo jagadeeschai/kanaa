@@ -65,6 +65,10 @@ class Adjust(Strict):
     brightness: float = Field(default=1, ge=0.25, le=2)
     contrast: float = Field(default=1, ge=0.25, le=2)
     saturation: float = Field(default=1, ge=0, le=2)
+    gamma: float = Field(default=1, ge=0.5, le=2)
+    temperature: float = Field(default=1, ge=0.7, le=1.4)  # Warmth: above 1 warms the reds, below 1 cools the blues.
+    tint: float = Field(default=1, ge=0.75, le=1.33)  # Green above 1, magenta below.
+    fade: float = Field(default=0, ge=0, le=0.6)  # Lifts the blacks toward white, a soft film matte.
 
 
 class Animation(Strict):
@@ -373,6 +377,7 @@ class CaptionLayer(LayerBase):
 class AudioLayer(LayerBase):
     kind: Literal['audio']
     items: List[Sound] = Field(default_factory=list)
+    volume: float = Field(default=1, ge=0, le=1.5)  # The whole track's level, multiplied into each sound.
 
 
 Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, CaptionLayer, AudioLayer], Field(discriminator='kind')]

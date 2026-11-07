@@ -141,7 +141,7 @@ export const startWords = (id: number, language: string) => requestJson<{ job_id
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
 export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
 export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);
-export const exportProjectTimeline = (id: number, timeline: unknown) => requestJson<{ job_id: string }>(`/api/projects/${id}/export`, { method: 'POST', body: JSON.stringify(timeline) });
+export const exportProjectTimeline = (id: number, timeline: unknown, hardware = true) => requestJson<{ job_id: string }>(`/api/projects/${id}/export?hardware=${hardware}`, { method: 'POST', body: JSON.stringify(timeline) });
 /** Phone access on the home Wi-Fi, with a PIN. Only the Mac can read or change it. */
 export type PhoneAccess = { enabled: boolean; pin: string | null; locked: boolean; address: string | null; port: number; listening: boolean; phones: number };
 export const getPhoneAccess = () => requestJson<PhoneAccess>('/api/phone');

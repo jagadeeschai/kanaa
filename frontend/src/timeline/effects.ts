@@ -44,7 +44,7 @@ export function applyBypass(clip: Clip): Clip {
   const next: Clip = { ...clip };
   for (const id of off) {
     if (id === 'look') next.look = 'none';
-    if (id === 'colour') next.adjust = { ...next.adjust, brightness: 1, contrast: 1, saturation: 1 };
+    if (id === 'colour') next.adjust = { ...next.adjust, brightness: 1, contrast: 1, saturation: 1, gamma: 1, temperature: 1, tint: 1, fade: 0 };
     if (id === 'old_film') next.old_film = null;
     if (id === 'signal_damage') next.signal_damage = null;
     if (id === 'lens_surface') next.lens_surface = null;

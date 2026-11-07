@@ -1,6 +1,7 @@
 """Compiles a timeline into one ffmpeg graph, and upgrades older project recipes."""
 from __future__ import annotations
 
+import functools
 import logging
 import json
 import math
@@ -29,6 +30,18 @@ from app.services.video_edit_service import (
 
 logger = logging.getLogger(__name__)
 AUDIO_FORMAT = 'aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo'
+# Watermark layers, mirrored with frontend/src/timeline/brand.ts. They draw after the cinematic finish, before captions.
+BRAND_LAYER_IDS = ('brand', 'brand-clips')
+
+
+@functools.lru_cache(maxsize=1)
+def _hardware_h264(ffmpeg: str) -> bool:
+    """True when this ffmpeg has a hardware H.264 encoder (Apple Silicon VideoToolbox, Quick Sync, NVENC)."""
+    try:
+        out = subprocess.run([ffmpeg, '-hide_banner', '-encoders'], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(name in out for name in ('h264_videotoolbox', 'h264_qsv', 'h264_nvenc'))
 # Matched by editor/audio.ts. A gentle ratio dips music by about 8 to 14 dB under normal speech.
 DUCK_THRESHOLD = 0.02
 DUCK_RATIO = 2
@@ -155,9 +168,18 @@ def picture_filters(adjust: Adjust, look: str) -> list[str]:
     contrast *= adjust.contrast
     saturation *= adjust.saturation
     b = adjust.brightness
+    warm = adjust.temperature
     filters = []
-    if (red, green, blue, b) != (1, 1, 1, 1):
-        filters.append(f'colorchannelmixer=rr={red * b:.5f}:gg={green * b:.5f}:bb={blue * b:.5f}')
+    if (red, green, blue, b, warm, adjust.tint) != (1, 1, 1, 1, 1, 1):
+        # The same tint vector the shader builds: warmth splits between red and blue, tint moves green.
+        filters.append(f'colorchannelmixer=rr={red * b * warm:.5f}:gg={green * b * adjust.tint:.5f}:bb={blue * b * (2 - warm):.5f}')
+    if adjust.gamma != 1:
+        inv = 1 / adjust.gamma
+        power = f"pow(val/255,{inv:.5f})*255"
+        filters.append(f"lutrgb=r='{power}':g='{power}':b='{power}'")
+    if adjust.fade > 0:
+        fade = f"val*(1-{adjust.fade:.5f})+255*{adjust.fade:.5f}"
+        filters.append(f"lutrgb=r='{fade}':g='{fade}':b='{fade}'")
     if contrast != 1:
         curve = f'clip((val-127.5)*{contrast:.5f}+127.5,0,255)'
         filters.append(f"lutrgb=r='{curve}':g='{curve}':b='{curve}'")
@@ -340,12 +362,12 @@ def atempo_chain(speed: float) -> list[str]:
     return [*steps, f'atempo={speed}'] if speed != 1 else steps
 
 
-def sound_steps(item: Clip | Sound) -> list[str]:
+def sound_steps(item: Clip | Sound, layer_volume: float = 1) -> list[str]:
     """Fades are in timeline seconds, so they follow the speed change. Overlong fades share the item's length."""
     length = item.length
     excess = max(1, (item.fade_in + item.fade_out) / length)
     fade_in, fade_out = item.fade_in / excess, item.fade_out / excess
-    steps = [AUDIO_FORMAT, *atempo_chain(item.speed), f'volume={item.volume}']
+    steps = [AUDIO_FORMAT, *atempo_chain(item.speed), f'volume={item.volume * layer_volume:.4f}']
     if fade_in:
         steps.append(f'afade=t=in:st=0:d={fade_in}')
     if fade_out:
@@ -810,7 +832,7 @@ class Builder:
                 path = facts.path
             else:
                 path = self.audio_asset(sound.asset_id)
-            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, sound_steps(sound), sound.duck)
+            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, sound_steps(sound, layer.volume), sound.duck)
 
     def bus(self, labels: list[str], total: float) -> str:
         # normalize=0 keeps each track's level.
@@ -843,16 +865,27 @@ class Builder:
         self.graph += steps
         return out
 
+    def add_brand_layers(self, brand_layers, current: str) -> str:
+        """Watermarks over the cinematic finish (bars included), under the captions. Matches the preview's drawBrand."""
+        for position, layer in brand_layers:
+            current = self.add_video_layer(layer, position, current)
+        return current
+
     def build(self) -> Compiled:
         fmt = self.fmt
         self.graph.append(f'color=c=black:s={fmt.width}x{fmt.height}:r={fmt.fps}:d={self.total_frames / fmt.fps},format=gbrp,trim=end_frame={self.total_frames}[canvas]')
         current = 'canvas'
         finished = False
+        brand_layers = []
         for position, layer in enumerate(self.timeline.layers):
             if layer.hidden or not layer.items:
                 continue
+            if layer.kind == 'video' and layer.id in BRAND_LAYER_IDS:  # drawn after the finish, before the captions
+                brand_layers.append((position, layer))
+                continue
             if layer.kind == 'captions' and not finished:
                 current, finished = self.add_finish(current), True
+                current = self.add_brand_layers(brand_layers, current)
             if layer.kind == 'video':
                 current = self.add_video_layer(layer, position, current)
             elif layer.kind == 'text':
@@ -865,6 +898,7 @@ class Builder:
                 self.add_audio_layer(layer)
         if not finished:
             current = self.add_finish(current)
+            current = self.add_brand_layers(brand_layers, current)
         self.graph.append(f'[{current}]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[final]')
         total = self.total_frames / fmt.fps
         self.mix_tracks(total)
@@ -881,7 +915,7 @@ def apply_bypass(clip):
         if effect == 'look':
             changes['look'] = 'none'
         elif effect == 'colour':
-            changes['adjust'] = clip.adjust.model_copy(update={'brightness': 1, 'contrast': 1, 'saturation': 1})
+            changes['adjust'] = clip.adjust.model_copy(update={'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0})
         elif effect == 'old_film':
             changes['old_film'] = None
         elif effect == 'signal_damage':
@@ -965,7 +999,7 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None) -> None:
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None, hardware: bool = True) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
@@ -984,9 +1018,17 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
                 mix = normalize_loudness(ffmpeg, compiled, mix, folder, should_cancel)
             audio_input = ['-i', str(mix)]
             audio = ['-map', f'{video_inputs(compiled)}:a', '-c:a', 'aac', '-b:a', '192k']
+        # Hardware encoding (Apple Silicon's Media Engine, Intel Quick Sync, NVENC where available) is several times
+        # faster than libx264 at export quality. VideoToolbox takes a bitrate instead of a CRF, so scale it with the
+        # frame size. Drafts keep libx264, which is already fast at its low settings.
+        short = min(timeline.format.width, timeline.format.height)
+        encoder = ['-c:v', 'libx264', *(['-preset', 'veryfast', '-crf', '26', '-g', '15'] if draft else ['-preset', 'fast', '-crf', '20'])]
+        if hardware and not draft and _hardware_h264(ffmpeg):
+            megabits = {720: 9, 1080: 16, 1440: 28}.get(short, 50 if short >= 2160 else round(short * 0.015))
+            encoder = ['-c:v', 'h264_videotoolbox', '-b:v', f'{megabits}M']
         # The graph goes in a file: a long timeline's graph can exceed the command-line limit.
         args = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', *compiled.args, *audio_input, '-filter_complex_script', str(folder / 'graph.txt'),
-                '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', '-c:v', 'libx264', *(['-preset', 'veryfast', '-crf', '26', '-g', '15'] if draft else ['-preset', 'fast', '-crf', '20']), '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
+                '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', *encoder, '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-n', str(output)]
         with tempfile.TemporaryFile(mode='w+') as errors:
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=errors, text=True, cwd=folder)

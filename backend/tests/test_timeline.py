@@ -885,9 +885,18 @@ class Api(Clips):
         media = self.add_video()
         self.assertIsNone(self.client.get(f"/api/photos/{media['id']}/words?language=ta").json()['words'])
         target = transcript_service.transcript_file(Path(media['absolute_path']), 'ta')
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps([{'w': 'வணக்கம்', 's': 0, 'e': 0.5}]), encoding='utf-8')
-        self.assertEqual(self.client.get(f"/api/photos/{media['id']}/words?language=ta").json()['words'][0]['w'], 'வணக்கம்')
+        # A full suite prunes the cache in other tests; a prune can evict this fresh folder between the write and the
+        # read, so rewrite and re-check a few times instead of racing it.
+        words = None
+        for attempt in range(5):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps([{'w': 'வணக்கம்', 's': 0, 'e': 0.5}]), encoding='utf-8')
+            found = self.client.get(f"/api/photos/{media['id']}/words?language=ta").json()['words']
+            if found:
+                words = found
+                break
+            time.sleep(0.2)
+        self.assertEqual(words[0]['w'], 'வணக்கம்')
         self.assertIsNone(self.client.get(f"/api/photos/{media['id']}/words?language=en").json()['words'])
 
     def test_transcripts_refuse_photos_and_unknown_languages(self):
@@ -1690,6 +1699,59 @@ class CinematicFinish(Clips):
         from app.services.timeline_service import compile_timeline
         graph = compile_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, self.out).graph
         self.assertLess(graph.index('blend=all_mode=multiply'), graph.index('subtitles=') if 'subtitles=' in graph else graph.index('ass='))
+
+    def test_brand_logo_stays_above_the_bars(self):
+        logo = np.zeros((60, 60, 4), np.uint8)
+        logo[:, :, 0] = 255; logo[:, :, 3] = 255  # Opaque red on transparency.
+        path = self.root / 'brand-logo.png'
+        Image.fromarray(logo, 'RGBA').save(path)
+        self.facts[96] = MediaFacts(path=path, media_type='image', width=60, height=60)
+        transform = {'x': 0.5, 'y': 0.06, 'scale': 1, 'opacity': 1, 'rotation': 0}
+        data = {'format': self.FORMAT, 'finish': {'letterbox': True},
+                'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 95, 'start': 0, 'in': 0, 'out': 1}]},
+                           {'id': 'brand', 'kind': 'video', 'items': [{'id': 'b', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, 'transform': transform}]}]}
+        frame = self.frame(self.render(data, 'brand-bars.mp4'), 10, (640, 360))
+        self.assertGreater(frame[5:50, 295:345, 0].mean(), 150, 'the logo shows inside the top bar')
+        self.assertLess(frame[5:50, 100:140, 0].mean(), 60, 'the bar beside it stays black')
+        from app.services.timeline_service import compile_timeline
+        graph = compile_timeline(Timeline.model_validate(data), self.facts.__getitem__, lambda asset: self.root / asset, self.out).graph
+        self.assertLess(graph.index('drawbox=x=0'), graph.rindex('overlay='), 'the finish draws before the brand')
+
+
+
+class ColourControls(Clips):
+    FORMAT = {'width': 640, 'height': 360, 'fps': 30}
+
+    def setUp(self):
+        super().setUp()
+        picture = np.full((360, 640, 3), 128, np.uint8)
+        picture[:, :320] = 10  # A dark half and a mid-tone half.
+        path = self.root / 'colour-controls-scene.png'
+        Image.fromarray(picture).save(path)
+        self.facts[97] = MediaFacts(path=path, media_type='image', width=640, height=360)
+
+    def scene(self, adjust):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 97, 'start': 0, 'in': 0, 'out': 1, 'adjust': adjust}]}]}
+        return self.frame(self.render(data, f"adjust-{abs(hash(str(adjust))) & 0xffff}.mp4"), 10, (640, 360))
+
+    def test_gamma_fade_temperature_and_tint_do_their_job(self):
+        plain = self.scene({})
+        self.assertAlmostEqual(int(plain[180, 480].mean()), 128, delta=8, msg='a neutral adjust changes nothing')
+        self.assertAlmostEqual(int(plain[180, 100].mean()), 10, delta=8, msg='dark half stays dark')
+
+        darkened = self.scene({'gamma': 0.5})
+        self.assertLess(darkened[180, 480].mean(), plain[180, 480].mean() - 40, 'gamma below 1 darkens midtones')
+        self.assertLess(darkened[180, 100].mean(), plain[180, 100].mean() - 5, 'gamma darkens the shadows too')
+
+        faded = self.scene({'fade': 0.3})
+        self.assertGreater(faded[180, 100].mean(), plain[180, 100].mean() + 50, 'fade lifts the blacks')
+
+        warmed = self.scene({'temperature': 1.4})
+        self.assertGreater(warmed[180, 480, 0] - warmed[180, 480, 2], 15, 'warmth raises red above blue')
+
+        tinted = self.scene({'tint': 1.25})
+        self.assertGreater(tinted[180, 480, 1] - (tinted[180, 480, 0] + tinted[180, 480, 2]) / 2, 8, 'tint raises green')
+
 
 
 class EffectSwitches(Clips):

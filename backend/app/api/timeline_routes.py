@@ -501,7 +501,7 @@ def preview_render_file(identifier: int, request: Request):
 
 
 @router.post('/projects/{identifier}/export')
-def export_project(identifier: int, timeline: dict):
+def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
     row = project_for(identifier)
     try:
         parsed = Timeline.model_validate(timeline)
@@ -515,10 +515,11 @@ def export_project(identifier: int, timeline: dict):
         check_disk_space(target.parent, parsed.duration)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    use_hardware = hardware != 'false'
 
     def run(should_cancel):
         try:
-            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel))
+            render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel), hardware=use_hardware)
             output = index_media(target, f"{row['name']}.mp4", exported=True)
             return {'progress': 100, 'output_photo_id': output['id']}
         except Exception:

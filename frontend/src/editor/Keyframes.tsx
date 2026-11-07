@@ -54,7 +54,7 @@ function KeyframePanel(props: PanelProps) {
     <div className="ed-motion"><span>Position</span><AnimateToggle {...props} control="position"/></div>
     <PointBar {...props} control="position"/>
     {isAnimated(transform, 'position') && <p className="ed-tip">Move the playhead, then drag the picture. Each spot becomes a point.</p>}
-    {!animated.length && <p className="ed-tip">To make something change over time, press Animate beside it, then move the playhead and change the value. Kanaa moves smoothly between the points.</p>}
+    {!animated.length && <p className="ed-tip">Press Animate beside a value, move the playhead, change it — Kanaa tweens between points.</p>}
     {(Object.keys(SLIDERS) as Exclude<Control, 'position'>[]).filter((control) => controls.includes(control)).map((control) => {
       const slider = SLIDERS[control];
       const value = valueAt(transform, slider.property, local);

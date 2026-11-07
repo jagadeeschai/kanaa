@@ -1,7 +1,7 @@
 import type { Photo } from '../types/photo.ts';
 import type { LyricCue } from '../utils/lyrics.ts';
 import type { Animation } from '../timeline/animation.ts';
-import { REST_TRANSFORM, type Clip, type TextItem, type Timeline } from '../timeline/model.ts';
+import { DEFAULT_ADJUST, REST_TRANSFORM, type Clip, type TextItem, type Timeline } from '../timeline/model.ts';
 
 export const CREDIT_SECONDS = 3;
 
@@ -33,7 +33,7 @@ type Handoff = {
 const formatFor = (canvas: Canvas) => canvas === 'portrait' ? { width: 1080, height: 1920, fps: 30 as const } : canvas === 'square' ? { width: 1080, height: 1080, fps: 30 as const } : { width: 1920, height: 1080, fps: 30 as const };
 const fontFor = (font: LyricFont) => ({ elegant: 'Arima', modern: 'Catamaran', playful: 'Baloo Thambi 2', handwritten: 'Kavivanar' } as const)[font as Exclude<LyricFont, 'standard'>] ?? null;
 const animationFor = (animation: LyricAnimation): Animation | null => animation === 'none' ? null : { preset: animation, duration: animation === 'fade' ? 0.25 : 0.35 };
-const baseClip = (mediaId: number, id: string, length: number): Clip => ({ id, media_id: mediaId, start: 0, in: 0, out: Math.max(.1, length), speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0, transform: { ...REST_TRANSFORM }, adjust: { rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1 } });
+const baseClip = (mediaId: number, id: string, length: number): Clip => ({ id, media_id: mediaId, start: 0, in: 0, out: Math.max(.1, length), speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0, transform: { ...REST_TRANSFORM }, adjust: { ...DEFAULT_ADJUST } });
 
 function move(clip: Clip, animation: Handoff['imageAnimation'], index: number): Clip {
   if (animation === 'none') return clip;

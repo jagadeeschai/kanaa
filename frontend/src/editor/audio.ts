@@ -91,7 +91,7 @@ export class AudioMixer {
         else if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * rate * sound.speed) player.element.currentTime = at;
         else if (Math.abs(drift) > DRIFT_NUDGE_SECONDS) nudge = -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift));
         player.element.playbackRate = sound.speed * rate * (1 + nudge);
-        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * fadeGain(sound, t - sound.start, length) : 0, context.currentTime, 0.008);
+        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * (layer.volume ?? 1) * fadeGain(sound, t - sound.start, length) : 0, context.currentTime, 0.008);
         if (playing && active && player.element.paused) void player.element.play().catch(() => {});
         if ((!playing || !active) && !player.element.paused) player.element.pause();
       }

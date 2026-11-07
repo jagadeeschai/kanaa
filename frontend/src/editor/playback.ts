@@ -7,6 +7,7 @@ import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { isBrandLayer } from '../timeline/brand';
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
@@ -70,7 +71,7 @@ void main(){
 }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
+uniform float opacity, brightness, contrast, saturation, gamma, fade, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
 uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
 uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, signalScanlines, signalNoise;
 uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
@@ -155,6 +156,8 @@ void main(){
   }
   float alpha = c.a; vec3 rgb = alpha > 0. ? c.rgb / alpha : vec3(0.);
   rgb = rgb * brightness * tint;
+  rgb = pow(max(rgb, 0.), vec3(1. / gamma));
+  rgb = rgb * (1. - fade) + fade;
   rgb = (clamp(rgb, 0., 1.) - .5) * contrast + .5;
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
@@ -273,7 +276,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -518,6 +521,8 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
     gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
     gl.uniform1f(uniforms.saturation, clip.adjust.saturation * saturation);
+    gl.uniform1f(uniforms.gamma, clip.adjust.gamma);
+    gl.uniform1f(uniforms.fade, clip.adjust.fade);
     const old = clip.old_film;
     gl.uniform1f(uniforms.oldFilm, old?.intensity ?? 0);
     gl.uniform1f(uniforms.oldGrain, old?.grain ?? 0);
@@ -548,7 +553,7 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.dreamyAmount, dreamy?.intensity ?? 0);
     gl.uniform1f(uniforms.dreamySoftness, dreamy?.softness ?? 0);
     gl.uniform1f(uniforms.dreamyWarmth, dreamy?.warmth ?? 0);
-    gl.uniform3f(uniforms.tint, red, green, blue);
+    gl.uniform3f(uniforms.tint, red * clip.adjust.temperature, green * clip.adjust.tint, blue * (2 - clip.adjust.temperature));
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
     gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
@@ -670,7 +675,7 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.turn, 0);
     gl.uniform1i(uniforms.keyType, 0);
     gl.uniform1f(uniforms.opacity, 1);
-    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
+    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1); gl.uniform1f(uniforms.gamma, 1); gl.uniform1f(uniforms.fade, 0);
     gl.uniform3f(uniforms.tint, 1, 1, 1);
     gl.uniform1f(uniforms.blur, 0);
     gl.uniform1i(uniforms.rotation, 0);
@@ -697,7 +702,7 @@ export class PlaybackEngine {
     gl.uniform2f(uniforms.frame, width, height);
     gl.uniform1i(uniforms.keyType, 0);
     gl.uniform1f(uniforms.opacity, look.opacity * Math.max(0, Math.min(1, valueAt(transform, 'opacity', local))));
-    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1);
+    gl.uniform1f(uniforms.brightness, 1); gl.uniform1f(uniforms.contrast, 1); gl.uniform1f(uniforms.saturation, 1); gl.uniform1f(uniforms.gamma, 1); gl.uniform1f(uniforms.fade, 0);
     gl.uniform3f(uniforms.tint, 1, 1, 1);
     gl.uniform1f(uniforms.blur, look.blur / size);
     gl.uniform2f(uniforms.blurAspect, height / width, 1);
@@ -755,15 +760,22 @@ export class PlaybackEngine {
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (!this.timeline) return;
     let finished = false;
+    const brand: VideoLayer[] = [];
     for (const layer of this.timeline.layers) {
       if (layer.hidden) continue;
-      if (layer.kind === 'captions' && !finished) { this.drawFinish(); finished = true; }
+      if (layer.kind === 'video' && isBrandLayer(layer)) { brand.push(layer); continue; }
+      if (layer.kind === 'captions' && !finished) { this.drawFinish(); this.drawBrand(brand); finished = true; }
       if (layer.kind === 'video') this.drawLayer(layer);
       else if (layer.kind === 'text') this.drawText(layer);
       else if (layer.kind === 'blur') this.drawBlur(layer);
       else if (layer.kind === 'captions') this.drawCaptions(layer);
     }
-    if (!finished) this.drawFinish();
+    if (!finished) { this.drawFinish(); this.drawBrand(brand); }
+  }
+
+  /** Brand watermarks over the cinematic finish (including its bars), under the captions. Matches timeline_service.py. */
+  private drawBrand(layers: VideoLayer[]) {
+    for (const layer of layers) this.drawLayer(layer);
   }
 
   seek(t: number) {

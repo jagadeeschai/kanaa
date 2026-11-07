@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
@@ -250,6 +250,9 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
+      // Keep the playhead in view while the film plays: scroll only when it leaves the visible range.
+      const hostEl = hostRef.current!;
+      if (head < hostEl.scrollLeft + 8 || head > hostEl.scrollLeft + hostEl.clientWidth - 8) hostEl.scrollLeft = Math.max(0, head - hostEl.clientWidth * 0.1);
     };
     draw();
     return () => cancelAnimationFrame(frame);
@@ -401,7 +404,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const change = (next: Timeline) => onChange(next, `layer-${groupCount.current += 1}`);
   const head = (layer: VideoLayer | TrackLayer, top: number, height: number) => <LayerHead key={layer.id} layer={layer} top={top} height={height} isMain={layer === main}
     position={layer.kind === 'video' && layer !== main ? overlayLayers(timeline).findIndex((entry) => entry.id === layer.id) : -1} overlays={overlayLayers(timeline).length}
-    onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))}/>;
+    onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))} onRename={(name) => change(updateLayer(timeline, layer.id, { name }))}/>;
   return <div className="tl-host">
     <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer) + SOUND_GAP, 0) }}>
       <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row), rowHeight(layer)))}</div>
@@ -413,10 +416,17 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   </div>;
 }
 
-function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, onMove }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void }) {
-  const name = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
-  return <div className="tl-head" style={{ top, height }} role="group" aria-label={`${name} layer`}>
-    {height > SOUND_HEIGHT && <span>{name}</span>}
+function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, onMove, onRename }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void }) {
+  const fallback = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
+  const name = layer.name || fallback;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const commit = () => { setEditing(false); const trimmed = draft.trim(); if (trimmed !== (layer.name ?? '')) onRename(trimmed); };
+  return <div className={`tl-head ${height <= SOUND_HEIGHT ? 'tl-head-compact' : ''}`} style={{ top, height }} role="group" aria-label={`${name} layer`}>
+    {editing
+      ? <input className="tl-rename" autoFocus value={draft} maxLength={80} aria-label="Layer name" onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setEditing(false); }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}/>
+      : <span title="Double-click to rename this layer" onDoubleClick={(event) => { event.stopPropagation(); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
+    {layer.kind === 'audio' && <input className="tl-layer-volume" type="range" min={0} max={1} step={0.05} value={layer.volume ?? 1} aria-label={`${name} volume`} title="This track's volume" onChange={(event) => onToggle({ volume: Number(event.target.value) })} onPointerDown={(event) => event.stopPropagation()}/>}
     <div>
       {position >= 0 && <>
         <button aria-label={`Bring ${name} forward`} title="Bring forward" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ChevronUp size={13}/></button>

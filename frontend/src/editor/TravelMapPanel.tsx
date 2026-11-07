@@ -68,7 +68,7 @@ export default function TravelMapPanel({ format, onMade, compact = false }: { fo
       <div className="ed-add-row"><span>Look</span><div className="ed-chips ed-map-choice" role="group" aria-label="Map look">{STYLES.map((item) => <button key={item.id} className={style === item.id ? 'on' : ''} aria-pressed={style === item.id} onClick={() => setStyle(item.id)}>{item.label}</button>)}</div></div>
       <div className="ed-add-row"><span>Names</span><div className="ed-chips ed-map-choice" role="group" aria-label="Place names">{LANGUAGES.map((item) => <button key={item.id} className={language === item.id ? 'on' : ''} aria-pressed={language === item.id} onClick={() => setLanguage(item.id)}>{item.label}</button>)}</div></div>
       <button className="ed-primary wide" disabled={Boolean(progress) || stops.some((stop) => !stop)} onClick={() => { void make(); }}>{progress ? <LoaderCircle className="spin" size={14}/> : <MapPin size={14}/>}Make the map</button>
-      <p className="ed-tip">Flights and place search work on this Mac. Road trips ask the free OSRM route service for the road (only the two points are sent, no key); road data © OpenStreetMap contributors. Trains follow the road route.</p>
+      <p className="ed-tip">Maps and flights run on this Mac. Roads come from the free OSRM service (two points sent, no key), © OpenStreetMap. Trains follow roads.</p>
     </>}
     {progress && <><div className="ed-progress"><i style={{ width: `${progress.value}%` }}/></div><p className="ed-tip" role="status">{progress.what} {progress.value}%</p></>}
     {note && <p className="ed-tip" role="status">{note}</p>}

@@ -8,8 +8,8 @@ import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/ref
 import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X } from 'lucide-react';
+import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Blend, ChevronsRight, MoveHorizontal, ZoomIn, Wind, Zap, RectangleHorizontal, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search } from 'lucide-react';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
@@ -28,7 +28,7 @@ import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
-import { DEFAULT_LAYOUT, Group, HelpContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
+import { DEFAULT_LAYOUT, Group, HelpContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
 import { MotionPanel, MotionPath } from './Keyframes';
 import { ResizeBox } from './ResizeBox';
@@ -36,6 +36,9 @@ import { clipBox } from '../timeline/resize';
 import TimelineView, { type ClipVisuals } from './TimelineView';
 import { valueAt } from '../timeline/evaluate';
 import { isFollowed, writeValue } from '../timeline/keyframes';
+import { clearTransitions, transitionEverywhere } from '../timeline/transitions';
+import { applyCinematicPreset, activeCinematicPreset, clearCinematicPreset, CINEMATIC_PRESETS } from '../timeline/cinematic';
+import { applyBrand, brandClip, brandOnClip, brandsOnClip, BRAND_SIZES, coverBrand, fadeBrand, moveBrand, removeBrand, removeClipBrand, resizeBrand } from '../timeline/brand';
 import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } from '../timeline/presets';
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
@@ -52,10 +55,15 @@ type Props = { projectId: number; projectName: string; photo: Photo; onClose: ()
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
-const LEFT_TABS = ['media', 'ask', 'templates', 'themes', 'effects', 'text', 'audio', 'words'] as const;
-const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Templates', themes: 'Themes', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
+const LEFT_TABS = ['media', 'audio', 'text', 'transitions', 'effects', 'templates', 'themes', 'ask', 'words'] as const;
+const LITE_TABS = new Set<string>(['media', 'audio', 'text', 'templates', 'themes']);
+const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Templates', themes: 'Themes', transitions: 'Transitions', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
+const TAB_ICONS: Record<(typeof LEFT_TABS)[number], React.ReactNode> = { media: <ImageIcon size={17}/>, ask: <Sparkles size={17}/>, templates: <Bookmark size={17}/>, themes: <Palette size={17}/>, transitions: <Shuffle size={17}/>, effects: <WandSparkles size={17}/>, text: <Type size={17}/>, audio: <Music size={17}/>, words: <MessageSquareText size={17}/> };
+const TAB_TIPS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media — your clips, photos and folders', ask: 'Ask AI — describe an edit in words', templates: 'Templates — ready-made stories and title styles', themes: 'Themes — dress the whole video in one click', transitions: 'Transitions — how clips join each other', effects: 'Effects — weather, light and celebration overlays', text: 'Text — titles and captions', audio: 'Audio — music library, songs and whooshes', words: 'Words — transcript, pauses and caption cuts' };
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
+/** The hardware encoder's bitrate at a given short side, in megabits — mirrors the export's encoder table. */
+const hardwareMbps = (shortSide: number) => ({ 720: 9, 1080: 16, 1440: 28 } as Record<number, number>)[shortSide] ?? (shortSide >= 2160 ? 50 : Math.round(shortSide * 0.015));
 const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
 const FAST_RATES = [1, 2, 4];
 const MAX_FADE_SECONDS = 5;
@@ -82,6 +90,7 @@ const TEXT_TYPE_DELAY_MS = 250;
 const CAPTION_FETCHES = 3;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }];
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
+const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
@@ -177,12 +186,21 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // A story being filled: what goes in each moment, and which moment is choosing.
   const [story, setStory] = useState<{ story: Story; fills: (number | null)[]; choosing: number | null } | null>(null);
   const [musicMood, setMusicMood] = useState<Mood | null>(null);
+  const [musicSearch, setMusicSearch] = useState('');
+  /** The left panel: a slim icon rail. It starts open on Media; clicking the open tab's icon folds it away. */
+  const [panelOpen, setPanelOpen] = useState(true);
+  /** The transition kind picked in the Transitions tab; used for click-apply and Every cut. */
+  const [transitionPick, setTransitionPick] = useState<TransitionKind>('crossfade');
+  /** True while the Remove-all-transitions confirmation is up. */
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const [listening, setListening] = useState<string | null>(null);
   const listenRef = useRef<HTMLAudioElement | null>(null);
   const [stemJob, setStemJob] = useState<StemJob | null>(null);
   const [now, setNow] = useState(0);
   const { layout, update: updateLayout, reset: resetLayout } = useEditorLayout();
   const [leftTab, setLeftTab] = useState<(typeof LEFT_TABS)[number]>('media');
+  /** Lite mode: a guided, template-driven path. Only these menus show. */
+  useEffect(() => { if (layout.simple && !LITE_TABS.has(leftTab)) setLeftTab('media'); }, [layout.simple, leftTab]);
   const [language, setLanguage] = useState(() => { try { return localStorage.getItem('wa.wordsLanguage') ?? 'auto'; } catch { return 'auto'; } });
   const [transcripts, setTranscripts] = useState<Record<string, Word[]>>({});
   const [wordJob, setWordJob] = useState<{ mediaId: number; id: string; progress: number; left: number[] } | null>(null);
@@ -377,7 +395,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (!timeline) return;
     const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
-    if (!flat) { engineRef.current?.setTimeline(playingTimeline(timeline), sourceFor, soundUrl, textUrl, captionUrl); return; }
+    if (!flat) { engineRef.current?.setTimeline(playingTimeline(coverBrand(timeline)), sourceFor, soundUrl, textUrl, captionUrl); return; }
     // The rendered copy plays as one clip, so nothing else has to keep up.
     const length = duration(timeline);
     const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');
@@ -522,7 +540,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!timeline) return;
     engineRef.current?.pause();
     try {
-      const { job_id } = await startPreviewRender(projectId, { ...timeline, format: exportFormat(timeline.format, PREVIEW_SHORT_SIDE) });
+      const { job_id } = await startPreviewRender(projectId, { ...coverBrand(timeline), format: exportFormat(timeline.format, PREVIEW_SHORT_SIDE) });
       setRenderJob({ id: job_id, key: JSON.stringify(timeline), progress: 0 });
     } catch (problem) { setError((problem as Error).message); }
   };
@@ -1520,8 +1538,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const shownMedia = media.filter((item) => !item.filename.startsWith('Blank canvas') && (!folder || item.folder === folder));
   const inVideo = shownMedia.filter((item) => usedIds.has(item.id));
   const otherMedia = shownMedia.filter((item) => !usedIds.has(item.id));
-  const mediaOpen = layout.mediaOpen; const inspectorOpen = layout.inspectorOpen;
-  const shellStyle = { '--media-col': mediaOpen ? `${layout.media}px` : '0px', '--media-gap': mediaOpen ? '6px' : '32px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '0px', '--inspector-gap': inspectorOpen ? '6px' : '32px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
+  const inspectorOpen = layout.inspectorOpen;
+  const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && !mainLayer(timeline).items.length;
   // ---- Ask AI ----
@@ -1596,7 +1614,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <div className="ed-spacer"/>
       <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
       <div className="ed-mode" role="group" aria-label="Editor mode">
-        <button aria-pressed={layout.simple} className={layout.simple ? 'on' : ''} onClick={() => updateLayout({ simple: true })} title="Simple: the main controls only. Drag, drop and done.">Simple</button>
+        <button aria-pressed={layout.simple} className={layout.simple ? 'on' : ''} onClick={() => updateLayout({ simple: true })} title="Lite: a guided, template-driven path. The main choices only.">Lite</button>
         <button aria-pressed={!layout.simple} className={layout.simple ? '' : 'on'} onClick={() => updateLayout({ simple: false })} title="Pro: every control, including keyframes and More options">Pro</button>
       </div>
       <span className="ed-divide ed-hide-small"/>
@@ -1609,22 +1627,22 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
-      <aside className={`ed-media ${mediaOpen ? '' : 'ed-panel-closed'}`} aria-label="Media">
-        <div className="ed-panel-head"><div className="ed-tabs" role="tablist" aria-label="Add to your video">{LEFT_TABS.map((tab, index) => <button key={tab} role="tab" tabIndex={leftTab === tab ? 0 : -1} aria-selected={leftTab === tab} onClick={() => setLeftTab(tab)} onKeyDown={(event) => { const next = nextTabIndex(index, LEFT_TABS.length, event.key, 3); if (next === index) return; event.preventDefault(); setLeftTab(LEFT_TABS[next]); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus(); }}>{LEFT_TAB_LABELS[tab]}</button>)}</div>
-          <button className="ed-icon small ed-hide-small" aria-label="Hide media panel" title="Hide this panel" onClick={() => updateLayout({ mediaOpen: false })}><PanelLeftClose size={15}/></button></div>
+      <aside className="ed-media" aria-label="Add to your video">
+        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={LEFT_TAB_LABELS[tab]} data-tip={TAB_TIPS[tab]} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}</div>
+        {panelOpen && <div className="ed-panel-content">
         {leftTab === 'media' && <>
           <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
-          {folders.length > 0 && <div className="ed-chips ed-folders" role="group" aria-label="Folders"><button className={folder === null ? 'on' : ''} onClick={() => setFolder(null)}>All</button>{folders.map((name) => <button key={name} className={folder === name ? 'on' : ''} onClick={() => setFolder(name)}>{name}</button>)}</div>}
+          {folders.length > 0 && <div className="ed-chips ed-folders" data-keep-panel role="group" aria-label="Folders"><button className={folder === null ? 'on' : ''} onClick={() => setFolder(null)}>All</button>{folders.map((name) => <button key={name} className={folder === name ? 'on' : ''} onClick={() => setFolder(name)}>{name}</button>)}</div>}
           {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
             <button className="ed-tile-add" {...draggableAs({ kind: 'media', id: item.id })} onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}, or drag it onto the timeline. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}
-        {leftTab === 'words' && <WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
+        {leftTab === 'words' && <div data-keep-panel><WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
-          onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/>}
-        {leftTab === 'templates' && timeline && (() => {
+          onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/></div>}
+        {leftTab === 'templates' && timeline && <div data-keep-panel>{(() => {
           if (story) {
             const filled = story.fills.filter((id) => id !== null).length;
             const pick = (index: number, id: number | null) => setStory({ ...story, fills: story.fills.map((current, at) => (at === index ? id : current)), choosing: null });
@@ -1640,19 +1658,19 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
               </li>; })}</ol>
               <button className="ed-button wide" disabled={!storyMedia.length || filled === story.fills.length} onClick={() => setStory({ ...story, fills: fillRest(story.story, story.fills.map((id) => (id === null ? null : facts(id) ?? null)), storyMedia.map((item) => facts(item.id)!).filter(Boolean)).map((source) => source?.media_id ?? null), choosing: null })}>Fill the rest with my media</button>
               <button className="ed-primary wide" disabled={!filled || Boolean(themeBusy) || momentProgress !== null} onClick={() => { void makeStory(); }}>{themeBusy || momentProgress !== null ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}{momentProgress !== null ? `Picking the best moments… ${momentProgress}%` : 'Make my video'}</button>
-              <p className="ed-tip">Each moment uses the best part of a longer clip: sharp, steady and well lit, with people's faces when the face finder is on this Mac. Empty moments are skipped. {mainLayer(timeline).items.length ? 'This replaces the clips on your main track; undo with ⌘Z.' : ''}</p>
+              <p className="ed-tip">Each moment takes the sharpest, steadiest, best-lit part of its clip. {mainLayer(timeline).items.length ? 'This replaces the clips on your main track; undo with ⌘Z.' : ''}</p>
             </section>;
           }
           return <section className="ed-add" aria-label="Story templates">
-            <p className="ed-tip">Pick a story, put a clip or photo in each moment, and Kanaa makes the video with its theme and music.</p>
+            <p className="ed-tip">Fill each moment with a clip or photo; Kanaa makes the video, theme and music included.</p>
             <div className="ed-stories">{STORIES.map((item) => <button key={item.id} className="ed-story" onClick={() => setStory({ story: item, fills: item.slots.map(() => null), choosing: null })} title={`${item.slots.map((each) => each.label).join(' → ')}`}>
               <b>{item.label}</b><em lang="ta">{item.tamil}</em><small>{item.slots.length} moments · about {storySeconds(item)}s · {THEMES.find((look) => look.id === item.theme)?.label}</small></button>)}</div>
           </section>;
-        })()}
+        })()}</div>}
         {leftTab === 'themes' && timeline && (() => {
           const current = activeTheme(timeline);
           return <section className="ed-add" aria-label="Themes">
-            <p className="ed-tip">Dresses your whole video at once: colours, transitions, photo movement, an opening title and an ending card. Your clips and words stay.</p>
+            <p className="ed-tip">One click: colours, transitions, photo movement, opening and ending titles. Your clips and words stay.</p>
             <div className="ed-themes">{THEMES.map((look) => <button key={look.id} className={`ed-theme ${current?.id === look.id ? 'on' : ''}`} aria-pressed={current?.id === look.id} onClick={() => { void chooseTheme(look); }} disabled={Boolean(themeBusy)} title={`${look.label}: ${look.about}`}>
               <span className="ed-theme-art" style={{ background: `linear-gradient(135deg, ${look.swatch[0]}, ${look.swatch[1]})` }}>{thumbs[`theme-${look.id}`] && <img src={thumbs[`theme-${look.id}`]} alt=""/>}</span>
               <span className="ed-theme-name"><b>{themeBusy === look.id ? <LoaderCircle className="spin" size={11}/> : null}{look.label}</b><em lang="ta">{look.tamil}</em></span><small>{look.about}</small></button>)}</div>
@@ -1661,13 +1679,22 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
               <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
             <h3 className="ed-sub">One clip</h3>
-            <p className="ed-tip">Drag a look or a transition onto a clip in the timeline, or click it to use it on the selected clip.</p>
+            <p className="ed-tip">Drag onto a clip, or click to apply to the selected clip.</p>
             <div className="ed-quick" role="group" aria-label="Looks">{LOOK_NAMES.map((look) => <button key={look.id} className={`ed-quick-tile look-${look.id}`} {...draggableAs({ kind: 'look', look: look.id })} onClick={() => applyToSelected({ kind: 'look', look: look.id })} title={`${look.label} look`}><span className="ed-quick-art"/>{look.label}</button>)}</div>
-            <div className="ed-quick" role="group" aria-label="Transitions">{TRANSITIONS.map((item) => <button key={item.id} className="ed-quick-tile transition" {...draggableAs({ kind: 'transition', transition: item.id })} onClick={() => applyToSelected({ kind: 'transition', transition: item.id })} title={`${item.label} into a clip`}><Shuffle size={13}/>{item.label}</button>)}</div>
-            <p className="ed-tip">The cinematic finish and frame rate are in Project settings: click the size button at the top, or an empty part of the timeline.</p>
-            <p className="ed-tip">To change the opening or ending words, click them on the timeline. Choosing another theme keeps your opening words.</p></section>;
+            <p className="ed-tip">Cinematic finish and frame rate live in Project settings (the size button, or click empty timeline).</p>
+            <p className="ed-tip">Click the opening or ending title on the timeline to edit its words; a new theme keeps them.</p></section>;
         })()}
-        {leftTab === 'ask' && timeline && <AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/>}
+        {leftTab === 'transitions' && <>
+          <p className="ed-tip">Drag onto a clip, or click to apply to the selected clip.</p>
+          <div className="ed-quick" role="group" aria-label="Transitions">{TRANSITIONS.map((item) => <button key={item.id} className={`ed-quick-tile transition ${transitionPick === item.id ? 'on' : ''}`} {...draggableAs({ kind: 'transition', transition: item.id })} onClick={() => { setTransitionPick(item.id); applyToSelected({ kind: 'transition', transition: item.id }); }} title={`${item.label} into a clip`}>{TRANSITION_ICONS[item.id]}{item.label}</button>)}</div>
+          {timeline && mainLayer(timeline).items.length > 1 && !mainLayer(timeline).locked && <>
+            <button className="ed-button wide" onClick={() => change(transitionEverywhere(timeline, transitionPick, 0.6), 'transition-all')} title={`Put a ${transitionPick} on every cut`}><Shuffle size={14}/>Every cut: {TRANSITIONS.find((item) => item.id === transitionPick)?.label ?? transitionPick}</button>
+            {mainLayer(timeline).items.some((clip) => clip.transition_in) && <button className="ed-button wide" onClick={() => setConfirmingClear(true)}><X size={14}/>Remove all transitions</button>}
+          </>}
+          {selected?.transition_in ? <ValueSlider label="Length" value={selected.transition_in.duration} min={0.2} max={2} step={0.05} defaultValue={0.6} unit="s" decimals={2} onGestureStart={pauseEngine} onChange={(duration, group) => change(updateClip(timeline!, selected.id, { transition_in: { ...selected.transition_in!, duration } }), group ?? 'transition-length')}/>
+            : <p className="ed-tip">Select a clip with a transition to adjust its length.</p>}
+        </>}
+        {leftTab === 'ask' && timeline && <div data-keep-panel><AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/></div>}
         {leftTab === 'effects' && <div className="ed-effect-search"><Search size={14}/><input type="search" value={effectSearch} onChange={(event) => setEffectSearch(event.target.value)} placeholder="Search effects…" aria-label="Search effects"/>{effectSearch && <button className="ed-icon small" aria-label="Clear effect search" onClick={() => setEffectSearch('')}><X size={12}/></button>}</div>}
         {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
           <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">{activeClipEffects.length ? `${activeClipEffects.length} applied` : 'Clip selected'}</span>}</div>
@@ -1679,7 +1706,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             }
           </div>; })}
         </section>}
-        {leftTab === 'effects' && timeline && (!effectNeedle || 'travel map animated route places'.includes(effectNeedle)) && <section className="ed-add ed-effect-tool"><button className="ed-effect-category-head" aria-expanded={Boolean(effectNeedle) || effectSection === 'travel-map'} onClick={() => { if (!effectNeedle) setEffectSection(effectSection === 'travel-map' ? null : 'travel-map'); }}><span><b>Travel map</b><small>Animated route between places</small></span>{Boolean(effectNeedle) || effectSection === 'travel-map' ? <Minus size={14}/> : <Plus size={14}/>}</button>{(Boolean(effectNeedle) || effectSection === 'travel-map') && <TravelMapPanel compact format={timeline.format} onMade={async (mediaId) => {
+        {leftTab === 'effects' && timeline && (!effectNeedle || 'travel map animated route places'.includes(effectNeedle)) && <section className="ed-add ed-effect-tool" data-keep-panel><button className="ed-effect-category-head" aria-expanded={Boolean(effectNeedle) || effectSection === 'travel-map'} onClick={() => { if (!effectNeedle) setEffectSection(effectSection === 'travel-map' ? null : 'travel-map'); }}><span><b>Travel map</b><small>Animated route between places</small></span>{Boolean(effectNeedle) || effectSection === 'travel-map' ? <Minus size={14}/> : <Plus size={14}/>}</button>{(Boolean(effectNeedle) || effectSection === 'travel-map') && <TravelMapPanel compact format={timeline.format} onMade={async (mediaId) => {
           const item = await getPhoto(mediaId);
           setMedia((current) => [item, ...current.filter((each) => each.id !== item.id)]);
           const current = timelineRef.current;
@@ -1689,10 +1716,10 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           setSelectedId(clip.id);
         }}/>}</section>}
         {leftTab === 'effects' && (!effectNeedle || matchingOverlayEffects.length > 0 || 'thunder weather sound'.includes(effectNeedle)) && <section className="ed-add" aria-label="Special effects">
-          <h3>Add an overlay</h3><p className="ed-tip">Weather, light and celebration sit above your video as separate timeline layers. Click to add at the playhead, or drag onto the timeline.</p>
+          <h3>Add an overlay</h3><p className="ed-tip">Effects sit above your video as layers. Click to add at the playhead, or drag onto the timeline.</p>
           {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = matchingOverlayEffects.filter((effect) => effect.mood === mood); const thunderMatches = mood === 'weather' && (!effectNeedle || 'thunder weather sound'.includes(effectNeedle)); const label = { weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]; const section = `overlay-${mood}`; const open = Boolean(effectNeedle) || effectSection === section; return (group.length > 0 || thunderMatches) && <div key={mood} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{label}</b><small>{group.length + (thunderMatches ? 1 : 0)} effects</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
-            {open && <>{mood === 'weather' && <details className="ed-weather-custom"><summary>Customize weather</summary><div className="ed-weather-settings">
+            {open && <>{mood === 'weather' && <details className="ed-weather-custom" data-keep-panel><summary>Customize weather</summary><div className="ed-weather-settings">
               <details className="ed-weather-block"><summary>Rain</summary>
                 <ValueSlider label="Amount" value={weather.rainDensity} min={0.25} max={2} step={0.25} defaultValue={1} unit="%" factor={100} onChange={(rainDensity) => setWeather({ ...weather, rainDensity })}/>
                 <ValueSlider label="Fall speed" value={weather.rainSpeed} min={0.6} max={1.6} step={0.1} defaultValue={1} unit="×" decimals={1} onChange={(rainSpeed) => setWeather({ ...weather, rainSpeed })}/>
@@ -1718,52 +1745,70 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           {effectBusy && <p className="ed-tip" role="status">Making the effect for this video's shape… {effectBusy.progress}%. Next time it's instant.</p>}
           {!effects.length && <p className="ed-tip">Loading effects…</p>}
         </section>}
-        {leftTab === 'effects' && effectNeedle && !matchingClipEffects.length && !matchingOverlayEffects.length && !'travel map animated route places thunder weather sound'.includes(effectNeedle) && <div className="ed-effect-empty"><b>No effects found</b><span>Try a name such as film, rain, VHS, wedding or light.</span></div>}
-        {leftTab === 'text' && <>
-          <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add a title at the playhead, or drag one onto the timeline. Then type your own words.</p>
-            <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" {...draggableAs({ kind: 'title', template: template.id })} onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
-              <span className="ed-template-art">{thumbs[template.id] ? <img src={thumbs[template.id]} alt=""/> : <Type size={16}/>}</span><span>{template.label}</span></button>)}</div>
-            {myStyles.length > 0 && <><h3 className="ed-sub">My styles</h3><div className="ed-templates">{myStyles.map((style) => <div key={style.id} className="ed-template-wrap">
-              <button className="ed-template" {...draggableAs({ kind: 'title', template: style.id })} onClick={() => addTitle(style)} title="Add a title in this style"><span className="ed-template-art">{thumbs[style.id] ? <img src={thumbs[style.id]} alt=""/> : <Type size={16}/>}</span><span>{style.label}</span></button>
-              <button className="ed-icon small ed-template-forget" aria-label={`Forget the style ${style.label}`} title="Forget this style" onClick={() => forgetStyle(style.id)}><X size={12}/></button></div>)}</div></>}</section>
-          <section className="ed-add" aria-label="Captions"><h3 className="ed-sub">Captions</h3><p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
-            <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
-            {captionsWaiting && wordJob ? <><div className="ed-progress"><i style={{ width: `${wordJob.progress}%` }}/></div><p className="ed-tip">Listening to your video… {wordJob.progress}%. The captions follow.</p></>
-              : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
-            {timeline && captionLayers(timeline).some((layer) => layer.items.length) && <button className="ed-button wide" disabled={clearing} onClick={() => { void keepClearOfFaces(); }} title="A caption that would cover someone's face moves to the top for that moment"><ScanFace size={14}/>{clearing ? 'Looking for faces…' : 'Keep captions clear of faces'}</button>}
-            {clearNote && <p className="ed-tip" role="status">{clearNote}</p>}</section>
-          <section className="ed-add" aria-label="Hide something"><h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
+        {leftTab === 'effects' && effectNeedle && !matchingClipEffects.length && !matchingOverlayEffects.length && !'travel map animated route places thunder weather sound hide blur pixelate face'.includes(effectNeedle) && <div className="ed-effect-empty"><b>No effects found</b><span>Try a name such as film, rain, VHS, wedding or light.</span></div>}
+        {leftTab === 'effects' && (!effectNeedle || 'hide blur pixelate face'.includes(effectNeedle)) && <section className="ed-add" aria-label="Hide something"><h3 className="ed-sub">Hide something</h3><p className="ed-tip">Covers a face, a number plate or a screen. It can follow what it covers.</p>
             <div className="ed-add-grid">
               <button className="ed-button" disabled={!total} onClick={() => addBlurBox('blur')}><EyeOff size={13}/>Blur box</button>
               <button className="ed-button" disabled={!total} onClick={() => addBlurBox('pixelate')}><EyeOff size={13}/>Pixelate box</button>
               {faceJob ? <div className="ed-add-span"><div className="ed-progress"><i style={{ width: `${faceJob.progress}%` }}/></div><p className="ed-tip">Finding faces… {faceJob.progress}%</p><button className="ed-button wide" onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></div>
                 : <button className="ed-button ed-add-span" disabled={!total} onClick={() => { void blurFaces(); }} title="Finds every face in the clip at the playhead and blurs each one"><ScanFace size={14}/>Blur faces</button>}
             </div>
-            {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>
+            {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>}
+        {leftTab === 'text' && <>
+          <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add at the playhead, or drag onto the timeline, then type your words.</p>
+            <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" {...draggableAs({ kind: 'title', template: template.id })} onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
+              <span className="ed-template-art">{thumbs[template.id] ? <img src={thumbs[template.id]} alt=""/> : <Type size={16}/>}</span><span>{template.label}</span></button>)}</div>
+            {myStyles.length > 0 && <><h3 className="ed-sub">My styles</h3><div className="ed-templates">{myStyles.map((style) => <div key={style.id} className="ed-template-wrap">
+              <button className="ed-template" {...draggableAs({ kind: 'title', template: style.id })} onClick={() => addTitle(style)} title="Add a title in this style"><span className="ed-template-art">{thumbs[style.id] ? <img src={thumbs[style.id]} alt=""/> : <Type size={16}/>}</span><span>{style.label}</span></button>
+              <button className="ed-icon small ed-template-forget" aria-label={`Forget the style ${style.label}`} title="Forget this style" onClick={() => forgetStyle(style.id)}><X size={12}/></button></div>)}</div></>}</section>
+          <section className="ed-add" aria-label="Captions"><h3 className="ed-sub">Captions</h3>
+            {layout.simple ? <>
+              <p className="ed-tip">Writes the words people say, timed to their speech.</p>
+              {captionsWaiting && wordJob ? <p className="ed-tip" role="status">Listening to your video… {wordJob.progress}%</p>
+                : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
+            </> : <>
+            <p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
+            <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
+            {captionsWaiting && wordJob ? <><div className="ed-progress"><i style={{ width: `${wordJob.progress}%` }}/></div><p className="ed-tip">Listening to your video… {wordJob.progress}%. The captions follow.</p></>
+              : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
+            {timeline && captionLayers(timeline).some((layer) => layer.items.length) && <button className="ed-button wide" disabled={clearing} onClick={() => { void keepClearOfFaces(); }} title="A caption that would cover someone's face moves to the top for that moment"><ScanFace size={14}/>{clearing ? 'Looking for faces…' : 'Keep captions clear of faces'}</button>}
+            {clearNote && <p className="ed-tip" role="status">{clearNote}</p>}</>}</section>
         </>}
-        {leftTab === 'audio' && <><p className="ed-tip">Adds a song at the playhead, or drag a track onto the timeline. It dips under speech automatically.</p><label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Add music'}
-          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
-          <section className="ed-add" aria-label="Whooshes and hits"><h3 className="ed-sub">Whooshes and hits</h3><p className="ed-tip">A whoosh on every transition and a hit as each title appears, timed to land exactly on the moment.</p>
+        {leftTab === 'audio' && <>
+          <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music library</h3>
+            {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : (() => {
+              const query = musicSearch.trim().toLowerCase();
+              const visible = library.filter((track) => (!musicMood || track.mood === musicMood) && (!query || track.name.toLowerCase().includes(query) || (track.genre ?? '').toLowerCase().includes(query)));
+              return <>
+              <div className="ed-effect-search" data-keep-panel><Search size={14}/><input type="search" value={musicSearch} onChange={(event) => setMusicSearch(event.target.value)} placeholder="Search songs or genres…" aria-label="Search music"/>{musicSearch && <button className="ed-icon small" aria-label="Clear music search" onClick={() => setMusicSearch('')}><X size={12}/></button>}</div>
+              <div className="ed-chips" role="group" aria-label="Mood" data-keep-panel>{([null, ...MOODS] as (Mood | null)[]).map((mood) => <button key={mood ?? 'all'} className={musicMood === mood ? 'on' : ''} aria-pressed={musicMood === mood} onClick={() => setMusicMood(mood)}>{mood ? MOOD_LABELS[mood] : 'All'}</button>)}</div>
+              {visible.length ? <ul className="ed-tracks" data-keep-panel>{visible.map((track) => <li key={track.id} className={listening === track.id ? 'playing' : ''} {...draggableAs({ kind: 'track', track: track.id })} title="Drag onto the timeline to add it there">
+                <button className="ed-icon small" aria-label={`${listening === track.id ? 'Stop' : 'Listen to'} ${track.name}`} onClick={() => listen(track.id)}>{listening === track.id ? <Pause size={13}/> : <Play size={13}/>}</button>
+                <span><b title={track.name}>{track.name}</b><small>{[track.genre, timecode(track.seconds).replace(/\.\d+$/, '')].filter(Boolean).join(' · ')}</small></span>
+                <button className="ed-icon small" aria-label={`Add ${track.name} at the playhead`} title="Add at the playhead" disabled={addingMusic} onClick={() => { void addLibraryTrack(track); }}><Plus size={14}/></button></li>)}</ul>
+              : <p className="ed-tip">No tracks match {musicSearch ? `“${musicSearch}”` : 'this filter'}{musicMood ? ` in ${MOOD_LABELS[musicMood]}` : ''}.</p>}
+              <p className="ed-tip">+ adds at the playhead, drag goes to the timeline, play previews. From {libraryFolder}; your files are only read.</p>
+              </>;
+            })()}
+          </section>
+          <section className="ed-add" aria-label="Your own song"><h3 className="ed-sub">Add your own song</h3><p className="ed-tip">Any audio file, added at the playhead; it dips under speech.</p>
+            <label className={`ed-button wide ed-music ${addingMusic ? 'busy' : ''}`}>{addingMusic ? <LoaderCircle className="spin" size={15}/> : <Music size={15}/>}{addingMusic ? 'Adding music…' : 'Choose an audio file'}
+              <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" disabled={addingMusic} aria-label="Add music" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMusic(file); }}/></label>
+          </section>
+          {!layout.simple && <section className="ed-add" aria-label="Whooshes and hits"><h3 className="ed-sub">Whooshes and hits</h3><p className="ed-tip">A whoosh on each cut and a hit on each title, landed on the moment.</p>
             {(['whoosh', 'hit'] as const).map((kind) => { const choices = (soundEffects ?? []).filter((effect) => effect.kind === kind); const placed = timeline ? timeline.layers.some((layer) => layer.kind === 'audio' && layer.items.some((sound) => sound.name === (kind === 'whoosh' ? 'Whoosh' : 'Hit'))) : false; return <div key={kind} className="ed-sfx">
               <label className="ed-field">{kind === 'whoosh' ? 'Whoosh' : 'Hit'}<select value={sfxChoice[kind]} onChange={(event) => setSfxChoice({ ...sfxChoice, [kind]: event.target.value })}>{choices.length ? choices.map((effect) => <option key={effect.id} value={effect.id}>{effect.name}{effect.own ? '' : ' · your library'}</option>) : <option value={`kanaa-${kind}`}>{kind === 'whoosh' ? "Kanaa's whoosh" : "Kanaa's hit"}</option>}</select></label>
               <div className="ed-pair-small"><button className="ed-button" disabled={!total || sfxBusy !== null} onClick={() => { void addSoundEffects(kind); }}>{sfxBusy === kind ? <LoaderCircle className="spin" size={13}/> : <AudioLines size={13}/>}{kind === 'whoosh' ? 'On transitions' : 'On titles'}</button>
                 {placed && <button className="ed-icon small" aria-label={`Remove the ${kind === 'whoosh' ? 'whooshes' : 'hits'}`} title="Remove them" onClick={() => { if (timeline) change(removeEffects(timeline, kind)); }}><X size={13}/></button>}</div></div>; })}
             {sfxNote && <p className="ed-tip" role="status">{sfxNote}</p>}
-            {soundEffects && soundEffects.every((effect) => effect.own) && <p className="ed-tip">Whooshes and hits in your music library (by name, under 30 seconds) show here too.</p>}</section>
-          <section className="ed-add" aria-label="Cut to the beat"><h3 className="ed-sub">Cut to the beat</h3><p className="ed-tip">Each clip on the main track ends on the song's nearest beat, so cuts land with the music.</p>
+            {soundEffects && soundEffects.every((effect) => effect.own) && <p className="ed-tip">Whooshes and hits in your music library (by name, under 30 seconds) show here too.</p>}</section>}
+          {!layout.simple && <section className="ed-add" aria-label="Cut to the beat"><h3 className="ed-sub">Cut to the beat</h3><p className="ed-tip">Each clip on the main track ends on the song's nearest beat, so cuts land with the music.</p>
             <button className="ed-button wide" disabled={!total || beatBusy || Boolean(timeline && mainLayer(timeline).locked)} onClick={() => { void cutClipsToBeat(); }}>{beatBusy ? <LoaderCircle className="spin" size={14}/> : <AudioLines size={14}/>}{beatBusy ? 'Listening for the beat…' : 'Cut clips to the beat'}</button>
-            {beatNote && <p className="ed-tip" role="status">{beatNote}</p>}</section>
-          <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music</h3>
-            {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : <>
-              <div className="ed-chips" role="group" aria-label="Mood">{([null, ...MOODS] as (Mood | null)[]).map((mood) => <button key={mood ?? 'all'} className={musicMood === mood ? 'on' : ''} aria-pressed={musicMood === mood} onClick={() => setMusicMood(mood)}>{mood ? MOOD_LABELS[mood] : 'All'}</button>)}</div>
-              <ul className="ed-tracks">{library.filter((track) => !musicMood || track.mood === musicMood).map((track) => <li key={track.id} {...draggableAs({ kind: 'track', track: track.id })} title="Drag onto the timeline to add it there">
-                <button className="ed-icon small" aria-label={`${listening === track.id ? 'Stop' : 'Listen to'} ${track.name}`} onClick={() => listen(track.id)}>{listening === track.id ? <Pause size={13}/> : <Play size={13}/>}</button>
-                <span><b>{track.name}</b><small>{[track.genre, timecode(track.seconds).replace(/\.\d+$/, '')].filter(Boolean).join(' · ')}</small></span>
-                <button className="ed-icon small" aria-label={`Add ${track.name} at the playhead`} title="Add at the playhead" disabled={addingMusic} onClick={() => { void addLibraryTrack(track); }}><Plus size={14}/></button></li>)}</ul>
-              <p className="ed-tip">From {libraryFolder}. Your files are only read; a track is copied into Kanaa when you use it.</p></>}
-          </section></>}
+            {beatNote && <p className="ed-tip" role="status">{beatNote}</p>}</section>}
+        </>}
+        </div>}
       </aside>
-      {mediaOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show media panel" title="Show the media panel" onClick={() => updateLayout({ mediaOpen: true })}><PanelLeftOpen size={15}/></button></div>}
+      {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
       <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
@@ -1776,8 +1821,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             if (!box) return null;
             return <button className="ed-follow-chip" style={{ left: `clamp(48px, ${box[0] * 100}%, calc(100% - 48px))`, top: `clamp(20px, ${(box[1] + box[3] / 2) * 100}%, calc(100% - 20px))` }} onPointerDown={(event) => event.stopPropagation()} onClick={() => { void followHere('start'); }} title="Kanaa finds what is under it and keeps it covered as it moves"><Crosshair size={13}/>Follow</button>;
           })()}
-          {(reframeJob || sceneJob || faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
-            {reframeJob ? <><span>Finding who to follow… {reframeJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${reframeJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(reframeJob.jobId); setReframeJob(null); }}>Cancel</button></>
+          {(renderJob || reframeJob || sceneJob || faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
+            {renderJob ? <><span>Rendering preview… {renderJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${renderJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(renderJob.id); setRenderJob(null); setHeavy(false); }}>Cancel</button></>
+            : reframeJob ? <><span>Finding who to follow… {reframeJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${reframeJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(reframeJob.jobId); setReframeJob(null); }}>Cancel</button></>
             : sceneJob ? <><span>Finding scene changes… {sceneJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${sceneJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(sceneJob.jobId); setSceneJob(null); }}>Cancel</button></>
             : faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
               : followJob ? <><span>Following… {followJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
@@ -1812,9 +1858,10 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           </span>
         </div>
       </main>
-      {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"><button className="ed-icon small" aria-label="Show settings panel" title="Show the settings panel" onClick={() => updateLayout({ inspectorOpen: true })}><PanelRightOpen size={15}/></button></div>}
+      {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
-      <aside className={`ed-inspector ${inspectorOpen ? '' : 'ed-panel-closed'}`} aria-label="Clip settings"><div className="ed-panel-bar ed-hide-small"><button className="ed-icon small" aria-label="Hide settings panel" title="Hide this panel" onClick={() => updateLayout({ inspectorOpen: false })}><PanelRightClose size={15}/></button></div>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span><strong title={selectedIdentity.name}>{selectedIdentity.name}</strong></div>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+      <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }) }}>
+      <aside className="ed-inspector" aria-label="Clip settings">{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span><strong title={selectedIdentity.name}>{selectedIdentity.name}</strong></div>}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
@@ -1822,11 +1869,11 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         : selectedText ? <TextInspector text={selectedText} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
-        : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} canTransition={clipIndex > 0} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
-          onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}
-          onShowTransition={() => showEnter(Math.max(0, selected.start - (selected.transition_in?.duration ?? 0.6)), 2 * (selected.transition_in?.duration ?? 0.6))}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); updateLayout({ mediaOpen: true }); }} onGuide={() => setShowingHelp(true)}/>
+        : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} logos={media.filter((item) => item.media_type === 'image')} logo={(() => { const item = brandClip(timeline); return item ? media.find((entry) => entry.id === item.media_id) ?? null : null; })()} onBrand={(item) => change(applyBrand(timeline, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onImported={(items) => { setMedia((current) => [...items, ...current]); }} onRemoveBrand={() => change(removeBrand(timeline), 'brand')} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); setPanelOpen(true); }} onGuide={() => setShowingHelp(true)}/>
           : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
+      </RailContext.Provider>
       </HelpContext.Provider>
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
@@ -1847,6 +1894,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     </div>
     {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}/>}
     </div></div>
+    {confirmingClear && timeline && (() => { const count = mainLayer(timeline).items.filter((clip) => clip.transition_in).length; return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Remove all transitions"><div className="ed-card small">
+      <h2 className="ed-confirm-title"><TriangleAlert size={18}/>Remove all transitions?</h2>
+      <p className="ed-tip">{count === 1 ? 'One transition comes' : `${count} transitions come`} off the main track, and each cut becomes a plain jump. One Undo brings them all back.</p>
+      <div className="ed-pair">
+        <button className="ed-button" onClick={() => setConfirmingClear(false)}>Keep them</button>
+        <button className="ed-button ed-danger" autoFocus onClick={() => { change(clearTransitions(timeline), 'transition-all'); setConfirmingClear(false); }}><Trash2 size={14}/>Remove all</button>
+      </div>
+    </div></div>; })()}
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
@@ -1883,9 +1938,12 @@ function ActiveEffects({ clip, onChange }: { clip: Clip; onChange: (changes: Par
 /** Settings for the whole film: its shape and frame rate, its look, and its sound. Shown when nothing is selected. */
 const FRAME_RATES = [24, 25, 30, 50, 60] as const;
 const RATE_TIPS: Record<number, string> = { 24: 'the film look', 25: 'TV in India and Europe', 30: 'most phones; a safe choice', 50: 'smooth motion, PAL', 60: 'smoothest; sport and action' };
-function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, onGuide }: { timeline: Timeline; clipFormat: Format | null; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
+function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onChange, onPause, onThemes, onGuide }: { timeline: Timeline; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
   const format = timeline.format;
   const finish = timeline.finish ?? null;
+  const brand = brandClip(timeline);
+  const brandSource = logo ? { width: logo.width || 800, height: logo.height || 800 } : null;
+  const nearSize = brand ? BRAND_SIZES.reduce((best, entry) => Math.abs(entry.scale - brand.transform.scale) < Math.abs(best.scale - brand.transform.scale) ? entry : best, BRAND_SIZES[1]).id : 'medium';
   const cinematicOn = Boolean(finish && (finish.grade || finish.glow || finish.vignette || finish.grain));
   const theme = activeTheme(timeline);
   const [luts, setLuts] = useState<LutInfo[]>([]);
@@ -1898,8 +1956,8 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
     onGestureStart={onPause} onChange={(value, group) => setFinish({ ...(finish ?? { ...CINEMATIC, letterbox: false, grade: 0, glow: 0, vignette: 0, grain: 0 }), [key]: value }, group ?? `finish-${key}`)}/>;
   const shapes = [...FORMATS.map((item) => ({ id: item.id as string, label: item.label, width: item.width, height: item.height })), ...(clipFormat ? [{ id: 'clip', label: 'Same as my clip', width: Math.min(clipFormat.width, 3840), height: Math.min(clipFormat.height, 3840) }] : [])];
   return <>
-    <div className="ed-project-head"><h2>Project settings</h2><span>{format.width} × {format.height} · {ratio(format.width, format.height)} · {format.fps} fps</span></div>
-    <Panel id="project" tabs={[{ id: 'format', label: 'Format', Icon: Monitor }, { id: 'look', label: 'Look', Icon: Palette, changed: Boolean(finish || theme || timeline.lut) }, { id: 'sound', label: 'Sound', Icon: Volume2, changed: Boolean(timeline.normalize_audio) }]}>
+    {!useContext(RailContext).folded && <div className="ed-project-head"><h2>Project settings</h2><span>{format.width} × {format.height} · {ratio(format.width, format.height)} · {format.fps} fps</span></div>}
+    <Panel id="project" tabs={[{ id: 'format', label: 'Format', Icon: Monitor }, { id: 'look', label: 'Look', Icon: SlidersHorizontal, changed: Boolean(finish || theme || timeline.lut) }, { id: 'sound', label: 'Sound', Icon: Volume2, changed: Boolean(timeline.normalize_audio) }]}>
       <Group title="Shape and size" tab="format" startOpen keywords="canvas aspect ratio resolution size vertical reels youtube square portrait" tip="Where will you post it? Clips refit to the new shape." help="project-settings">
         <div className="ed-shapes">{shapes.map((item) => { const on = item.width === format.width && item.height === format.height; return <button key={item.id} className={on ? 'on' : ''} aria-pressed={on} onClick={() => setFormat({ width: item.width, height: item.height })} title={`${item.width} × ${item.height}`}>
           <i style={{ aspectRatio: `${item.width} / ${item.height}` }}/><span><b>{item.label}</b><small>{ratio(item.width, item.height)} · {item.width} × {item.height}</small></span></button>; })}</div>
@@ -1912,17 +1970,35 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
       <Group title="Theme" tab="look" startOpen keywords="theme look style wedding festival travel birthday" tip="One click dresses the whole video: colours, transitions, titles and music." help="themes">
         <div className="ed-add-row"><span>{theme ? <>Now: <b>{theme.label}</b></> : 'No theme'}</span><button className="ed-button" onClick={onThemes}>{theme ? 'Change theme' : 'Choose a theme'}</button></div>
       </Group>
-      <Group title="Cinematic finish" tab="look" startOpen changed={cinematicOn} keywords="cinematic film grade teal orange glow vignette grain" tip="A film look over the whole video. It does not change the frame shape." help="cinematic-finish">
-        <label className="ed-check"><input type="checkbox" checked={cinematicOn} onChange={(event) => { const letterbox = Boolean(finish?.letterbox); setFinish(event.target.checked ? { ...CINEMATIC, letterbox } : letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null); }}/><span>Cinematic finish<small>Teal and orange colour, a soft glow, darker edges and film grain. Your selected aspect ratio stays unchanged.</small></span></label>
+      <Group title="Cinematic finish" tab="look" startOpen changed={cinematicOn} keywords="cinematic film grade teal orange glow vignette grain preset" tip="A film look over the whole video. It does not change the frame shape." help="cinematic-finish">
+        <div className="ed-chips" role="group" aria-label="Cinematic presets">{CINEMATIC_PRESETS.map((preset) => { const on = activeCinematicPreset(timeline)?.id === preset.id; return <button key={preset.id} className={on ? 'on' : ''} aria-pressed={on} title={on ? 'Turn this preset off' : preset.about} onClick={() => onChange(on ? clearCinematicPreset(timeline) : applyCinematicPreset(timeline, preset), on ? 'cinematic-off' : `cinematic-${preset.id}`)}>{preset.label}</button>; })}</div>
+        <p className="ed-group-tip">One click: finish plus a colour look on every clip. Sliders stay adjustable.</p>
+        <label className="ed-check"><input type="checkbox" checked={cinematicOn} onChange={(event) => { const letterbox = Boolean(finish?.letterbox); setFinish(event.target.checked ? { ...CINEMATIC, letterbox } : letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null); }}/><span>Cinematic finish<small>Teal and orange grade, glow, darker edges, grain. Your frame shape stays as chosen.</small></span></label>
         {cinematicOn && <>
           {part('grade', 'Teal and orange')}{part('glow', 'Glow')}<More>{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}</More>
+        </>}
+      </Group>
+      <Group title="Brand watermark" tab="look" startOpen changed={Boolean(brand)} keywords="logo watermark brand mark corner badge" tip="Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best." help="brand-watermark">
+        {!brand ? <>
+          <ImportArea compact onImported={onImported}/>
+          <label className="ed-lut-field"><span>Logo</span><KanaaSelect aria-label="Choose a logo image" value="" onChange={(event) => { const item = logos.find((entry) => String(entry.id) === event.target.value); if (item) onBrand(item); }}>
+            <option value="">Choose an image…</option>{logos.map((item) => <option key={item.id} value={item.id}>{item.filename}</option>)}
+          </KanaaSelect></label>
+          <p className="ed-group-tip">Import your logo above, or pick an image already in Media.</p>
+        </> : <>
+          <div className="ed-add-row"><span>Now: <b>{logo?.filename ?? 'Logo'}</b></span><button className="ed-button small" onClick={onRemoveBrand}>Remove</button></div>
+          {brand && brandSource && <>
+            <Chips label="Corner" options={CORNERS} value={null} onPick={(corner) => onChange(moveBrand(timeline, brandSource, corner), 'brand-corner')}/>
+            <Chips label="Size" options={BRAND_SIZES.map(({ id, label }) => ({ id, label }))} value={nearSize} onPick={(id) => onChange(resizeBrand(timeline, brandSource, BRAND_SIZES.find((entry) => entry.id === id)?.scale ?? 0.18), `brand-size-${id}`)}/>
+            <ValueSlider label="Opacity" value={brand.transform.opacity} min={0.1} max={1} step={0.05} defaultValue={0.9} unit="%" factor={100} onGestureStart={onPause} onChange={(value, group) => onChange(fadeBrand(timeline, value), group ?? 'brand-opacity')}/>
+          </>}
         </>}
       </Group>
       <Group pro title="Widescreen framing" tab="look" changed={Boolean(finish?.letterbox)} keywords="bars letterbox widescreen 2.39 framing" tip="Optional 2.39:1 bars, independent from the Cinematic finish." help="cinematic-finish">
         {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape. This is not enabled by Cinematic finish.</small></span></label>
           : <p className="ed-group-tip">Widescreen bars are available for landscape and square projects.</p>}
       </Group>
-      <Group title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
+      <Group pro title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
         <label className="ed-lut-field"><span>LUT</span><KanaaSelect searchable searchPlaceholder={`Search ${luts.length || ''} LUTs…`} aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>
           <option value="">None</option>{luts.map((lut) => <option key={lut.id} value={lut.id}>{lut.name}</option>)}
         </KanaaSelect></label>
@@ -1930,10 +2006,18 @@ function ProjectInspector({ timeline, clipFormat, onChange, onPause, onThemes, o
         <p className="ed-group-tip">{luts.length ? `${luts.length} LUTs from ${lutFolder}. The source files stay read-only.` : `No .cube LUTs found in ${lutFolder || 'your LUT folder'}.`}</p>
       </Group>
       <Group title="Loudness" tab="sound" startOpen changed={Boolean(timeline.normalize_audio)} keywords="loudness normalize volume level even out audio" tip="Makes the whole video as loud as social apps expect." help="music-volume-ducking">
+        {(() => {
+          const ends = audioLayers(timeline).flatMap((layer) => layer.items.filter((sound) => !sound.muted).map((sound) => sound.start + soundLength(sound)));
+          if (!ends.length) return null;
+          const silentTail = Math.max(0, duration(timeline) - Math.max(...ends));
+          return silentTail > 1
+            ? <p className="ed-tip" role="status">Music stops at {timecode(Math.max(...ends))}; the last {silentTail >= 10 ? `${Math.round(silentTail)}s` : `${silentTail.toFixed(1)}s`} have no music. Select the song and use Loop to the end in its panel.</p>
+            : <p className="ed-tip">Music covers the whole video.</p>;
+        })()}
         <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onChange({ ...timeline, normalize_audio: event.target.checked })}/><span>Even out loudness<small>Applied when you export.</small></span></label>
       </Group>
     </Panel>
-    <button className="ed-button wide ed-project-guide" onClick={onGuide}><CircleHelp size={14}/>Guide: how everything works</button>
+    {!useContext(RailContext).folded && <button className="ed-button wide ed-project-guide" onClick={onGuide}><CircleHelp size={14}/>Guide: how everything works</button>}
   </>;
 }
 
@@ -2056,7 +2140,7 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
-  return <Panel id="title" tabs={[{ id: 'words', label: 'Words', Icon: Type }, { id: 'style', label: 'Style', Icon: Palette }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
+  return <Panel id="title" tabs={[{ id: 'words', label: 'Words', Icon: Quote }, { id: 'style', label: 'Style', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
     <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
@@ -2094,7 +2178,7 @@ function TextInspector({ text, onSaveStyle, onBehind, onBehindShape, shaping, ti
       <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill, skyline or the ground. Everything below stays in front."><Mountain size={14}/>Skyline / ground</button>
       <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or anything still. It stays in front of the title."><PenTool size={14}/>Draw around it</button>
     </div>
-    <p className="ed-group-tip">People and objects are found and followed as they move. A drawn shape stays still, so it suits a tripod shot. Pick Slide up as the Enter animation to make the title rise from behind.</p>
+    <p className="ed-group-tip">Faces and objects are followed as they move; a drawn shape stays still (best on a tripod). Add a Slide-up enter to rise from behind.</p>
     </Group>
     <Group title="Moves" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
@@ -2119,7 +2203,7 @@ function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLay
     <Group title="Timing" startOpen keywords="when start length duration trim loop repeat" help="timing-and-trimming">
     <Timing fields={timing}/>
     {onLoop && <><button className="ed-button wide" disabled={looping} onClick={onLoop} title="Repeats the song by whole bars, on the beat, until the video ends, then fades out">{looping ? <LoaderCircle className="spin" size={14}/> : <Music size={14}/>}{looping ? 'Finding the beat…' : 'Loop to the end of the video'}</button>
-      <p className="ed-tip">The song ends before the video does. Looping repeats it on the beat and fades out at the end.</p></>}
+      <p className="ed-tip">The song ends early. Looping repeats it on the beat and fades at the end.</p></>}
     </Group>
     <Group title="Volume" tab="volume" startOpen keywords="volume mute louder quiet fade speed dip duck music" tip="Set loudness and fades; music dips by itself while people talk." help="music-volume-ducking">
     <div className="ed-pair">
@@ -2132,7 +2216,7 @@ function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLay
       <div className="ed-pair"><button className={`ed-button ${layer.muted ? 'on' : ''}`} aria-pressed={Boolean(layer.muted)} onClick={() => onLayer({ muted: !layer.muted })}>Mute track</button></div>
       </More>
     </Group>
-    <Group title="Voice" tab="voice" startOpen keywords="clean voice noise karaoke vocals instrumental singing remove" tip="Clean up a voice, or take the singing out of a song." help="voice-and-vocals">
+    <Group pro title="Voice" tab="voice" startOpen keywords="clean voice noise karaoke vocals instrumental singing remove" tip="Clean up a voice, or take the singing out of a song." help="voice-and-vocals">
     <label className="ed-check"><input type="checkbox" checked={Boolean(sound.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
     {!stems?.available ? <p className="ed-tip">Voice separation is an optional add-on. To install it, run <code>{stems?.install_command ?? './install-stems.sh'}</code> in the Kanaa folder, then restart Kanaa.</p>
       : job ? <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Separating… {job.progress}%. This can take a few minutes, and you can keep editing.</p><button className="ed-button wide" onClick={onCancelStems}>Cancel</button></>
@@ -2145,7 +2229,7 @@ function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLay
   </Panel>;
 }
 
-function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, canTransition, closesWithTransition, onShowEnter, onShowExit, onShowTransition }: { onReframe: (() => void) | null; reframing: boolean; onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; canTransition: boolean; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void; onShowTransition: () => void }) {
+function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, logos, clipBrandMarks, onClipBrand, onRemoveClipBrand, clip, source, format, onChange, canDetach, onDetach, local, onSeekLocal, onPause, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, closesWithTransition, onShowEnter, onShowExit }: { onReframe: (() => void) | null; reframing: boolean; onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; logos: Photo[]; clipBrandMarks: { id: string; name: string }[]; onClipBrand: (item: Photo) => void; onRemoveClipBrand: (id: string) => void; clip: Clip; source?: PlaybackSource; format: Format; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void }) {
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
   const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
@@ -2156,20 +2240,20 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
   const effectFadeMax = Math.min(2, clipLength(clip) / 2);
   return <>
     <ActiveEffects clip={clip} onChange={onChange}/>
-    <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: Palette, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: WandSparkles, changed: Boolean(clip.cutout || clip.chroma) },
+    <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" startOpen keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Clip visibility" tab="frame" startOpen changed={clip.enabled === false} keywords="active inactive disable hide camera angle multicam" tip="Deactivate an angle without deleting or moving it.">
       <label className="ed-check"><input type="checkbox" checked={clip.enabled !== false} onChange={(event) => onChange({ enabled: event.target.checked })}/><span>Active clip<small>{clip.enabled === false ? 'Kept on the timeline, but absent from preview, sound and export.' : 'This clip contributes picture and sound.'}</small></span></label>
     </Group>
-    {isEffect && <Group title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
+    {isEffect && <Group pro title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
       <Chips label="Intensity" options={EFFECT_INTENSITIES} value={clip.transform.opacity <= 0.5 ? 'subtle' : clip.transform.opacity <= 0.85 ? 'medium' : 'strong'} onPick={(strength) => onChange({ transform: { ...clip.transform, opacity: EFFECT_INTENSITY_VALUE[strength] } })}/>
       <More><ValueSlider label="Fine intensity" value={clip.transform.opacity} min={0} max={1} step={0.01} defaultValue={1} unit="%" factor={100} onGestureStart={onPause} onChange={(opacity, group) => onChange({ transform: { ...clip.transform, opacity } }, group)}/></More>
       <ValueSlider label="Speed" value={clip.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onGestureStart={onPause} onChange={(speed, group) => onChange({ speed }, group)}/>
       <ValueSlider label="Fade in" value={clip.enter?.preset === 'fade' ? clip.enter.duration : 0} min={0} max={effectFadeMax} step={0.1} defaultValue={0} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: duration ? { preset: 'fade', duration } : null }, group)}/>
       <ValueSlider label="Fade out" value={clip.exit?.preset === 'fade' ? clip.exit.duration : 0} min={0} max={effectFadeMax} step={0.1} defaultValue={0} unit="s" decimals={1} onChange={(duration, group) => onChange({ exit: duration ? { preset: 'fade', duration } : null }, group)}/>
       <Chips label="Blend" options={BLENDS} value={overlay?.blend ?? 'screen'} onPick={(blend) => onLayer({ blend })}/>
-      <p className="ed-group-tip">Timing above controls where it starts and ends. Slower speed makes the generated pattern last longer.</p>
+      <p className="ed-group-tip">Timing sets its span. Slower speed stretches the pattern.</p>
     </Group>}
     <Group title="Frame" tab="frame" startOpen keywords="fit fill crop zoom rotate turn sideways mirror flip resize size bigger smaller corner picture in picture pip" tip="Fit shows everything; Fill covers the screen. Drag the picture to move it, or a corner to resize it." help="framing-and-rotating">
     <div className="ed-pair">
@@ -2197,12 +2281,17 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
     </More>
     </Group>
     {clip.freeze != null && <Group title="Frozen frame" tab="frame" startOpen keywords="still hold pause freeze"><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
-    <Group title="Colour" tab="look" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1} keywords="filter colour color brighter dark black and white warm vintage look" tip="Pick a look, then fine-tune the brightness." help="colour-and-looks">
+    <Group title="Colour" tab="look" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1 || clip.adjust.gamma !== 1 || clip.adjust.temperature !== 1 || clip.adjust.tint !== 1 || clip.adjust.fade !== 0} keywords="filter colour color brighter dark black and white warm vintage look fade gamma temperature tint" tip="Pick a look, then fine-tune brightness and, under More options, gamma, white balance and a film fade." help="colour-and-looks">
     <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
     <ValueSlider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(brightness, group) => adjust({ brightness }, group)}/>
     <More>
     <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
     <ValueSlider label="Colour strength" value={clip.adjust.saturation} min={0} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(saturation, group) => adjust({ saturation }, group)}/>
+    <ValueSlider label="Gamma" value={clip.adjust.gamma} min={0.5} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(gamma, group) => adjust({ gamma }, group)}/>
+    <ValueSlider label="Temperature" value={clip.adjust.temperature} min={0.7} max={1.4} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(temperature, group) => adjust({ temperature }, group)}/>
+    <ValueSlider label="Tint" value={clip.adjust.tint} min={0.75} max={1.33} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(tint, group) => adjust({ tint }, group)}/>
+    <ValueSlider label="Film fade" value={clip.adjust.fade} min={0} max={0.6} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(fade, group) => adjust({ fade }, group)}/>
+    <p className="ed-group-tip">Above 100% warms, below cools. Tint leans green or magenta. Fade lifts blacks into a soft matte.</p>
     </More>
     </Group>
     <Group title="Colour splash" tab="look" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
@@ -2224,7 +2313,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}>Add dreamy glow</button>}
     </Group>
-    <Group title="Beat pulse" tab="motion" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
+    <Group pro title="Beat pulse" tab="motion" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
     {clip.beat_pulse ? <>
       <ValueSlider label="Strength" value={clip.beat_pulse.strength} min={0} max={1} step={0.01} defaultValue={DEFAULT_BEAT_PULSE.strength} unit="%" factor={100} onChange={(strength, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, strength } }, group)}/>
       <ValueSlider label="Tempo" value={clip.beat_pulse.bpm} min={30} max={300} step={1} defaultValue={DEFAULT_BEAT_PULSE.bpm} unit=" BPM" onChange={(bpm, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, bpm } }, group)}/>
@@ -2272,7 +2361,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       <button className="ed-button wide" onClick={() => onChange({ lens_surface: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ lens_surface: DEFAULT_LENS_SURFACE })}>Add lens surface</button>}
     </Group>
-    {source?.kind === 'video' && <Group title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
+    {source?.kind === 'video' && <Group pro title="Background" tab="background" startOpen changed={Boolean(clip.cutout)} keywords="blur background portrait remove replace focus bokeh cut out person who stays" tip="Blur or remove what's behind people, and choose who stays sharp." help="background-blur-remove">
       <Chips label="Background" options={[{ id: 'keep' as const, label: 'Keep' }, { id: 'blur' as const, label: 'Blur' }, { id: 'remove' as const, label: 'Remove' }]} value={clip.cutout ?? 'keep'} onPick={(id) => onChange(id === 'keep' ? { cutout: null, cutout_pick: null, focus_pull: null } : id === 'remove' ? { cutout: id, focus_pull: null } : { cutout: id })}/>
       {clip.cutout === 'blur' && <div className="ed-strength"><span className="ed-who-title">Blur strength</span><Chips label="Blur strength" options={BLUR_AMOUNTS} value={clip.blur_amount ?? 'medium'} onPick={(blur_amount) => onChange({ blur_amount })}/></div>}
       {clip.cutout && <WhoStays clip={clip} onChange={onChange} local={local} sourceDuration={source?.duration}/>}
@@ -2283,6 +2372,13 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       {clip.cutout && <p className="ed-tip">{!copyReady ? `${clip.cutout === 'blur' ? `Making the ${clip.focus_pull ? 'focus pull' : `${clip.blur_amount ?? 'medium'} blur`}` : `Finding ${clip.cutout_pick?.kind === 'objects' ? 'the objects' : clip.cutout_pick?.ids ? 'the chosen people' : 'the person'}`}… This runs in the background${clip.cutout === 'blur' ? '; the preview keeps the previous blur until the new one is ready' : ', and the preview shows the original until it is ready'}.`
         : clip.cutout === 'blur' ? 'Who you choose stays sharp and everything else is softened, like a film camera focused on them.' : isMain ? 'The person shows over black until you choose a new background below.' : 'The person shows over whatever is under this layer.'}</p>}
     </Group>}
+    <Group pro title="Brand watermark" tab="background" changed={clipBrandMarks.length > 0} keywords="logo watermark brand mark corner badge overlay" tip="A logo shown only while this clip plays. On the timeline it is an ordinary overlay: drag it, trim it or delete it." help="brand-watermark">
+      {clipBrandMarks.length > 0 && <div className="ed-add-row"><span>{clipBrandMarks.length === 1 ? `1 logo over this clip` : `${clipBrandMarks.length} logos over this clip`}</span></div>}
+      {clipBrandMarks.map((mark) => <div className="ed-add-row" key={mark.id}><span>{mark.name}</span><button className="ed-button small" onClick={() => onRemoveClipBrand(mark.id)}>Remove</button></div>)}
+      {logos.length ? <div className="ed-media-grid ed-backgrounds">{logos.map((item) => <button key={item.id} className="ed-tile-add" onClick={() => onClipBrand(item)} title={`Put ${item.filename} over this clip`}><img src={photoThumbUrl(item.id)} alt="" loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b></span></button>)}</div>
+        : <p className="ed-tip">Import the logo in Media, then pick it here. A transparent PNG looks best.</p>}
+      {logos.length > 0 && <p className="ed-tip">Top right, for this clip's length. A whole-video mark lives in Project settings.</p>}
+    </Group>
     <Group pro title="Green screen" tab="background" startOpen={Boolean(clip.chroma) || source?.kind !== 'video'} changed={Boolean(clip.chroma)} keywords="green screen chroma key transparent blue" tip="Click the green or blue in the preview to make it see-through." help="green-screen">
     {clip.chroma ? <>
       <div className="ed-key-color"><label><span className="ed-key-swatch" style={{ background: clip.chroma.color }}/><input type="color" aria-label="Colour to remove" value={clip.chroma.color} onChange={(event) => onChange({ chroma: { ...clip.chroma!, color: event.target.value } }, `key-colour-${clip.id}`)}/></label>
@@ -2296,12 +2392,8 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       <button className="ed-button wide" onClick={() => { onChange({ chroma: DEFAULT_CHROMA }); onPick(); }}><Pipette size={14}/>Remove a colour</button>
     </>}
     </Group>
-    <Group title="Animation" tab="motion" startOpen changed={Boolean(clip.enter || clip.exit || clip.transition_in)} keywords="animation entrance exit transition fade slide" tip="How it appears, leaves, and joins the clip before." help="animations-and-moves">
-    {canTransition && <>
-      <h3 className="ed-sub">Transition from the last clip</h3>
-      <Chips label="Transition" options={[{ id: 'none' as const, label: 'None' }, ...TRANSITIONS]} value={transition?.kind ?? 'none'} onPick={(kind) => { onChange({ transition_in: kind === 'none' ? null : { kind, duration: transition?.duration ?? 0.6 } }); if (kind !== 'none') setTimeout(onShowTransition, 60); }}/>
-      {transition && <ValueSlider label="Length" value={transition.duration} min={0.2} max={2} step={0.1} defaultValue={0.6} unit="s" decimals={1} onChange={(duration, group) => onChange({ transition_in: { ...transition, duration } }, group)}/>}
-    </>}
+    <Group title="Animation" tab="motion" startOpen changed={Boolean(clip.enter || clip.exit)} keywords="animation entrance exit enter fade slide" tip="How the clip appears and leaves." help="animations-and-moves">
+    {transition && <p className="ed-tip">This clip opens with a {transition.kind} transition — set in the Transitions tab.</p>}
     {transition ? <p className="ed-tip">The transition replaces this clip's enter animation.</p> : <AnimationPicker label="Enter" value={clip.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onShowEnter}/>}
     {closesWithTransition ? <p className="ed-tip">The next clip's transition replaces this clip's exit animation.</p> : <AnimationPicker label="Exit" value={clip.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onShowExit}/>}
     </Group>
@@ -2319,7 +2411,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, cl
       <More>
       <h3 className="ed-sub">Speed effect</h3>
       <Chips label="Speed ramp" options={RAMP_CHOICES} value={rampName(clip.ramp)} onPick={(id) => onChange({ ramp: id === 'off' ? null : RAMPS[id] })}/>
-      {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">Sound is off during a speed ramp. Slow parts look smoothest in footage filmed at 60 or 120 frames a second.</p></>}
+      {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">A ramp has no sound. Slow parts smoothen best from 60 or 120 fps footage.</p></>}
       {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
       <label className="ed-check"><input type="checkbox" checked={Boolean(clip.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>
       {canDetach && <button className="ed-button wide" onClick={onDetach}><AudioLines size={15}/>Move sound to its own track</button>}
@@ -2360,7 +2452,7 @@ function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onS
 function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll }: { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void }) {
   const [draft, setDraft] = useState(captionText(caption));
   useEffect(() => setDraft(captionText(caption)), [caption.id]);
-  return <Panel id="caption" tabs={[{ id: 'words', label: 'Words', Icon: Captions }, { id: 'style', label: 'Style', Icon: Palette }]}>
+  return <Panel id="caption" tabs={[{ id: 'words', label: 'Words', Icon: Captions }, { id: 'style', label: 'Style', Icon: ALargeSmall }]}>
     <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
@@ -2406,12 +2498,13 @@ function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, on
   const [job, setJob] = useState<{ id: string; progress: number; status?: string | null; error?: string | null; output?: number | null } | null>(null);
   const [error, setError] = useState('');
   const seconds = duration(timeline);
-  const megabytes = Math.round(seconds * ESTIMATED_MB_PER_SECOND_1080 * (quality / 1080) ** 2);
+  const [hardware, setHardware] = useState(true);
+  const megabytes = Math.round(seconds * (hardware ? hardwareMbps(quality) / 8 : ESTIMATED_MB_PER_SECOND_1080) * (quality / 1080) ** 2);
   const outputFormat = exportFormat(timeline.format, quality);
   const start = async () => {
     setError('');
     try {
-      const { job_id } = await exportProjectTimeline(projectId, { ...timeline, format: outputFormat });
+      const { job_id } = await exportProjectTimeline(projectId, { ...coverBrand(timeline), format: outputFormat }, hardware);
       setJob({ id: job_id, progress: 0 });
     } catch (problem) { setError((problem as Error).message); }
   };
@@ -2435,6 +2528,7 @@ function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, on
     {!job && <><p>{timecode(seconds)} long · about {megabytes >= 1000 ? `${(megabytes / 1000).toFixed(1)} GB` : `${megabytes} MB`}</p>
       <div className="ed-qualities">{QUALITIES.map((item) => <button key={item.id} className={quality === item.id ? 'on' : ''} aria-pressed={quality === item.id} onClick={() => setQuality(item.id)}><strong>{item.label}</strong><span>{item.note}</span></button>)}</div>
       <p className="ed-export-spec">{exportSpec(outputFormat, withSound)}</p>
+      <label className="ed-check"><input type="checkbox" checked={hardware} onChange={(event) => setHardware(event.target.checked)}/><span>Fast export<small>Uses this Mac's hardware encoder — several times faster, same resolution. Off gives the smallest file.</small></span></label>
       <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onNormalize(event.target.checked)}/><span>Even out loudness<small>Matches the level social apps expect. Applied to the export, not the preview.</small></span></label>
       {error && <p role="alert" className="ed-bad">{error}</p>}
       <button className="ed-primary wide" onClick={() => { void start(); }}><Download size={16}/>Export MP4</button></>}

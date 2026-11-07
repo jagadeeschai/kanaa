@@ -77,18 +77,37 @@ const PanelContext = createContext<PanelState | null>(null);
 export type PanelTab = { id: string; label: string; Icon: LucideIcon; changed?: boolean };
 const lastTab = new Map<string, string>();
 
-/** A gentle settings panel: a few tabs with icons, and a search box that finds any setting by everyday words. */
+/** The right-hand settings panel folds to its icon rail. Provided by the editor around the workspace. */
+export const RailContext = createContext<{ folded: boolean; setOpen: (open: boolean) => void }>({ folded: false, setOpen: () => {} });
+
+/**
+ * A gentle settings panel: its tabs become a slim icon rail on the panel's right edge, like the left media rail.
+ * Clicking the open tab's icon folds the panel to the rail; clicking any icon on the folded rail unfolds it.
+ * The search box and every group behave exactly as before.
+ */
 export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
   const remembered = lastTab.get(id);
   const [tab, setTab] = useState(remembered && tabs.some((item) => item.id === remembered) ? remembered : tabs[0]?.id ?? '');
   const [query, setQuery] = useState('');
+  const rail = useContext(RailContext);
+  const folded = rail.folded;
   const shown = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? '';
   const pick = (next: string) => { lastTab.set(id, next); setTab(next); setQuery(''); };
   return <PanelContext.Provider value={{ tab: shown, query: query.trim().toLowerCase() }}>
-    <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a setting… (blur, speed, behind)" aria-label="Find a setting"/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
-    {!query && tabs.length > 1 && <div className="ed-panel-tabs" role="tablist" aria-label="Settings">{tabs.map(({ id: key, label, Icon, changed }) => <button key={key} role="tab" aria-selected={shown === key} className={shown === key ? 'on' : ''} onClick={() => pick(key)}><Icon size={15}/><span>{label}</span>{changed && <i title="Has changes"/>}</button>)}</div>}
-    <div className="ed-panel-body">{children}</div>
-    {query && <p className="ed-tip ed-find-none">Showing settings that match “{query}”. <button className="ed-link" onClick={() => setQuery('')}>Show all</button></p>}
+    <div className="ed-panel-rail-host">
+      {!folded && <div className="ed-panel-main">
+        <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a setting… (blur, speed, behind)" aria-label="Find a setting"/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
+        <div className="ed-panel-body">{children}</div>
+        {query && <p className="ed-tip ed-find-none">Showing settings that match “{query}”. <button className="ed-link" onClick={() => setQuery('')}>Show all</button></p>}
+      </div>}
+      <div className="ed-rail-tabs right" role="group" aria-label="Settings sections">{tabs.map(({ id: key, label, Icon, changed }) => {
+        const active = !folded && shown === key;
+        return <button key={key} className={active ? 'on' : ''} aria-pressed={active} aria-label={label} data-tip={label}
+          onClick={() => { if (active) rail.setOpen(false); else { if (folded) rail.setOpen(true); pick(key); } }}>
+          <Icon size={17}/>{changed && <i className="ed-rail-dot" title="Has changes"/>}
+        </button>;
+      })}</div>
+    </div>
   </PanelContext.Provider>;
 }
 

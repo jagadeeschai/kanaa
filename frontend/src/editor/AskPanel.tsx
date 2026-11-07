@@ -58,11 +58,11 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
   };
 
   return <section className="ed-add ed-ask" aria-label="Ask AI">
-    <p className="ed-tip">Say what you want in plain words, in English or Tamil. Kanaa suggests edits; nothing changes until you apply them, and ⌘Z undoes each one.</p>
+    <p className="ed-tip">Ask in English or Tamil. Kanaa suggests; nothing changes until you apply, and ⌘Z undoes.</p>
     {settings && !editing && <div className="ed-add-row"><span>AI: <b>{settings.text_model}</b> {settings.local ? '· on this Mac' : '· cloud'}</span><button className="ed-button" onClick={() => setEditing(true)}>AI settings</button></div>}
     {editing && <div className="ed-ask-connect" role="group" aria-label="AI settings">
       <h3 className="ed-sub">AI settings</h3>
-      <p className="ed-tip">The same connection as image generation. Ask AI needs a text model (a chat model at your provider).</p>
+      <p className="ed-tip">Uses the image-generation connection; pick a text (chat) model in AI settings.</p>
       <AISettingsFields onSaved={(next) => { setSettings(next); setEditing(!next.text_configured); if (!next.text_configured) setError('Add a text model, and an API key for a cloud provider.'); else setError(''); }}/>
     </div>}
     {settings?.text_configured && !editing && <>
@@ -79,7 +79,7 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
         {results.length > 0 && <ul className="ed-ask-results" role="status">{results.map((line, index) => <li key={index}>{line}</li>)}</ul>}
       </div>}
       <h3 className="ed-sub">Words to post</h3>
-      <p className="ed-tip">A title, a few lines and hashtags for Instagram, YouTube or WhatsApp, from your titles, captions and clips.</p>
+      <p className="ed-tip">Title, lines and hashtags for Instagram, YouTube or WhatsApp, from your project.</p>
       <div className="ed-chips ed-even" role="group" aria-label="Language">{([['both', 'Both'], ['en', 'English'], ['ta', 'தமிழ்']] as const).map(([id, label]) => <button key={id} className={language === id ? 'on' : ''} aria-pressed={language === id} onClick={() => setLanguage(id)}>{label}</button>)}</div>
       <button className="ed-button wide" disabled={busy !== null} onClick={() => { void write(); }}>{busy === 'describe' ? <LoaderCircle className="spin" size={14}/> : <Sparkles size={14}/>}Write the post</button>
       {post && <div className="ed-ask-post"><b>{post.title}</b><p>{post.description}</p><p className="ed-ask-tags">{post.hashtags.join(' ')}</p>

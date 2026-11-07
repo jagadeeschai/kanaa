@@ -6,7 +6,7 @@ import { valueAt } from './evaluate.ts';
 import { localAt, rampShare, sourceAt, splitRamp, type RampPoint } from './ramp.ts';
 import type { EffectId } from './effects.ts';
 
-export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number };
+export type Adjust = { rotation: 0 | 90 | 180 | 270; flip_horizontal: boolean; flip_vertical: boolean; brightness: number; contrast: number; saturation: number; gamma: number; temperature: number; tint: number; fade: number };
 /** A distressed film-stock treatment. Every amount runs from 0 (off) to 1 (strong). */
 export type OldFilm = { intensity: number; grain: number; scratches: number; dust: number; weave: number };
 export type SignalDamage = { mode: 'glitch' | 'vhs'; intensity: number; rgb_split: number; jitter: number; scanlines: number; noise: number };
@@ -25,7 +25,7 @@ export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number; clean_voice?: boolean };
-export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; items: Sound[] };
+export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
@@ -59,7 +59,7 @@ export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; dur
 export const MIN_CLIP_SECONDS = 0.1;
 export const PHOTO_SECONDS = 5;
 export const MAX_PHOTO_SECONDS = 600;
-export const DEFAULT_ADJUST: Adjust = { rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1 };
+export const DEFAULT_ADJUST: Adjust = { rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1, gamma: 1, temperature: 1, tint: 1, fade: 0 };
 export const DEFAULT_OLD_FILM: OldFilm = { intensity: 0.65, grain: 0.55, scratches: 0.45, dust: 0.35, weave: 0.25 };
 export const DEFAULT_SIGNAL_DAMAGE: SignalDamage = { mode: 'glitch', intensity: 0.6, rgb_split: 0.5, jitter: 0.45, scanlines: 0.35, noise: 0.3 };
 export const DEFAULT_LENS_SURFACE: LensSurface = { mode: 'raindrops', intensity: 0.6, amount: 0.5, refraction: 0.55, softness: 0.4 };
@@ -208,7 +208,7 @@ export const MUSIC_VOLUME = 0.6;
 // The server omits optional clip fields; everything here relies on them being present.
 export function normalizeTimeline(timeline: Timeline): Timeline {
   const layers = timeline.layers.map((layer) => {
-    if (layer.kind === 'audio') return { ...layer, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
+    if (layer.kind === 'audio') return { ...layer, volume: layer.volume ?? 1, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
     if (layer.kind === 'text') return { ...layer, items: layer.items.map((item) => ({ ...item, transform: { ...REST_TRANSFORM, ...item.transform } })) };
     if (layer.kind === 'captions') return { ...DEFAULT_CAPTION_LOOK, ...layer };
     if (layer.kind === 'blur') return { ...layer, items: layer.items.map((item) => ({ ...DEFAULT_BLUR, ...item, transform: { ...DEFAULT_BLUR.transform, ...item.transform } })) };
@@ -484,7 +484,7 @@ function withSounds(timeline: Timeline, layer: AudioLayer, items: Sound[]): Time
 export function addSound(timeline: Timeline, sound: Sound, layerId: string): Timeline {
   const free = audioLayers(timeline).find((layer) => fits(layer, sound));
   if (free) return withSounds(timeline, free, [...free.items, sound]);
-  return { ...timeline, layers: [...timeline.layers, { id: layerId, kind: 'audio', name: 'Sound', items: [sound] }] };
+  return { ...timeline, layers: [...timeline.layers, { id: layerId, kind: 'audio', name: `Music ${audioLayers(timeline).length + 1}`, items: [sound] }] };
 }
 
 export function removeSound(timeline: Timeline, id: string): Timeline {
@@ -499,7 +499,7 @@ export function updateSound(timeline: Timeline, id: string, changes: Partial<Sou
   return found ? withSounds(timeline, found.layer, found.layer.items.map((item) => item.id === id ? { ...item, ...changes } : item)) : timeline;
 }
 
-export type LayerChanges = { hidden?: boolean; locked?: boolean; muted?: boolean; blend?: BlendMode };
+export type LayerChanges = { hidden?: boolean; locked?: boolean; muted?: boolean; blend?: BlendMode; name?: string; volume?: number };
 
 export function updateLayer(timeline: Timeline, id: string, changes: LayerChanges): Timeline {
   return { ...timeline, layers: timeline.layers.map((layer) => (layer.id === id ? { ...layer, ...changes } as Timeline['layers'][number] : layer)) };
