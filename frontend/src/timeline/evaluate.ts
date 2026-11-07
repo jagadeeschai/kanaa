@@ -1,7 +1,7 @@
 export type Ease = 'linear' | 'easeOut' | 'easeInOut';
 export type Keyframe = { t: number; v: number; ease?: Ease };
-export type AnimatedProperty = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
-export type Transform = { x: number; y: number; scale: number; opacity: number; rotation?: number; keyframes?: Partial<Record<AnimatedProperty, Keyframe[]>> };
+export type AnimatedProperty = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'tilt_x' | 'tilt_y';
+export type Transform = { x: number; y: number; scale: number; opacity: number; rotation?: number; tilt_x?: number; tilt_y?: number; keyframes?: Partial<Record<AnimatedProperty, Keyframe[]>> };
 
 const EASE: Record<Ease, (p: number) => number> = {
   linear: (p) => p,

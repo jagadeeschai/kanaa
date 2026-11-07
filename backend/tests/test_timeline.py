@@ -1134,6 +1134,65 @@ class MovingTitles(Clips):
     def test_old_titles_without_a_transform_still_load(self):
         Timeline.model_validate({'layers': [{'id': 'w', 'kind': 'text', 'items': [{'id': 't', 'start': 0, 'length': 1, 'text': 'Hi'}]}]})
 
+    def title_frame(self, name, frame=30, **title):
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        text = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIIIIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff', **title}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [text]}]}
+        return self.frame(self.render(data, name), frame, (640, 360)).astype(int)
+
+    def test_a_title_leaning_back_narrows_towards_its_top_in_perspective(self):
+        flat = self.title_frame('flat-title.mp4')
+        leaning = self.title_frame('leaning-title.mp4', transform={'tilt_x': 60})
+
+        def width_of(frame, row):
+            lit = np.nonzero(frame[row, :, 0] > 200)[0]
+            return lit.max() - lit.min() if lit.size else 0
+        rows = np.nonzero((leaning[:, :, 0] > 200).any(axis=1))[0]
+        self.assertTrue(rows.size, 'the leaning title is drawn')
+        top, bottom = rows.min() + 2, rows.max() - 2
+        self.assertLess(width_of(leaning, top), width_of(leaning, bottom) * 0.98, 'further away at the top, so narrower')
+        self.assertLess(rows.max() - rows.min(), np.ptp(np.nonzero((flat[:, :, 0] > 200).any(axis=1))[0]), 'leaning back makes it shorter')
+        self.assertLess(np.abs(width_of(flat, 180) - width_of(self.title_frame('flat-again.mp4'), 180)), 2)
+
+    def test_a_title_locked_to_the_scene_moves_with_the_camera(self):
+        rng = np.random.default_rng(3)
+        world = np.kron(rng.integers(0, 200, (45, 110, 3)), np.ones((20, 20, 1))).astype(np.uint8)
+        world = (world // 2 + (rng.random(world.shape) * 60).astype(np.uint8)).astype(np.uint8)
+        frames = self.root / 'pan'
+        frames.mkdir()
+        for n in range(60):
+            Image.fromarray(world[100:460, 100 + n * 4:740 + n * 4]).save(frames / f'{n:03d}.png')  # The camera pans right, 4 px a frame.
+        clip = self.root / 'pan.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-framerate', '30', '-i', str(frames / '%03d.png'), '-pix_fmt', 'yuv420p', '-crf', '12', str(clip)], check=True)
+        self.facts[60] = MediaFacts(path=clip, media_type='video', width=640, height=360, duration=2.0, fps=30)
+        title = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff'}
+        made = lambda name, **extra: self.render({'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 60, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [{**title, **extra}]}]}, name)
+
+        def centre(path, number):
+            frame = self.frame(path, number, (640, 360)).astype(int)
+            lit = np.nonzero(((frame > 245).all(axis=2)).any(axis=0))[0]
+            return (lit.min() + lit.max()) / 2
+        pinned, flat = made('pinned.mp4', pin={'clip_id': 'a', 'at': 0.5}), made('unpinned.mp4')
+        self.assertAlmostEqual(centre(flat, 45) - centre(flat, 15), 0, delta=1.5)
+        self.assertAlmostEqual(centre(pinned, 45) - centre(pinned, 15), -120, delta=4, msg='30 frames of a 4 px pan move it 120 px left, with the scene')
+
+    def test_depth_shows_the_sides_in_their_colour_behind_the_letters(self):
+        plain = self.title_frame('no-depth.mp4', transform={'tilt_x': 35})
+        deep = self.title_frame('depth.mp4', transform={'tilt_x': 35}, depth={'amount': 1, 'color': '#ff0000', 'light': 1})
+        reddish = lambda frame: ((frame[:, :, 0] > 90) & (frame[:, :, 1] < 70)).sum()
+        self.assertEqual(reddish(plain), 0)
+        self.assertGreater(reddish(deep), 200, 'the extruded sides show in red')
+
+    def test_cinema_presets_rise_and_push_through_settle_flat(self):
+        for preset in ('rise-behind', 'push-through'):
+            early = self.title_frame(f'{preset}-early.mp4', 4, enter={'preset': preset, 'duration': 1})
+            rested = self.title_frame(f'{preset}-rest.mp4', 45, enter={'preset': preset, 'duration': 1})
+            flat = self.title_frame(f'{preset}-flat.mp4', 45)
+            self.assertLess(np.abs(rested - flat).mean(), 1.5, f'{preset} ends exactly as the flat title')
+            self.assertGreater(np.abs(early - flat).mean(), 1, f'{preset} starts elsewhere')
+
 
 class Faces(unittest.TestCase):
     """The linking, gaps and limits, with a stand-in detector. The real detector is checked by hand on real faces."""
@@ -1771,6 +1830,48 @@ class EffectSwitches(Clips):
     def shot(self, name, **clip):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, **clip}]}]}
         return self.frame(self.render(data, name), 15, (640, 360))
+
+    def test_picture_shaping_effects_change_the_export_and_switch_off(self):
+        picture = np.zeros((360, 640, 3), np.uint8)
+        picture[:, :] = (200, 60, 50)
+        picture[40:120, 60:200] = (40, 190, 230)  # Off-centre, so a mirror or kaleidoscope visibly moves it.
+        Image.fromarray(picture).save(self.root / 'shape-scene.png')
+        self.facts[96] = MediaFacts(path=self.root / 'shape-scene.png', media_type='image', width=640, height=360)
+        plain = self.shot('shape-plain.mp4')
+        effects = {'mirror': {'mode': 'kaleido', 'segments': 5, 'angle': 20}, 'zoom_blur': {'intensity': 0.9, 'center_x': 0.5, 'center_y': 0.5},
+                   'tilt_shift': {'focus_y': 0.1, 'band': 0.05, 'blur': 1, 'saturation': 0.5},
+                   'tone_grade': {'mode': 'duotone', 'shadow': '#102040', 'highlight': '#f0d080', 'balance': 0.5, 'intensity': 1}}
+        for name, settings in effects.items():
+            on = self.shot(f'shape-{name}.mp4', **{name: settings})
+            off = self.shot(f'shape-{name}-off.mp4', **{name: settings}, bypass=[name])
+            self.assertGreater(np.abs(on.astype(int) - plain.astype(int)).mean(), 1, name)
+            self.assertLess(np.abs(off.astype(int) - plain.astype(int)).mean(), 2, name)
+
+    def test_mirror_reflects_the_left_half(self):
+        picture = np.zeros((360, 640, 3), np.uint8)
+        picture[:, :160] = (230, 230, 230)  # A bright strip at the far left only.
+        Image.fromarray(picture).save(self.root / 'mirror.png')
+        self.facts[97] = MediaFacts(path=self.root / 'mirror.png', media_type='image', width=640, height=360)
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 97, 'start': 0, 'in': 0, 'out': 1, 'mirror': {'mode': 'left'}}]}]}
+        frame = self.frame(self.render(data, 'mirror.mp4'), 15, (640, 360)).astype(int)
+        self.assertGreater(frame[:, 560:].mean(), 180, 'the right edge now mirrors the left')
+        self.assertLess(frame[:, 250:390].mean(), 40, 'the middle stays dark')
+
+    def test_echo_leaves_a_fading_trail_behind_movement(self):
+        frames = self.root / 'moving'
+        frames.mkdir()
+        for n in range(30):
+            picture = np.zeros((360, 640, 3), np.uint8)
+            picture[150:210, 40 + n * 18:100 + n * 18] = 240
+            Image.fromarray(picture).save(frames / f'{n:03d}.png')
+        clip = self.root / 'moving.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-framerate', '30', '-i', str(frames / '%03d.png'), '-pix_fmt', 'yuv420p', str(clip)], check=True)
+        self.facts[98] = MediaFacts(path=clip, media_type='video', width=640, height=360, duration=1.0, fps=30)
+        made = lambda name, **extra: self.frame(self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 98, 'start': 0, 'in': 0, 'out': 1, **extra}]}]}, name), 15, (640, 360)).astype(int)
+        plain, echo = made('echo-plain.mp4'), made('echo.mp4', echo={'mode': 'echo', 'trails': 4, 'decay': 0.6})
+        behind = slice(40 + 15 * 18 - 50, 40 + 15 * 18 - 5)  # Just behind where the square is now.
+        self.assertLess(plain[150:210, behind].mean(), 30)
+        self.assertGreater(echo[150:210, behind].mean(), 40, 'a ghost of the square lingers where it was')
 
     def test_a_switched_off_effect_is_left_out_of_the_export_and_kept_in_the_timeline(self):
         plain = self.shot('switch-plain.mp4')

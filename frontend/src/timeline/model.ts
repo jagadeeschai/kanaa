@@ -14,12 +14,17 @@ export type LensSurface = { mode: 'dirt' | 'raindrops'; intensity: number; amoun
 export type ColourSplash = { color: string; intensity: number; tolerance: number; softness: number };
 export type DreamyGlow = { intensity: number; softness: number; warmth: number };
 export type BeatPulse = { strength: number; size: number; bpm: number; offset: number };
+export type ToneGrade = { mode: 'duotone' | 'split'; shadow: string; highlight: string; balance: number; intensity: number };
+export type Mirror = { mode: 'left' | 'top' | 'quad' | 'kaleido'; segments: number; angle: number };
+export type ZoomBlur = { intensity: number; center_x: number; center_y: number };
+export type TiltShift = { focus_y: number; band: number; blur: number; saturation: number };
+export type Echo = { mode: 'echo' | 'smear'; trails: number; decay: number };
 /** Which of the people, or objects, a cut-out keeps. ids are from the clip's list of them; null keeps them all. */
 export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -27,7 +32,11 @@ export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: 
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number; clean_voice?: boolean };
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
-export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform;
+/** Extruded letters (sides in `color`), and a title locked to the scene of a clip. Match timeline_schema.py. */
+export type TitleDepth = { amount: number; color: string; light: number };
+export type TitlePin = { clip_id: string; at: number };
+export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.5, color: '#6b4a1f', light: 0.55 };
+export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
@@ -66,6 +75,18 @@ export const DEFAULT_LENS_SURFACE: LensSurface = { mode: 'raindrops', intensity:
 export const DEFAULT_COLOUR_SPLASH: ColourSplash = { color: '#d52836', intensity: 1, tolerance: 0.12, softness: 0.08 };
 export const DEFAULT_DREAMY_GLOW: DreamyGlow = { intensity: 0.45, softness: 0.5, warmth: 0.2 };
 export const DEFAULT_BEAT_PULSE: BeatPulse = { strength: 0.6, size: 0.04, bpm: 120, offset: 0 };
+/** Colour pairs for duotone and split-tone; Teal-gold is the default. */
+export const TONE_PRESETS = [
+  { id: 'teal-gold', label: 'Teal and gold', shadow: '#1f6f78', highlight: '#f2a541' },
+  { id: 'rose-plum', label: 'Rose and plum', shadow: '#4a2445', highlight: '#f4a7b9' },
+  { id: 'sepia', label: 'Sepia', shadow: '#2b1d12', highlight: '#e9c99a' },
+  { id: 'wedding', label: 'Wedding warm', shadow: '#5a2320', highlight: '#ffd59e' },
+] as const;
+export const DEFAULT_TONE_GRADE: ToneGrade = { mode: 'split', shadow: '#1f6f78', highlight: '#f2a541', balance: 0.5, intensity: 0.7 };
+export const DEFAULT_MIRROR: Mirror = { mode: 'left', segments: 6, angle: 0 };
+export const DEFAULT_ZOOM_BLUR: ZoomBlur = { intensity: 0.5, center_x: 0.5, center_y: 0.5 };
+export const DEFAULT_TILT_SHIFT: TiltShift = { focus_y: 0.55, band: 0.22, blur: 0.6, saturation: 0.35 };
+export const DEFAULT_ECHO: Echo = { mode: 'echo', trails: 4, decay: 0.6 };
 
 export const FORMATS = [
   { id: 'reels', label: 'Reels, Shorts, TikTok', ratio: '9:16', width: 1080, height: 1920 },
@@ -358,6 +379,25 @@ export function groundRiseBehind(timeline: Timeline, textId: string, what: 'pers
     })) }) };
   }
   return (what === 'person' ? putBehindPerson : putBehindObject)(animated, textId, ids);
+}
+
+export type CinemaReveal = 'rise' | 'pass' | 'push';
+export const CINEMA_REVEALS: { id: CinemaReveal; label: string; tamil: string; about: string }[] = [
+  { id: 'rise', label: 'Rise from behind', tamil: 'பின்னிருந்து எழு', about: 'Rises upright from behind them, leaning back as it comes.' },
+  { id: 'pass', label: 'Uncovered as they pass', tamil: 'கடந்ததும் தெரியும்', about: 'Stands in the scene; they walk in front and uncover it.' },
+  { id: 'push', label: 'Push through', tamil: 'முன்னே பாய்', about: 'Flies in from far away in perspective and settles.' },
+];
+
+/** A cinema title reveal in one step: the chosen person or object in front (as Ground rise does), the reveal's own
+ * entrance, and extruded depth for the rising and flying reveals unless the title has its own already. */
+export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaReveal, what: 'person' | 'object', ids: [string, string]): Timeline {
+  const before = findText(timeline, textId);
+  if (!before) return timeline;
+  const behind = groundRiseBehind(timeline, textId, what, ids);
+  if (behind === timeline) return timeline;
+  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter?.preset === 'ground-rise' ? null : before.text.enter ?? null;
+  const depth = reveal === 'pass' ? before.text.depth ?? null : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH };
+  return updateText(behind, textId, { enter, depth });
 }
 
 /** The active ground-rise foreground and the clean space it reserves around its silhouette. */

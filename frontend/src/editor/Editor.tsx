@@ -7,10 +7,12 @@ import { keepCaptionsClear, type FacePath } from '../timeline/clear-faces';
 import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/reframe';
 import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
-import { placeEffect, applyClipDrop, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
+import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Blend, ChevronsRight, MoveHorizontal, ZoomIn, Wind, Zap, RectangleHorizontal, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search } from 'lucide-react';
+import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
+import { startSceneTrack } from '../api/client';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import KanaaSelect from '../components/KanaaSelect';
@@ -18,7 +20,8 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_LENS_SURFACE, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE } from '../timeline/model';
+import { CINEMA_REVEALS, cinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
+import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { snapshotFrame } from '../timeline/model';
 import { groundRiseBehind, groundRiseGap, setGroundRiseGap } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
@@ -74,6 +77,13 @@ const RENDERED_ID = -1;
 const CLIP_EFFECT_PRESETS = [
   { id: 'colour-splash', group: 'Colour', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
   { id: 'dreamy-glow', group: 'Colour', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
+  { id: 'split-tone', group: 'Colour', label: 'Split-tone', about: 'Tint shadows and highlights with two colours, keeping the real colours.' },
+  { id: 'duotone', group: 'Colour', label: 'Duotone', about: 'Paint the picture in two colours, dark to light.' },
+  { id: 'zoom-blur', group: 'Motion', label: 'Zoom blur', about: 'Streaks rushing towards a centre, like a fast push in.' },
+  { id: 'echo', group: 'Motion', label: 'Echo trail', about: 'Ghosts of the last moments trailing movement, for dance and action.' },
+  { id: 'tilt-shift', group: 'Lens', label: 'Tilt-shift', about: 'A sharp band with soft blur above and below: a toy-town miniature.' },
+  { id: 'mirror', group: 'Shape', label: 'Mirror', about: 'Reflect the left or top half, or all four quarters.' },
+  { id: 'kaleidoscope', group: 'Shape', label: 'Kaleidoscope', about: 'Mirrored wedges turning round the centre.' },
   { id: 'beat-pulse', group: 'Motion', label: 'Beat pulse', about: 'A quick camera push synchronized to the music.' },
   { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
   { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
@@ -100,12 +110,14 @@ const SHAPE_FEATHER = 0.004;
 const SHAPE_CLOSE = 0.03; // Clicking this near the first point closes an outline.
 /** Which cleaned copy a clip or sound plays: one per song, or per video. */
 const voiceKey = (item: { media_id?: number; asset_id?: string }) => (item.asset_id ? `a:${item.asset_id}` : `m:${item.media_id}`);
-/** Which prepared copy a clip needs: [steadied, reversed], or null for the original. A frozen frame is never reversed. */
-const preparedWant = (clip: Clip): [boolean, boolean, string] | null => {
+/** Which prepared copy a clip needs: [steadied, reversed, echo, cut-out], or null for the original. A frozen frame is never reversed or echoed.
+ * An echo is made at the timeline's rate of source frames, the rate the export blends at. A cut-out clip previews without its echo. */
+const preparedWant = (clip: Clip, fps: number): [boolean, boolean, string, string] | null => {
   const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = cutoutToken(clip);
-  return steady || backwards || cutout ? [steady, backwards, cutout] : null;
+  const echo = clip.echo && clip.freeze == null && !cutout ? `${clip.echo.mode}.${clip.echo.trails}.${clip.echo.decay.toFixed(2)}@${Number((fps * clip.speed).toFixed(3))}` : '';
+  return steady || backwards || cutout || echo ? [steady, backwards, echo, cutout] : null;
 };
-const preparedKey = (id: number, steady: boolean, backwards: boolean, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${cutout}`;
+const preparedKey = (id: number, steady: boolean, backwards: boolean, echo: string, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${echo}:${cutout}`;
 const MOODS: Mood[] = ['romantic', 'happy', 'birthday', 'calm', 'energetic', 'cinematic', 'inspiring', 'songs'];
 const MOOD_LABELS: Record<Mood, string> = { romantic: 'Romantic', happy: 'Happy', birthday: 'Birthday', calm: 'Calm', energetic: 'Energetic', cinematic: 'Cinematic', inspiring: 'Inspiring', songs: 'Songs' };
 const PULL_SPEEDS: { id: string; label: string }[] = [{ id: '0.4', label: 'Quick' }, { id: '1', label: 'Smooth' }, { id: '2', label: 'Slow' }];
@@ -216,6 +228,49 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const drawStart = useRef<[number, number] | null>(null); // Pointer events can arrive before a re-render, so the corner is kept here too.
   const [followSize, setFollowSize] = useState(false);
   const [followJob, setFollowJob] = useState<FollowJob | null>(null);
+  // Scene tracks for titles locked to the scene, by media and source stretch, and how far one being made has got.
+  const [sceneTracks, setSceneTracks] = useState<Record<string, SceneTrack>>({});
+  const [pinProgress, setPinProgress] = useState<number | null>(null);
+  const sceneTrackKey = (mediaId: number, stretch: { start: number; end: number; at: number }) => `${mediaId}:${Math.round(stretch.start * 30)}:${Math.round(stretch.end * 30)}:${Math.round(stretch.at * 30)}`;
+  /** The clip a title is locked to, its source stretch, and the key of its scene track. */
+  const pinTarget = (current: Timeline, text: TextItem) => {
+    if (!text.pin) return null;
+    for (const layer of current.layers) if (layer.kind === 'video') for (const clip of layer.items) {
+      if (clip.id !== text.pin.clip_id) continue;
+      const stretch = pinStretch(clip, text);
+      return { clip, stretch, key: sceneTrackKey(clip.media_id, stretch) };
+    }
+    return null;
+  };
+  /** Locks the title to the scene of the video under it, at the playhead, and follows the camera (made once, in the background). */
+  const pinTitle = async (text: TextItem, on: boolean) => {
+    const current = timelineRef.current;
+    if (!current) return;
+    if (!on) { change(updateText(current, text.id, { pin: null })); return; }
+    const main = mainLayer(current);
+    const playhead = engineRef.current?.currentTime ?? text.start;
+    const at = Math.min(Math.max(playhead, text.start), text.start + text.length);
+    const clip = main.items.find((item) => item.start <= at && at < item.start + clipLength(item));
+    if (!clip || mediaById.get(clip.media_id)?.media_type !== 'video') { setError('Lock to the scene needs a video under the title on the main track.'); return; }
+    if (clip.reverse || clip.ramp) { setError('Lock to the scene follows clips played forwards at one speed. Turn off Backwards or the speed effect first.'); return; }
+    const pinned = { ...text, pin: { clip_id: clip.id, at } };
+    const stretch = pinStretch(clip, pinned);
+    setPinProgress(0);
+    try {
+      let made = await startSceneTrack(clip.media_id, stretch);
+      if (made.status !== 'ready' && made.job_id) {
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const status = await getJobStatus(made.job_id) as unknown as { status?: string; progress: number; error?: string | null; track?: SceneTrack };
+          if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not follow the camera in this clip.');
+          if (status.status === 'done' && status.track) { made = { status: 'ready', track: status.track }; break; }
+          setPinProgress(status.progress);
+        }
+      }
+      if (made.track) setSceneTracks((tracks) => ({ ...tracks, [sceneTrackKey(clip.media_id, stretch)]: made.track! }));
+      change(updateText(timelineRef.current ?? current, text.id, { pin: pinned.pin }));
+    } catch (problem) { setError((problem as Error).message); } finally { setPinProgress(null); }
+  };
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
   const [faceJob, setFaceJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
   const [reframeJob, setReframeJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
@@ -265,13 +320,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const size = { width: item.width || 1920, height: item.height || 1080 };
     if (item.media_type !== 'video') return { url: photoImageUrl(id), kind: 'image', ...size };
     // Until its prepared copy is ready, a steadied or reversed clip previews the original.
-    const want = clip && preparedWant(clip);
+    const want = clip && preparedWant(clip, timelineRef.current?.format.fps ?? 30);
     if (want && preparedReady[preparedKey(id, ...want)]) return { url: preparedProxyUrl(id, ...want), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
     // A new blur strength or focus is made in the background; until then the last ready blur shows, not the sharp original.
     if (want && want[2].startsWith('blur')) {
-      const prefix = `${id}:${want[0] ? 1 : 0}:${want[1] ? 1 : 0}:blur`;
+      const prefix = `${id}:${want[0] ? 1 : 0}:${want[1] ? 1 : 0}:${want[2]}:blur`;
       const earlier = Object.keys(preparedReady).find((key) => preparedReady[key] && key.startsWith(prefix));
-      if (earlier) return { url: preparedProxyUrl(id, want[0], want[1], earlier.slice(earlier.indexOf(':blur') + 1)), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
+      if (earlier) return { url: preparedProxyUrl(id, want[0], want[1], want[2], earlier.slice(earlier.indexOf(':blur') + 1)), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
     }
     return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size, duration: item.duration };
   }, [mediaById, ready, preparedReady]);
@@ -396,13 +451,34 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (!timeline) return;
     const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
+    if (engineRef.current) engineRef.current.pinMatrix = (item, time) => {
+      const target = pinTarget(timeline, item);
+      const track = target && sceneTracks[target.key];
+      const source = target && mediaById.get(target.clip.media_id);
+      return target && track && source ? sceneMatrix(track, target.clip, { width: source.width || timeline.format.width, height: source.height || timeline.format.height }, timeline.format, time, item.pin!.at) : null;
+    };
     if (!flat) { engineRef.current?.setTimeline(playingTimeline(coverBrand(timeline)), sourceFor, soundUrl, textUrl, captionUrl); return; }
     // The rendered copy plays as one clip, so nothing else has to keep up.
     const length = duration(timeline);
     const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');
     const single: Timeline = { version: 2, format: timeline.format, layers: [{ id: 'rendered', kind: 'video', magnetic: true, items: [{ ...base, out: length }] }] };
     engineRef.current?.setTimeline(single, (id) => (id === RENDERED_ID ? { url: flat.url, kind: 'video', ...timeline.format } : sourceFor(id)), soundUrl, textUrl);
-  }, [timeline, sourceFor, soundUrl, textUrl, textVersion, rendered]);
+  }, [timeline, sourceFor, soundUrl, textUrl, textVersion, rendered, sceneTracks, mediaById]);
+  // Pinned titles in a project that has just opened: fetch their scene tracks, or make them in the background.
+  const pinnedNeeded = useMemo(() => (timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'text' ? layer.items : [])).flatMap((item) => { const target = pinTarget(timeline, item); return target && !sceneTracks[target.key] ? [JSON.stringify([target.clip.media_id, target.stretch, target.key])] : []; }) : []).join('|'), [timeline, sceneTracks]);
+  useEffect(() => {
+    if (!pinnedNeeded) return;
+    let stopped = false; let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      for (const entry of pinnedNeeded.split('|')) {
+        const [mediaId, stretch, key] = JSON.parse(entry) as [number, { start: number; end: number; at: number }, string];
+        try { const made = await startSceneTrack(mediaId, stretch); if (made.track && !stopped) setSceneTracks((tracks) => ({ ...tracks, [key]: made.track! })); } catch { /* The title shows unlocked until its track can be made. */ }
+      }
+      if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
+    };
+    void check();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [pinnedNeeded]);
 
   useEffect(() => {
     if (!renderJob) return;
@@ -418,7 +494,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [renderJob, projectId]);
 
   const preparedNeeded = useMemo(() => [...new Set(timeline ? timeline.layers.flatMap((layer) => (layer.kind === 'video' ? layer.items.flatMap((clip) => {
-    const want = mediaById.get(clip.media_id)?.media_type === 'video' && preparedWant(applyBypass(clip));
+    const want = mediaById.get(clip.media_id)?.media_type === 'video' && preparedWant(applyBypass(clip), timeline.format.fps);
     return want ? [preparedKey(clip.media_id, ...want)] : [];
   }) : [])) : [])].join(','), [timeline, mediaById]);
   useEffect(() => {
@@ -428,8 +504,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
       for (const key of keys) {
-        const [id, steady, backwards, cutout] = key.split(':');
-        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1', cutout)).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch (problem) { if (!stopped && cutout) setError((problem as Error).message); }
+        const [id, steady, backwards, echo, cutout] = key.split(':');
+        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1', echo, cutout)).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch (problem) { if (!stopped && cutout) setError((problem as Error).message); }
       }
       if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
     };
@@ -735,6 +811,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     id === 'colour-splash' ? selected.colour_splash
       : id === 'dreamy-glow' ? selected.dreamy_glow
       : id === 'beat-pulse' ? selected.beat_pulse
+      : id === 'split-tone' || id === 'duotone' ? selected.tone_grade?.mode === (id === 'duotone' ? 'duotone' : 'split')
+      : id === 'mirror' ? selected.mirror && selected.mirror.mode !== 'kaleido'
+      : id === 'kaleidoscope' ? selected.mirror?.mode === 'kaleido'
+      : id === 'zoom-blur' ? selected.zoom_blur
+      : id === 'tilt-shift' ? selected.tilt_shift
+      : id === 'echo' ? selected.echo
       : id === 'old-film' ? selected.old_film
       : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
         : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
@@ -753,6 +835,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       } catch { /* The editable 120 BPM default remains available when analysis fails. */ }
       updateSelected({ beat_pulse }); updateLayout({ inspectorOpen: true }); return;
     }
+    const shaping = clipEffectChanges(id);
+    if (shaping) { updateSelected(shaping); updateLayout({ inspectorOpen: true }); return; }
     const changes: Partial<Clip> = id === 'colour-splash' ? { colour_splash: { ...DEFAULT_COLOUR_SPLASH } }
       : id === 'dreamy-glow' ? { dreamy_glow: { ...DEFAULT_DREAMY_GLOW } }
       : id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
@@ -996,9 +1080,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const made2 = item;
       setMedia((current) => (current.some((each) => each.id === made2.id) ? current : [made2, ...current]));
       const source: SourceFacts = { media_id: made2.id, media_type: 'video', duration: made2.duration, width: made2.width, height: made2.height };
-      const clip = { ...newClip(source, newId()), start: at, muted: true };
       const current = timelineRef.current ?? timeline;
-      change(placeEffect(current, clip, newId()));
+      // A film leader opens the video: an ordinary clip at the very start of the main track, with its beep.
+      const opening = effects.find((effect) => effect.id === effectId)?.placement === 'start';
+      const clip = { ...newClip(source, newId()), start: opening ? 0 : at, muted: !opening };
+      change(opening ? dropClip(current, clip, 0) : placeEffect(current, clip, newId()));
       setSelectedId(clip.id);
     } catch (problem) { setError((problem as Error).message); } finally { setEffectBusy(null); }
   };
@@ -1700,7 +1786,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
           <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">{activeClipEffects.length ? `${activeClipEffects.length} applied` : 'Clip selected'}</span>}</div>
           {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
-          {(['Colour', 'Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
+          {(['Colour', 'Motion', 'Shape', 'Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{group}</b><small>{matches.map((preset) => preset.label).join(' · ')}</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
             {open && <div className="ed-clip-effect-grid">{matches.map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} {...draggableAs({ kind: 'clip_effect', effect: preset.id })} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip, or drag it onto another clip` : `Drag ${preset.label} onto a timeline clip`}>
               <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
@@ -1718,7 +1804,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         }}/>}</section>}
         {leftTab === 'effects' && (!effectNeedle || matchingOverlayEffects.length > 0 || 'thunder weather sound'.includes(effectNeedle)) && <section className="ed-add" aria-label="Special effects">
           <h3>Add an overlay</h3><p className="ed-tip">Effects sit above your video as layers. Click to add at the playhead, or drag onto the timeline.</p>
-          {(['weather', 'celebration', 'wedding', 'festival', 'travel'] as const).map((mood) => { const group = matchingOverlayEffects.filter((effect) => effect.mood === mood); const thunderMatches = mood === 'weather' && (!effectNeedle || 'thunder weather sound'.includes(effectNeedle)); const label = { weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel' }[mood]; const section = `overlay-${mood}`; const open = Boolean(effectNeedle) || effectSection === section; return (group.length > 0 || thunderMatches) && <div key={mood} className="ed-effect-category">
+          {(['weather', 'celebration', 'wedding', 'festival', 'travel', 'vlog'] as const).map((mood) => { const group = matchingOverlayEffects.filter((effect) => effect.mood === mood); const thunderMatches = mood === 'weather' && (!effectNeedle || 'thunder weather sound'.includes(effectNeedle)); const label = { weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel', vlog: 'Vlog and film' }[mood]; const section = `overlay-${mood}`; const open = Boolean(effectNeedle) || effectSection === section; return (group.length > 0 || thunderMatches) && <div key={mood} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{label}</b><small>{group.length + (thunderMatches ? 1 : 0)} effects</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
             {open && <>{mood === 'weather' && <details className="ed-weather-custom" data-keep-panel><summary>Customize weather</summary><div className="ed-weather-settings">
               <details className="ed-weather-block"><summary>Rain</summary>
@@ -1867,11 +1953,11 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onGroundRise={(what) => { const ids: [string, string] = [newId(), newId()]; const next = groundRiseBehind(timeline!, selectedText.id, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `ground-rise-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, 1.1); } }} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; const next = cinemaReveal(timeline!, selectedText.id, reveal, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} onGroundRise={(what) => { const ids: [string, string] = [newId(), newId()]; const next = groundRiseBehind(timeline!, selectedText.id, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `ground-rise-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, 1.1); } }} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
-          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
+          local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected, timeline!.format.fps) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected, timeline!.format.fps)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} logos={media.filter((item) => item.media_type === 'image')} logo={(() => { const item = brandClip(timeline); return item ? media.find((entry) => entry.id === item.media_id) ?? null : null; })()} onBrand={(item) => change(applyBrand(timeline, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onImported={(items) => { setMedia((current) => [...items, ...current]); }} onRemoveBrand={() => change(removeBrand(timeline), 'brand')} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); setPanelOpen(true); }} onGuide={() => setShowingHelp(true)}/>
           : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
       </RailContext.Provider>
@@ -2136,7 +2222,7 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
     <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
 }
 
-function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3; onGroundGap: (gap: 0 | 1 | 2 | 3) => void; onSaveStyle: () => void; onGroundRise: (what: 'person' | 'object') => void; onBehind: (what: 'person' | 'object') => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise, onCinema, pinning, onPin, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3; onGroundGap: (gap: 0 | 1 | 2 | 3) => void; onSaveStyle: () => void; onGroundRise: (what: 'person' | 'object') => void; onCinema: (reveal: CinemaReveal, what: 'person' | 'object') => void; pinning: number | null; onPin: (on: boolean) => void; onBehind: (what: 'person' | 'object') => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
@@ -2168,9 +2254,23 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
     <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>
       </More>
     </Group>
+    <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
+      <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
+      <ValueSlider label="Turn" value={text.transform?.tilt_y ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_y, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_y } }, group)}/>
+      <ValueSlider label="Depth" value={text.depth?.amount ?? 0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>
+      {text.depth && <More>
+        <label className="ed-color"><span>Sides</span><input type="color" aria-label="Colour of the letters' sides" value={text.depth.color} onChange={(event) => onChange({ depth: { ...text.depth!, color: event.target.value } }, `depth-colour-${text.id}`)}/></label>
+        <ValueSlider label="Light on the sides" value={text.depth.light} min={0} max={1} step={0.01} defaultValue={DEFAULT_TITLE_DEPTH.light} unit="%" factor={100} onChange={(light, group) => onChange({ depth: { ...text.depth!, light } }, group)}/>
+      </More>}
+    </Group>
     <Group title="Animation" tab="motion" startOpen changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="How the title appears and leaves." help="animations-and-moves">
       <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
       <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
+    </Group>
+    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth" tip="A film-style title: behind someone or something, then revealed. Pick how, then who stays in front." help="cinema-titles">
+      <CinemaPicker onPick={onCinema}/>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}</label>
+      <p className="ed-group-tip">Lock to the scene keeps the title in its place in the world while the camera moves. Best on shots with texture: streets, walls with detail, trees. Plain sky or a moving crowd is hard to follow.</p>
     </Group>
     <Group title="Ground rise behind…" tab="motion" startOpen keywords="ground rise people object depth walk past title" tip="The title rises into the scene while something passes in front." help="title-behind">
       <div className="ed-add-grid">
@@ -2197,6 +2297,19 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
     </Group>
     {text.enter?.preset !== 'ground-rise' && <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>}
   </Panel>;
+}
+
+/** The three cinema reveals, then who stays in front: one click makes the whole reveal. */
+function CinemaPicker({ onPick }: { onPick: (reveal: CinemaReveal, what: 'person' | 'object') => void }) {
+  const [reveal, setReveal] = useState<CinemaReveal>('rise');
+  return <>
+    <Chips label="Reveal" options={CINEMA_REVEALS.map((item) => ({ id: item.id, label: item.label }))} value={reveal} onPick={setReveal}/>
+    <p className="ed-group-tip">{CINEMA_REVEALS.find((item) => item.id === reveal)!.about} <span lang="ta">{CINEMA_REVEALS.find((item) => item.id === reveal)!.tamil}</span></p>
+    <div className="ed-add-grid">
+      <button className="ed-button" onClick={() => onPick(reveal, 'person')} title="People stay in front of the title."><Users size={14}/>Behind people</button>
+      <button className="ed-button" onClick={() => onPick(reveal, 'object')} title="A car, a bus, an animal stays in front of the title."><Car size={14}/>Behind an object</button>
+    </div>
+  </>;
 }
 
 function SoundControls({ item, length, onChange }: { item: { volume: number; fade_in: number; fade_out: number }; length: number; onChange: (changes: { volume?: number; fade_in?: number; fade_out?: number }, group?: string) => void }) {
@@ -2324,6 +2437,58 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <More><ValueSlider label="Warmth" value={clip.dreamy_glow.warmth} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.warmth} unit="%" factor={100} onChange={(warmth, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, warmth } }, group)}/></More>
       <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}>Add dreamy glow</button>}
+    </Group>
+    <Group pro title="Duotone and split-tone" tab="look" startOpen={Boolean(clip.tone_grade)} changed={Boolean(clip.tone_grade)} keywords="duotone split tone grade teal orange gold sepia colour two colours" tip="Split-tone tints shadows and highlights; duotone paints the whole picture in two colours.">
+    {clip.tone_grade ? <>
+      <Chips label="Style" options={[{ id: 'split' as const, label: 'Split-tone' }, { id: 'duotone' as const, label: 'Duotone' }]} value={clip.tone_grade.mode} onPick={(mode) => onChange({ tone_grade: { ...clip.tone_grade!, mode } })}/>
+      <Chips label="Colours" options={TONE_PRESETS.map((preset) => ({ id: preset.id as string, label: preset.label }))} value={TONE_PRESETS.find((preset) => preset.shadow === clip.tone_grade!.shadow && preset.highlight === clip.tone_grade!.highlight)?.id ?? null} onPick={(id) => { const preset = TONE_PRESETS.find((each) => each.id === id)!; onChange({ tone_grade: { ...clip.tone_grade!, shadow: preset.shadow, highlight: preset.highlight } }); }}/>
+      <ValueSlider label="Strength" value={clip.tone_grade.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_TONE_GRADE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ tone_grade: { ...clip.tone_grade!, intensity } }, group)}/>
+      <More>
+        <label className="ed-field">Shadows <input type="color" value={clip.tone_grade.shadow} onChange={(event) => onChange({ tone_grade: { ...clip.tone_grade!, shadow: event.target.value } }, 'tone-shadow')}/></label>
+        <label className="ed-field">Highlights <input type="color" value={clip.tone_grade.highlight} onChange={(event) => onChange({ tone_grade: { ...clip.tone_grade!, highlight: event.target.value } }, 'tone-highlight')}/></label>
+        <ValueSlider label="Balance" value={clip.tone_grade.balance} min={0} max={1} step={0.01} defaultValue={DEFAULT_TONE_GRADE.balance} unit="%" factor={100} onChange={(balance, group) => onChange({ tone_grade: { ...clip.tone_grade!, balance } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ tone_grade: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ tone_grade: { ...DEFAULT_TONE_GRADE } })}>Add a two-colour grade</button>}
+    </Group>
+    <Group pro title="Tilt-shift" tab="look" startOpen={Boolean(clip.tilt_shift)} changed={Boolean(clip.tilt_shift)} keywords="tilt shift miniature toy model blur band city" tip="Works best on scenes filmed from high up: city streets, markets, trains.">
+    {clip.tilt_shift ? <>
+      <ValueSlider label="Sharp at" value={clip.tilt_shift.focus_y} min={0} max={1} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.focus_y} unit="%" factor={100} onChange={(focus_y, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, focus_y } }, group)}/>
+      <ValueSlider label="Sharp band" value={clip.tilt_shift.band} min={0.02} max={0.8} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.band} unit="%" factor={100} onChange={(band, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, band } }, group)}/>
+      <ValueSlider label="Blur" value={clip.tilt_shift.blur} min={0} max={1} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.blur} unit="%" factor={100} onChange={(blur, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, blur } }, group)}/>
+      <More><ValueSlider label="Colour boost" value={clip.tilt_shift.saturation} min={0} max={1} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.saturation} unit="%" factor={100} onChange={(saturation, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, saturation } }, group)}/></More>
+      <button className="ed-button wide" onClick={() => onChange({ tilt_shift: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ tilt_shift: { ...DEFAULT_TILT_SHIFT } })}>Add tilt-shift</button>}
+    </Group>
+    <Group pro title="Mirror and kaleidoscope" tab="frame" startOpen={Boolean(clip.mirror)} changed={Boolean(clip.mirror)} keywords="mirror reflect symmetry kaleidoscope pattern wedges" tip="Mirror reflects one half onto the other; kaleidoscope turns the picture into mirrored wedges.">
+    {clip.mirror ? <>
+      <Chips label="Kind" options={[{ id: 'left' as const, label: 'Left' }, { id: 'top' as const, label: 'Top' }, { id: 'quad' as const, label: 'Four ways' }, { id: 'kaleido' as const, label: 'Kaleidoscope' }]} value={clip.mirror.mode} onPick={(mode) => onChange({ mirror: { ...clip.mirror!, mode } })}/>
+      {clip.mirror.mode === 'kaleido' && <>
+        <ValueSlider label="Wedges" value={clip.mirror.segments} min={3} max={12} step={1} defaultValue={DEFAULT_MIRROR.segments} onChange={(segments, group) => onChange({ mirror: { ...clip.mirror!, segments: Math.round(segments) } }, group)}/>
+        <ValueSlider label="Turn" value={clip.mirror.angle} min={-180} max={180} step={1} defaultValue={0} unit="°" onChange={(angle, group) => onChange({ mirror: { ...clip.mirror!, angle } }, group)}/>
+      </>}
+      <button className="ed-button wide" onClick={() => onChange({ mirror: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ mirror: { ...DEFAULT_MIRROR } })}>Add mirror</button>}
+    </Group>
+    <Group pro title="Zoom blur" tab="motion" startOpen={Boolean(clip.zoom_blur)} changed={Boolean(clip.zoom_blur)} keywords="zoom blur radial rush speed punch" tip="Streaks towards a centre. Short clips and quick cuts suit it best.">
+    {clip.zoom_blur ? <>
+      <ValueSlider label="Strength" value={clip.zoom_blur.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_ZOOM_BLUR.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ zoom_blur: { ...clip.zoom_blur!, intensity } }, group)}/>
+      <More>
+        <ValueSlider label="Centre across" value={clip.zoom_blur.center_x} min={0} max={1} step={0.01} defaultValue={0.5} unit="%" factor={100} onChange={(center_x, group) => onChange({ zoom_blur: { ...clip.zoom_blur!, center_x } }, group)}/>
+        <ValueSlider label="Centre down" value={clip.zoom_blur.center_y} min={0} max={1} step={0.01} defaultValue={0.5} unit="%" factor={100} onChange={(center_y, group) => onChange({ zoom_blur: { ...clip.zoom_blur!, center_y } }, group)}/>
+      </More>
+      <button className="ed-button wide" onClick={() => onChange({ zoom_blur: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ zoom_blur: { ...DEFAULT_ZOOM_BLUR } })}>Add zoom blur</button>}
+    </Group>
+    <Group pro title="Echo trail" tab="motion" startOpen={Boolean(clip.echo)} changed={Boolean(clip.echo)} keywords="echo ghost trail smear dance motion blur light trails" tip="Ghosts of the last moments follow movement. The preview shows it once its copy is made in the background.">
+    {clip.echo ? <>
+      <Chips label="Kind" options={[{ id: 'echo' as const, label: 'Echo' }, { id: 'smear' as const, label: 'Light smear' }]} value={clip.echo.mode} onPick={(mode) => onChange({ echo: { ...clip.echo!, mode } })}/>
+      {clip.echo.mode === 'echo' && <ValueSlider label="Trails" value={clip.echo.trails} min={2} max={8} step={1} defaultValue={DEFAULT_ECHO.trails} onChange={(trails, group) => onChange({ echo: { ...clip.echo!, trails: Math.round(trails) } }, group)}/>}
+      <ValueSlider label="Linger" value={clip.echo.decay} min={0.2} max={0.95} step={0.05} defaultValue={DEFAULT_ECHO.decay} unit="%" factor={100} onChange={(decay, group) => onChange({ echo: { ...clip.echo!, decay: Math.round(decay * 100) / 100 } }, group)}/>
+      {!copyReady && <p className="ed-tip" role="status">Preparing the echo trail… the preview shows it when ready; the export always has it.</p>}
+      {Boolean(clip.cutout) && <p className="ed-tip">With a background effect on, the preview leaves out the echo; the export has both.</p>}
+      <button className="ed-button wide" onClick={() => onChange({ echo: null })}>Turn off</button>
+    </> : <button className="ed-button wide" onClick={() => onChange({ echo: { ...DEFAULT_ECHO } })}>Add echo trail</button>}
     </Group>
     <Group pro title="Beat pulse" tab="motion" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
     {clip.beat_pulse ? <>

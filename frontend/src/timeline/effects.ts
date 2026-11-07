@@ -6,7 +6,7 @@ import { RAMPS } from './ramp.ts';
  * compared with and without it. A switched-off effect is left out of the preview and the export alike:
  * backend/app/services/timeline_service.py applies the same rules (apply_bypass) before compiling.
  */
-export type EffectId = 'look' | 'colour' | 'old_film' | 'signal_damage' | 'lens_surface' | 'colour_splash' | 'dreamy_glow' | 'beat_pulse' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
+export type EffectId = 'look' | 'colour' | 'old_film' | 'signal_damage' | 'lens_surface' | 'colour_splash' | 'dreamy_glow' | 'beat_pulse' | 'tone_grade' | 'mirror' | 'zoom_blur' | 'tilt_shift' | 'echo' | 'background' | 'green_screen' | 'steady' | 'reverse' | 'speed_effect' | 'motion' | 'enter_exit' | 'transition' | 'clean_voice';
 export type ActiveEffect = { id: EffectId; label: string; detail: string; on: boolean };
 
 const RAMP_NAMES: Record<string, string> = Object.fromEntries(Object.entries(RAMPS).map(([name, ramp]) => [JSON.stringify(ramp), name.replace('-', ' ')]));
@@ -24,6 +24,11 @@ export function clipEffects(clip: Clip): ActiveEffect[] {
   if (clip.lens_surface) list.push({ id: 'lens_surface', label: 'Lens surface', detail: clip.lens_surface.mode === 'raindrops' ? 'raindrops' : 'lens dirt' });
   if (clip.colour_splash) list.push({ id: 'colour_splash', label: 'Colour splash', detail: `${clip.colour_splash.color} preserved` });
   if (clip.dreamy_glow) list.push({ id: 'dreamy_glow', label: 'Dreamy glow', detail: 'soft warm highlights' });
+  if (clip.tone_grade) list.push({ id: 'tone_grade', label: clip.tone_grade.mode === 'duotone' ? 'Duotone' : 'Split-tone', detail: `${clip.tone_grade.shadow} and ${clip.tone_grade.highlight}` });
+  if (clip.mirror) list.push({ id: 'mirror', label: clip.mirror.mode === 'kaleido' ? 'Kaleidoscope' : 'Mirror', detail: clip.mirror.mode === 'kaleido' ? `${clip.mirror.segments} segments` : { left: 'left half', top: 'top half', quad: 'four ways' }[clip.mirror.mode] });
+  if (clip.zoom_blur) list.push({ id: 'zoom_blur', label: 'Zoom blur', detail: `${Math.round(clip.zoom_blur.intensity * 100)}%` });
+  if (clip.tilt_shift) list.push({ id: 'tilt_shift', label: 'Tilt-shift', detail: 'miniature' });
+  if (clip.echo) list.push({ id: 'echo', label: 'Echo trail', detail: clip.echo.mode === 'smear' ? 'light smear' : `${clip.echo.trails} trails` });
   if (clip.beat_pulse) list.push({ id: 'beat_pulse', label: 'Beat pulse', detail: `${Math.round(clip.beat_pulse.bpm)} BPM` });
   if (clip.cutout) list.push({ id: 'background', label: 'Background', detail: clip.cutout === 'blur' ? `${title(clip.blur_amount ?? 'medium')} blur${clip.focus_pull ? ', focus pull' : ''}` : 'removed' });
   if (clip.chroma) list.push({ id: 'green_screen', label: 'Green screen', detail: 'colour removed' });
@@ -51,6 +56,7 @@ export function applyBypass(clip: Clip): Clip {
     if (id === 'colour_splash') next.colour_splash = null;
     if (id === 'dreamy_glow') next.dreamy_glow = null;
     if (id === 'beat_pulse') next.beat_pulse = null;
+    if (id === 'tone_grade' || id === 'mirror' || id === 'zoom_blur' || id === 'tilt_shift' || id === 'echo') next[id] = null;
     if (id === 'background') Object.assign(next, { cutout: null, cutout_pick: null, focus_pull: null });
     if (id === 'green_screen') next.chroma = null;
     if (id === 'steady') next.stabilise = false;
@@ -88,7 +94,7 @@ export function removeEffect(clip: Clip, id: EffectId): Partial<Clip> {
   const stripped = applyBypass({ ...clip, bypass: [id] });
   const rest = (clip.bypass ?? []).filter((item) => item !== id);
   const changes: Partial<Clip> = { bypass: rest.length ? rest : null };
-  for (const key of ['look', 'adjust', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
+  for (const key of ['look', 'adjust', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'cutout', 'cutout_pick', 'focus_pull', 'chroma', 'stabilise', 'reverse', 'ramp', 'transform', 'enter', 'exit', 'transition_in', 'clean_voice'] as const) {
     if (stripped[key] !== clip[key]) (changes as Record<string, unknown>)[key] = stripped[key];
   }
   return changes;

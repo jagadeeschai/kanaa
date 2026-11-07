@@ -40,7 +40,10 @@ class Transform(Strict):
     scale: float = Field(default=1, gt=0, le=8)
     opacity: float = Field(default=1, ge=0, le=1)
     rotation: float = Field(default=0, ge=-3600, le=3600)  # Degrees, clockwise.
-    keyframes: Dict[Literal['x', 'y', 'scale', 'rotation', 'opacity'], List[Keyframe]] = Field(default_factory=dict)
+    # Titles only: leaning back (tilt_x, top away) and turning (tilt_y, right side away), in degrees, in true perspective.
+    tilt_x: float = Field(default=0, ge=-80, le=80)
+    tilt_y: float = Field(default=0, ge=-80, le=80)
+    keyframes: Dict[Literal['x', 'y', 'scale', 'rotation', 'opacity', 'tilt_x', 'tilt_y'], List[Keyframe]] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def ordered(self):
@@ -72,7 +75,7 @@ class Adjust(Strict):
 
 
 class Animation(Strict):
-    preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form']
+    preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form', 'rise-behind', 'push-through']
     duration: float = Field(default=0.5, ge=0.1, le=3)
 
 
@@ -174,6 +177,41 @@ class BeatPulse(Strict):
     offset: float = Field(default=0, ge=0, le=60)
 
 
+class ToneGrade(Strict):
+    """Duotone maps dark to `shadow` and light to `highlight`; split-tone tints shadows and highlights of the real colours."""
+    mode: Literal['duotone', 'split'] = 'split'
+    shadow: str = Field(default='#1f6f78', pattern=r'^#[0-9a-fA-F]{6}$')
+    highlight: str = Field(default='#f2a541', pattern=r'^#[0-9a-fA-F]{6}$')
+    balance: float = Field(default=0.5, ge=0, le=1)
+    intensity: float = Field(default=0.7, ge=0, le=1)
+
+
+class Mirror(Strict):
+    mode: Literal['left', 'top', 'quad', 'kaleido'] = 'left'
+    segments: int = Field(default=6, ge=3, le=12)
+    angle: float = Field(default=0, ge=-180, le=180)
+
+
+class ZoomBlur(Strict):
+    intensity: float = Field(default=0.5, ge=0, le=1)
+    center_x: float = Field(default=0.5, ge=0, le=1)
+    center_y: float = Field(default=0.5, ge=0, le=1)
+
+
+class TiltShift(Strict):
+    focus_y: float = Field(default=0.55, ge=0, le=1)
+    band: float = Field(default=0.22, ge=0.02, le=0.8)
+    blur: float = Field(default=0.6, ge=0, le=1)
+    saturation: float = Field(default=0.35, ge=0, le=1)
+
+
+class Echo(Strict):
+    """Echo blends the last few frames; smear keeps bright parts lingering, like light trails."""
+    mode: Literal['echo', 'smear'] = 'echo'
+    trails: int = Field(default=4, ge=2, le=8)
+    decay: float = Field(default=0.6, ge=0.2, le=0.95)
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -200,6 +238,11 @@ class Clip(Strict):
     colour_splash: Optional[ColourSplash] = None
     dreamy_glow: Optional[DreamyGlow] = None
     beat_pulse: Optional[BeatPulse] = None
+    tone_grade: Optional[ToneGrade] = None
+    mirror: Optional[Mirror] = None
+    zoom_blur: Optional[ZoomBlur] = None
+    tilt_shift: Optional[TiltShift] = None
+    echo: Optional[Echo] = None  # Export blends frames inline; the preview plays a prepared copy made the same way.
     chroma: Optional[Chroma] = None
     freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
     reverse: bool = False  # Plays in..out backwards, without sound.
@@ -210,7 +253,7 @@ class Clip(Strict):
     depth_gap: Literal[0, 1, 2, 3] = 0  # Extra clear space around a foreground used to hide a title behind it.
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
-    bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=17)  # Effects switched off, their settings kept.
+    bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=22)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
@@ -231,6 +274,19 @@ class Clip(Strict):
         return (self.out - self.in_) / self.speed
 
 
+class TitleDepth(Strict):
+    """Extruded letters: copies stepping back into the scene, shaded darker towards the back."""
+    amount: float = Field(default=0.5, ge=0, le=1)
+    color: str = Field(default='#6b4a1f', pattern=r'^#[0-9a-fA-F]{6}$')  # The sides of the letters.
+    light: float = Field(default=0.55, ge=0, le=1)  # How much the sides catch the light.
+
+
+class TitlePin(Strict):
+    """Locks the title to the scene in a clip: it keeps its place in the world as that clip's camera moves."""
+    clip_id: str = Field(min_length=1, max_length=64)
+    at: float = Field(ge=0)  # Timeline seconds where the title is placed as it is drawn.
+
+
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
     start: float = Field(ge=0)
@@ -243,6 +299,8 @@ class Text(Strict):
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
     transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.
+    depth: Optional[TitleDepth] = None
+    pin: Optional[TitlePin] = None
     # Template looks. A title using none of these is drawn exactly as before.
     subtitle: Optional[str] = Field(default=None, max_length=200)
     subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.

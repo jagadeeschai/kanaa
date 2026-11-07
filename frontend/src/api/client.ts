@@ -106,7 +106,7 @@ export async function waitForJob<T>(id: string, onProgress: (progress: number) =
 export const faceFinderReady = () => requestJson<{ ready: boolean }>('/api/face-finder');
 export const startReframe = (id: number, body: { start: number; end: number; allow_download: boolean }) => requestJson<{ job_id: string }>(`/api/photos/${id}/reframe`, { method: 'POST', body: JSON.stringify(body) });
 export const startScenes = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/scenes`, { method: 'POST', body: JSON.stringify(body) });
-export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string };
+export type EffectInfo = { id: string; label: string; tamil: string; mood: string; about: string; placement?: 'overlay' | 'start' };
 export const listEffects = () => requestJson<EffectInfo[]>('/api/effects');
 export type EffectOptions = { density?: number; direction?: number; speed?: number; frequency?: number; brightness?: number; seed?: number };
 export const makeEffect = (id: string, size: { width: number; height: number }, options?: EffectOptions) => requestJson<{ media?: Photo; job_id?: string }>(`/api/effects/${id}`, { method: 'POST', body: JSON.stringify({ ...size, options }) });
@@ -115,8 +115,8 @@ export const listLuts = () => requestJson<{ folder: string; luts: LutInfo[] }>('
 export const lutAtlasUrl = (id: string) => `/api/luts/${encodeURIComponent(id)}/atlas`;
 export const startFaces = (id: number, body: { start: number; end: number }) => requestJson<{ job_id: string }>(`/api/photos/${id}/faces`, { method: 'POST', body: JSON.stringify(body) });
 /** A steadied and/or reversed copy of a video, made once on the server. */
-export const requestPrepared = (id: number, steady: boolean, backwards: boolean, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`, { method: 'POST' });
-export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}`;
+export const requestPrepared = (id: number, steady: boolean, backwards: boolean, echo: string, cutout: string) => requestJson<{ status: 'ready' | 'preparing'; progress?: number }>(`/api/photos/${id}/prepared?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}&echo=${encodeURIComponent(echo)}`, { method: 'POST' });
+export const preparedProxyUrl = (id: number, steady: boolean, backwards: boolean, echo: string, cutout: string) => `/api/photos/${id}/prepared-proxy?steady=${steady}&backwards=${backwards}&cutout=${encodeURIComponent(cutout)}&echo=${encodeURIComponent(echo)}`;
 /** The person's own music from the Music app, sorted into moods. */
 export type Mood = 'romantic' | 'happy' | 'birthday' | 'calm' | 'energetic' | 'cinematic' | 'inspiring' | 'songs';
 export type LibraryTrack = { id: string; name: string; artist: string | null; genre: string | null; seconds: number; mood: Mood };
@@ -136,6 +136,7 @@ export const fetchShapeMask = async (mask: unknown, format: unknown) => {
   if (!response.ok) throw new Error('This shape could not be drawn.');
   return URL.createObjectURL(await response.blob());
 };
+export const startSceneTrack = (id: number, body: { at: number; start: number; end: number }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; track?: import('../timeline/title3d').SceneTrack }>(`/api/photos/${id}/scene-track`, { method: 'POST', body: JSON.stringify(body) });
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;

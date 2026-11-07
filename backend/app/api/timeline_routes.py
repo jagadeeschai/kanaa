@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.services.asset_service import content_key, folder_for, make_peaks, manifest_for, request_assets
-from app.services.job_service import update_job
+from app.services.job_service import get_job, update_job
 from app.services.media_probe import MediaFacts, probe_video
 from app.services.media_service import describe, get_media, index_media
 from app.services.render_queue_service import enqueue_render
@@ -101,16 +101,22 @@ def steady_and_reversed(identifier: int, steady: bool, backwards: bool) -> tuple
 
 
 @router.post('/photos/{identifier}/prepared')
-def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = ''):
+def request_prepared(identifier: int, steady: bool = False, backwards: bool = False, cutout: str = '', echo: str = ''):
     """Starts making whatever copies a clip needs, one step at a time. Ready, or preparing with a job to watch."""
+    from app.services import echo_service
     row = get_media(identifier)
     wanted = instance_service.parse_cutout(cutout)
-    if row['media_type'] != 'video' or wanted is None:
+    if row['media_type'] != 'video' or wanted is None or (echo and echo_service.parse(echo) is None):
         raise HTTPException(400, 'Only videos can be steadied, reversed or cut out.')
     facts, status = steady_and_reversed(identifier, steady, backwards)
     if facts is None:
         return status
     mode, pick, amount, pull, gap = wanted
+    if echo and not mode:  # A cut-out clip previews its cut-out; its echo shows in the export.
+        try:
+            return echo_service.request_echo(facts, echo, row['filename'])
+        except RuntimeError as exc:
+            raise HTTPException(400, str(exc)) from exc
     try:
         if mode == 'blur':
             return instance_service.request_portrait(facts, pick, amount, row['filename'], pull)
@@ -165,8 +171,9 @@ def prepared_base(identifier: int, steady: bool, backwards: bool) -> Path:
 
 
 @router.get('/photos/{identifier}/prepared-proxy')
-def prepared_proxy(identifier: int, request: Request, steady: bool = False, backwards: bool = False, cutout: str = ''):
-    """The preview's copy of a clip that is steadied, reversed and/or cut out. Each step works on the one before."""
+def prepared_proxy(identifier: int, request: Request, steady: bool = False, backwards: bool = False, cutout: str = '', echo: str = ''):
+    """The preview's copy of a clip that is steadied, reversed, cut out and/or echoed. Each step works on the one before."""
+    from app.services import echo_service
     base = Path(get_media(identifier)['absolute_path'])
     target = None
     for wanted, copies in ((steady, stable_files), (backwards, reversed_files)):
@@ -176,9 +183,11 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
             raise HTTPException(404, 'This copy is still being made.')
         base, target = copies(base)
     wanted = instance_service.parse_cutout(cutout)
-    if wanted is None:
+    if wanted is None or (echo and echo_service.parse(echo) is None):
         raise HTTPException(400, 'Unknown cut-out.')
     mode, pick, amount, pull, gap = wanted
+    if echo and not mode:
+        target = echo_service.echo_path(base, echo)
     if mode:
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
@@ -297,6 +306,49 @@ def start_tracking(identifier: int, body: dict):
     job_id = enqueue_render('tracking', 'Follow something in the video', run, total=100)
     ready.set()
     return {'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/scene-track')
+def start_scene_track(identifier: int, body: dict):
+    """How the whole scene moves, from `at` to every moment between `start` and `end` (source seconds), for a title
+    locked to the scene. The track itself when it was made before, otherwise a job that makes it."""
+    from app.services import scene_track_service
+    from app.services.timeline_service import scene_track_source
+    if get_media(identifier)['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos have a camera to follow.')
+    try:
+        at, start, end = (float(body[key]) for key in ('at', 'start', 'end'))
+        if not 0 <= start <= at <= end or end - start > 600:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a moment inside the clip.') from exc
+    facts = media_facts(identifier)
+    source, size = scene_track_source(facts), (facts.width or 1920, facts.height or 1080)
+    made = scene_track_service.track_path(source, start, end, at)
+    if made.is_file():
+        return {'status': 'ready', 'track': json.loads(made.read_text())}
+    active = SCENE_TRACK_JOBS.get(str(made))
+    job = get_job(active) if active else None
+    if job and not job.get('done'):
+        return {'status': 'preparing', 'job_id': active}
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Following the camera', progress=0)
+        try:
+            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress))
+        finally:
+            SCENE_TRACK_JOBS.pop(str(made), None)
+        return {'progress': 100, 'phase': 'Followed', 'track': track}
+
+    job_id = enqueue_render('scene-track', 'Follow the camera for a title', run, total=100)
+    SCENE_TRACK_JOBS[str(made)] = job_id
+    ready.set()
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+SCENE_TRACK_JOBS: dict[str, str] = {}  # Track file to the job making it, so asking again while it runs does not start another.
 
 
 @router.post('/photos/{identifier}/faces')
@@ -581,7 +633,7 @@ def start_scenes(identifier: int, body: dict):
 @router.get('/effects')
 def list_effects():
     from app.services.effect_service import EFFECTS
-    return [{'id': effect.id, 'label': effect.label, 'tamil': effect.tamil, 'mood': effect.mood, 'about': effect.about} for effect in EFFECTS]
+    return [{'id': effect.id, 'label': effect.label, 'tamil': effect.tamil, 'mood': effect.mood, 'about': effect.about, 'placement': effect.placement} for effect in EFFECTS]
 
 
 @router.get('/luts')

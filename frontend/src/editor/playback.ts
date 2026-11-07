@@ -8,6 +8,17 @@ import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
+import { alphaBox, corners, homography, invert, is3d, layers, layerShade, poseAt, type Box, type Matrix, type Point } from '../timeline/title3d';
+
+/** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
+function pictureBox(image: HTMLImageElement): Box | null {
+  const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context || !canvas.width || !canvas.height) return null;
+  context.drawImage(image, 0, 0);
+  const box = alphaBox(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+  return box && [box[0] / canvas.width, box[1] / canvas.height, box[2] / canvas.width, box[3] / canvas.height];
+}
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
 export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
@@ -69,6 +80,22 @@ void main(){
   if (at.y < bars || at.y > 1. - bars) c = vec3(0.);
   color = vec4(c, 1.);
 }`;
+/** A title in 3D: every frame pixel is taken back into the title picture through the inverse of its homography
+ * (title3d.ts), so perspective is exact. Matches title3d_render.py, which warps the same way with OpenCV. */
+const TITLE_FRAGMENT = `#version 300 es
+precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPicture; uniform vec2 frame, viewport;
+uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
+void main(){
+  vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport;
+  vec3 q = toPicture * vec3(at, 1.);
+  if (q.z <= 0.) discard;
+  vec2 p = q.xy / q.z;
+  if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.z || p.y > bounds.w) discard;
+  vec4 c = texture(tex, p / frame);
+  vec3 rgb = mix(c.rgb, shade.rgb, shade.a);
+  float a = c.a * opacity;
+  color = vec4(rgb * a, a);
+}`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
 uniform float opacity, brightness, contrast, saturation, gamma, fade, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
@@ -78,6 +105,11 @@ uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensS
 uniform float splashAmount, splashTolerance, splashSoftness; uniform vec3 splashColor;
 uniform float dreamyAmount, dreamySoftness, dreamyWarmth;
 uniform int titleParticle; uniform float titleParticleProgress;
+// Mirrored in timeline_service.py: mirror_filters, zoom_blur_filters, tilt_shift_filters, tone_grade_filters (ZOOM_TAPS, TILT_SIGMA).
+uniform int mirrorMode; uniform float mirrorSegments, mirrorTurn, picAspect;
+uniform float zoomReach; uniform vec2 zoomCenter;
+uniform float tiltBlur, tiltFocus, tiltBand, tiltSat; uniform vec2 tiltSigma;
+uniform int toneMode; uniform float toneBalance, toneAmount; uniform vec3 toneShadow, toneHigh;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -91,6 +123,24 @@ vec4 pick(vec2 at){
   }
   c.rgb*=c.a; return c;
 }
+// The clip's own picture coordinates (as displayed, after its flip and turn) folded by a mirror or kaleidoscope.
+vec2 shaped(vec2 u){
+  if (mirrorMode == 4) {
+    vec2 d = (u - .5) * vec2(picAspect, 1.);
+    float wedge = 6.2831853 / mirrorSegments;
+    float folded = mod(atan(d.y, d.x) + mirrorTurn + 25.1327412, wedge);
+    float a = min(folded, wedge - folded) - mirrorTurn;
+    return .5 + length(d) * vec2(cos(a) / picAspect, sin(a));
+  }
+  if (mirrorMode == 1 || mirrorMode == 3) u.x = .5 - abs(u.x - .5);
+  if (mirrorMode == 2 || mirrorMode == 3) u.y = .5 - abs(u.y - .5);
+  return u;
+}
+vec2 toSource(vec2 u){
+  vec2 q = mix(u, 1. - u, flip);
+  return rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
+}
+vec4 pickAt(vec2 u){ return pick(toSource(shaped(u))); }
 // A blur box: the picture under it, blurred or in blocks, inside a soft oval or box. Matches blur_filters in timeline_service.py.
 vec4 hidden(){
   vec2 size = vec2(textureSize(backdrop, 0));
@@ -115,7 +165,7 @@ vec4 hidden(){
 void main(){
   if (fill.a > 0.) { color = vec4(fill.rgb * fill.a, fill.a); return; }
   if (hideMode > 0) { color = hidden(); return; }
-  vec2 q = mix(uv, 1. - uv, flip);
+  vec2 q = mix(shaped(uv), 1. - shaped(uv), flip);
   vec2 s = rotation==90 ? vec2(q.y, 1.-q.x) : rotation==180 ? 1.-q : rotation==270 ? vec2(1.-q.y, q.x) : q;
   float lensMask = 0.; float lensRim = 0.;
   if (lensMode > 0) {
@@ -148,6 +198,24 @@ void main(){
     particleHue = filmHash(cell + 109.);
   }
   vec4 c = pick(s);
+  if (zoomReach > 0.) {
+    // The picture averaged with itself scaled up about the centre, in eight even steps.
+    vec4 sum = c;
+    for (int i = 1; i < 8; i++) { float k = 1. + zoomReach * float(i) / 7.; sum += pickAt(zoomCenter + (uv - zoomCenter) / k); }
+    c = sum / 8.;
+  }
+  if (tiltBlur > 0.) {
+    float t = clamp((abs(uv.y - tiltFocus) - .5 * tiltBand) / (.18 + .5 * tiltBand), 0., 1.);
+    float m = t * t * (3. - 2. * t);
+    if (m > 0.) {
+      vec4 sum = c; float total = 1.;
+      for (int i = 0; i < 24; i++) {
+        float r = sqrt((float(i) + .5) / 24.) * 2.2; float a = float(i) * 2.399963;
+        float w = exp(-.5 * r * r); sum += pickAt(uv + vec2(cos(a), sin(a)) * r * tiltSigma) * w; total += w;
+      }
+      c = mix(c, sum / total, m);
+    }
+  }
   if (signalMode > 0 && signalSplit > 0.) {
     float split = .012 * signalSplit * signalAmount;
     vec4 left = pick(s - vec2(split, 0.)); vec4 right = pick(s + vec2(split, 0.));
@@ -175,6 +243,7 @@ void main(){
   rgb = (clamp(rgb, 0., 1.) - .5) * contrast + .5;
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
+  if (tiltSat > 0.) rgb = clamp(mix(vec3(dot(rgb, vec3(.2126, .7152, .0722))), rgb, 1. + tiltSat), 0., 1.);
   if (splashAmount > 0.) {
     float targetLuma = dot(splashColor, vec3(.2126, .7152, .0722));
     vec2 chroma = vec2((rgb.b - luma) / 1.8556, (rgb.r - luma) / 1.5748);
@@ -195,6 +264,12 @@ void main(){
     bloom *= vec3(1. + dreamyWarmth * .12, 1. + dreamyWarmth * .035, 1. - dreamyWarmth * .08);
     rgb = clamp(1. - (1. - rgb) * (1. - bloom * dreamyAmount * .72), 0., 1.);
     rgb = mix(rgb, vec3(dot(rgb, vec3(.2126, .7152, .0722))) + rgb * .82, dreamyAmount * dreamySoftness * .08);
+  }
+  if (toneMode > 0) {
+    float t = clamp(dot(rgb, vec3(.2126, .7152, .0722)) + .5 - toneBalance, 0., 1.);
+    if (toneMode == 1) rgb = rgb * (1. - toneAmount) + toneAmount * mix(toneShadow, toneHigh, t);
+    else rgb = rgb + toneAmount * ((toneShadow - .5) * .55 * (1. - t) * (1. - t) + (toneHigh - .5) * .55 * t * t);
+    rgb = clamp(rgb, 0., 1.);
   }
   if (oldFilm > 0.) {
     float flicker = (filmHash(vec2(floor(oldSeed), 17.)) - .5) * .10 * oldFilm;
@@ -262,7 +337,9 @@ export class PlaybackEngine {
   private lutTexture: WebGLTexture | null = null;
   private lutId: string | null = null;
   private layers = new Map<string, LayerSlots>();
-  private images = new Map<string, { texture: WebGLTexture; ready: boolean }>();
+  private images = new Map<string, { texture: WebGLTexture; ready: boolean; box?: Box | null }>();
+  private titleProgram!: WebGLProgram;
+  private titleUniforms: Record<string, WebGLUniformLocation | null> = {};
   private timeline: Timeline | null = null;
   private sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined = () => undefined;
   private time = 0;
@@ -290,7 +367,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -299,6 +376,13 @@ export class PlaybackEngine {
     gl.linkProgram(finishing);
     this.finishing = finishing;
     for (const name of ['backdrop', 'viewport', 'lutTex', 'useLut', 'lutAmount', 'grade', 'glow', 'vignette', 'grain', 'bars', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
+    const titles = gl.createProgram()!;
+    gl.attachShader(titles, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
+    gl.attachShader(titles, shader(gl.FRAGMENT_SHADER, TITLE_FRAGMENT));
+    gl.bindAttribLocation(titles, position, 'p');
+    gl.linkProgram(titles);
+    this.titleProgram = titles;
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -465,6 +549,7 @@ export class PlaybackEngine {
         const cached = this.images.get(url)!;
         this.gl.bindTexture(this.gl.TEXTURE_2D, cached.texture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
+        if (url.includes('/api/text-image')) cached.box = pictureBox(image);  // Where a title's letters are, for drawing it in 3D.
         cached.ready = true;
         this.requestDraw();
       };
@@ -568,6 +653,29 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.dreamyAmount, dreamy?.intensity ?? 0);
     gl.uniform1f(uniforms.dreamySoftness, dreamy?.softness ?? 0);
     gl.uniform1f(uniforms.dreamyWarmth, dreamy?.warmth ?? 0);
+    const hex = (colour: string) => [1, 3, 5].map((at) => parseInt(colour.slice(at, at + 2), 16) / 255) as [number, number, number];
+    const mirror = clip.mirror;
+    gl.uniform1i(uniforms.mirrorMode, mirror ? { left: 1, top: 2, quad: 3, kaleido: 4 }[mirror.mode] : 0);
+    gl.uniform1f(uniforms.mirrorSegments, mirror?.segments ?? 6);
+    gl.uniform1f(uniforms.mirrorTurn, ((mirror?.angle ?? 0) * Math.PI) / 180);
+    gl.uniform1f(uniforms.picAspect, fitted.width / fitted.height);
+    const zoomBlur = clip.zoom_blur;
+    gl.uniform1f(uniforms.zoomReach, zoomBlur ? 0.22 * zoomBlur.intensity : 0);
+    gl.uniform2f(uniforms.zoomCenter, zoomBlur?.center_x ?? 0.5, zoomBlur?.center_y ?? 0.5);
+    const tilt = clip.tilt_shift;
+    // The export blurs by TILT_SIGMA of the frame's short side; here that is a share of the picture across and down.
+    const sigma = 0.012 * (tilt?.blur ?? 0) * Math.min(format.width, format.height);
+    gl.uniform1f(uniforms.tiltBlur, tilt && tilt.blur > 0 ? 1 : 0);
+    gl.uniform2f(uniforms.tiltSigma, sigma / fitted.width, sigma / fitted.height);
+    gl.uniform1f(uniforms.tiltFocus, tilt?.focus_y ?? 0.5);
+    gl.uniform1f(uniforms.tiltBand, tilt?.band ?? 0.2);
+    gl.uniform1f(uniforms.tiltSat, tilt ? 0.6 * tilt.saturation : 0);
+    const tone = clip.tone_grade;
+    gl.uniform1i(uniforms.toneMode, tone ? (tone.mode === 'duotone' ? 1 : 2) : 0);
+    gl.uniform1f(uniforms.toneBalance, tone?.balance ?? 0.5);
+    gl.uniform1f(uniforms.toneAmount, tone?.intensity ?? 0);
+    gl.uniform3f(uniforms.toneShadow, ...hex(tone?.shadow ?? '#000000'));
+    gl.uniform3f(uniforms.toneHigh, ...hex(tone?.highlight ?? '#ffffff'));
     gl.uniform3f(uniforms.tint, red * clip.adjust.temperature, green * clip.adjust.tint, blue * (2 - clip.adjust.temperature));
     gl.uniform1f(uniforms.blur, look.blur * (format.height / height));
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
@@ -576,7 +684,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); this.clearShaping(); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -588,8 +696,15 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.lensMode, 0);
     gl.uniform1f(uniforms.splashAmount, 0);
     gl.uniform1f(uniforms.dreamyAmount, 0);
+    this.clearShaping();
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
+  }
+
+  /** Mirror, zoom blur, tilt-shift and tone grade off again, so the next thing drawn with this program is plain. */
+  private clearShaping() {
+    const { gl } = this; const uniforms = this.uniforms;
+    gl.uniform1i(uniforms.mirrorMode, 0); gl.uniform1f(uniforms.zoomReach, 0); gl.uniform1f(uniforms.tiltBlur, 0); gl.uniform1f(uniforms.tiltSat, 0); gl.uniform1i(uniforms.toneMode, 0);
   }
 
   private drawCrossing(layer: VideoLayer, { before, after, p }: Crossing) {
@@ -708,6 +823,7 @@ export class PlaybackEngine {
     if (!image.ready) return;
     gl.bindTexture(gl.TEXTURE_2D, image.texture);
     const local = this.time - item.start;
+    if (is3d(item)) { if (image.box) this.drawTitle3d(item, local, image.box, image.texture); return; }
     const look = animatedLook(item.enter, item.exit, local, item.length);
     const { width, height } = this.timeline!.format;
     // The title's own move first, then its animation moves that whole frame, as the export's pose() does.
@@ -733,6 +849,47 @@ export class PlaybackEngine {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.uniform1i(uniforms.titleParticle, 0);
   }
+
+  /** A title with tilt, depth or a pin: each depth layer from back to front, warped through its homography (title3d.ts). */
+  private drawTitle3d(item: TextItem, local: number, box: Box, texture: WebGLTexture) {
+    const { gl } = this; const u = this.titleUniforms;
+    const { width, height } = this.timeline!.format;
+    const frameBox: Box = [box[0] * width, box[1] * height, box[2] * width, box[3] * height];
+    const { pose, look } = poseAt(item, local);
+    const opacity = look.opacity * Math.max(0, Math.min(1, valueAt(item.transform ?? REST_TRANSFORM, 'opacity', local)));
+    if (opacity <= 0) return;
+    const pin = this.titlePin(item);
+    const source: Point[] = [[frameBox[0], frameBox[1]], [frameBox[2], frameBox[1]], [frameBox[2], frameBox[3]], [frameBox[0], frameBox[3]]];
+    const depth = item.depth && item.depth.amount > 0 ? item.depth : null;
+    const shades = layers(depth);
+    const colour = depth ? [1, 3, 5].map((at) => parseInt(depth.color.slice(at, at + 2), 16) / 255) : [0, 0, 0];
+    gl.useProgram(this.titleProgram);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(u.tex, 0);
+    gl.uniform2f(u.frame, width, height);
+    gl.uniform2f(u.viewport, this.canvas.width, this.canvas.height);
+    gl.uniform4f(u.bounds, ...frameBox);
+    gl.uniform1f(u.opacity, opacity);
+    for (let index = shades.length - 1; index >= 0; index -= 1) {
+      const share = shades[index];
+      let toPicture: Matrix;
+      try { toPicture = invert(homography(source, corners(pose, frameBox, [width, height], share, depth?.amount ?? 0, pin))); } catch { continue; }
+      gl.uniformMatrix3fv(u.toPicture, false, [toPicture[0][0], toPicture[1][0], toPicture[2][0], toPicture[0][1], toPicture[1][1], toPicture[2][1], toPicture[0][2], toPicture[1][2], toPicture[2][2]]);
+      // The front layer is the title itself; layers behind it are its sides, in the depth colour, darker further back.
+      if (index === 0 || !depth) gl.uniform4f(u.shade, 0, 0, 0, 0);
+      else { const light = layerShade(depth, share); gl.uniform4f(u.shade, colour[0] * light, colour[1] * light, colour[2] * light, 1); }
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    gl.useProgram(this.main);
+  }
+
+  /** The scene track a pinned title follows, as a matrix from the pin moment's frame to this one; null when not pinned or not ready. */
+  private titlePin(item: TextItem): Matrix | null {
+    return item.pin ? this.pinMatrix?.(item, this.time) ?? null : null;
+  }
+
+  /** Set by the editor once a pinned title's scene track has loaded. */
+  pinMatrix: ((item: TextItem, time: number) => Matrix | null) | null = null;
 
   private drawBlur(layer: BlurLayer) {
     const { gl, uniforms } = this;

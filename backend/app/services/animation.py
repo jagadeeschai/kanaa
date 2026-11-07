@@ -5,7 +5,7 @@ import math
 
 MAX_BLUR = 0.03  # Of the frame height.
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
-OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9}
+OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35}
 XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft'}
 WHIP_BLUR = 0.05  # Peak horizontal blur of a whip, as a share of the frame height. Matches animation.ts.
 # Red, green and blue gain, contrast, saturation.
@@ -45,6 +45,11 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look.update(scale=1.38 - .38 * e, blur=.04 * (1 - e))
     elif preset == 'particle-form':
         look.update(scale=.9 + .1 * e, blur=.018 * (1 - e))
+    # Cinema reveals, drawn through title3d: `tilt` leans the title back (degrees), in perspective.
+    elif preset == 'rise-behind':
+        look.update(dy=.45 * (1 - e), tilt=70 * (1 - e))
+    elif preset == 'push-through':
+        look.update(scale=.18 + .82 * e + .08 * math.sin(math.pi * p) * e, dy=-.08 * (1 - e), tilt=75 * (1 - e) ** 2)
     return look
 
 
