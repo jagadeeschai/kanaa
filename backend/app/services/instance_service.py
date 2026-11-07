@@ -116,12 +116,18 @@ def is_everyone(pick: Optional[Pick]) -> bool:
     return pick is None or (pick.kind == 'people' and pick.ids is None)
 
 
-def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str, Optional[Pull]]]:
+def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str, Optional[Pull], int]]:
     """A prepared copy's cutout token to (remove or blur, who, blur amount, focus pull). None if it isn't one.
     'remove', 'blur', 'people-0-2' (remove, keeping those), 'blur.people-0-2.strong', 'blur.all.subtle',
     'blur.people-0.strong.people-1@2500+800' (the focus moves to person 1 at 2.5 s, over 0.8 s)."""
+    gap = 0
+    if '.gap' in token:
+        token, raw_gap = token.rsplit('.gap', 1)
+        if not raw_gap.isdigit() or int(raw_gap) not in (1, 2, 3):
+            return None
+        gap = int(raw_gap)
     if token in ('', 'remove', 'blur'):
-        return token, None, 'medium', None
+        return token, None, 'medium', None, gap
     if token.startswith('blur.'):
         parts = token.split('.')
         if len(parts) not in (3, 4) or parts[2] not in cutout_service.BLUR_AMOUNTS:
@@ -132,9 +138,9 @@ def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str, Optiona
         pick = None if parts[1] == 'all' else parse(parts[1])
         if parts[1] != 'all' and pick is None:
             return None
-        return 'blur', pick, parts[2], pull
+        return ('blur', pick, parts[2], pull, 0) if not gap else None
     pick = parse(token)
-    return ('remove', pick, 'medium', None) if pick else None
+    return ('remove', pick, 'medium', None, gap) if pick else None
 
 
 def summary_path(source: Path, kind: str) -> Path:
@@ -160,10 +166,11 @@ def portrait_paths(source: Path, pick: Optional[Pick], amount: str, pull: Option
     return folder / f'portrait-{who}{then}-{amount}-{VERSION}.mp4', folder / f'portrait-{who}{then}-{amount}-{VERSION}-proxy.mp4'
 
 
-def pick_paths(source: Path, pick: Pick) -> tuple[Path, Path]:
+def pick_paths(source: Path, pick: Pick, gap: int = 0) -> tuple[Path, Path]:
     """The chosen ones' mask, for export, and its see-through preview copy."""
     folder = folder_for(content_key(source))
-    return folder / f'{pick.token}-{VERSION}-mask.mp4', folder / f'{pick.token}-{VERSION}-cut.webm'
+    suffix = f'-gap{gap}' if gap else ''
+    return folder / f'{pick.token}-{VERSION}-mask.mp4', folder / f'{pick.token}-{VERSION}{suffix}-cut.webm'
 
 
 def tracks(source: Path, kind: str) -> Optional[list[dict]]:
@@ -378,20 +385,20 @@ def make_pick(facts: MediaFacts, pick: Pick, should_cancel: Callable[[], bool]) 
     temporary.replace(mask)
 
 
-def is_ready(source: Path, pick: Pick) -> bool:
-    return all(path.is_file() for path in pick_paths(source, pick))
+def is_ready(source: Path, pick: Pick, gap: int = 0) -> bool:
+    return all(path.is_file() for path in pick_paths(source, pick, gap))
 
 
-def prepare(facts: MediaFacts, pick: Pick, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None, joined: bool = True, see_through: bool = True) -> None:
+def prepare(facts: MediaFacts, pick: Pick, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None, joined: bool = True, see_through: bool = True, gap: int = 0) -> None:
     """Finds them all, then joins the chosen ones' masks, then makes the see-through preview copy, each once."""
     with lock_for(f'{content_key(facts.path)}:{pick.kind}'):
         if not summary_path(facts.path, pick.kind).is_file():
             make_tracks(facts, pick.kind, on_progress, should_cancel, finder)
-        mask, cut = pick_paths(facts.path, pick)
+        mask, cut = pick_paths(facts.path, pick, gap)
         if joined and not mask.is_file():
             make_pick(facts, pick, should_cancel)
         if joined and see_through and not cut.is_file():
-            cutout_service.make_see_through(facts, should_cancel, mask=mask, target=cut)
+            cutout_service.make_see_through(facts, should_cancel, mask=mask, target=cut, gap=gap)
 
 
 def sharp_mask(facts: MediaFacts, who: Optional[Pick], on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None) -> Path:
@@ -455,12 +462,12 @@ def ensure_mask(facts: MediaFacts, pick: Optional[Pick], should_cancel: Callable
     return pick_paths(facts.path, pick)[0]
 
 
-def request(facts: MediaFacts, pick: Pick, label: str, joined: bool = True) -> dict:
+def request(facts: MediaFacts, pick: Pick, label: str, joined: bool = True, gap: int = 0) -> dict:
     """Ready, or being made in the background. Without `joined`, only finds them, for choosing."""
-    ready = is_ready(facts.path, pick) if joined else summary_path(facts.path, pick.kind).is_file()
+    ready = is_ready(facts.path, pick, gap) if joined else summary_path(facts.path, pick.kind).is_file()
     what = 'people' if pick.kind == 'people' else 'objects'
-    return in_background(facts, f'{pick.token if joined else pick.kind}', ready, f'Finding the {what} in {label}',
-                         lambda progress, should_cancel: prepare(facts, pick, progress, should_cancel, joined=joined))
+    return in_background(facts, f'{pick.token if joined else pick.kind}-gap{gap}', ready, f'Finding the {what} in {label}',
+                         lambda progress, should_cancel: prepare(facts, pick, progress, should_cancel, joined=joined, gap=gap))
 
 
 def request_portrait(facts: MediaFacts, pick: Optional[Pick], amount: str, label: str, pull: Optional[Pull] = None) -> dict:

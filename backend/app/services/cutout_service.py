@@ -39,6 +39,7 @@ PREVIEW_SIDE = 720
 PORTRAIT_BLUR = 0.015  # Of the frame height: a strong portrait-mode look.
 BLUR_AMOUNTS = {'subtle': 0.007, 'medium': PORTRAIT_BLUR, 'strong': 0.03}  # Of the frame height.
 EDGE_SOFTNESS = 1.5  # Pixels of the mask's own blur, so edges don't shimmer.
+GAP_PIXELS = (0, 3, 7, 12)  # At the prepared mask size: none, small, medium, wide.
 INSTALL_TOOLS = 'xcode-select --install'
 _build = threading.Lock()
 _active: dict[str, str] = {}
@@ -168,12 +169,21 @@ def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_canc
         temporary.unlink(missing_ok=True)
 
 
-def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None) -> None:
+def gap_filters(gap: int) -> str:
+    """Grow a silhouette without scaling the person. Repeated 3x3 dilation gives a predictable pixel gap."""
+    return ''.join(',dilation=coordinates=255' for _ in range(GAP_PIXELS[max(0, min(3, gap))]))
+
+
+def gap_cut_path(source: Path, gap: int) -> Path:
+    return files(source)[SEE_THROUGH] if not gap else files(source)[SEE_THROUGH].with_name(f'person-cut-gap{gap}-2.webm')
+
+
+def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None, gap: int = 0) -> None:
     """The preview copy for Remove: VP9 keeps the mask as transparency, which the preview can play directly."""
     paths = files(facts.path)
     mask, target = mask or paths[MASK], target or paths[SEE_THROUGH]
     temporary = target.with_suffix('.tmp.webm')
-    graph = f"[0:v]{colour(facts)},scale=-2:{PREVIEW_SIDE},fps=30,format=yuva420p[video];[1:v]format=gray[shape];[shape][video]scale2ref[mask][scaled];[scaled][mask]alphamerge"
+    graph = f"[0:v]{colour(facts)},scale=-2:{PREVIEW_SIDE},fps=30,format=yuva420p[video];[1:v]format=gray{gap_filters(gap)}[shape];[shape][video]scale2ref[mask][scaled];[scaled][mask]alphamerge"
     result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(mask), '-filter_complex', graph, '-an',
                               '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-b:v', '3M', '-auto-alt-ref', '0', '-g', '15', str(temporary)], should_cancel)
     if result.returncode:
@@ -245,4 +255,26 @@ def request_cutout(facts: MediaFacts, mode: str, label: str) -> dict:
         return {'progress': 100}
 
     job_id = enqueue_render('cutout', f'Finding the person in {label}', run, priority=BACKGROUND_PRIORITY, total=100, reserve=lambda identifier: _active.__setitem__(key, identifier))
+    return {'status': 'preparing', 'job_id': job_id, 'progress': 0}
+
+
+def request_gap(facts: MediaFacts, gap: int, label: str) -> dict:
+    """Makes a reusable all-people preview with extra title clearance."""
+    target = gap_cut_path(facts.path, gap)
+    if target.is_file():
+        return {'status': 'ready'}
+    key = f'{content_key(facts.path)}:remove-gap{gap}'
+    active = _active.get(key)
+    job = get_job(active) if active else None
+    if job and not job.get('done'):
+        return {'status': 'preparing', 'job_id': active, 'progress': job.get('progress', 0)}
+
+    def run(should_cancel: Callable[[], bool]) -> dict:
+        try:
+            prepare(facts, 'remove', lambda value: update_job(_active.get(key, ''), progress=value), should_cancel)
+            make_see_through(facts, should_cancel, target=target, gap=gap)
+        finally:
+            _active.pop(key, None)
+        return {'progress': 100}
+    job_id = enqueue_render('cutout', f'Adding title space around people in {label}', run, priority=BACKGROUND_PRIORITY, total=100, reserve=lambda identifier: _active.__setitem__(key, identifier))
     return {'status': 'preparing', 'job_id': job_id, 'progress': 0}

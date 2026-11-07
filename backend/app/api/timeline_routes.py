@@ -110,13 +110,15 @@ def request_prepared(identifier: int, steady: bool = False, backwards: bool = Fa
     facts, status = steady_and_reversed(identifier, steady, backwards)
     if facts is None:
         return status
-    mode, pick, amount, pull = wanted
+    mode, pick, amount, pull, gap = wanted
     try:
         if mode == 'blur':
             return instance_service.request_portrait(facts, pick, amount, row['filename'], pull)
         if pick:
-            return instance_service.request(facts, pick, row['filename'])
-        return cutout_service.request_cutout(facts, cutout, row['filename']) if cutout else {'status': 'ready'}
+            return instance_service.request(facts, pick, row['filename'], gap=gap)
+        if mode == 'remove' and gap:
+            return cutout_service.request_gap(facts, gap, row['filename'])
+        return cutout_service.request_cutout(facts, mode, row['filename']) if mode else {'status': 'ready'}
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -176,14 +178,14 @@ def prepared_proxy(identifier: int, request: Request, steady: bool = False, back
     wanted = instance_service.parse_cutout(cutout)
     if wanted is None:
         raise HTTPException(400, 'Unknown cut-out.')
-    mode, pick, amount, pull = wanted
+    mode, pick, amount, pull, gap = wanted
     if mode:
         if not base.is_file():
             raise HTTPException(404, 'This copy is still being made.')
         if mode == 'blur':
             target = instance_service.portrait_paths(base, pick, amount, pull)[1]
         else:
-            target = instance_service.pick_paths(base, pick)[1] if pick else cutout_service.files(base)[cutout_service.SEE_THROUGH]
+            target = instance_service.pick_paths(base, pick, gap)[1] if pick else cutout_service.gap_cut_path(base, gap)
     if target is None or not target.is_file():
         raise HTTPException(404, 'This copy is still being made.')
     return serve_file_with_ranges(target, 'video/webm' if target.suffix == '.webm' else 'video/mp4', request)

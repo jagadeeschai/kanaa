@@ -1455,8 +1455,10 @@ class Cutout(QuickEffects):
         self.assertGreater(self.detail(strong, 480, 180), self.detail(original, 480, 180) * 0.85)  # The chosen one stays sharp...
         self.assertLess(self.detail(strong, 160, 180), self.detail(original, 160, 180) * 0.5)  # ...the other one goes soft with the background.
         self.assertLess(self.detail(strong, 40, 40), self.detail(frames['subtle'], 40, 40))
-        self.assertEqual(instance_service.parse_cutout('blur.people-1.strong'), ('blur', instance_service.Pick('people', (1,)), 'strong', None))
-        self.assertEqual(instance_service.parse_cutout('blur.all.subtle'), ('blur', None, 'subtle', None))
+        self.assertEqual(instance_service.parse_cutout('blur.people-1.strong'), ('blur', instance_service.Pick('people', (1,)), 'strong', None, 0))
+        self.assertEqual(instance_service.parse_cutout('blur.all.subtle'), ('blur', None, 'subtle', None, 0))
+        self.assertEqual(instance_service.parse_cutout('remove.gap2'), ('remove', None, 'medium', None, 2))
+        self.assertEqual(instance_service.parse_cutout('objects-all.gap3'), ('remove', instance_service.Pick('objects', None), 'medium', None, 3))
         for wrong in ('blur.people-1', 'blur.people-1.huge', 'blur.cars-1.strong', 'blur..strong', 'cut'):
             self.assertIsNone(instance_service.parse_cutout(wrong))
 
@@ -1478,7 +1480,7 @@ class Cutout(QuickEffects):
         self.assertLess(sharp(middle, 160), sharp(early, 160))
         self.assertLess(sharp(middle, 480), sharp(late, 480))
         token = 'blur.people-0.strong.people-1@800+400'
-        self.assertEqual(instance_service.parse_cutout(token), ('blur', instance_service.Pick('people', (0,)), 'strong', instance_service.Pull(instance_service.Pick('people', (1,)), 800, 400)))
+        self.assertEqual(instance_service.parse_cutout(token), ('blur', instance_service.Pick('people', (0,)), 'strong', instance_service.Pull(instance_service.Pick('people', (1,)), 800, 400), 0))
         for wrong in ('blur.people-0.strong.people-1@800', 'blur.people-0.strong.people-1@800+50', 'blur.people-0.strong.cars@1+400', 'blur.all.strong.x.y'):
             self.assertIsNone(instance_service.parse_cutout(wrong))
         with self.assertRaises(ValidationError):

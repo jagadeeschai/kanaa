@@ -19,6 +19,7 @@ from PIL import Image
 
 from app.api.schemas import VideoEditRequest
 from app.services.finish_service import finish_filters
+from app.services.cutout_service import gap_filters
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services.job_service import JobCancelled, stop_process_when
@@ -702,7 +703,7 @@ class Builder:
             if cut:
                 # The mask is read over the same stretch as the video, frame for frame, and applied at the source's size.
                 mask = self.add_input(*reading, '-i', str(self.masks(facts, clip.cutout_pick)))
-                self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray[{label}_shape]',
+                self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray{gap_filters(clip.depth_gap)}[{label}_shape]',
                                f'[{label}_shape][{label}_full]scale2ref=flags=bicubic[{label}_mask][{label}_sized]', f'[{label}_sized][{label}_mask]alphamerge[{label}_cut]',
                                f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True)}[{label}]']
             else:

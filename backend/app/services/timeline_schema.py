@@ -207,6 +207,7 @@ class Clip(Strict):
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
+    depth_gap: Literal[0, 1, 2, 3] = 0  # Extra clear space around a foreground used to hide a title behind it.
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
     bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=17)  # Effects switched off, their settings kept.
