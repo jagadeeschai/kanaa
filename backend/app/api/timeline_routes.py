@@ -312,7 +312,7 @@ def start_tracking(identifier: int, body: dict):
 def start_scene_track(identifier: int, body: dict):
     """How the whole scene moves, from `at` to every moment between `start` and `end` (source seconds), for a title
     locked to the scene. The track itself when it was made before, otherwise a job that makes it."""
-    from app.services import scene_track_service
+    from app.services import cutout_service, scene_track_service
     from app.services.timeline_service import scene_track_source
     if get_media(identifier)['media_type'] != 'video':
         raise HTTPException(400, 'Only videos have a camera to follow.')
@@ -324,7 +324,9 @@ def start_scene_track(identifier: int, body: dict):
         raise HTTPException(400, 'Choose a moment inside the clip.') from exc
     facts = media_facts(identifier)
     source, size = scene_track_source(facts), (facts.width or 1920, facts.height or 1080)
-    made = scene_track_service.track_path(source, start, end, at)
+    person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
+    person_mask = person_mask if person_mask.is_file() else None
+    made = scene_track_service.track_path(source, start, end, at, person_mask)
     if made.is_file():
         return {'status': 'ready', 'track': json.loads(made.read_text())}
     active = SCENE_TRACK_JOBS.get(str(made))
@@ -337,7 +339,7 @@ def start_scene_track(identifier: int, body: dict):
         ready.wait()
         update_job(job_id, status='running', phase='Following the camera', progress=0)
         try:
-            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress))
+            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress), person_mask)
         finally:
             SCENE_TRACK_JOBS.pop(str(made), None)
         return {'progress': 100, 'phase': 'Followed', 'track': track}

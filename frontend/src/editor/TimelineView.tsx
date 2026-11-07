@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
-import { clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -26,8 +26,9 @@ const readColors = (element: HTMLElement) => {
   return Object.fromEntries(Object.entries(TOKENS).map(([key, token]) => [key, style.getPropertyValue(token).trim()])) as Colors;
 };
 
-const rowHeight = (layer: TrackLayer) => layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
-const rowTop = (layers: TrackLayer[], row: number) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer) + SOUND_GAP, 0);
+const COLLAPSED_HEIGHT = 24;
+const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
+const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
 export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,10 +41,12 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const groupCount = useRef(0);
   /** Where a dragged tile would land, drawn as a line and a hint while it hovers. */
   const dropRef = useRef<{ x: number; zone: DropTarget['zone']; hint: string; clipId: string | null } | null>(null);
+  const [addingLayer, setAddingLayer] = useState(false);
+  const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(() => new Set(timeline.layers.filter((layer) => /brand|watermark|logo/i.test(layer.name ?? '')).map((layer) => layer.id)));
 
   const xOf = (t: number) => PAD + t * props.current.zoom;
   const timeOf = (x: number) => Math.max(0, (x - PAD) / props.current.zoom);
-  const topOf = (row: number) => rowTop(trackLayers(props.current.timeline), row);
+  const topOf = (row: number) => rowTop(trackLayers(props.current.timeline), row, collapsedLayers);
 
   useEffect(() => {
     const canvas = canvasRef.current!; const host = hostRef.current!; const context = canvas.getContext('2d')!;
@@ -89,7 +92,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawSound = (sound: Sound, row: number, layerMuted: boolean) => {
       const { selectedId: selected, zoom: scale, soundPeaks: look } = props.current;
-      const x = xOf(sound.start); const width = Math.max(2, soundLength(sound) * scale); const y = topOf(row); const h = SOUND_HEIGHT;
+      const x = xOf(sound.start); const width = Math.max(2, soundLength(sound) * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
       const quiet = sound.muted || layerMuted;
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
@@ -122,7 +125,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawBlur = (blur: BlurBox, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
-      const x = xOf(blur.start); const width = Math.max(2, blur.length * scale); const y = topOf(row); const h = SOUND_HEIGHT;
+      const x = xOf(blur.start); const width = Math.max(2, blur.length * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.text; context.fillRect(x, y, width, h);
@@ -143,7 +146,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const drawCaption = (caption: Caption, row: number) => drawText({ id: caption.id, start: caption.start, length: caption.length, text: captionText(caption) } as TextItem, row);
     const drawText = (text: TextItem, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
-      const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = topOf(row); const h = SOUND_HEIGHT;
+      const x = xOf(text.start); const width = Math.max(2, text.length * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.text; context.fillRect(x, y, width, h);
@@ -176,7 +179,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     const drawOverlay = (clip: Clip, row: number) => {
       const { selectedId: selected, zoom: scale, visuals: look } = props.current;
-      const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = topOf(row); const h = TRACK_HEIGHT;
+      const x = xOf(clip.start); const width = Math.max(2, clipLength(clip) * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
       context.save();
       context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
       context.fillStyle = colors.current.clip; context.fillRect(x, y, width, h);
@@ -229,7 +232,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         else if (layer.kind === 'blur') for (const blur of layer.items) drawBlur(blur, row);
         else if (layer.kind === 'captions') for (const caption of layer.items) drawCaption(caption, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
-        veil(layer.hidden, rowTop(tracks, row), rowHeight(layer));
+        veil(layer.hidden, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers));
       });
       const drop = dropRef.current;
       if (drop) {
@@ -256,7 +259,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     };
     draw();
     return () => cancelAnimationFrame(frame);
-  }, [playhead]);
+  }, [playhead, collapsedLayers]);
 
   const pointerTime = (event: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -264,7 +267,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   };
   const rowAt = (y: number) => {
     const layers = trackLayers(props.current.timeline);
-    return layers.findIndex((layer, row) => y >= rowTop(layers, row) && y < rowTop(layers, row) + rowHeight(layer));
+    return layers.findIndex((layer, row) => y >= rowTop(layers, row, collapsedLayers) && y < rowTop(layers, row, collapsedLayers) + rowHeight(layer, collapsedLayers));
   };
   const hitSound = (x: number, y: number) => {
     const layer = trackLayers(props.current.timeline)[rowAt(y)];
@@ -402,12 +405,33 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const tracks = trackLayers(timeline);
   const main = mainLayer(timeline);
   const change = (next: Timeline) => onChange(next, `layer-${groupCount.current += 1}`);
+  const addTrack = (kind: AddableLayerKind) => {
+    const id = `layer-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${groupCount.current += 1}`}`;
+    const next = addLayer(timeline, kind, id);
+    if (next !== timeline) change(next);
+    setAddingLayer(false);
+  };
+  const deleteTrack = (layer: TrackLayer) => {
+    const name = layer.name || (layer.kind === 'video' ? 'Overlay' : layer.kind === 'text' ? 'Text' : layer.kind === 'audio' ? 'Sound' : 'layer');
+    const count = layer.items.length;
+    if (!window.confirm(`Delete “${name}”${count ? ` and its ${count} item${count === 1 ? '' : 's'}` : ''}?\n\nThis can be undone.`)) return;
+    change(removeLayer(timeline, layer.id));
+    if ((layer.items as TrackItem[]).some((item) => item.id === selectedId)) onSelect(null);
+  };
   const head = (layer: VideoLayer | TrackLayer, top: number, height: number) => <LayerHead key={layer.id} layer={layer} top={top} height={height} isMain={layer === main}
     position={layer.kind === 'video' && layer !== main ? overlayLayers(timeline).findIndex((entry) => entry.id === layer.id) : -1} overlays={overlayLayers(timeline).length}
-    onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))} onRename={(name) => change(updateLayer(timeline, layer.id, { name }))}/>;
+    collapsed={collapsedLayers.has(layer.id)} onCollapse={() => setCollapsedLayers((current) => { const next = new Set(current); if (next.has(layer.id)) next.delete(layer.id); else next.add(layer.id); return next; })}
+    onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))} onRename={(name) => change(updateLayer(timeline, layer.id, { name }))} onDelete={() => deleteTrack(layer)}/>;
   return <div className="tl-host">
-    <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer) + SOUND_GAP, 0) }}>
-      <div className="tl-heads">{head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row), rowHeight(layer)))}</div>
+    <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer, collapsedLayers) + SOUND_GAP, 0) }}>
+      <div className="tl-heads">
+        <button className="tl-add-layer" aria-label="Add a layer" title="Add a layer" aria-expanded={addingLayer} onClick={() => setAddingLayer((open) => !open)}>{addingLayer ? <X size={14}/> : <Plus size={14}/>}<span>Layer</span></button>
+        {addingLayer && <div className="tl-add-menu" role="menu">
+          <button role="menuitem" onClick={() => addTrack('video')}><Video size={14}/>Video</button>
+          <button role="menuitem" onClick={() => addTrack('text')}><Type size={14}/>Title</button>
+          <button role="menuitem" onClick={() => addTrack('audio')}><Music size={14}/>Sound</button>
+        </div>}
+        {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef}>
         <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
@@ -416,18 +440,21 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   </div>;
 }
 
-function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, onMove, onRename }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void }) {
+function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, onCollapse, onToggle, onMove, onRename, onDelete }: { layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; collapsed: boolean; onCollapse: () => void; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void; onDelete: () => void }) {
   const fallback = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
   const name = layer.name || fallback;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const commit = () => { setEditing(false); const trimmed = draft.trim(); if (trimmed !== (layer.name ?? '')) onRename(trimmed); };
-  return <div className={`tl-head ${height <= SOUND_HEIGHT ? 'tl-head-compact' : ''}`} style={{ top, height }} role="group" aria-label={`${name} layer`}>
-    {editing
-      ? <input className="tl-rename" autoFocus value={draft} maxLength={80} aria-label="Layer name" onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setEditing(false); }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}/>
-      : <span title="Double-click to rename this layer" onDoubleClick={(event) => { event.stopPropagation(); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
+  return <div className={`tl-head ${height <= SOUND_HEIGHT ? 'tl-head-compact' : ''} ${collapsed ? 'tl-head-collapsed' : ''}`} style={{ top, height }} role="group" aria-label={`${name} layer`}>
+    <div className="tl-layer-title">
+      {!isMain && <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${name} layer`} title={collapsed ? 'Expand layer' : 'Collapse layer'} onClick={onCollapse}>{collapsed ? <ChevronDown size={13}/> : <ChevronUp size={13}/>}</button>}
+      {editing
+        ? <input className="tl-rename" autoFocus value={draft} maxLength={80} aria-label="Layer name" onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setEditing(false); }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}/>
+        : <span title="Double-click to rename this layer" onDoubleClick={(event) => { event.stopPropagation(); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
+    </div>
     {layer.kind === 'audio' && <input className="tl-layer-volume" type="range" min={0} max={1} step={0.05} value={layer.volume ?? 1} aria-label={`${name} volume`} title="This track's volume" onChange={(event) => onToggle({ volume: Number(event.target.value) })} onPointerDown={(event) => event.stopPropagation()}/>}
-    <div>
+    <div className="tl-layer-actions">
       {position >= 0 && <>
         <button aria-label={`Bring ${name} forward`} title="Bring forward" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ChevronUp size={13}/></button>
         <button aria-label={`Send ${name} back`} title="Send back" disabled={position === 0} onClick={() => onMove('back')}><ChevronDown size={13}/></button>
@@ -435,6 +462,7 @@ function LayerHead({ layer, top, height, isMain, position, overlays, onToggle, o
       {layer.kind !== 'audio' && <button className={layer.hidden ? 'on' : ''} aria-pressed={Boolean(layer.hidden)} aria-label={`Hide ${name}`} title={layer.hidden ? 'Show this layer' : 'Hide this layer'} onClick={() => onToggle({ hidden: !layer.hidden })}>{layer.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</button>}
       {(layer.kind === 'video' || layer.kind === 'audio') && <button className={layer.muted ? 'on' : ''} aria-pressed={Boolean(layer.muted)} aria-label={`Mute ${name}`} title={layer.muted ? 'Turn sound on' : 'Mute this layer'} onClick={() => onToggle({ muted: !layer.muted })}>{layer.muted ? <VolumeX size={13}/> : <Volume2 size={13}/>}</button>}
       <button className={layer.locked ? 'on' : ''} aria-pressed={Boolean(layer.locked)} aria-label={`Lock ${name}`} title={layer.locked ? 'Unlock this layer' : 'Lock this layer'} onClick={() => onToggle({ locked: !layer.locked })}>{layer.locked ? <Lock size={13}/> : <LockOpen size={13}/>}</button>
+      {!isMain && <button className="tl-delete-layer" aria-label={`Delete ${name} layer`} title="Delete this entire layer" onClick={onDelete}><Trash2 size={13}/></button>}
     </div>
   </div>;
 }

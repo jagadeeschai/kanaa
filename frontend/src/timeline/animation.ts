@@ -38,8 +38,9 @@ export function lookAt(preset: Preset, progress: number): Look {
   else if (preset === 'magic-form') { look.scale = 0.68 + 0.32 * e; look.blur = 0.035 * (1 - e); look.dy = 0.05 * Math.sin(16 * p) * (1 - p); }
   else if (preset === 'magic-vanish') { look.scale = 1.38 - 0.38 * e; look.blur = 0.04 * (1 - e); }
   else if (preset === 'particle-form') { look.scale = 0.9 + 0.1 * e; look.blur = 0.018 * (1 - e); }
-  // Cinema reveals, drawn through title3d.ts: `tilt` leans the title back (degrees), in perspective.
-  else if (preset === 'rise-behind') { look.dy = 0.45 * (1 - e); look.tilt = 70 * (1 - e); }
+  // Cinema reveals, drawn through title3d.ts. Rise descends gently, then settles onto a floor plane instead of
+  // standing upright; the smooth cubic has zero velocity at the landing, avoiding the old snap/flicker.
+  else if (preset === 'rise-behind') { look.dy = -0.32 * (1 - e); look.tilt = 68 * e; }
   else if (preset === 'push-through') { look.scale = 0.18 + 0.82 * e + 0.08 * Math.sin(Math.PI * p) * e; look.dy = -0.08 * (1 - e); look.tilt = 75 * (1 - e) ** 2; }
   return look;
 }

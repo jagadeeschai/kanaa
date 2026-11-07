@@ -23,7 +23,7 @@ export const TAMIL_FONTS: FontChoice[] = [
 
 /** Designed to read well in Tamil and English, on phones. Sizes are at a 720-wide frame and grow with the video. */
 export const TEMPLATES: Template[] = [
-  { id: 'cinematic', label: 'Cinematic', look: { font: 'Didot', tamil_font: 'Arima', text: 'கனவு', subtitle: 'A FILM BY YOU', subtitle_size: 30, subtitle_spacing: 9, subtitle_color: '#d9c7a0', style: 'shadow', position: 'center', color: '#ffffff', size: 96, enter: fade(1), exit: fade(0.6) } },
+  { id: 'cinematic', label: 'Cinematic', look: { font: 'Futura', tamil_font: 'Arima', text: 'கனவு', subtitle: 'A FILM BY YOU', subtitle_size: 30, subtitle_spacing: 9, subtitle_color: '#d9c7a0', style: 'outline', position: 'center', color: '#ffffff', size: 88, spacing: 14, enter: fade(1), exit: fade(0.6) } },
   { id: 'name-card', label: 'Name card', look: { font: 'Gill Sans', tamil_font: 'Hind Madurai', text: 'Your name', subtitle: 'What you do', style: 'band', band_color: '#7c3aed', align: 'left', position: 'bottom', color: '#ffffff', size: 44, enter: { preset: 'slide-right', duration: 0.5 }, exit: fade(0.3) } },
   { id: 'festival', label: 'Festival', look: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'Happy Pongal', subtitle: 'இனிய பொங்கல் வாழ்த்துகள்', subtitle_size: 36, subtitle_color: '#ffffff', style: 'outline', position: 'center', color: '#ffd400', size: 60, enter: { preset: 'pop', duration: 0.6 }, exit: fade(0.4) } },
   { id: 'chapter', label: 'Chapter', look: { font: 'Futura', tamil_font: 'Catamaran', text: 'The journey', subtitle: 'PART 1', subtitle_above: true, subtitle_spacing: 8, subtitle_color: '#f5a623', style: 'outline', position: 'center', color: '#ffffff', size: 80, enter: { preset: 'slide-up', duration: 0.7 }, exit: fade(0.4) } },

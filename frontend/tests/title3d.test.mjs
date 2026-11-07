@@ -21,6 +21,13 @@ test('poses through the cinema presets match the export', () => {
     const text = { id: 't', start: 0, length: 3, text: 'x', style: 'band', position: 'bottom', color: '#ffffff', size: 44, enter: { preset: item.preset, duration: 1.2 }, exit: { preset: 'fade', duration: 0.5 },
       transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, tilt_x: 10, keyframes: { tilt_y: [{ t: 0, v: 30, ease: 'linear' }, { t: 2, v: -10, ease: 'linear' }] } } };
     const { pose, look } = poseAt(text, item.local);
+    if (item.preset === 'rise-behind') {
+      const p = Math.min(1, Math.max(0, item.local / 1.2));
+      const e = 1 - (1 - p) ** 3;
+      close(pose.cy, 0.5 - 0.32 * (1 - e), 1e-9, `floor settle at ${item.local}: cy`);
+      close(pose.tilt_x, 10 + 68 * e, 1e-9, `floor settle at ${item.local}: tilt`);
+      continue;
+    }
     for (const key of Object.keys(item.pose)) close(pose[key], item.pose[key], 1e-9, `${item.preset} at ${item.local}: ${key}`);
     close(look.opacity, item.opacity, 1e-9, `${item.preset} at ${item.local}: opacity`);
   }

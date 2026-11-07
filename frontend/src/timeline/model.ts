@@ -24,7 +24,7 @@ export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
-export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -33,11 +33,11 @@ export type Sound = { id: string; asset_id?: string; media_id?: number; start: n
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
 /** Extruded letters (sides in `color`), and a title locked to the scene of a clip. Match timeline_schema.py. */
-export type TitleDepth = { amount: number; color: string; light: number };
+export type TitleDepth = { amount: number; color: string; light: number; angle?: number };
 export type TitlePin = { clip_id: string; at: number };
-export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.5, color: '#6b4a1f', light: 0.55 };
+export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f', light: 0.62, angle: 24.44 };
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null;
-  subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
+  subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
@@ -363,27 +363,36 @@ export function putBehindObject(timeline: Timeline, textId: string, ids: [string
 export function groundRiseBehind(timeline: Timeline, textId: string, what: 'person' | 'object', ids: [string, string], duration = 1.1): Timeline {
   const found = findText(timeline, textId);
   if (!found) return timeline;
-  const animated = updateText(timeline, textId, { enter: { preset: 'ground-rise', duration }, exit: found.text.exit ?? { preset: 'fade', duration: 0.5 } });
-  const refreshed = findText(animated, textId)!;
-  const nextLayer = animated.layers[animated.layers.indexOf(refreshed.layer) + 1];
+  const nextLayer = timeline.layers[timeline.layers.indexOf(found.layer) + 1];
   const expected = what === 'person' ? 'Person' : 'Object';
-  if (nextLayer?.kind === 'video' && nextLayer.name === expected) {
+  let behind = timeline;
+  // A cinematic reveal owns one foreground layer. Switching People/Object changes that layer instead of silently
+  // stacking another full copy of the clip above it.
+  if (nextLayer?.kind === 'video' && nextLayer.items.length > 0 && (nextLayer.name === 'Person' || nextLayer.name === 'Object')) {
     const changes: Partial<Clip> = what === 'person'
       ? { cutout: 'remove', cutout_pick: null }
       : { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } };
-    return { ...animated, layers: animated.layers.map((layer) => layer !== nextLayer ? layer : { ...layer, items: layer.items.map((clip) => ({
+    behind = { ...timeline, layers: timeline.layers.map((layer) => layer !== nextLayer ? layer : { ...layer, name: expected, items: layer.items.map((clip) => ({
       ...clip,
       ...changes,
+      shape_mask: null,
       enabled: true,
       bypass: clip.bypass?.some((effect) => effect !== 'background') ? clip.bypass.filter((effect) => effect !== 'background') : null,
     })) }) };
+  } else {
+    behind = (what === 'person' ? putBehindPerson : putBehindObject)(timeline, textId, ids);
+    // Do not leave a half-configured animation behind when no main clip is under the title or the layer limit is hit.
+    if (behind === timeline) return timeline;
   }
-  return (what === 'person' ? putBehindPerson : putBehindObject)(animated, textId, ids);
+  // Older interrupted setups could leave empty Person/Object tracks behind. They cannot draw anything and previously
+  // fooled the next click into thinking the reveal was ready, so discard them while repairing the reveal.
+  behind = { ...behind, layers: behind.layers.filter((layer) => !(layer.kind === 'video' && layer.items.length === 0 && (layer.name === 'Person' || layer.name === 'Object'))) };
+  return updateText(behind, textId, { enter: { preset: 'ground-rise', duration }, exit: found.text.exit ?? { preset: 'fade', duration: 0.5 } });
 }
 
 export type CinemaReveal = 'rise' | 'pass' | 'push';
 export const CINEMA_REVEALS: { id: CinemaReveal; label: string; tamil: string; about: string }[] = [
-  { id: 'rise', label: 'Rise from behind', tamil: 'பின்னிருந்து எழு', about: 'Rises upright from behind them, leaning back as it comes.' },
+  { id: 'rise', label: 'Settle on floor', tamil: 'தரையில் அமரும்', about: 'Descends smoothly and settles in perspective, as if written on the floor.' },
   { id: 'pass', label: 'Uncovered as they pass', tamil: 'கடந்ததும் தெரியும்', about: 'Stands in the scene; they walk in front and uncover it.' },
   { id: 'push', label: 'Push through', tamil: 'முன்னே பாய்', about: 'Flies in from far away in perspective and settles.' },
 ];
@@ -396,18 +405,62 @@ export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaR
   const behind = groundRiseBehind(timeline, textId, what, ids);
   if (behind === timeline) return timeline;
   const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter?.preset === 'ground-rise' ? null : before.text.enter ?? null;
-  const depth = reveal === 'pass' ? before.text.depth ?? null : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH };
+  const depth = reveal === 'pass' ? before.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
+  return updateText(behind, textId, { enter, depth });
+}
+
+/** Keeps the cinematic pose but removes its generated foreground copy, so the whole title draws over people. */
+export function cinemaRevealFront(timeline: Timeline, textId: string, reveal: CinemaReveal): Timeline {
+  const found = findText(timeline, textId);
+  if (!found) return timeline;
+  const index = timeline.layers.indexOf(found.layer);
+  let end = index + 1;
+  while (end < timeline.layers.length) {
+    const layer = timeline.layers[end];
+    if (layer.kind !== 'video' || !['Person', 'Object', 'In front'].includes(layer.name ?? '')) break;
+    end += 1;
+  }
+  const layers = [...timeline.layers.slice(0, index + 1), ...timeline.layers.slice(end)];
+  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : found.text.enter ?? null;
+  const depth = reveal === 'pass' ? found.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : found.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
+  return updateText({ ...timeline, layers }, textId, { enter, depth });
+}
+
+/** Turns the guided cinematic setup off completely and restores an ordinary flat title. */
+export function removeCinemaReveal(timeline: Timeline, textId: string): Timeline {
+  const found = findText(timeline, textId);
+  if (!found) return timeline;
+  const index = timeline.layers.indexOf(found.layer);
+  let end = index + 1;
+  while (end < timeline.layers.length) {
+    const layer = timeline.layers[end];
+    if (layer.kind !== 'video' || !['Person', 'Object', 'In front'].includes(layer.name ?? '')) break;
+    end += 1;
+  }
+  const layers = [...timeline.layers.slice(0, index + 1), ...timeline.layers.slice(end)];
+  const cinematic = found.text.enter && ['ground-rise', 'rise-behind', 'push-through'].includes(found.text.enter.preset);
+  return updateText({ ...timeline, layers }, textId, { enter: cinematic ? null : found.text.enter ?? null, depth: null, pin: null });
+}
+
+/** The same guided cinematic reveal with a skyline, ground line or hand-drawn still object in front. */
+export function cinemaRevealShape(timeline: Timeline, textId: string, reveal: CinemaReveal, mask: ShapeMask, ids: [string, string]): Timeline {
+  const before = findText(timeline, textId);
+  if (!before) return timeline;
+  const behind = putBehindShape(timeline, textId, mask, ids);
+  if (behind === timeline) return timeline;
+  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter ?? null;
+  const depth = reveal === 'pass' ? before.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
   return updateText(behind, textId, { enter, depth });
 }
 
 /** The active ground-rise foreground and the clean space it reserves around its silhouette. */
-export function groundRiseGap(timeline: Timeline, textId: string): 0 | 1 | 2 | 3 {
+export function groundRiseGap(timeline: Timeline, textId: string): 0 | 1 | 2 | 3 | 4 | 5 {
   const found = findText(timeline, textId);
   const layer = found && timeline.layers[timeline.layers.indexOf(found.layer) + 1];
   return layer?.kind === 'video' && (layer.name === 'Person' || layer.name === 'Object') ? layer.items[0]?.depth_gap ?? 0 : 0;
 }
 
-export function setGroundRiseGap(timeline: Timeline, textId: string, depth_gap: 0 | 1 | 2 | 3): Timeline {
+export function setGroundRiseGap(timeline: Timeline, textId: string, depth_gap: 0 | 1 | 2 | 3 | 4 | 5): Timeline {
   const found = findText(timeline, textId);
   const layer = found && timeline.layers[timeline.layers.indexOf(found.layer) + 1];
   if (!layer || layer.kind !== 'video' || (layer.name !== 'Person' && layer.name !== 'Object')) return timeline;
@@ -444,9 +497,18 @@ export function putBehindShape(timeline: Timeline, textId: string, mask: ShapeMa
 function putInFront(timeline: Timeline, textId: string, changes: Partial<Clip>, ids: [string, string], name: string): Timeline {
   const found = findText(timeline, textId);
   const clip = found && mainLayer(timeline).items.find((item) => found.text.start >= item.start && found.text.start < item.start + clipLength(item));
-  if (!found || !clip || timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) return timeline;
+  if (!found || !clip) return timeline;
   const copy: Clip = { ...clip, id: ids[0], ...changes, muted: true, clean_voice: false, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
   const after = timeline.layers.indexOf(found.layer) + 1;
+  const existing = timeline.layers[after];
+  if (existing?.kind === 'video' && ['Person', 'Object', 'In front'].includes(existing.name ?? '')) {
+    return { ...timeline, layers: timeline.layers.map((layer) => layer !== existing ? layer : {
+      ...existing,
+      name,
+      items: [{ ...copy, id: existing.items[0]?.id ?? copy.id }],
+    }) };
+  }
+  if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) return timeline;
   return { ...timeline, layers: [...timeline.layers.slice(0, after), { id: ids[1], kind: 'video', name, items: [copy] }, ...timeline.layers.slice(after)] };
 }
 
@@ -580,6 +642,25 @@ export type LayerChanges = { hidden?: boolean; locked?: boolean; muted?: boolean
 
 export function updateLayer(timeline: Timeline, id: string, changes: LayerChanges): Timeline {
   return { ...timeline, layers: timeline.layers.map((layer) => (layer.id === id ? { ...layer, ...changes } as Timeline['layers'][number] : layer)) };
+}
+
+export type AddableLayerKind = 'video' | 'text' | 'audio';
+
+/** Adds an empty editor track. Media added later uses the first compatible track with room. */
+export function addLayer(timeline: Timeline, kind: AddableLayerKind, id: string): Timeline {
+  if (kind === 'video') {
+    if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) return timeline;
+    const after = timeline.layers.reduce((last, layer, index) => layer.kind === 'video' ? index : last, 0) + 1;
+    const layer: VideoLayer = { id, kind: 'video', name: `Overlay ${overlayLayers(timeline).length + 1}`, items: [] };
+    return { ...timeline, layers: [...timeline.layers.slice(0, after), layer, ...timeline.layers.slice(after)] };
+  }
+  if (kind === 'text') return { ...timeline, layers: [...timeline.layers, { id, kind: 'text', name: `Text ${textLayers(timeline).length + 1}`, items: [] }] };
+  return { ...timeline, layers: [...timeline.layers, { id, kind: 'audio', name: `Sound ${audioLayers(timeline).length + 1}`, items: [] }] };
+}
+
+/** Removes a whole track and everything on it. The magnetic Main track is the project's backbone and stays. */
+export function removeLayer(timeline: Timeline, id: string): Timeline {
+  return id === mainLayer(timeline).id ? timeline : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== id) };
 }
 
 export const layerOf = (timeline: Timeline, itemId: string | null) => timeline.layers.find((layer) => (layer.items as { id: string }[]).some((item) => item.id === itemId));

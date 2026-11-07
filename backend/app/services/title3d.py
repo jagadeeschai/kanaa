@@ -18,7 +18,9 @@ MAX_LAYERS = 15  # Depth layers at full depth, the front one included.
 DEPTH_SPAN = 0.12  # How far the back layer sits behind the front, as a share of the frame height, at full depth.
 # The direction the letters are extruded in, in the title's own space: back, and a little down and right, so the
 # sides show as they do on cinema titles. It turns with the tilt, like the sides of a solid object. Mirrored in title3d.ts.
-EXTRUDE = (0.25, 0.55, 1.0)
+EXTRUDE_Z = 1.0
+EXTRUDE_XY = math.hypot(0.25, 0.55)  # Fixed screen-plane slant magnitude; its direction is `depth_angle`.
+DEFAULT_DEPTH_ANGLE = math.degrees(math.atan2(0.25, 0.55))  # The old fixed slant, as an angle from straight-down towards the right.
 ALPHA_EDGE = 8  # A pixel with more alpha than this (of 255) is part of the title, for finding its box.
 
 
@@ -57,7 +59,7 @@ def layer_shade(depth, share: float) -> float:
 
 
 def corners(pose: dict[str, float], box: tuple[float, float, float, float], size: tuple[int, int], depth_share: float = 0.0,
-            depth_amount: float = 0.0, pin=None) -> list[tuple[float, float]]:
+            depth_amount: float = 0.0, pin=None, depth_angle: float = DEFAULT_DEPTH_ANGLE) -> list[tuple[float, float]]:
     """Where the corners of `box` (x0, y0, x1, y1 in the title picture's pixels) land on the frame.
 
     pose: cx, cy (frame shares), size (scale), turn (degrees), tilt_x and tilt_y (degrees). pin: a 3x3 matrix taking the
@@ -81,7 +83,9 @@ def corners(pose: dict[str, float], box: tuple[float, float, float, float], size
     out = []
     for px, py in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
         fx, fy = placed(px, py)
-        lx, ly, lz = fx - qx + EXTRUDE[0] * push, fy - qy + EXTRUDE[1] * push, EXTRUDE[2] * push
+        slant = math.radians(depth_angle)
+        ex, ey = EXTRUDE_XY * math.sin(slant), EXTRUDE_XY * math.cos(slant)
+        lx, ly, lz = fx - qx + ex * push, fy - qy + ey * push, EXTRUDE_Z * push
         # Turn first (right side away), then lean back (top away).
         x, z = lx * cb - lz * sb, lx * sb + lz * cb
         y, z = ly * ca + z * sa, -ly * sa + z * ca

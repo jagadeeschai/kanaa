@@ -570,7 +570,7 @@ def write_title(path: Path, item: Text, fmt: Format) -> None:
             pieces.append(rf'{{\fn{family}\fs{size * scale}}}{ass_text(run)}')
         return head + ''.join(pieces)
 
-    lines = [line(item.text, title_size, item.color)]
+    lines = [line(item.text, title_size, item.color, item.spacing)]
     if item.subtitle:
         sub = line(item.subtitle, sub_size, item.subtitle_color or item.color, item.subtitle_spacing)
         lines = [sub, *lines] if item.subtitle_above else [*lines, sub]
@@ -923,8 +923,10 @@ class Builder:
         facts = self.media(clip.media_id)
         if facts.media_type != 'video':
             return None
-        from app.services import scene_track_service
-        track = scene_track_service.ensure(scene_track_source(facts), (facts.width or 1920, facts.height or 1080), start, end, at)
+        from app.services import cutout_service, scene_track_service
+        person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
+        track = scene_track_service.ensure(scene_track_source(facts), (facts.width or 1920, facts.height or 1080), start, end, at,
+                                           person_mask=person_mask if person_mask.is_file() else None)
         return lambda seconds: title3d.scene_matrix(track, clip, facts, self.fmt, seconds, text.pin.at)
 
     def add_text_layer(self, layer, position: int, base: str) -> str:

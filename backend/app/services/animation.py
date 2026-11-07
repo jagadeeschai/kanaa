@@ -45,9 +45,10 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look.update(scale=1.38 - .38 * e, blur=.04 * (1 - e))
     elif preset == 'particle-form':
         look.update(scale=.9 + .1 * e, blur=.018 * (1 - e))
-    # Cinema reveals, drawn through title3d: `tilt` leans the title back (degrees), in perspective.
+    # Cinema reveals, drawn through title3d. Rise descends gently and settles onto a floor plane; the cubic reaches
+    # zero velocity at the landing, avoiding a visible snap between the last animated frame and the resting title.
     elif preset == 'rise-behind':
-        look.update(dy=.45 * (1 - e), tilt=70 * (1 - e))
+        look.update(dy=-.32 * (1 - e), tilt=68 * e)
     elif preset == 'push-through':
         look.update(scale=.18 + .82 * e + .08 * math.sin(math.pi * p) * e, dy=-.08 * (1 - e), tilt=75 * (1 - e) ** 2)
     return look

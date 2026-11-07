@@ -84,7 +84,7 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     placed = []
     for index in range(len(shares) - 1, -1, -1):  # Back to front.
         try:
-            target = title3d.corners(pose, frame_box, size, shares[index], depth.amount if depth else 0, pin)
+            target = title3d.corners(pose, frame_box, size, shares[index], depth.amount if depth else 0, pin, depth.angle if depth else title3d.DEFAULT_DEPTH_ANGLE)
             placed.append((index, target, np.array(title3d.homography(source, target), np.float64) @ shift))
         except ValueError:
             continue

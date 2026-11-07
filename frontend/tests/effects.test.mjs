@@ -95,7 +95,7 @@ test('putting a title behind the person adds a silent cut-out copy just above th
 });
 
 test('ground rise works behind either people or objects without duplicating its foreground', async () => {
-  const { addText, groundRiseBehind, groundRiseGap, setGroundRiseGap, cutoutToken } = await import('../src/timeline/model.ts');
+  const { addText, cinemaRevealFront, removeCinemaReveal, groundRiseBehind, groundRiseGap, setGroundRiseGap, cutoutToken } = await import('../src/timeline/model.ts');
   let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
   timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Mission', style: 'outline', position: 'center', color: '#ffffff', size: 80 }, 'words');
   const people = groundRiseBehind(timeline, 't', 'person', ['p', 'people']);
@@ -111,6 +111,22 @@ test('ground rise works behind either people or objects without duplicating its 
   assert.equal(cutoutToken(spaced.layers[2].items[0]), 'remove.gap2');
   const object = groundRiseBehind(timeline, 't', 'object', ['o', 'object']);
   assert.deepEqual([object.layers[2].name, object.layers[2].items[0].cutout_pick.kind], ['Object', 'objects']);
+  const switched = groundRiseBehind(people, 't', 'object', ['unused-object', 'unused-object-layer']);
+  assert.equal(switched.layers.length, 3);
+  assert.deepEqual([switched.layers[2].name, switched.layers[2].items[0].cutout_pick.kind], ['Object', 'objects']);
+  const switchedBack = groundRiseBehind(switched, 't', 'person', ['unused-person', 'unused-person-layer']);
+  assert.equal(switchedBack.layers.length, 3);
+  assert.deepEqual([switchedBack.layers[2].name, switchedBack.layers[2].items[0].cutout_pick], ['Person', null]);
+  const emptyForeground = { ...timeline, layers: [...timeline.layers, { id: 'empty-person', kind: 'video', name: 'Person', items: [] }] };
+  const repaired = groundRiseBehind(emptyForeground, 't', 'person', ['repaired-person', 'unused-layer']);
+  assert.equal(repaired.layers.length, 3);
+  assert.deepEqual([repaired.layers[2].name, repaired.layers[2].items.length, repaired.layers[2].items[0].cutout], ['Person', 1, 'remove']);
+  const inFront = cinemaRevealFront(people, 't', 'rise');
+  assert.deepEqual(inFront.layers.map((layer) => layer.id), ['main', 'words']);
+  assert.deepEqual([inFront.layers[1].items[0].enter.preset, inFront.layers[1].items[0].depth.amount], ['rise-behind', 0.18]);
+  const ordinary = removeCinemaReveal(people, 't');
+  assert.deepEqual(ordinary.layers.map((layer) => layer.id), ['main', 'words']);
+  assert.deepEqual([ordinary.layers[1].items[0].enter, ordinary.layers[1].items[0].depth ?? null, ordinary.layers[1].items[0].pin ?? null], [null, null, null]);
 });
 
 test('a line along the mountains becomes everything below it, and the title goes behind it', async () => {
@@ -123,6 +139,17 @@ test('a line along the mountains becomes everything below it, and the title goes
   assert.deepEqual(behind.layers.map((layer) => layer.id), ['main', 'words', 'front']);
   const front = behind.layers[2].items[0];
   assert.deepEqual([front.shape_mask, front.muted, front.cutout ?? null], [mask, true, null]);
+});
+
+test('layers can be added by kind and deleted whole, while Main is protected', async () => {
+  const { addLayer, emptyTimeline, removeLayer } = await import('../src/timeline/model.ts');
+  const base = emptyTimeline(format);
+  const withVideo = addLayer(base, 'video', 'video-layer');
+  const withText = addLayer(withVideo, 'text', 'text-layer');
+  const withSound = addLayer(withText, 'audio', 'sound-layer');
+  assert.deepEqual(withSound.layers.map((layer) => [layer.id, layer.kind]), [['main', 'video'], ['video-layer', 'video'], ['text-layer', 'text'], ['sound-layer', 'audio']]);
+  assert.deepEqual(removeLayer(withSound, 'text-layer').layers.map((layer) => layer.id), ['main', 'video-layer', 'sound-layer']);
+  assert.equal(removeLayer(withSound, 'main'), withSound);
 });
 
 test('a new background takes the cut-out clip\'s place and fills the frame, and nothing after it moves', async () => {

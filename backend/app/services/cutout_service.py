@@ -27,19 +27,20 @@ from app.services.video_edit_service import BT709_OUTPUT_ARGS, HDR_TO_BT709, SD_
 
 logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'person_mask.swift'
-# Version 2 masks are steadied over time; older ones are left behind and made again.
-MASK = 'person-mask-2.mp4'
-SEE_THROUGH = 'person-cut-2.webm'
-PORTRAIT = 'portrait-2.mp4'
-PORTRAIT_PROXY = 'portrait-proxy-2.mp4'
-STEADY_RADIUS = 2  # Frames either side.
-FIRM_LOW, FIRM_HIGH = 48, 200  # Below is clear, above is solid, between is the soft edge.
+# Version 3 rejects Vision's low-confidence aura more firmly and uses a wider temporal median. Older prepared copies
+# remain untouched on disk but are no longer selected, so existing projects rebuild clean cut-outs automatically.
+MASK = 'person-mask-3.mp4'
+SEE_THROUGH = 'person-cut-3b.webm'  # 3b: constant-quality alpha; 3's starved 3M realtime encode flickered at edges.
+PORTRAIT = 'portrait-3.mp4'
+PORTRAIT_PROXY = 'portrait-proxy-3.mp4'
+STEADY_RADIUS = 3  # Frames either side: seven-frame median removes short edge flashes without following behind.
+FIRM_LOW, FIRM_HIGH = 92, 210  # Reject the broad grey aura; keep only a narrow soft edge around a confident person.
 MASK_SIDE = 1280  # The mask's long side. The export scales it to the full frame, softly.
 PREVIEW_SIDE = 720
 PORTRAIT_BLUR = 0.015  # Of the frame height: a strong portrait-mode look.
 BLUR_AMOUNTS = {'subtle': 0.007, 'medium': PORTRAIT_BLUR, 'strong': 0.03}  # Of the frame height.
-EDGE_SOFTNESS = 1.5  # Pixels of the mask's own blur, so edges don't shimmer.
-GAP_PIXELS = (0, 3, 7, 12)  # At the prepared mask size: none, small, medium, wide.
+EDGE_SOFTNESS = 0.8  # A narrow anti-aliased edge. Wider blur reads as a grey silhouette over titles.
+GAP_PIXELS = (0, 3, 7, 12, 20, 30)  # At the prepared mask size: none, small, medium, wide, extra, maximum.
 INSTALL_TOOLS = 'xcode-select --install'
 _build = threading.Lock()
 _active: dict[str, str] = {}
@@ -171,11 +172,11 @@ def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_canc
 
 def gap_filters(gap: int) -> str:
     """Grow a silhouette without scaling the person. Repeated 3x3 dilation gives a predictable pixel gap."""
-    return ''.join(',dilation=coordinates=255' for _ in range(GAP_PIXELS[max(0, min(3, gap))]))
+    return ''.join(',dilation=coordinates=255' for _ in range(GAP_PIXELS[max(0, min(5, gap))]))
 
 
 def gap_cut_path(source: Path, gap: int) -> Path:
-    return files(source)[SEE_THROUGH] if not gap else files(source)[SEE_THROUGH].with_name(f'person-cut-gap{gap}-2.webm')
+    return files(source)[SEE_THROUGH] if not gap else files(source)[SEE_THROUGH].with_name(f'person-cut-gap{gap}-3b.webm')
 
 
 def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None, gap: int = 0) -> None:
@@ -185,7 +186,7 @@ def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask:
     temporary = target.with_suffix('.tmp.webm')
     graph = f"[0:v]{colour(facts)},scale=-2:{PREVIEW_SIDE},fps=30,format=yuva420p[video];[1:v]format=gray{gap_filters(gap)}[shape];[shape][video]scale2ref[mask][scaled];[scaled][mask]alphamerge"
     result = run_cancellable([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(facts.path), '-i', str(mask), '-filter_complex', graph, '-an',
-                              '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-b:v', '3M', '-auto-alt-ref', '0', '-g', '15', str(temporary)], should_cancel)
+                              '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-crf', '20', '-b:v', '0', '-auto-alt-ref', '0', str(temporary)], should_cancel)
     if result.returncode:
         temporary.unlink(missing_ok=True)
         logger.error('See-through copy failed for %s: %s', facts.path, result.stderr[-800:])

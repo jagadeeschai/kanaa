@@ -250,7 +250,7 @@ class Clip(Strict):
     ramp: Optional[List[RampPoint]] = Field(default=None, max_length=20)  # Speed through the clip, without sound.
     cutout: Optional[Literal['remove', 'blur']] = None  # The person's background, removed or blurred.
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
-    depth_gap: Literal[0, 1, 2, 3] = 0  # Extra clear space around a foreground used to hide a title behind it.
+    depth_gap: Literal[0, 1, 2, 3, 4, 5] = 0  # Extra clear space around a foreground used to hide a title behind it.
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
     bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=22)  # Effects switched off, their settings kept.
@@ -279,6 +279,7 @@ class TitleDepth(Strict):
     amount: float = Field(default=0.5, ge=0, le=1)
     color: str = Field(default='#6b4a1f', pattern=r'^#[0-9a-fA-F]{6}$')  # The sides of the letters.
     light: float = Field(default=0.55, ge=0, le=1)  # How much the sides catch the light.
+    angle: float = Field(default=24.44, ge=-180, le=180)  # Extrusion direction: degrees from straight-down towards the right.
 
 
 class TitlePin(Strict):
@@ -307,6 +308,7 @@ class Text(Strict):
     subtitle_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
     subtitle_above: bool = False
     subtitle_spacing: int = Field(default=0, ge=0, le=30)  # Letter spacing, in points at 720 wide.
+    spacing: int = Field(default=0, ge=0, le=30)  # The title's own letter spacing, same units — the wide-tracked cinematic look.
     align: Literal['left', 'center', 'right'] = 'center'
     band_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # The box behind a band title.
     font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For English and other Latin lines.

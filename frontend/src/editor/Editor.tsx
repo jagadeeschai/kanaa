@@ -20,7 +20,7 @@ import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
-import { CINEMA_REVEALS, cinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
+import { CINEMA_REVEALS, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { snapshotFrame } from '../timeline/model';
 import { groundRiseBehind, groundRiseGap, setGroundRiseGap } from '../timeline/model';
@@ -100,6 +100,7 @@ const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
 const CAPTION_FETCHES = 3;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }, { id: 'ground-rise', label: 'Ground rise' }, { id: 'blast', label: 'Blast' }, { id: 'magic-form', label: 'Magic form' }, { id: 'magic-vanish', label: 'Magic vanish' }, { id: 'particle-form', label: 'Particle form' }];
+const SIMPLE_TITLE_PRESETS = PRESETS.filter((preset) => preset.id !== 'ground-rise');
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
 const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
@@ -129,7 +130,7 @@ type Box = [number, number, number, number];
 /** `drawnAt` and `from` are the item's own seconds. A blur box drawn fresh is first placed on the drawn box. */
 /** An item added at the playhead can start a hair after it, from rounding; the playhead still counts as on it. */
 const ON_ITEM = 0.05;
-type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
+type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; queued?: boolean; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
   /** Set while looking for a face under a blur box: where the box is in the source, and what to follow instead when no face is there. */
   faces?: { box: Box; at: number; own: Box; grow?: number } };
 const MIN_DRAWN_BOX = 0.015;
@@ -169,6 +170,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [preparedReady, setPreparedReady] = useState<Record<string, boolean>>({});
   const [cleanReady, setCleanReady] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
+  /** An informational banner: a fact about the project, not a failure — calm note style, not the red error. */
+  const [note, setNote] = useState('');
   const [safeArea, setSafeArea] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [addingMusic, setAddingMusic] = useState(false);
@@ -279,7 +282,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [captionWords, setCaptionWords] = useState(DEFAULT_CAPTION_OPTIONS.words);
   const [captionsWaiting, setCaptionsWaiting] = useState(false);
   const [pauseLength, setPauseLength] = useState(0.7);
-  const [shaping, setShaping] = useState<{ textId: string; mode: 'ground' | 'outline'; points: [number, number][] } | null>(null);
+  const [shaping, setShaping] = useState<{ textId: string; mode: 'ground' | 'outline'; points: [number, number][]; reveal?: CinemaReveal } | null>(null);
   const [removeFillers, setRemoveFillers] = useState(true);
   const [folder, setFolder] = useState<string | null>(null);
   const [filing, setFiling] = useState<Photo | null>(null);
@@ -328,12 +331,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const earlier = Object.keys(preparedReady).find((key) => preparedReady[key] && key.startsWith(prefix));
       if (earlier) return { url: preparedProxyUrl(id, want[0], want[1], want[2], earlier.slice(earlier.indexOf(':blur') + 1)), kind: 'video', ...size, duration: item.duration, reversed: want[1] };
     }
-    return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size, duration: item.duration };
+    return { url: ready[id] ? clipProxyUrl(id) : photoVideoUrl(id), kind: 'video', ...size, duration: item.duration,
+      pendingCutout: Boolean(clip?.cutout === 'remove' && want && !preparedReady[preparedKey(id, ...want)]) };
   }, [mediaById, ready, preparedReady]);
 
   const textImages = useRef(new Map<string, string | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
-  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, format.width, format.height]);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem) => {
     const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format));
     return found && found !== 'loading' ? found : undefined;
@@ -505,7 +509,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const check = async () => {
       for (const key of keys) {
         const [id, steady, backwards, echo, cutout] = key.split(':');
-        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1', echo, cutout)).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch (problem) { if (!stopped && cutout) setError((problem as Error).message); }
+        try { if ((await requestPrepared(Number(id), steady === '1', backwards === '1', echo, cutout)).status === 'ready' && !stopped) setPreparedReady((current) => ({ ...current, [key]: true })); } catch (problem) {
+          if (!stopped && cutout) {
+            const message = (problem as Error).message;
+            // A photo (or unknown cut-out) can never prepare: that is a fact about the clip, not a failure.
+            if (message.startsWith('Only videos can be steadied')) setNote('That title sits over a photo — cut-outs and behind-people need a video clip under them.');
+            else setError(message);
+          }
+        }
       }
       if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);
     };
@@ -966,7 +977,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const enough = shaping.mode === 'ground' ? shaping.points.length >= 2 : shaping.points.length >= 3;
     if (!enough) { setError(shaping.mode === 'ground' ? 'Click at least two points along the top of the ground.' : 'Click at least three points around the shape.'); return; }
     const mask: ShapeMask = { points: shaping.mode === 'ground' ? groundShape(shaping.points) : shaping.points, feather: SHAPE_FEATHER };
-    const next = putBehindShape(timeline, shaping.textId, mask, [newId(), newId()]);
+    const next = shaping.reveal
+      ? cinemaRevealShape(timeline, shaping.textId, shaping.reveal, mask, [newId(), newId()])
+      : putBehindShape(timeline, shaping.textId, mask, [newId(), newId()]);
     setShaping(null);
     if (next === timeline) setError('Put the title over a video clip or picture on the main track first.'); else change(next);
   };
@@ -1466,7 +1479,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         const status = await getJobStatus(followJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; track?: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean }; faces?: TrackPoint[][] };
         if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not follow that.'); setFollowJob(null); return; }
         if (followJob.faces && status.status === 'done') { setFollowJob(null); applyFaces(followJob, status.faces ?? []); return; }
-        if (status.status !== 'done' || !status.track) { setFollowJob({ ...followJob, progress: status.progress }); return; }
+        if (status.status !== 'done' || !status.track) { setFollowJob({ ...followJob, progress: status.progress, queued: status.status === 'queued' }); return; }
         setFollowJob(null);
         applyFollow(followJob, status.track);
       } catch (problem) { setError((problem as Error).message); setFollowJob(null); }
@@ -1712,6 +1725,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     </header>
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
     {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
+    {note && <div className="ed-note" role="status">{note}<button className="ed-icon small" aria-label="Dismiss" onClick={() => setNote('')}><X size={13}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
@@ -1913,7 +1927,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             : reframeJob ? <><span>Finding who to follow… {reframeJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${reframeJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(reframeJob.jobId); setReframeJob(null); }}>Cancel</button></>
             : sceneJob ? <><span>Finding scene changes… {sceneJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${sceneJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(sceneJob.jobId); setSceneJob(null); }}>Cancel</button></>
             : faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
-              : followJob ? <><span>Following… {followJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
+              : followJob ? <><span>{followJob.queued ? 'Waiting for the job ahead of it to finish…' : `Following… ${followJob.progress}%`}</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
               : <><span>{faceNote || followNote?.text}</span><button aria-label="Close" onClick={() => { setFaceNote(''); setFollowNote(null); }}>×</button></>}
           </div>}
           {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
@@ -1953,7 +1967,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [] }); }} shaping={Boolean(shaping)} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; const next = cinemaReveal(timeline!, selectedText.id, reveal, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} onGroundRise={(what) => { const ids: [string, string] = [newId(), newId()]; const next = groundRiseBehind(timeline!, selectedText.id, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `ground-rise-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, 1.1); } }} onBehind={(what) => { const ids: [string, string] = [newId(), newId()]; const next = (what === 'person' ? putBehindPerson : putBehindObject)(timeline!, selectedText.id, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next); setSelectedId(ids[0]); } }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(reveal, mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [], reveal }); }} cover={(() => { const index = timeline ? timeline.layers.findIndex((layer) => layer.kind === 'text' && (layer.items as TextItem[]).some((item) => item.id === selectedText.id)) : -1; const next = index >= 0 ? timeline!.layers[index + 1] : null; if (next?.kind === 'video') { if (next.name === 'Person') return 'people' as const; if (next.name === 'Object') return 'object' as const; if (next.name === 'In front') return 'drawn' as const; } return 'front' as const; })()} shapingMode={shaping && shaping.textId === selectedText.id ? shaping.mode : null} onCinemaClear={() => change(removeCinemaReveal(timeline!, selectedText.id), `cinema-clear-${selectedText.id}`)} onCinemaFront={(reveal) => { const next = cinemaRevealFront(timeline!, selectedText.id, reveal); change(next, `cinema-front-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); }} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; const next = cinemaReveal(timeline!, selectedText.id, reveal, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -2195,14 +2209,14 @@ function Chips<T extends string>({ label, options, value, onPick }: { label: str
   return <div className="ed-chips" role="group" aria-label={label}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{option.label}</button>)}</div>;
 }
 
-function AnimationPicker({ label, value, onChange, onShow }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void }) {
+function AnimationPicker({ label, value, onChange, onShow, presets = PRESETS }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void; presets?: { id: Preset; label: string }[] }) {
   const pick = (id: Preset | 'none') => {
     onChange(id === 'none' ? null : { preset: id, duration: value?.duration ?? 0.5 });
     if (id !== 'none') setTimeout(onShow, 60);
   };
   return <>
     <h3 className="ed-sub">{label}</h3>
-    <Chips label={label} options={[{ id: 'none' as const, label: 'None' }, ...PRESETS]} value={value?.preset ?? 'none'} onPick={pick}/>
+    <Chips label={label} options={[{ id: 'none' as const, label: 'None' }, ...presets]} value={value?.preset ?? 'none'} onPick={pick}/>
     {value && <ValueSlider label="Length" value={value.duration} min={0.1} max={3} step={0.1} defaultValue={0.5} unit="s" decimals={1} onChange={(duration, group) => onChange({ ...value, duration }, group)}/>}
   </>;
 }
@@ -2222,7 +2236,7 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
     <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
 }
 
-function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise, onCinema, pinning, onPin, onBehind, onBehindShape, shaping, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3; onGroundGap: (gap: 0 | 1 | 2 | 3) => void; onSaveStyle: () => void; onGroundRise: (what: 'person' | 'object') => void; onCinema: (reveal: CinemaReveal, what: 'person' | 'object') => void; pinning: number | null; onPin: (on: boolean) => void; onBehind: (what: 'person' | 'object') => void; onBehindShape: (mode: 'ground' | 'outline') => void; shaping: boolean; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: 'person' | 'object') => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
@@ -2237,7 +2251,8 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
     </Group>
     {text.subtitle && <Group title="Subtitle" tab="words" keywords="subtitle small line spacing">
       <ValueSlider label="Size" value={text.subtitle_size ?? Math.round(Math.max(20, text.size) * 0.55)} min={10} max={100} step={1} defaultValue={Math.round(Math.max(20, text.size) * 0.55)} onChange={(subtitle_size, group) => onChange({ subtitle_size: Math.round(subtitle_size) }, group)}/>
-      <ValueSlider label="Letter spacing" value={text.subtitle_spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ subtitle_spacing: Math.round(spacing) }, group)}/>
+      <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
+      <ValueSlider label="Subtitle letter spacing" value={text.subtitle_spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ subtitle_spacing: Math.round(spacing) }, group)}/>
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Subtitle colour" value={text.subtitle_color ?? text.color} onChange={(event) => onChange({ subtitle_color: event.target.value }, `subcolor-${text.id}`)}/></label>
       <Chips label="Subtitle place" options={[{ id: 'below' as const, label: 'Below the title' }, { id: 'above' as const, label: 'Above it' }]} value={text.subtitle_above ? 'above' : 'below'} onPick={(place) => onChange({ subtitle_above: place === 'above' })}/>
     </Group>}
@@ -2257,58 +2272,53 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onGroundRise
     <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
       <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
       <ValueSlider label="Turn" value={text.transform?.tilt_y ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_y, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_y } }, group)}/>
-      <ValueSlider label="Depth" value={text.depth?.amount ?? 0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>
       {text.depth && <More>
+        <ValueSlider label="Distance" value={text.depth.amount} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: { ...text.depth!, amount } }, group)}/>
         <label className="ed-color"><span>Sides</span><input type="color" aria-label="Colour of the letters' sides" value={text.depth.color} onChange={(event) => onChange({ depth: { ...text.depth!, color: event.target.value } }, `depth-colour-${text.id}`)}/></label>
         <ValueSlider label="Light on the sides" value={text.depth.light} min={0} max={1} step={0.01} defaultValue={DEFAULT_TITLE_DEPTH.light} unit="%" factor={100} onChange={(light, group) => onChange({ depth: { ...text.depth!, light } }, group)}/>
+        <Chips label="Direction" options={[{ id: '0', label: '↓ Down' }, { id: '24', label: '↘ Soft' }, { id: '45', label: '↘' }, { id: '90', label: '→ Right' }, { id: '135', label: '↗' }, { id: '180', label: '↑ Up' }, { id: '-135', label: '↖' }, { id: '-90', label: '← Left' }, { id: '-45', label: '↙' }]} value={String(Math.round(text.depth.angle ?? DEFAULT_TITLE_DEPTH.angle ?? 24))} onPick={(id) => onChange({ depth: { ...text.depth!, angle: Number(id) } }, `depth-angle-${text.id}`)}/>
       </More>}
+      {text.depth ? null : <ValueSlider label="Depth" value={0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>}
     </Group>
-    <Group title="Animation" tab="motion" startOpen changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="How the title appears and leaves." help="animations-and-moves">
-      <AnimationPicker label="Enter" value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
-      <AnimationPicker label="Exit" value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
+    <Group title="Simple animation" tab="motion" changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="A quick entrance or exit without scene depth." help="animations-and-moves">
+      <AnimationPicker label="Enter" presets={SIMPLE_TITLE_PRESETS} value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
+      <AnimationPicker label="Exit" presets={SIMPLE_TITLE_PRESETS} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
     </Group>
-    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth" tip="A film-style title: behind someone or something, then revealed. Pick how, then who stays in front." help="cinema-titles">
-      <CinemaPicker onPick={onCinema}/>
+    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline" tip="Choose one reveal, then choose what passes in front of the title." help="cinema-titles">
+      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
+      {(cover === 'people' || cover === 'object') && <>
+        <Chips label="Space around people or objects" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }, { id: '4', label: 'Extra wide' }, { id: '5', label: 'Maximum' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3 | 4 | 5)}/>
+        {text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through' ? <ValueSlider label="Enter time" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/> : null}
+      </>}
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}</label>
-      <p className="ed-group-tip">Lock to the scene keeps the title in its place in the world while the camera moves. Best on shots with texture: streets, walls with detail, trees. Plain sky or a moving crowd is hard to follow.</p>
-    </Group>
-    <Group title="Ground rise behind…" tab="motion" startOpen keywords="ground rise people object depth walk past title" tip="The title rises into the scene while something passes in front." help="title-behind">
-      <div className="ed-add-grid">
-        <button className="ed-button" onClick={() => onGroundRise('person')} title="The title rises from the ground and people pass in front of it."><Users size={14}/>People</button>
-        <button className="ed-button" onClick={() => onGroundRise('object')} title="The title rises from the ground and a chosen object passes in front of it."><Car size={14}/>An object</button>
-      </div>
-      <Chips label="Edge clearance" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3)}/>
-      <ValueSlider label="Enter time" value={text.enter?.preset === 'ground-rise' ? text.enter.duration : 1.1} min={0.2} max={3} step={0.1} defaultValue={1.1} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { preset: 'ground-rise', duration } }, group ?? `ground-enter-${text.id}`)}/>
-      <ValueSlider label="Exit time" value={text.exit?.duration ?? 0.5} min={0.2} max={3} step={0.1} defaultValue={0.5} unit="s" decimals={1} onChange={(duration, group) => onChange({ exit: { preset: text.exit?.preset ?? 'fade', duration } }, group ?? `ground-exit-${text.id}`)}/>
-      <p className="ed-group-tip">Place the title at the distance you want, then track the person or object below. The title keeps that distance as the subject moves.</p>
+      <p className="ed-group-tip">Lock to scene follows the camera. To keep a fixed distance from a moving person or object, place the title first and use Track subject below.</p>
       {follow}
     </Group>
-    <Group title="Other depth effects" tab="motion" keywords="behind depth mountain person in front object car skyline" tip="Keep people, cars or scenery in front of a title without the ground-rise animation." help="title-behind">
-    <div className="ed-add-grid">
-      <button className="ed-button" onClick={() => onBehind('person')} title="People in the video stay in front of this title. With several, choose who."><Users size={14}/>People</button>
-      <button className="ed-button" onClick={() => onBehind('object')} title="Found automatically: a car, a bus, an animal. Choose which stay in front."><Car size={14}/>An object</button>
-      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('ground')} title="Click along the top of a mountain, hill, skyline or the ground. Everything below stays in front."><Mountain size={14}/>Skyline / ground</button>
-      <button className={`ed-button ${shaping ? 'on' : ''}`} onClick={() => onBehindShape('outline')} title="Draw around a building, tree or anything still. It stays in front of the title."><PenTool size={14}/>Draw around it</button>
-    </div>
-    <p className="ed-group-tip">Faces and objects are followed as they move; a drawn shape stays still (best on a tripod).</p>
-    </Group>
-    <Group title="Moves" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
+    <Group title="Advanced motion" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-    {text.enter?.preset !== 'ground-rise' && <Group title="Follow movement" tab="motion" startOpen keywords="track follow stick moving person" tip="Draw a box around something and the title follows it." help="follow-movement">{follow}</Group>}
   </Panel>;
 }
 
 /** The three cinema reveals, then who stays in front: one click makes the whole reveal. */
-function CinemaPicker({ onPick }: { onPick: (reveal: CinemaReveal, what: 'person' | 'object') => void }) {
-  const [reveal, setReveal] = useState<CinemaReveal>('rise');
+type TitleCover = 'front' | 'people' | 'object' | 'drawn' | null;
+function CinemaPicker({ initial, cover, shapingMode, onClear, onFront, onPick, onShape }: { initial: CinemaReveal | 'none'; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; onClear: () => void; onFront: (reveal: CinemaReveal) => void; onPick: (reveal: CinemaReveal, what: 'person' | 'object') => void; onShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void }) {
+  const [reveal, setReveal] = useState<CinemaReveal | 'none'>(initial);
+  useEffect(() => { setReveal(initial); }, [initial]);
+  const choose = (next: CinemaReveal | 'none') => { setReveal(next); if (next === 'none') onClear(); };
+  const chosen = CINEMA_REVEALS.find((item) => item.id === reveal);
   return <>
-    <Chips label="Reveal" options={CINEMA_REVEALS.map((item) => ({ id: item.id, label: item.label }))} value={reveal} onPick={setReveal}/>
-    <p className="ed-group-tip">{CINEMA_REVEALS.find((item) => item.id === reveal)!.about} <span lang="ta">{CINEMA_REVEALS.find((item) => item.id === reveal)!.tamil}</span></p>
-    <div className="ed-add-grid">
-      <button className="ed-button" onClick={() => onPick(reveal, 'person')} title="People stay in front of the title."><Users size={14}/>Behind people</button>
-      <button className="ed-button" onClick={() => onPick(reveal, 'object')} title="A car, a bus, an animal stays in front of the title."><Car size={14}/>Behind an object</button>
-    </div>
+    <Chips label="1 · Reveal" options={[{ id: 'none' as const, label: 'None' }, ...CINEMA_REVEALS.map((item) => ({ id: item.id, label: item.label }))]} value={reveal} onPick={choose}/>
+    {reveal === 'none' ? <p className="ed-group-tip">Off — the title stays flat and uses only Simple animation.</p> : <>
+      <p className="ed-group-tip">{chosen!.about} <span lang="ta">{chosen!.tamil}</span></p>
+      <h3 className="ed-sub">2 · Who covers the title?</h3>
+      <Chips label="Who covers the title" options={[{ id: 'front', label: 'Nothing — title in front' }, { id: 'people', label: 'People' }, { id: 'object', label: 'An object' }]} value={cover === 'drawn' ? '' : cover ?? ''} onPick={(id) => (id === 'front' ? onFront(reveal) : onPick(reveal, id === 'people' ? 'person' : 'object'))}/>
+      <div className="ed-pair">
+        <button className={`ed-button ${shapingMode === 'ground' ? 'on' : ''}`} onClick={() => onShape(reveal, 'ground')} title="Click the top edge of the ground, a mountain or a skyline"><Mountain size={14}/>Draw skyline</button>
+        <button className={`ed-button ${shapingMode === 'outline' ? 'on' : ''}`} onClick={() => onShape(reveal, 'outline')} title="Click around anything still that stays in front"><PenTool size={14}/>Draw shape</button>
+      </div>
+      <p className="ed-tip">Drawing suits still covers — a hill, wall or parked car. Moving people are found for you.</p>
+    </>}
   </>;
 }
 
@@ -2612,7 +2622,7 @@ function RampCurve({ ramp, at }: { ramp: RampPoint[]; at: number }) {
 
 function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onSize, onStart, onDraw, onContinue, onCancel, onStop }: { blur: boolean; own: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
   onSize: (on: boolean) => void; onStart: () => void; onDraw: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
-  if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">Following… {job.progress}%</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
+  if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">{job.queued ? 'Waiting for the job ahead of it to finish…' : `Following… ${job.progress}%`}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
   const what = blur ? 'the blur' : 'it';
   return <>
     <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : own ? `Put ${what} over what should be followed, a face or a number plate, then click Follow. Kanaa keeps ${what} on it as it moves.` : 'Place the title where it should sit, then click Follow and drag a box around the person or thing it should move with.'}</p>

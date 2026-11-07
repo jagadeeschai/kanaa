@@ -10,7 +10,9 @@ import type { TextItem, TitleDepth } from './model.ts';
 export const FOV = 40;
 export const MAX_LAYERS = 15;
 export const DEPTH_SPAN = 0.12;
-export const EXTRUDE: [number, number, number] = [0.25, 0.55, 1];
+export const EXTRUDE_Z = 1;
+export const EXTRUDE_XY = Math.hypot(0.25, 0.55);  // The fixed screen-plane slant magnitude; its direction is `angle`.
+export const DEFAULT_DEPTH_ANGLE = (Math.atan2(0.25, 0.55) * 180) / Math.PI;  // The old fixed slant, as an angle from straight-down towards the right.
 export const ALPHA_EDGE = 8;
 const TILTING = new Set(['rise-behind', 'push-through']);
 
@@ -37,7 +39,7 @@ export function layers(depth: TitleDepth | null | undefined): number[] {
 export const layerShade = (depth: TitleDepth, share: number) => 0.35 + 0.65 * depth.light * (1 - share);
 
 /** Where the corners of `box` land on the frame: top-left, top-right, bottom-right, bottom-left. */
-export function corners(pose: Pose, box: Box, size: [number, number], depthShare = 0, depthAmount = 0, pin: Matrix | null = null): Point[] {
+export function corners(pose: Pose, box: Box, size: [number, number], depthShare = 0, depthAmount = 0, pin: Matrix | null = null, depthAngle = DEFAULT_DEPTH_ANGLE): Point[] {
   const [width, height] = size;
   const turn = (pose.turn * Math.PI) / 180;
   const ct = Math.cos(turn), st = Math.sin(turn);
@@ -51,9 +53,11 @@ export function corners(pose: Pose, box: Box, size: [number, number], depthShare
   const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
   const focal = height / 2 / Math.tan((FOV / 2) * Math.PI / 180);
   const push = depthShare * depthAmount * DEPTH_SPAN * height;
+  const slant = (depthAngle * Math.PI) / 180;
+  const ex = EXTRUDE_XY * Math.sin(slant), ey = EXTRUDE_XY * Math.cos(slant);
   return ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as Point[]).map(([px, py]) => {
     const [fx, fy] = placed(px, py);
-    const lx = fx - qx + EXTRUDE[0] * push, ly = fy - qy + EXTRUDE[1] * push, lz = EXTRUDE[2] * push;
+    const lx = fx - qx + ex * push, ly = fy - qy + ey * push, lz = EXTRUDE_Z * push;
     const x = lx * cb - lz * sb; let z = lx * sb + lz * cb;
     const y = ly * ca + z * sa; z = -ly * sa + z * ca;
     const scale = focal / Math.max(focal + z, focal * 0.05);

@@ -25,18 +25,18 @@ WORK_WIDTH = 640
 MAX_CORNERS = 500
 MIN_MATCHES = 24  # Fewer than this and the step is a guess: hold the last good motion and say so.
 SMOOTH_FRAMES = 5
-VERSION = 1
+VERSION = 2
 
 
-def track_path(source: Path, start: float, end: float, at: float) -> Path:
-    ident = json.dumps([VERSION, round(start * FPS), round(end * FPS), round(at * FPS)])
+def track_path(source: Path, start: float, end: float, at: float, person_mask: Path | None = None) -> Path:
+    ident = json.dumps([VERSION, round(start * FPS), round(end * FPS), round(at * FPS), bool(person_mask and person_mask.is_file())])
     return folder_for(content_key(source)) / f'scene-track-{hashlib.sha256(ident.encode()).hexdigest()[:12]}.json'
 
 
-def _step(previous: np.ndarray, current: np.ndarray) -> tuple[np.ndarray | None, int]:
+def _step(previous: np.ndarray, current: np.ndarray, allowed: np.ndarray | None = None) -> tuple[np.ndarray | None, int]:
     """The homography taking the previous picture's pixels to the current one's, and how many points agreed."""
     import cv2
-    points = cv2.goodFeaturesToTrack(previous, MAX_CORNERS, 0.01, 8)
+    points = cv2.goodFeaturesToTrack(previous, MAX_CORNERS, 0.01, 8, mask=allowed)
     if points is None or len(points) < MIN_MATCHES:
         return None, 0
     moved, status, _ = cv2.calcOpticalFlowPyrLK(previous, current, points, None, winSize=(21, 21), maxLevel=3)
@@ -48,17 +48,28 @@ def _step(previous: np.ndarray, current: np.ndarray) -> tuple[np.ndarray | None,
     return (matrix, count) if matrix is not None and count >= MIN_MATCHES else (None, count)
 
 
-def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], None]) -> tuple[list[np.ndarray], list[bool]]:
+def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], None], masks=None) -> tuple[list[np.ndarray], list[bool]]:
     """Matrices from the first picture to each one, in pixels, and whether each step was found rather than held."""
     out, found, last_step, previous = [np.eye(3)], [True], np.eye(3), None
+    mask_iterator = iter(masks) if masks is not None else None
+    previous_allowed = None
     for picture in pictures:
         if should_cancel():
             raise JobCancelled()
         on_frame()
         import cv2
         grey = cv2.cvtColor(picture, cv2.COLOR_BGR2GRAY)
+        allowed = None
+        if mask_iterator is not None:
+            mask_picture = next(mask_iterator, None)
+            if mask_picture is not None:
+                # Person masks are white where a person is. Dilate slightly before inversion so clothing edges and
+                # their shadows cannot pull the camera track along with the walker.
+                person = cv2.cvtColor(mask_picture, cv2.COLOR_BGR2GRAY)
+                person = cv2.dilate((person > 24).astype(np.uint8) * 255, np.ones((7, 7), np.uint8), iterations=1)
+                allowed = cv2.bitwise_not(person)
         if previous is not None:
-            step, _ = _step(previous, grey)
+            step, _ = _step(previous, grey, previous_allowed)
             held = step is None
             if held:
                 step = last_step  # Lost for a moment: keep moving as the camera was.
@@ -66,6 +77,7 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
             out.append(step @ out[-1])
             found.append(not held)
         previous = grey
+        previous_allowed = allowed
     return out, found
 
 
@@ -87,7 +99,7 @@ def _smooth(matrices: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def scene_track(source: Path, size: tuple[int, int], start: float, end: float, at: float, on_progress: Callable[[int], None] = lambda _: None,
-                should_cancel: Callable[[], bool] = lambda: False) -> dict:
+                should_cancel: Callable[[], bool] = lambda: False, person_mask: Path | None = None) -> dict:
     """How the scene moves from `at` to every frame between `start` and `end` (source seconds), in 0..1 coordinates.
 
     {'fps', 'first' (frame number of the first matrix), 'matrices' (3x3, the at moment is the identity), 'lost' (frames held)}."""
@@ -100,9 +112,12 @@ def scene_track(source: Path, size: tuple[int, int], start: float, end: float, a
     def tick():
         done[0] += 1
         on_progress(min(99, done[0] * 100 // total))
-    forward, found_forward = _chain(frames(source, anchor, last - anchor + 1, (width, height)), should_cancel, tick)
+    mask_source = person_mask if person_mask and person_mask.is_file() else None
+    forward_masks = frames(mask_source, anchor, last - anchor + 1, (width, height)) if mask_source else None
+    forward, found_forward = _chain(frames(source, anchor, last - anchor + 1, (width, height)), should_cancel, tick, forward_masks)
     backward_pictures = list(frames(source, first, anchor - first + 1, (width, height)))[::-1] if anchor > first else []
-    backward, found_backward = _chain(iter(backward_pictures), should_cancel, tick) if backward_pictures else ([np.eye(3)], [True])
+    backward_masks = list(frames(mask_source, first, anchor - first + 1, (width, height)))[::-1] if mask_source and anchor > first else None
+    backward, found_backward = _chain(iter(backward_pictures), should_cancel, tick, backward_masks) if backward_pictures else ([np.eye(3)], [True])
     # In pixels of the work size, from the anchor frame; the backward chain is reversed back into time order.
     matrices = [*backward[:0:-1], *forward]
     lost = [not ok for ok in [*found_backward[:0:-1], *found_forward]]
@@ -114,11 +129,11 @@ def scene_track(source: Path, size: tuple[int, int], start: float, end: float, a
 
 
 def ensure(source: Path, size: tuple[int, int], start: float, end: float, at: float, should_cancel: Callable[[], bool] = lambda: False,
-           on_progress: Callable[[int], None] = lambda _: None) -> dict:
-    target = track_path(source, start, end, at)
+           on_progress: Callable[[int], None] = lambda _: None, person_mask: Path | None = None) -> dict:
+    target = track_path(source, start, end, at, person_mask)
     if target.is_file():
         return json.loads(target.read_text())
-    result = scene_track(source, size, start, end, at, on_progress, should_cancel)
+    result = scene_track(source, size, start, end, at, on_progress, should_cancel, person_mask)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result))
     return result

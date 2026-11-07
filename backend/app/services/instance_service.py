@@ -123,7 +123,7 @@ def parse_cutout(token: str) -> Optional[tuple[str, Optional[Pick], str, Optiona
     gap = 0
     if '.gap' in token:
         token, raw_gap = token.rsplit('.gap', 1)
-        if not raw_gap.isdigit() or int(raw_gap) not in (1, 2, 3):
+        if not raw_gap.isdigit() or not 1 <= int(raw_gap) <= 5:
             return None
         gap = int(raw_gap)
     if token in ('', 'remove', 'blur'):

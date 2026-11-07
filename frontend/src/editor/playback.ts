@@ -8,7 +8,7 @@ import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
-import { alphaBox, corners, homography, invert, is3d, layers, layerShade, poseAt, type Box, type Matrix, type Point } from '../timeline/title3d';
+import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, homography, invert, is3d, layers, layerShade, poseAt, type Box, type Matrix, type Point } from '../timeline/title3d';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
 function pictureBox(image: HTMLImageElement): Box | null {
@@ -21,7 +21,7 @@ function pictureBox(image: HTMLImageElement): Box | null {
 }
 
 /** `reversed` marks the clip's reversed copy, which runs from the source's end; `duration` is the source's. */
-export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean };
+export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: number; height: number; duration?: number | null; reversed?: boolean; pendingCutout?: boolean };
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
 type LayerSlots = { slots: [Slot, Slot] };
 type Crossing = { before: Clip; after: Clip; p: number };
@@ -30,6 +30,10 @@ type Pose = { look?: Look; opacity?: number; scale?: number; sideways?: boolean 
 const DRIFT_RESEEK_SECONDS = 0.25;
 const DRIFT_NUDGE_SECONDS = 0.02;
 const MAX_NUDGE = 0.05;
+// A cut-out overlay (the see-through people copy) must sit exactly on the picture under it; it is silent, so
+// snapping it is free. It is anchored to the base video element's actual position, not the master clock.
+const OVERLAY_RESEEK_SECONDS = 0.04;
+const OVERLAY_NUDGE = 0.5;
 const SEEK_NUDGE_SECONDS = 0.25 / 30;
 const MAX_BUFFER_SIDE = 1280;
 
@@ -337,7 +341,7 @@ export class PlaybackEngine {
   private lutTexture: WebGLTexture | null = null;
   private lutId: string | null = null;
   private layers = new Map<string, LayerSlots>();
-  private images = new Map<string, { texture: WebGLTexture; ready: boolean; box?: Box | null }>();
+  private images = new Map<string, { texture: WebGLTexture; ready: boolean; box?: Box | null; measuring?: boolean }>();
   private titleProgram!: WebGLProgram;
   private titleUniforms: Record<string, WebGLUniformLocation | null> = {};
   private timeline: Timeline | null = null;
@@ -539,7 +543,7 @@ export class PlaybackEngine {
     }
   }
 
-  private imageTexture(url: string) {
+  private imageTexture(url: string, measureTitle = false) {
     let entry = this.images.get(url);
     if (!entry) {
       entry = { texture: this.newTexture(), ready: false };
@@ -549,10 +553,26 @@ export class PlaybackEngine {
         const cached = this.images.get(url)!;
         this.gl.bindTexture(this.gl.TEXTURE_2D, cached.texture);
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
-        if (url.includes('/api/text-image')) cached.box = pictureBox(image);  // Where a title's letters are, for drawing it in 3D.
+        // Text images are fetched as blob: URLs, so their URL cannot identify their origin. The caller explicitly
+        // requests measurement; without this box the 3D path used by cinematic reveals has nothing to draw.
+        if (measureTitle) cached.box = pictureBox(image);
         cached.ready = true;
         this.requestDraw();
       };
+      image.src = url;
+    } else if (measureTitle && entry.ready && entry.box === undefined && !entry.measuring) {
+      // A title may first be shown flat and only become 3D after the user picks a cinematic reveal. Its texture is
+      // already cached then, so measure the cached title on demand instead of waiting for an image reload that never occurs.
+      entry.measuring = true;
+      const image = new Image();
+      image.onload = () => {
+        const cached = this.images.get(url);
+        if (!cached) return;
+        cached.box = pictureBox(image);
+        cached.measuring = false;
+        this.requestDraw();
+      };
+      image.onerror = () => { const cached = this.images.get(url); if (cached) cached.measuring = false; };
       image.src = url;
     }
     return entry;
@@ -584,6 +604,9 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.titleParticle, 0);
     const { format } = this.timeline!;
     const source = this.sources(clip.media_id, clip);
+    // A foreground copy used by "Behind people" must never fall back to the opaque original while its transparent
+    // person copy is being made: that would cover both the title and the main video and look like the title vanished.
+    if (source?.pendingCutout && layer !== this.videoLayers()[0]) return;
     if (!source || !this.bindClip(layer, clip, source)) return;
     const local = this.time - clip.start;
     const frame = look.scale * zoom;
@@ -819,11 +842,13 @@ export class PlaybackEngine {
     const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
     const url = item && this.textUrl(item);
     if (!item || !url) return;
-    const image = this.imageTexture(url);
+    const image = this.imageTexture(url, true);
     if (!image.ready) return;
     gl.bindTexture(gl.TEXTURE_2D, image.texture);
     const local = this.time - item.start;
-    if (is3d(item)) { if (image.box) this.drawTitle3d(item, local, image.box, image.texture); return; }
+    // Keep the ordinary title visible while its letter bounds are being measured. Once ready, redraw it through the
+    // perspective path. A failed measurement must not make a perfectly valid title disappear.
+    if (is3d(item) && image.box) { this.drawTitle3d(item, local, image.box, image.texture); return; }
     const look = animatedLook(item.enter, item.exit, local, item.length);
     const { width, height } = this.timeline!.format;
     // The title's own move first, then its animation moves that whole frame, as the export's pose() does.
@@ -873,7 +898,7 @@ export class PlaybackEngine {
     for (let index = shades.length - 1; index >= 0; index -= 1) {
       const share = shades[index];
       let toPicture: Matrix;
-      try { toPicture = invert(homography(source, corners(pose, frameBox, [width, height], share, depth?.amount ?? 0, pin))); } catch { continue; }
+      try { toPicture = invert(homography(source, corners(pose, frameBox, [width, height], share, depth?.amount ?? 0, pin, depth?.angle ?? DEFAULT_DEPTH_ANGLE))); } catch { continue; }
       gl.uniformMatrix3fv(u.toPicture, false, [toPicture[0][0], toPicture[1][0], toPicture[2][0], toPicture[0][1], toPicture[1][1], toPicture[2][1], toPicture[0][2], toPicture[1][2], toPicture[2][2]]);
       // The front layer is the title itself; layers behind it are its sides, in the depth colour, darker further back.
       if (index === 0 || !depth) gl.uniform4f(u.shade, 0, 0, 0, 0);
@@ -1005,6 +1030,26 @@ export class PlaybackEngine {
     this.clockBase = this.time;
   }
 
+  /** The cut-out token when this slot plays a see-through people/objects copy, else null. */
+  private cutoutToken(slot: Slot): string | null {
+    const query = slot.url?.split('?')[1];
+    if (!query) return null;
+    return new URLSearchParams(query).get('cutout');
+  }
+
+  /** Where the base video element for this clip actually is, as an offset from its expected source time.
+   * Cut-out overlays ride on the base element's real position, so a layer can never drift against the one under it. */
+  private anchorOffset(item: Clip, above: VideoLayer): number | undefined {
+    const layers = this.videoLayers();
+    for (const layer of layers.slice(0, layers.indexOf(above))) {
+      const { clip } = this.clipFor(layer, this.time);
+      if (!clip || clip.media_id !== item.media_id) continue;
+      const slot = this.slotsFor(layer).slots.find((entry) => entry.clipId === clip.id);
+      if (slot && !slot.video.paused) return slot.video.currentTime - this.sourceTime(clip, this.time);
+    }
+    return undefined;
+  }
+
   private keepInStep() {
     for (const layer of this.videoLayers()) {
       const crossing = this.crossing(layer, this.time);
@@ -1013,10 +1058,15 @@ export class PlaybackEngine {
         const slot = this.slotsFor(layer).slots.find((entry) => entry.clipId === item.id);
         if (!slot || slot.video.paused) continue;
         const at = this.sourceTime(item, this.time, !crossing);
-        const drift = slot.video.currentTime - at;
-        if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * this.rate) { slot.video.currentTime = at; this.struggled(); }
-        else {
-          const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift)) : 0;
+        // A silent cut-out overlay is held to the base element (tight), not just to the master clock.
+        const anchor = this.cutoutToken(slot) ? this.anchorOffset(item, layer) : undefined;
+        const target = anchor === undefined ? at : at + anchor;
+        const drift = slot.video.currentTime - target;
+        if (Math.abs(drift) > (anchor === undefined ? DRIFT_RESEEK_SECONDS : OVERLAY_RESEEK_SECONDS) * this.rate) {
+          slot.video.currentTime = Math.max(0, target);
+          if (anchor === undefined) this.struggled();
+        } else {
+          const nudge = Math.abs(drift) > DRIFT_NUDGE_SECONDS ? -Math.sign(drift) * Math.min(anchor === undefined ? MAX_NUDGE : OVERLAY_NUDGE, Math.abs(drift)) : 0;
           const wanted = Math.min(16, Math.max(0.0625, this.rateAt(item, this.time) * this.rate * (1 + nudge)));
           if (Math.abs(slot.video.playbackRate - wanted) > 0.001) slot.video.playbackRate = wanted;
         }
