@@ -913,6 +913,14 @@ export class PlaybackEngine {
     return item.pin ? this.pinMatrix?.(item, this.time) ?? null : null;
   }
 
+  /** A title's letter box as shares of its picture, once its picture has loaded and been measured; null until then. */
+  titleBox(text: TextItem): Box | null {
+    const url = this.textUrl(text);
+    if (!url) return null;
+    const entry = this.imageTexture(url, true);
+    return entry.ready ? entry.box ?? null : null;
+  }
+
   /** Set by the editor once a pinned title's scene track has loaded. */
   pinMatrix: ((item: TextItem, time: number) => Matrix | null) | null = null;
 

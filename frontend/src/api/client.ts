@@ -136,6 +136,7 @@ export const fetchShapeMask = async (mask: unknown, format: unknown) => {
   if (!response.ok) throw new Error('This shape could not be drawn.');
   return URL.createObjectURL(await response.blob());
 };
+export const startPeopleGrid = (id: number, body: { start: number; end: number; pick: import('../timeline/model').CutoutPick | null; steady: boolean; backwards: boolean }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; grid?: import('../timeline/keepClear').PeopleGrid }>(`/api/photos/${id}/people-grid`, { method: 'POST', body: JSON.stringify(body) });
 export const startSceneTrack = (id: number, body: { at: number; start: number; end: number }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; track?: import('../timeline/title3d').SceneTrack }>(`/api/photos/${id}/scene-track`, { method: 'POST', body: JSON.stringify(body) });
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });

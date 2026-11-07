@@ -353,6 +353,60 @@ def start_scene_track(identifier: int, body: dict):
 SCENE_TRACK_JOBS: dict[str, str] = {}  # Track file to the job making it, so asking again while it runs does not start another.
 
 
+@router.post('/photos/{identifier}/people-grid')
+def start_people_grid(identifier: int, body: dict):
+    """Where people are, coarsely, between `start` and `end` (source seconds), for a title that keeps clear of them.
+    `pick` is a clip's cutout_pick (null: every person); `steady`/`backwards` choose the copy the clip shows.
+    The grid itself when it was made before, otherwise a job that makes it (and the mask, if needed)."""
+    from app.services import people_grid_service
+    from app.services.timeline_schema import CutoutPick
+    if get_media(identifier)['media_type'] != 'video':
+        raise HTTPException(400, 'Only videos have people moving through them.')
+    try:
+        start, end = float(body['start']), float(body['end'])
+        if not 0 <= start < end or end - start > 600:
+            raise ValueError
+        pick = instance_service.from_choice(CutoutPick.model_validate(body['pick']) if body.get('pick') else None)
+    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+        raise HTTPException(400, 'Choose a part of the clip.') from exc
+    base = prepared_base(identifier, bool(body.get('steady')), bool(body.get('backwards')))
+    if not base.is_file():
+        raise HTTPException(404, 'This copy is still being made.')
+    everyone = instance_service.is_everyone(pick)
+    known = cutout_service.files(base)[cutout_service.MASK] if everyone else instance_service.pick_paths(base, pick)[0]
+    if known.is_file():
+        made = people_grid_service.grid_path(base, known, start, end)
+        if made.is_file():
+            return {'status': 'ready', 'grid': json.loads(made.read_text())}
+    key = f'{base}|{pick}|{start:.3f}|{end:.3f}'
+    active = PEOPLE_GRID_JOBS.get(key)
+    job = get_job(active) if active else None
+    if job and not job.get('done'):
+        return {'status': 'preparing', 'job_id': active}
+    ready = threading.Event()
+
+    def run(should_cancel):
+        ready.wait()
+        update_job(job_id, status='running', phase='Finding where people are', progress=0)
+        try:
+            facts = probe_video(base)
+            if facts is None:
+                raise RuntimeError('This clip could not be read.')
+            mask = instance_service.ensure_mask(facts, pick, should_cancel)
+            grid = people_grid_service.ensure(base, mask, start, end, should_cancel, lambda progress: update_job(job_id, progress=progress))
+        finally:
+            PEOPLE_GRID_JOBS.pop(key, None)
+        return {'progress': 100, 'phase': 'Found where people are', 'grid': grid}
+
+    job_id = enqueue_render('people-grid', 'Keep a title clear of people', run, total=100)
+    PEOPLE_GRID_JOBS[key] = job_id
+    ready.set()
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+PEOPLE_GRID_JOBS: dict[str, str] = {}
+
+
 @router.post('/photos/{identifier}/faces')
 def start_faces(identifier: int, body: dict):
     """Every face between `start` and `end`, source seconds, each as a path a blur box can follow."""

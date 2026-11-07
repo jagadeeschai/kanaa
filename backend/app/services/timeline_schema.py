@@ -282,6 +282,18 @@ class TitleDepth(Strict):
     angle: float = Field(default=24.44, ge=-180, le=180)  # Extrusion direction: degrees from straight-down towards the right.
 
 
+class KeepClear(Strict):
+    """The title moves aside so no person comes within `gap` of its letters (frame heights). The move itself is ordinary
+    x/y keyframes; this only remembers the settings and the position keys from before, so it can be redone or removed."""
+    gap: float = Field(default=0.04, ge=0, le=0.15)
+    direction: Literal['auto', 'up', 'down', 'left', 'right'] = 'auto'
+    max_move: float = Field(default=0.35, ge=0.02, le=0.8)  # Frame heights (up/down) or widths (left/right).
+    x: float = 0.5  # The position and keys before the move.
+    y: float = 0.5
+    x_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
+    y_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
+
+
 class TitlePin(Strict):
     """Locks the title to the scene in a clip: it keeps its place in the world as that clip's camera moves."""
     clip_id: str = Field(min_length=1, max_length=64)
@@ -302,6 +314,7 @@ class Text(Strict):
     transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.
     depth: Optional[TitleDepth] = None
     pin: Optional[TitlePin] = None
+    keep_clear: Optional[KeepClear] = None
     # Template looks. A title using none of these is drawn exactly as before.
     subtitle: Optional[str] = Field(default=None, max_length=200)
     subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.
