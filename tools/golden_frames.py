@@ -137,6 +137,16 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         clips.append(clip(f'l{number}', first, t, look=look))
         samples.append({'name': f'look {look}', 't': t + 1})
         t += SECONDS
+    # Picture-shaping and two-colour effects (the echo plays a prepared copy, so it is checked by its own test instead).
+    for name, extra in (('duotone', {'tone_grade': {'mode': 'duotone', 'shadow': '#1f2a5a', 'highlight': '#ffd27a', 'balance': 0.5, 'intensity': 1}}),
+                        ('split-tone', {'tone_grade': {'mode': 'split', 'shadow': '#1f6f78', 'highlight': '#f2a541', 'balance': 0.4, 'intensity': 0.8}}),
+                        ('mirror quad', {'mirror': {'mode': 'quad', 'segments': 6, 'angle': 0}}),
+                        ('kaleidoscope', {'mirror': {'mode': 'kaleido', 'segments': 7, 'angle': 25}}),
+                        ('zoom blur', {'zoom_blur': {'intensity': 0.8, 'center_x': 0.35, 'center_y': 0.6}}),
+                        ('tilt-shift', {'tilt_shift': {'focus_y': 0.4, 'band': 0.15, 'blur': 1, 'saturation': 0.5}})):
+        clips.append(clip(name.replace(' ', '-'), first, t, **extra))
+        samples.append({'name': name, 't': t + 1})
+        t += SECONDS
     clips.append(clip('adjust', second, t, adjust={'brightness': 1.2, 'contrast': 1.3, 'saturation': 0.6}, transform={'x': 0.4, 'y': 0.6, 'scale': 1.5, 'opacity': 0.7}))
     samples.append({'name': 'adjust and pose', 't': t + 1})
     t += SECONDS

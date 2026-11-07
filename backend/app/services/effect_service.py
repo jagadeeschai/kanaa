@@ -38,6 +38,7 @@ class Effect:
     tamil: str
     mood: str  # celebration, wedding, festival, travel, any
     about: str
+    placement: str = 'overlay'  # overlay: Screen-blended on the Effects layer. start: an opaque clip opening the main track.
 
 
 EFFECTS = [
@@ -49,6 +50,13 @@ EFFECTS = [
     Effect('diya', 'Diya glow', 'தீப ஒளி', 'festival', 'A row of oil-lamp flames flickering along the bottom'),
     Effect('incense-smoke', 'Camphor and incense smoke', 'கற்பூர தூபப் புகை', 'festival', 'Soft fragrant smoke curling upwards for aarti and temple scenes'),
     Effect('embers', 'Rising embers', 'எழும் தீப்பொறிகள்', 'festival', 'Glowing sparks drifting up from a fire, for Bhogi and night scenes'),
+    Effect('rangoli-border', 'Rangoli border', 'ரங்கோலி ஓரம்', 'festival', 'Flowers and dots drawing themselves round the edge'),
+    Effect('bubbles', 'Bubbles', 'குமிழிகள்', 'celebration', 'Soap bubbles rising with a rainbow sheen; some pop'),
+    Effect('night-sky', 'Night sky', 'இரவு வானம்', 'travel', 'Twinkling stars and the odd shooting star'),
+    Effect('callout-circle', 'Circle callout', 'வட்டக் குறி', 'vlog', 'A hand-drawn circle; move and size it over what matters'),
+    Effect('callout-arrow', 'Arrow callout', 'அம்புக் குறி', 'vlog', 'A hand-drawn arrow pointing at the middle; move it to aim'),
+    Effect('speed-lines', 'Speed lines', 'வேகக் கோடுகள்', 'vlog', 'Comic streaks rushing to the middle, for fast or funny moments'),
+    Effect('countdown', 'Film countdown', 'எண்ணிக்கை தொடக்கம்', 'vlog', 'An old film leader counting 5 to 2, with its beep, to open the video', placement='start'),
     Effect('sparkler', 'Sparkler trails', 'மத்தாப்பு', 'festival', 'A bright hand-sparkler scattering lively trails'),
     Effect('kolam', 'Kolam reveal', 'கோலம்', 'festival', 'A dot kolam draws itself in white light'),
     Effect('sparkles', 'Sparkles', 'மின்னல்', 'celebration', 'Little stars that twinkle'),
@@ -1009,6 +1017,273 @@ def embers(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) 
 embers.cache = {}
 
 
+def _ease(x: float) -> float:
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def night_sky(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Stars at three depths, each twinkling at its own pace, and now and then a shooting star with a fading tail."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    sky = night_sky.cache.get(size)
+    if sky is None:
+        stars = _particles(rng, 230, x=(0, 1), y=(0, 1), depth=(0, 1), phase=(0, 6.28), rate=(0.6, 2.4), warmth=(0, 1))
+        meteors = [{'at': at, 'x': rng.uniform(0.15, 0.75), 'y': rng.uniform(0.05, 0.35), 'angle': rng.uniform(0.35, 0.65), 'length': rng.uniform(0.28, 0.42)}
+                   for at in (0.7, 2.3, 3.8)]
+        sky = night_sky.cache[size] = (stars, meteors)
+    stars, meteors = sky
+    far, near = Image.new('RGB', size), Image.new('RGB', size)
+    far_draw, near_draw = ImageDraw.Draw(far), ImageDraw.Draw(near)
+    for i in range(len(stars['x'])):
+        depth = stars['depth'][i]
+        twinkle = 0.55 + 0.45 * math.sin(t * stars['rate'][i] + stars['phase'][i]) ** 2
+        light = (0.25 + 0.75 * depth ** 2) * twinkle
+        w = stars['warmth'][i]
+        colour = tuple(int(c * light) for c in (215 + 40 * w, 225 + 20 * w, 255 - 45 * w))  # Blue-white to warm, like real stars.
+        r = max(0.5, unit * (0.0008 + 0.0022 * depth ** 2))
+        x, y = stars['x'][i] * width, stars['y'][i] * height
+        (near_draw if depth > 0.8 else far_draw).ellipse((x - r, y - r, x + r, y + r), fill=colour)
+    for meteor in meteors:
+        age = (t - meteor['at']) / 0.75  # Across the sky in three quarters of a second.
+        if not 0 <= age <= 1:
+            continue
+        travel = _ease(age)
+        dx, dy = math.cos(meteor['angle']), math.sin(meteor['angle'])
+        hx, hy = (meteor['x'] + dx * meteor['length'] * travel) * width, (meteor['y'] + dy * meteor['length'] * travel) * height
+        tail = unit * 0.16 * math.sin(math.pi * age)  # Grows, then shrinks as it burns out.
+        fade = math.sin(math.pi * age)
+        for k in range(10):  # The tail fades towards its end.
+            a, b = k / 10, (k + 1) / 10
+            shade = int(255 * fade * (1 - a) ** 1.6)
+            near_draw.line((hx - dx * tail * a, hy - dy * tail * a, hx - dx * tail * b, hy - dy * tail * b), fill=(shade, shade, min(255, shade + 10)), width=max(1, round(unit * 0.0025 * (1 - a))))
+        r = unit * 0.003 * fade
+        near_draw.ellipse((hx - r, hy - r, hx + r, hy + r), fill=(255, 250, 235))
+    far = far.filter(ImageFilter.GaussianBlur(max(0.4, unit * 0.0008)))
+    picture = Image.fromarray(np.clip(np.asarray(far, np.int16) + np.asarray(near, np.int16), 0, 255).astype(np.uint8))
+    return _glow(picture, max(1, unit * 0.004), 0.9)
+
+
+night_sky.cache = {}
+
+
+def bubbles(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Soap bubbles rising and wobbling: a thin rim with a rainbow sheen and a window highlight. Some pop in a sparkle."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    p = bubbles.cache.get(size)
+    if p is None:
+        p = bubbles.cache[size] = _particles(rng, 26, x=(0.05, 0.95), phase=(0, 1), rise=(0.06, 0.13), size=(0.025, 0.07), sway=(0, 6.28), wobble=(0.8, 1.8), sheen=(0, 6.28), pop=(0.55, 1.6))
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    for i in range(len(p['x'])):
+        # Rises from below the frame; a bubble that reaches its `pop` height bursts (pop over 1 means it floats away).
+        travel = (p['phase'][i] + t * p['rise'][i]) % 1.3
+        r = p['size'][i] * unit
+        x = (p['x'][i] + 0.03 * math.sin(t * p['wobble'][i] + p['sway'][i])) * width
+        y = (1.1 - travel) * height
+        popped = travel - p['pop'][i]
+        if 0 <= popped < 0.04:
+            burst = popped / 0.04
+            for k in range(8):
+                angle = k * math.pi / 4 + p['sheen'][i]
+                a, b = r * (0.6 + burst), r * (0.9 + 1.2 * burst)
+                shade = int(230 * (1 - burst))
+                draw.line((x + math.cos(angle) * a, y + math.sin(angle) * a, x + math.cos(angle) * b, y + math.sin(angle) * b), fill=(shade, shade, shade), width=max(1, round(unit * 0.002)))
+            continue
+        if popped >= 0:
+            continue
+        squash = 1 + 0.04 * math.sin(t * 5 + p['sway'][i])  # A soft wobble in shape.
+        box = (x - r * squash, y - r / squash, x + r * squash, y + r / squash)
+        # The rim's colour moves round the bubble, like oil on water.
+        for k in range(12):
+            start = k * 30
+            hue = (k / 12 + p['sheen'][i] / 6.28 + t * 0.15) % 1
+            rgb = tuple(int(90 + 110 * (0.5 + 0.5 * math.cos(6.28 * (hue + shift)))) for shift in (0, 0.33, 0.66))
+            draw.arc(box, start, start + 32, fill=rgb, width=max(1, round(r * 0.06)))
+        draw.ellipse((x - r * 0.95, y - r * 0.95, x + r * 0.95, y + r * 0.95), fill=(14, 16, 20))  # The faint film inside.
+        hx, hy, hr = x - r * 0.42, y - r * 0.45, r * 0.2
+        draw.ellipse((hx - hr, hy - hr * 0.7, hx + hr, hy + hr * 0.7), fill=(235, 240, 245))  # The window highlight.
+    return _glow(image.filter(ImageFilter.GaussianBlur(max(0.6, unit * 0.0015))), max(1, unit * 0.005), 0.6)
+
+
+bubbles.cache = {}
+
+
+RangoliColours = [(236, 64, 122), (255, 152, 0), (255, 214, 0), (102, 187, 106), (240, 240, 230), (156, 39, 176)]
+
+
+def rangoli_border(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Flowers and dots drawn in round the edge of the frame, one after another, then glowing gently."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    step = unit * 0.075
+    margin = unit * 0.045
+    # Places round the edge, clockwise from the top left, so the border draws itself like a hand going round.
+    places = rangoli_border.cache.get(size)
+    if places is None:
+        places = []
+        across, down = max(2, round((width - 2 * margin) / step)), max(2, round((height - 2 * margin) / step))
+        places += [(margin + (width - 2 * margin) * k / across, margin) for k in range(across)]
+        places += [(width - margin, margin + (height - 2 * margin) * k / down) for k in range(down)]
+        places += [(width - margin - (width - 2 * margin) * k / across, height - margin) for k in range(across)]
+        places += [(margin, height - margin - (height - 2 * margin) * k / down) for k in range(down)]
+        rangoli_border.cache[size] = places
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    reveal = 2.2  # Seconds to go all the way round.
+    glow = 0.85 + 0.15 * math.sin(t * 2.2)
+    for k, (x, y) in enumerate(places):
+        grow = _ease((t - reveal * k / len(places)) / 0.35)
+        if grow <= 0:
+            continue
+        light = grow * glow
+        if k % 2 == 0:  # A flower: petals round a centre.
+            petal, colour = step * 0.28 * grow, RangoliColours[(k // 2) % len(RangoliColours)]
+            for j in range(8):
+                angle = j * math.pi / 4 + k
+                px, py = x + math.cos(angle) * petal * 0.9, y + math.sin(angle) * petal * 0.9
+                draw.ellipse((px - petal * 0.42, py - petal * 0.42, px + petal * 0.42, py + petal * 0.42), fill=tuple(int(c * light) for c in colour))
+            core = petal * 0.38
+            draw.ellipse((x - core, y - core, x + core, y + core), fill=tuple(int(c * light) for c in (255, 230, 120)))
+        else:  # Between flowers, three white dots as in a dot kolam.
+            for offset in (-0.22, 0, 0.22):
+                along = (step * offset, 0) if y in (margin, height - margin) else (0, step * offset)
+                d = step * 0.06 * grow
+                cx, cy = x + along[0], y + along[1]
+                draw.ellipse((cx - d, cy - d, cx + d, cy + d), fill=tuple(int(240 * light) for _ in range(3)))
+    return _glow(image, max(1, unit * 0.006), 0.7)
+
+
+rangoli_border.cache = {}
+
+
+def _stroke(draw: ImageDraw.ImageDraw, points: list[tuple[float, float]], share: float, width: int, colour: tuple[int, int, int]) -> None:
+    """Draws the first `share` of a path, as a hand would: the line grows from its start."""
+    count = max(2, round(len(points) * max(0.0, min(1.0, share))))
+    if count >= 2 and share > 0:
+        draw.line(points[:count], fill=colour, width=width, joint='curve')
+        for x, y in (points[0], points[count - 1]):  # Round ends, like a marker.
+            draw.ellipse((x - width / 2, y - width / 2, x + width / 2, y + width / 2), fill=colour)
+
+
+CalloutYellow = (255, 214, 10)
+
+
+def callout_circle(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """A marker circle drawn by hand in the middle of the frame. Move and size it over what you want to point at."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    cx, cy, r = width / 2, height / 2, unit * 0.22
+    # A little more than a full turn, slightly uneven, as a hand draws it.
+    points = [(cx + r * (1 + 0.04 * math.sin(a * 3 + 1)) * math.cos(a) * 1.15, cy + r * (1 + 0.05 * math.sin(a * 2)) * math.sin(a))
+              for a in np.linspace(-2.2, -2.2 + 2 * math.pi * 1.06, 90)]
+    image = Image.new('RGB', size)
+    _stroke(ImageDraw.Draw(image), points, _ease((t - 0.15) / 0.55), max(2, round(unit * 0.012)), CalloutYellow)
+    return _glow(image, max(1, unit * 0.004), 0.5)
+
+
+def callout_arrow(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """A marker arrow swooping in from the lower left to point at the middle of the frame."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    tip = (width / 2, height / 2)
+    start = (tip[0] - unit * 0.32, tip[1] + unit * 0.3)
+    bend = (tip[0] - unit * 0.3, tip[1] + unit * 0.02)
+    points = [((1 - s) ** 2 * start[0] + 2 * (1 - s) * s * bend[0] + s * s * tip[0], (1 - s) ** 2 * start[1] + 2 * (1 - s) * s * bend[1] + s * s * tip[1]) for s in np.linspace(0, 0.94, 60)]
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    stroke = max(2, round(unit * 0.012))
+    _stroke(draw, points, _ease((t - 0.15) / 0.45), stroke, CalloutYellow)
+    head = _ease((t - 0.55) / 0.2)
+    if head > 0:
+        angle = math.atan2(tip[1] - points[-6][1], tip[0] - points[-6][0])
+        reach = unit * 0.07 * head
+        for side in (2.55, -2.55):
+            _stroke(draw, [tip, (tip[0] + math.cos(angle + side) * reach, tip[1] + math.sin(angle + side) * reach)], 1, stroke, CalloutYellow)
+    return _glow(image, max(1, unit * 0.004), 0.5)
+
+
+def speed_lines(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """Comic-book streaks rushing in from the edges towards a clear middle, redrawn every other frame so they flicker."""
+    width, height = size
+    unit = min(size)
+    beat = n // 2
+    lines = np.random.default_rng(9173 + beat)  # Same lines for both frames of a pair, so the flicker is even.
+    image = Image.new('RGB', size)
+    draw = ImageDraw.Draw(image)
+    cx, cy = width / 2, height / 2
+    far = math.hypot(width, height) / 2
+    for _ in range(70):
+        angle = lines.uniform(0, 2 * math.pi)
+        inner = far * lines.uniform(0.42, 0.7)  # The clear middle varies a little, like hand-drawn lines.
+        spread = lines.uniform(0.004, 0.012)
+        shade = int(lines.uniform(150, 245))
+        tip = (cx + math.cos(angle) * inner, cy + math.sin(angle) * inner)
+        edge = far * 1.05
+        a, b = angle - spread, angle + spread
+        # A thin wedge: wide at the frame's edge, coming to a point towards the middle.
+        draw.polygon([tip, (cx + math.cos(a) * edge, cy + math.sin(a) * edge), (cx + math.cos(b) * edge, cy + math.sin(b) * edge)], fill=(shade, shade, shade))
+    return image.filter(ImageFilter.GaussianBlur(max(0.5, unit * 0.0012)))
+
+
+COUNT_FROM = 5  # The leader counts COUNT_FROM down to 2, a second each, then holds black for the last second.
+BEEP_AT = COUNT_FROM - 2  # The classic "2-pop": one frame of 1 kHz tone as the 2 appears.
+FONTS = Path(__file__).resolve().parent.parent / 'assets' / 'fonts'
+
+
+def countdown(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """An Academy-style film leader: grey, two rings, a cross, a hand sweeping round once a second and the number."""
+    width, height = size
+    unit = min(size)
+    t = n / FPS
+    second = int(t)
+    if second > BEEP_AT:
+        return Image.new('RGB', size)
+    within = t - second
+    font = countdown.cache.get(unit)
+    if font is None:
+        from PIL import ImageFont
+        font = countdown.cache[unit] = ImageFont.truetype(str(FONTS / 'NotoSans-Bold.ttf'), round(unit * 0.36))
+    image = Image.new('RGB', size, (148, 148, 148))
+    draw = ImageDraw.Draw(image)
+    cx, cy = width / 2, height / 2
+    outer, inner = unit * 0.40, unit * 0.32
+    # The sweep: the part of the circle the hand has passed is lighter, as on real leader.
+    draw.pieslice((cx - outer * 2, cy - outer * 2, cx + outer * 2, cy + outer * 2), -90, -90 + 360 * within, fill=(186, 186, 186))
+    line = max(2, round(unit * 0.008))
+    draw.line((0, cy, width, cy), fill=(40, 40, 40), width=line)
+    draw.line((cx, 0, cx, height), fill=(40, 40, 40), width=line)
+    for radius in (outer, inner):
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=(245, 245, 245), width=max(2, round(unit * 0.012)))
+    number = str(COUNT_FROM - second)
+    draw.text((cx, cy), number, font=font, fill=(25, 25, 25), anchor='mm')
+    # Old prints flicker and carry a little dust.
+    flicker = 1 + 0.04 * math.sin(n * 2.7) * math.sin(n * 0.9)
+    picture = np.asarray(image, np.float32) * flicker
+    speck = np.random.default_rng(n)
+    for _ in range(3):
+        x, y, r = speck.integers(0, width), speck.integers(0, height), speck.uniform(1, max(1.5, unit * 0.004))
+        picture[max(0, int(y - r)):int(y + r) + 1, max(0, int(x - r)):int(x + r) + 1] *= 0.35
+    return Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8))
+
+
+countdown.cache = {}
+
+
+def effect_audio(effect_id: str) -> list[str]:
+    """ffmpeg inputs for an effect's own sound: the leader's beep. Other effects are silent."""
+    if effect_id != 'countdown':
+        return []
+    start, end = BEEP_AT, BEEP_AT + 1 / 24
+    return ['-f', 'lavfi', '-i', f"aevalsrc='if(between(t,{start},{end:.4f}),0.5*sin(2*PI*1000*t),0)':s=48000:d={SECONDS}"]
+
+
 EFFECT_PAINTERS: dict[str, Painter] = {
     'confetti': falling(ConfettiColours, 110, (0.011, 0.022), 0.03, 3.0, 'rect'),
     'petals': falling([(255, 153, 0), (255, 196, 0), (230, 40, 70), (255, 110, 150)], 80, (0.017, 0.03), 0.05, 1.2, 'petal'),
@@ -1018,6 +1293,13 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'diya': diya,
     'incense-smoke': incense_smoke,
     'embers': embers,
+    'night-sky': night_sky,
+    'bubbles': bubbles,
+    'rangoli-border': rangoli_border,
+    'callout-circle': callout_circle,
+    'callout-arrow': callout_arrow,
+    'speed-lines': speed_lines,
+    'countdown': countdown,
     'sparkler': sparkler,
     'kolam': kolam,
     'balloons': balloons,
@@ -1053,8 +1335,10 @@ def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progre
     total = round(SECONDS * FPS)
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix('.part.mp4')
-    process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{size[0]}x{size[1]}', '-r', str(FPS), '-i', '-',
-                                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(partial)], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    audio = effect_audio(effect_id)
+    sound = ['-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '128k', '-shortest'] if audio else []
+    process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{size[0]}x{size[1]}', '-r', str(FPS), '-i', '-', *audio,
+                                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p', *sound, '-movflags', '+faststart', str(partial)], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         assert process.stdin is not None
         for n in range(total):

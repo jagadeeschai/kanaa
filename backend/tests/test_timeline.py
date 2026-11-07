@@ -1708,6 +1708,48 @@ class EffectSwitches(Clips):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'a', 'media_id': 96, 'start': 0, 'in': 0, 'out': 1, **clip}]}]}
         return self.frame(self.render(data, name), 15, (640, 360))
 
+    def test_picture_shaping_effects_change_the_export_and_switch_off(self):
+        picture = np.zeros((360, 640, 3), np.uint8)
+        picture[:, :] = (200, 60, 50)
+        picture[40:120, 60:200] = (40, 190, 230)  # Off-centre, so a mirror or kaleidoscope visibly moves it.
+        Image.fromarray(picture).save(self.root / 'shape-scene.png')
+        self.facts[96] = MediaFacts(path=self.root / 'shape-scene.png', media_type='image', width=640, height=360)
+        plain = self.shot('shape-plain.mp4')
+        effects = {'mirror': {'mode': 'kaleido', 'segments': 5, 'angle': 20}, 'zoom_blur': {'intensity': 0.9, 'center_x': 0.5, 'center_y': 0.5},
+                   'tilt_shift': {'focus_y': 0.1, 'band': 0.05, 'blur': 1, 'saturation': 0.5},
+                   'tone_grade': {'mode': 'duotone', 'shadow': '#102040', 'highlight': '#f0d080', 'balance': 0.5, 'intensity': 1}}
+        for name, settings in effects.items():
+            on = self.shot(f'shape-{name}.mp4', **{name: settings})
+            off = self.shot(f'shape-{name}-off.mp4', **{name: settings}, bypass=[name])
+            self.assertGreater(np.abs(on.astype(int) - plain.astype(int)).mean(), 1, name)
+            self.assertLess(np.abs(off.astype(int) - plain.astype(int)).mean(), 2, name)
+
+    def test_mirror_reflects_the_left_half(self):
+        picture = np.zeros((360, 640, 3), np.uint8)
+        picture[:, :160] = (230, 230, 230)  # A bright strip at the far left only.
+        Image.fromarray(picture).save(self.root / 'mirror.png')
+        self.facts[97] = MediaFacts(path=self.root / 'mirror.png', media_type='image', width=640, height=360)
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 97, 'start': 0, 'in': 0, 'out': 1, 'mirror': {'mode': 'left'}}]}]}
+        frame = self.frame(self.render(data, 'mirror.mp4'), 15, (640, 360)).astype(int)
+        self.assertGreater(frame[:, 560:].mean(), 180, 'the right edge now mirrors the left')
+        self.assertLess(frame[:, 250:390].mean(), 40, 'the middle stays dark')
+
+    def test_echo_leaves_a_fading_trail_behind_movement(self):
+        frames = self.root / 'moving'
+        frames.mkdir()
+        for n in range(30):
+            picture = np.zeros((360, 640, 3), np.uint8)
+            picture[150:210, 40 + n * 18:100 + n * 18] = 240
+            Image.fromarray(picture).save(frames / f'{n:03d}.png')
+        clip = self.root / 'moving.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-framerate', '30', '-i', str(frames / '%03d.png'), '-pix_fmt', 'yuv420p', str(clip)], check=True)
+        self.facts[98] = MediaFacts(path=clip, media_type='video', width=640, height=360, duration=1.0, fps=30)
+        made = lambda name, **extra: self.frame(self.render({'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 98, 'start': 0, 'in': 0, 'out': 1, **extra}]}]}, name), 15, (640, 360)).astype(int)
+        plain, echo = made('echo-plain.mp4'), made('echo.mp4', echo={'mode': 'echo', 'trails': 4, 'decay': 0.6})
+        behind = slice(40 + 15 * 18 - 50, 40 + 15 * 18 - 5)  # Just behind where the square is now.
+        self.assertLess(plain[150:210, behind].mean(), 30)
+        self.assertGreater(echo[150:210, behind].mean(), 40, 'a ghost of the square lingers where it was')
+
     def test_a_switched_off_effect_is_left_out_of_the_export_and_kept_in_the_timeline(self):
         plain = self.shot('switch-plain.mp4')
         mono = self.shot('switch-mono.mp4', look='mono')

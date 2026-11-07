@@ -277,6 +277,128 @@ def dreamy_glow_filters(effect) -> list[str]:
             f'colorbalance=rs={red:.4f}:bs={blue:.4f}:pl=1']
 
 
+# Mirror, zoom blur and tilt-shift move or average pixels of the picture itself, so they run before it is padded to the
+# frame, where the preview also works: in the clip's own 0..1 coordinates. Branches are tagged with the clip's label so
+# several clips can use them in one graph. Kept to fast native filters; only the kaleidoscope works pixel by pixel.
+ZOOM_TAPS = 8  # Mirrored in playback.ts.
+TILT_SIGMA = .012  # Of the frame's short side, at full blur. Mirrored in playback.ts.
+
+
+def _hex(colour: str) -> tuple[float, float, float]:
+    return tuple(int(colour[at:at + 2], 16) / 255 for at in (1, 3, 5))
+
+
+def _saturate(amount: float) -> str:
+    """Saturation as a colour matrix, which keeps the alpha plane (eq would drop it)."""
+    rows = []
+    for own, name in enumerate('rgb'):
+        rows += [f'{name}{other}={(LUMA_RED, LUMA_GREEN, LUMA_BLUE)[index] * (1 - amount) + (amount if index == own else 0):.6f}' for index, other in enumerate('rgb')]
+    return 'colorchannelmixer=' + ':'.join(rows)
+
+
+def _once(expression: str, frames: int, pix: str = 'gray16') -> str:
+    """A still picture worked out on the first frame only, then held for the clip: for masks and maps that never change.
+    Holding it for a set number of frames lets the merge that reads it finish with the clip."""
+    return f"trim=end_frame=1,format={pix},geq=lum='{expression}',loop=loop={frames}:size=1,setpts=N/FRAME_RATE/TB"
+
+
+def mirror_filters(effect, tag: str, frames: int) -> list[str]:
+    """Left or top halves reflected, all four quarters, or a kaleidoscope of `segments` mirrored wedges."""
+    if effect is None:
+        return []
+    m = f'{tag}_mi'
+    if effect.mode != 'kaleido':
+        # The left (or top) half, flipped over onto the other half: u becomes .5 - |u - .5|, as in the preview.
+        steps = []
+        if effect.mode in ('left', 'quad'):
+            steps.append(f'split=2[{m}a][{m}b];[{m}b]crop=w=iw/2:h=ih:x=0:y=0,hflip[{m}h];[{m}a][{m}h]overlay=x=W-w:y=0')
+        if effect.mode in ('top', 'quad'):
+            steps.append(f'split=2[{m}c][{m}d];[{m}d]crop=w=iw:h=ih/2:x=0:y=0,vflip[{m}v];[{m}c][{m}v]overlay=x=0:y=H-h')
+        return steps
+    wedge = 2 * math.pi / effect.segments
+    turn = math.radians(effect.angle)
+    dx, dy = '(((X+.5)/W-.5)*W/H)', '((Y+.5)/H-.5)'
+    # Angle into the first wedge, folded back on itself so neighbouring wedges are mirror images.
+    folded = f'(mod(atan2({dy},{dx})+{turn:.6f}+{8 * math.pi:.6f},{wedge:.6f}))'
+    angle = f'(min({folded},{wedge:.6f}-{folded})-{turn:.6f})'
+    radius = f'hypot({dx},{dy})'
+    x = f'clip((.5+{radius}*cos({angle})*H/W)*W-.5,0,W-1)'
+    y = f'clip((.5+{radius}*sin({angle}))*H-.5,0,H-1)'
+    return [f'split=3[{m}p][{m}x][{m}y];[{m}x]{_once(x, frames)}[{m}xm];[{m}y]{_once(y, frames)}[{m}ym];[{m}p][{m}xm][{m}ym]remap=fill=black@0']
+
+
+def zoom_blur_filters(effect, tag: str) -> list[str]:
+    """The picture averaged with ZOOM_TAPS copies of itself scaled towards a centre, evenly, like a fast push in."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    cx, cy, reach = effect.center_x, effect.center_y, .22 * effect.intensity
+    t = f'{tag}_zb'
+    parts = [f"split={ZOOM_TAPS + 1}[{t}r0][{t}f0]" + ''.join(f'[{t}{i}]' for i in range(1, ZOOM_TAPS))]
+    for i in range(1, ZOOM_TAPS):
+        k = 1 + reach * i / (ZOOM_TAPS - 1)
+        # Scaled up about the centre, cut back to the picture's size, and locked to it exactly by scale2ref.
+        parts.append(f"[{t}{i}]scale=w='iw*{k:.6f}':h='ih*{k:.6f}':flags=bicubic,crop=w='iw/{k:.6f}':h='ih/{k:.6f}':x='(iw-ow)*{cx:.6f}':y='(ih-oh)*{cy:.6f}'[{t}s{i}]")
+        parts.append(f'[{t}s{i}][{t}r{i - 1}]scale2ref=w=iw:h=ih:flags=bicubic[{t}f{i}][{t}r{i}]')
+    parts.append(f'[{t}r{ZOOM_TAPS - 1}]nullsink')
+    parts.append(''.join(f'[{t}f{i}]' for i in range(ZOOM_TAPS)) + f'mix=inputs={ZOOM_TAPS}')
+    return [';'.join(parts)]
+
+
+def tilt_mask(effect) -> str:
+    """0 inside the sharp band, rising smoothly to 1 well outside it: a smoothstep of the distance from focus_y."""
+    edge = .5 * effect.band
+    t = f'clip((abs((Y+.5)/H-{effect.focus_y})-{edge:.6f})/{.18 + edge:.6f},0,1)'
+    return f'({t}*{t}*(3-2*{t}))'
+
+
+def tilt_shift_filters(effect, canvas: tuple[int, int], tag: str, frames: int) -> list[str]:
+    """Sharp across a band, blurred above and below, with brighter colour: a toy-town miniature."""
+    if effect is None or (effect.blur <= 0 and effect.saturation <= 0):
+        return []
+    filters = []
+    if effect.blur > 0:
+        t = f'{tag}_ts'
+        sigma = max(.5, TILT_SIGMA * effect.blur * min(canvas))
+        mask = f'255*{tilt_mask(effect)}'
+        filters.append(f'split=3[{t}a][{t}b][{t}m];[{t}b]gblur=sigma={sigma:.3f}[{t}blur];'
+                       f"[{t}m]{_once(mask, frames, 'gray')},format=gbrap[{t}mask];[{t}a][{t}blur][{t}mask]maskedmerge")
+    if effect.saturation > 0:
+        filters.append(_saturate(1 + .6 * effect.saturation))
+    return filters
+
+
+def tone_grade_filters(effect, tag: str) -> list[str]:
+    """Duotone or split-tone from the picture's brightness, as a brightness copy looked up per channel. Mirrored in playback.ts."""
+    if effect is None or effect.intensity <= 0:
+        return []
+    shadow, highlight = _hex(effect.shadow), _hex(effect.highlight)
+    k = effect.intensity
+    t = f'clip(val/255+{.5 - effect.balance:.5f},0,1)'
+    luma = 'colorchannelmixer=' + ':'.join(f'{row}{col}={weight}' for row in 'rgb' for col, weight in zip('rgb', (LUMA_RED, LUMA_GREEN, LUMA_BLUE)))
+    if effect.mode == 'duotone':
+        # out = own*(1-k) + k*colour(brightness); the lookup holds the second part.
+        table = {c: f'255*{k:.5f}*({s:.5f}+{h - s:.5f}*{t})' for c, s, h in zip('rgb', shadow, highlight)}
+        combine = f"A*{1 - k:.5f}+B"
+    else:
+        # out = own + k*tint(brightness), stored around 128 so it can darken as well as lighten.
+        table = {c: f'128+255*{k:.5f}*({(s - .5) * .55:.5f}*(1-{t})*(1-{t})+{(h - .5) * .55:.5f}*{t}*{t})' for c, s, h in zip('rgb', shadow, highlight)}
+        combine = 'A+B-128'
+    g = f'{tag}_tg'
+    lut = 'lutrgb=' + ':'.join(f"{c}='{table[c]}'" for c in 'rgb')
+    # gbrap's planes are g, b, r, a: the first three are colour, the fourth is left alone.
+    return [f"split=2[{g}o][{g}l];[{g}l]{luma},{lut}[{g}t];[{g}o][{g}t]blend=c0_expr='{combine}':c1_expr='{combine}':c2_expr='{combine}':c3_expr='A'"]
+
+
+def echo_filter(effect) -> str | None:
+    """Frame blending for an echo, at the timeline's rate. The preview's prepared copy uses exactly this filter."""
+    if effect is None:
+        return None
+    if effect.mode == 'smear':
+        return f'lagfun=decay={effect.decay:.3f}'
+    weights = ' '.join(f'{effect.decay ** i:.4f}' for i in reversed(range(effect.trails)))  # Oldest first, newest strongest.
+    return f"tmix=frames={effect.trails}:weights='{weights}'"
+
+
 def color_filter(facts: MediaFacts) -> str:
     if facts.media_type == 'image':
         return 'format=gbrap'  # Pictures are already RGB, and a logo's transparency must survive.
@@ -291,7 +413,7 @@ def source_steps(facts: MediaFacts) -> list[str]:
     return [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1']
 
 
-def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None, sourced: bool = False) -> str:
+def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None, sourced: bool = False, tag: str = 'clip') -> str:
     """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame. `sourced` skips source_steps, already done."""
     W, H = canvas
     steps = [*([] if sourced else source_steps(facts)), *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
@@ -299,8 +421,10 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
         steps.append(f"setpts='{timing}'")
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
-    steps += [f'fps={fps}', f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
-              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash), *dreamy_glow_filters(clip.dreamy_glow)]
+    echo = echo_filter(clip.echo)
+    steps += [f'fps={fps}', *([echo] if echo else []), f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
+              *mirror_filters(clip.mirror, tag, frames + 2), *zoom_blur_filters(clip.zoom_blur, tag), *tilt_shift_filters(clip.tilt_shift, canvas, tag, frames + 2),
+              f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash), *dreamy_glow_filters(clip.dreamy_glow), *tone_grade_filters(clip.tone_grade, tag)]
     if held_head:
         steps.append(f'tpad=start={held_head}:start_mode=clone')
     # Short or variable sources are held on their last frame, so later layers never slip.
@@ -682,9 +806,9 @@ class Builder:
                 mask = self.add_input(*reading, '-i', str(self.masks(facts, clip.cutout_pick)))
                 self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray[{label}_shape]',
                                f'[{label}_shape][{label}_full]scale2ref=flags=bicubic[{label}_mask][{label}_sized]', f'[{label}_sized][{label}_mask]alphamerge[{label}_cut]',
-                               f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True)}[{label}]']
+                               f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True, tag=label)}[{label}]']
             else:
-                self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing)}[{label}]')
+                self.graph.append(f'[{index}:v]{clip_chain(clip, facts, canvas, fps, frames, held, timing, tag=label)}[{label}]')
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label, clip.beat_pulse)
             if clip.shape_mask:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
@@ -892,6 +1016,8 @@ def apply_bypass(clip):
             changes['colour_splash'] = None
         elif effect == 'dreamy_glow':
             changes['dreamy_glow'] = None
+        elif effect in ('tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo'):
+            changes[effect] = None
         elif effect == 'beat_pulse':
             changes['beat_pulse'] = None
         elif effect == 'background':

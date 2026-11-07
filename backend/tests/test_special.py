@@ -88,6 +88,35 @@ class Effects(unittest.TestCase):
             self.assertGreater(max(frame.max() for frame in frames), 60, f'{effect.id} shows some light')
             self.assertLess(np.median(frames[0]), 200, f'{effect.id} keeps black (or soft light) around it')
 
+    def test_the_film_countdown_carries_its_beep_on_two(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = effect_service.render_effect('countdown', (128, 72), Path(folder) / 'countdown.mp4')
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(target), '-f', 's16le', '-ac', '1', '-ar', '8000', '-'], capture_output=True, check=True).stdout
+        samples = np.abs(np.frombuffer(raw, np.int16).astype(np.float32) / 32768)
+        loud = np.flatnonzero(samples > 0.1) / 8000
+        self.assertTrue(loud.size, 'the leader has a beep')
+        self.assertAlmostEqual(loud[0], effect_service.BEEP_AT, delta=0.02)
+        self.assertLess(loud[-1] - loud[0], 0.06, 'one short beep, as the 2 appears')
+        last = np.asarray(effect_service.countdown(round(4.5 * effect_service.FPS), 150, (128, 72), np.random.default_rng(1)))
+        self.assertEqual(last.max(), 0, 'black before the video starts')
+
+    def test_echo_copies_are_named_by_their_settings_and_reject_others(self):
+        from app.services import echo_service
+        from app.services.timeline_schema import Echo
+        value = echo_service.token(Echo(mode='smear', trails=3, decay=0.85), 60)
+        self.assertEqual(value, 'smear.3.0.85@60')
+        self.assertEqual(echo_service.parse(value)[1], 60)
+        for bad in ('', 'echo.9.0.60@30', 'echo.4.0.60@0', 'echo.4.0.60@30;rm', '../echo'):
+            self.assertIsNone(echo_service.parse(bad), bad)
+        with tempfile.TemporaryDirectory() as folder, patch.object(settings, 'data_dir', Path(folder)):
+            source = Path(folder) / 'moving.mp4'
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=30:d=0.5', '-pix_fmt', 'yuv420p', str(source)], check=True)
+            facts = probe_video(source)
+            made = echo_service.make_echo(facts, 'echo.4.0.60@30', lambda: False)
+            self.assertTrue(made.is_file())
+            self.assertNotEqual(made, echo_service.echo_path(source, 'echo.5.0.60@30'), 'other settings make another copy')
+            self.assertEqual(echo_service.request_echo(facts, 'echo.4.0.60@30', 'moving')['status'], 'ready')
+
     def test_an_effect_is_a_video_the_shape_of_the_project(self):
         self.assertEqual(effect_service.work_size(1080, 1920), (720, 1280))
         self.assertEqual(effect_service.work_size(3840, 2160), (1280, 720))
@@ -110,6 +139,13 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['diya'].mood, 'festival')
         self.assertEqual(found['incense-smoke'].mood, 'festival')
         self.assertEqual(found['embers'].mood, 'festival')
+        self.assertEqual(found['rangoli-border'].mood, 'festival')
+        self.assertEqual(found['bubbles'].mood, 'celebration')
+        self.assertEqual(found['night-sky'].mood, 'travel')
+        for vlog in ('callout-circle', 'callout-arrow', 'speed-lines', 'countdown'):
+            self.assertEqual(found[vlog].mood, 'vlog')
+        self.assertEqual(found['countdown'].placement, 'start', 'the leader opens the main track')
+        self.assertEqual(found['confetti'].placement, 'overlay')
         self.assertEqual(found['sparkler'].mood, 'festival')
         self.assertEqual(found['kolam'].mood, 'festival')
         self.assertEqual(found['balloons'].mood, 'celebration')

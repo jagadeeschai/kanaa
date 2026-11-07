@@ -170,6 +170,41 @@ class BeatPulse(Strict):
     offset: float = Field(default=0, ge=0, le=60)
 
 
+class ToneGrade(Strict):
+    """Duotone maps dark to `shadow` and light to `highlight`; split-tone tints shadows and highlights of the real colours."""
+    mode: Literal['duotone', 'split'] = 'split'
+    shadow: str = Field(default='#1f6f78', pattern=r'^#[0-9a-fA-F]{6}$')
+    highlight: str = Field(default='#f2a541', pattern=r'^#[0-9a-fA-F]{6}$')
+    balance: float = Field(default=0.5, ge=0, le=1)
+    intensity: float = Field(default=0.7, ge=0, le=1)
+
+
+class Mirror(Strict):
+    mode: Literal['left', 'top', 'quad', 'kaleido'] = 'left'
+    segments: int = Field(default=6, ge=3, le=12)
+    angle: float = Field(default=0, ge=-180, le=180)
+
+
+class ZoomBlur(Strict):
+    intensity: float = Field(default=0.5, ge=0, le=1)
+    center_x: float = Field(default=0.5, ge=0, le=1)
+    center_y: float = Field(default=0.5, ge=0, le=1)
+
+
+class TiltShift(Strict):
+    focus_y: float = Field(default=0.55, ge=0, le=1)
+    band: float = Field(default=0.22, ge=0.02, le=0.8)
+    blur: float = Field(default=0.6, ge=0, le=1)
+    saturation: float = Field(default=0.35, ge=0, le=1)
+
+
+class Echo(Strict):
+    """Echo blends the last few frames; smear keeps bright parts lingering, like light trails."""
+    mode: Literal['echo', 'smear'] = 'echo'
+    trails: int = Field(default=4, ge=2, le=8)
+    decay: float = Field(default=0.6, ge=0.2, le=0.95)
+
+
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
@@ -196,6 +231,11 @@ class Clip(Strict):
     colour_splash: Optional[ColourSplash] = None
     dreamy_glow: Optional[DreamyGlow] = None
     beat_pulse: Optional[BeatPulse] = None
+    tone_grade: Optional[ToneGrade] = None
+    mirror: Optional[Mirror] = None
+    zoom_blur: Optional[ZoomBlur] = None
+    tilt_shift: Optional[TiltShift] = None
+    echo: Optional[Echo] = None  # Export blends frames inline; the preview plays a prepared copy made the same way.
     chroma: Optional[Chroma] = None
     freeze: Optional[float] = Field(default=None, ge=0)  # Source seconds of the frame held for the whole clip.
     reverse: bool = False  # Plays in..out backwards, without sound.
@@ -205,7 +245,7 @@ class Clip(Strict):
     cutout_pick: Optional[CutoutPick] = None  # Only these people, or these objects, stay (remove) or stay sharp (blur).
     blur_amount: Literal['subtle', 'medium', 'strong'] = 'medium'  # How soft the background goes, with blur.
     focus_pull: Optional[FocusPull] = None  # With blur: the focus moves to someone else part way through.
-    bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=17)  # Effects switched off, their settings kept.
+    bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=22)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
 
