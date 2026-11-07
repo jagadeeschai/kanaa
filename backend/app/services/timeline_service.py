@@ -581,6 +581,15 @@ class Builder:
             moves.append((exit_.preset, f'min(1,max(0,({length:.6f}-{clock})/{last:.6f}))'))
             if span := OPACITY_SPAN.get(exit_.preset):
                 filters.append(f'fade=t=out:st={lead + length - last * span:.6f}:d={last * span:.6f}:alpha=1')
+        particle_windows = []
+        if enter and enter.preset in ('particle-form', 'magic-form'):
+            particle_windows.append(f'between({clock},0,{first * .92:.6f})')
+        if exit_ and exit_.preset in ('particle-form', 'magic-vanish'):
+            particle_windows.append(f'between({clock},{length - last * .92:.6f},{length:.6f})')
+        if particle_windows:
+            block = 4 if any(item and item.preset == 'particle-form' for item in (enter, exit_)) else 7
+            filters.append(f"shufflepixels=mode=block:w={block}:h={block}:seed=1977:enable='{'+'.join(particle_windows)}'")
+            filters.append(f"colorchannelmixer=rr=.72:gg=.88:bb=1:enable='{'+'.join(particle_windows)}'")
         if blur := self.blur_commands(enter, exit_, first, last, length, frames, lead, name):
             filters.append(blur)
         x, y, scale = property_expression(transform, 'x', clock), property_expression(transform, 'y', clock), property_expression(transform, 'scale', clock)
@@ -623,17 +632,17 @@ class Builder:
         return f"sendcmd=f={name}-o.cmd,colorchannelmixer@{name}o=aa={value_at(transform, 'opacity', 0):.5f}"
 
     def blur_commands(self, enter: Animation | None, exit_: Animation | None, first: float, last: float, length: float, frames: int, lead: float, name: str) -> str | None:
-        if not any(item and item.preset == 'blur' for item in (enter, exit_)):
+        if not any(item and look_at(item.preset, 0)['blur'] > 0 for item in (enter, exit_)):
             return None
         fps = self.fmt.fps
         lines = []
         for frame in range(frames):
             local = frame / fps - lead
             amount = 0.0
-            if enter and enter.preset == 'blur':
-                amount = max(amount, look_at('blur', local / first)['blur'])
-            if exit_ and exit_.preset == 'blur':
-                amount = max(amount, look_at('blur', (length - local) / last)['blur'])
+            if enter:
+                amount = max(amount, look_at(enter.preset, local / first)['blur'])
+            if exit_:
+                amount = max(amount, look_at(exit_.preset, (length - local) / last)['blur'])
             lines.append(f'{frame / fps:.6f} gblur@{name} sigma {amount * self.fmt.height:.3f};')
         (self.folder / f'{name}.cmd').write_text('\n'.join(lines), encoding='utf-8')
         return f'sendcmd=f={name}.cmd,gblur@{name}=sigma=0'

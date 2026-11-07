@@ -467,7 +467,7 @@ class Animations(Clips):
                     self.assertAlmostEqual(value, row[key], places=9)
 
     def test_every_preset_lands_where_the_math_says(self):
-        for preset in ('slide-up', 'slide-left', 'zoom', 'pop', 'bounce', 'ground-rise'):
+        for preset in ('slide-up', 'slide-left', 'zoom', 'pop', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form'):
             with self.subTest(preset=preset):
                 target = self.render(self.timeline(enter={'preset': preset, 'duration': 1}), f'{preset}.mp4')
                 for frame_number in (12, 21):

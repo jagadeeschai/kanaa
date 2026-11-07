@@ -77,6 +77,7 @@ uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, s
 uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
 uniform float splashAmount, splashTolerance, splashSoftness; uniform vec3 splashColor;
 uniform float dreamyAmount, dreamySoftness, dreamyWarmth;
+uniform int titleParticle; uniform float titleParticleProgress;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -138,6 +139,14 @@ void main(){
     float burst = filmHash(vec2(band, floor(oldSeed / (signalMode == 1 ? 2. : 4.))));
     s.x += (burst - .5) * .055 * signalJitter * signalAmount * step(signalMode == 1 ? .62 : .35, burst);
   }
+  float particleHue = 0.;
+  if (titleParticle > 0 && titleParticleProgress < .999) {
+    vec2 grid = vec2(150., 90.); vec2 cell = floor(s * grid);
+    float rx = filmHash(cell + 13.); float ry = filmHash(cell.yx + 71.);
+    float travel = pow(1. - titleParticleProgress, 1.7);
+    s += (vec2(rx, ry) - .5) * travel * (titleParticle == 2 ? .20 : .34);
+    particleHue = filmHash(cell + 109.);
+  }
   vec4 c = pick(s);
   if (signalMode > 0 && signalSplit > 0.) {
     float split = .012 * signalSplit * signalAmount;
@@ -155,6 +164,11 @@ void main(){
     c /= total;
   }
   float alpha = c.a; vec3 rgb = alpha > 0. ? c.rgb / alpha : vec3(0.);
+  if (titleParticle > 0 && titleParticleProgress < .999) {
+    vec3 magic = particleHue < .33 ? vec3(.35, .85, 1.) : particleHue < .66 ? vec3(.85, .35, 1.) : vec3(1., .68, .18);
+    rgb *= mix(magic, vec3(1.), titleParticleProgress);
+    alpha *= smoothstep(particleHue * .72, min(1., particleHue * .72 + .24), titleParticleProgress);
+  }
   rgb = rgb * brightness * tint;
   rgb = pow(max(rgb, 0.), vec3(1. / gamma));
   rgb = rgb * (1. - fade) + fade;
@@ -276,7 +290,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -482,6 +496,7 @@ export class PlaybackEngine {
 
   private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1, sideways = false }: Pose) {
     const { gl, uniforms } = this;
+    gl.uniform1i(uniforms.titleParticle, 0);
     const { format } = this.timeline!;
     const source = this.sources(clip.media_id, clip);
     if (!source || !this.bindClip(layer, clip, source)) return;
@@ -671,6 +686,7 @@ export class PlaybackEngine {
     const image = url && this.imageTexture(url);
     if (!image || !image.ready) return;
     gl.bindTexture(gl.TEXTURE_2D, image.texture);
+    gl.uniform1i(uniforms.titleParticle, 0);
     gl.uniform4f(uniforms.box, 0.5, 0.5, 1, 1);
     gl.uniform1f(uniforms.turn, 0);
     gl.uniform1i(uniforms.keyType, 0);
@@ -696,6 +712,12 @@ export class PlaybackEngine {
     const { width, height } = this.timeline!.format;
     // The title's own move first, then its animation moves that whole frame, as the export's pose() does.
     const transform = item.transform ?? REST_TRANSFORM;
+    const enterMagic = item.enter && (item.enter.preset === 'particle-form' || item.enter.preset === 'magic-form') && local < item.enter.duration;
+    const exitMagic = item.exit && (item.exit.preset === 'particle-form' || item.exit.preset === 'magic-vanish') && local > item.length - item.exit.duration;
+    const magic = enterMagic ? item.enter! : exitMagic ? item.exit! : null;
+    const magicProgress = enterMagic ? Math.min(1, local / magic!.duration) : exitMagic ? Math.min(1, (item.length - local) / magic!.duration) : 1;
+    gl.uniform1i(uniforms.titleParticle, magic ? (magic.preset === 'particle-form' ? 1 : 2) : 0);
+    gl.uniform1f(uniforms.titleParticleProgress, magicProgress);
     const size = valueAt(transform, 'scale', local) * look.scale;
     gl.uniform4f(uniforms.box, 0.5 + look.dx + (valueAt(transform, 'x', local) - 0.5) * look.scale, 0.5 + look.dy + (valueAt(transform, 'y', local) - 0.5) * look.scale, size, size);
     gl.uniform1f(uniforms.turn, (valueAt(transform, 'rotation', local) * Math.PI) / 180);
@@ -709,6 +731,7 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.rotation, 0);
     gl.uniform2f(uniforms.flip, 0, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1i(uniforms.titleParticle, 0);
   }
 
   private drawBlur(layer: BlurLayer) {

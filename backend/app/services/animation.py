@@ -5,7 +5,7 @@ import math
 
 MAX_BLUR = 0.03  # Of the frame height.
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
-OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3}
+OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9}
 XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft'}
 WHIP_BLUR = 0.05  # Peak horizontal blur of a whip, as a share of the frame height. Matches animation.ts.
 # Red, green and blue gain, contrast, saturation.
@@ -37,6 +37,14 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look['dy'] = -0.6 * abs(math.cos(3 * math.pi * p)) * (1 - p) ** 2
     elif preset == 'ground-rise':
         look['dy'] = 0.62 * math.exp(-6 * p) * math.cos(8 * p)
+    elif preset == 'blast':
+        look.update(scale=1 + 1.25 * math.exp(-7 * p) * math.cos(10 * p) * (1 - p), blur=.018 * (1 - e))
+    elif preset == 'magic-form':
+        look.update(scale=.68 + .32 * e, blur=.035 * (1 - e), dy=.05 * math.sin(16 * p) * (1 - p))
+    elif preset == 'magic-vanish':
+        look.update(scale=1.38 - .38 * e, blur=.04 * (1 - e))
+    elif preset == 'particle-form':
+        look.update(scale=.9 + .1 * e, blur=.018 * (1 - e))
     return look
 
 
@@ -48,6 +56,8 @@ def offset_expression(preset: str, axis: str, p: str) -> str | None:
         return f'(-0.6*abs(cos({3 * math.pi}*{p}))*pow(1-{p},2))'
     if preset == 'ground-rise' and axis == 'dy':
         return f'(0.62*exp(-6*{p})*cos(8*{p}))'
+    if preset == 'magic-form' and axis == 'dy':
+        return f'(0.05*sin(16*{p})*(1-{p}))'
     return None
 
 
@@ -56,6 +66,14 @@ def scale_expression(preset: str, p: str) -> str | None:
         return f'(0.6+0.4*(1-pow(1-{p},3)))'
     if preset == 'pop':
         return f'max(0.01,1+2.7*pow({p}-1,3)+1.7*pow({p}-1,2))'
+    if preset == 'blast':
+        return f'(1+1.25*exp(-7*{p})*cos(10*{p})*(1-{p}))'
+    if preset == 'magic-form':
+        return f'(0.68+0.32*(1-pow(1-{p},3)))'
+    if preset == 'magic-vanish':
+        return f'(1.38-0.38*(1-pow(1-{p},3)))'
+    if preset == 'particle-form':
+        return f'(0.9+0.1*(1-pow(1-{p},3)))'
     return None
 
 

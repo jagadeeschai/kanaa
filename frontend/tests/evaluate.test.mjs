@@ -37,6 +37,18 @@ test('ground rise starts below the frame and settles at the title position', () 
   assert.ok(Math.abs(lookAt('ground-rise', 1).dy) < 0.002);
 });
 
+test('blast and magic titles begin transformed and settle cleanly', () => {
+  assert.ok(lookAt('blast', 0).scale > 2);
+  assert.ok(lookAt('magic-form', 0).blur > 0.03);
+  assert.ok(lookAt('magic-vanish', 0).scale > 1.3);
+  assert.ok(lookAt('particle-form', 0).blur > 0);
+  for (const preset of ['blast', 'magic-form', 'magic-vanish', 'particle-form']) {
+    const end = lookAt(preset, 1);
+    assert.ok(Math.abs(end.scale - 1) < 1e-6);
+    assert.ok(Math.abs(end.blur) < 1e-6);
+  }
+});
+
 test('looks match the Python values', () => { assert.deepEqual(LOOKS, animation.looks); });
 
 test('overlong animations share the item length', () => {
