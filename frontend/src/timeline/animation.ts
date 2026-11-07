@@ -1,5 +1,5 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
-export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce';
+export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip';
 export type Transition = { kind: TransitionKind; duration: number };
@@ -33,6 +33,7 @@ export function lookAt(preset: Preset, progress: number): Look {
   else if (preset === 'pop') look.scale = Math.max(0.01, 1 + 2.7 * (p - 1) ** 3 + 1.7 * (p - 1) ** 2);
   else if (preset === 'blur') look.blur = (1 - e) * MAX_BLUR;
   else if (preset === 'bounce') look.dy = -0.6 * Math.abs(Math.cos(3 * Math.PI * p)) * (1 - p) ** 2;
+  else if (preset === 'ground-rise') look.dy = 0.62 * Math.exp(-6 * p) * Math.cos(8 * p);
   return look;
 }
 

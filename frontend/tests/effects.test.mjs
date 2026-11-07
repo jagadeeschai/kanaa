@@ -94,6 +94,18 @@ test('putting a title behind the person adds a silent cut-out copy just above th
   assert.equal(putBehindPerson(emptyTimeline(format), 't', ['p', 'l']).layers.length, 1);
 });
 
+test('ground rise works behind either people or objects without duplicating its foreground', async () => {
+  const { addText, groundRiseBehind } = await import('../src/timeline/model.ts');
+  let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
+  timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Mission', style: 'outline', position: 'center', color: '#ffffff', size: 80 }, 'words');
+  const people = groundRiseBehind(timeline, 't', 'person', ['p', 'people']);
+  assert.equal(people.layers[1].items[0].enter.preset, 'ground-rise');
+  assert.deepEqual([people.layers[2].name, people.layers[2].items[0].cutout], ['Person', 'remove']);
+  assert.equal(groundRiseBehind(people, 't', 'person', ['unused', 'unused-layer']).layers.length, 3);
+  const object = groundRiseBehind(timeline, 't', 'object', ['o', 'object']);
+  assert.deepEqual([object.layers[2].name, object.layers[2].items[0].cutout_pick.kind], ['Object', 'objects']);
+});
+
 test('a line along the mountains becomes everything below it, and the title goes behind it', async () => {
   const { addText, groundShape, putBehindShape } = await import('../src/timeline/model.ts');
   assert.deepEqual(groundShape([[0.7, 0.4], [0.2, 0.6]]), [[0, 0.6], [0.2, 0.6], [0.7, 0.4], [1, 0.4], [1, 1], [0, 1]]);

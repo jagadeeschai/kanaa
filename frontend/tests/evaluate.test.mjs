@@ -31,6 +31,12 @@ test('presets match the Python math exactly', () => {
   }
 });
 
+test('ground rise starts below the frame and settles at the title position', () => {
+  assert.equal(lookAt('ground-rise', 0).dy, 0.62);
+  assert.ok(Math.abs(lookAt('ground-rise', 0.5).dy) < 0.04);
+  assert.ok(Math.abs(lookAt('ground-rise', 1).dy) < 0.002);
+});
+
 test('looks match the Python values', () => { assert.deepEqual(LOOKS, animation.looks); });
 
 test('overlong animations share the item length', () => {

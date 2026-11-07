@@ -338,6 +338,18 @@ export function putBehindObject(timeline: Timeline, textId: string, ids: [string
   return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } }, ids, 'Object');
 }
 
+/** Makes a title rise from ground level while a chosen foreground kind passes in front of it. */
+export function groundRiseBehind(timeline: Timeline, textId: string, what: 'person' | 'object', ids: [string, string], duration = 1.1): Timeline {
+  const found = findText(timeline, textId);
+  if (!found) return timeline;
+  const animated = updateText(timeline, textId, { enter: { preset: 'ground-rise', duration } });
+  const refreshed = findText(animated, textId)!;
+  const nextLayer = animated.layers[animated.layers.indexOf(refreshed.layer) + 1];
+  const expected = what === 'person' ? 'Person' : 'Object';
+  if (nextLayer?.kind === 'video' && nextLayer.name === expected) return animated;
+  return (what === 'person' ? putBehindPerson : putBehindObject)(animated, textId, ids);
+}
+
 /**
  * Which cut-out copy a clip plays: 'remove' or 'blur' for every person, the chosen people or objects removed from
  * their background, such as 'people-0-2', or kept sharp over a blurred one, such as 'blur.people-0.strong'.

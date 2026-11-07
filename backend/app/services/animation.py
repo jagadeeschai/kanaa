@@ -35,6 +35,8 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look['blur'] = (1 - e) * MAX_BLUR
     elif preset == 'bounce':
         look['dy'] = -0.6 * abs(math.cos(3 * math.pi * p)) * (1 - p) ** 2
+    elif preset == 'ground-rise':
+        look['dy'] = 0.62 * math.exp(-6 * p) * math.cos(8 * p)
     return look
 
 
@@ -44,6 +46,8 @@ def offset_expression(preset: str, axis: str, p: str) -> str | None:
         return f'({amount}*pow(1-{p},3))' if amount else None
     if preset == 'bounce' and axis == 'dy':
         return f'(-0.6*abs(cos({3 * math.pi}*{p}))*pow(1-{p},2))'
+    if preset == 'ground-rise' and axis == 'dy':
+        return f'(0.62*exp(-6*{p})*cos(8*{p}))'
     return None
 
 

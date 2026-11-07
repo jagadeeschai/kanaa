@@ -72,7 +72,7 @@ class Adjust(Strict):
 
 
 class Animation(Strict):
-    preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce']
+    preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise']
     duration: float = Field(default=0.5, ge=0.1, le=3)
 
 
