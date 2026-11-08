@@ -10,7 +10,15 @@ import { corners, layers, poseAt, DEFAULT_DEPTH_ANGLE, type Box, type Matrix } f
 import { simplify, sourceToFrame } from './tracking.ts';
 
 export type PeopleGrid = { fps: number; start: number; w: number; h: number; frames: string[] };
-export type Direction = Exclude<KeepClear['direction'], 'auto'>;
+export type Direction = Exclude<KeepClear['direction'], 'auto' | 'side'>;
+/** The three room choices in the panel: the gap kept and how far the title may go for it. */
+export const KEEP_CLEAR_ROOM = {
+  snug: { gap: 0.02, max_move: 0.25, label: 'A little' },
+  comfortable: { gap: 0.05, max_move: 0.4, label: 'Comfortable' },
+  roomy: { gap: 0.09, max_move: 0.55, label: 'Lots' },
+} as const;
+export type Room = keyof typeof KEEP_CLEAR_ROOM;
+export const roomOf = (kept: Pick<KeepClear, 'gap'> | null | undefined): Room => !kept ? 'comfortable' : kept.gap < 0.035 ? 'snug' : kept.gap < 0.07 ? 'comfortable' : 'roomy';
 export const DEFAULT_KEEP_CLEAR: Pick<KeepClear, 'gap' | 'direction' | 'max_move'> = { gap: 0.04, direction: 'auto', max_move: 0.35 };
 /** The title moves out this long before someone arrives, and waits this long after they leave. */
 export const LEAD_SECONDS = 0.4;
@@ -126,9 +134,8 @@ export function keepClear(job: ClearJob): ClearResult {
     const missed = found.filter((shift) => shift === null).length;
     return { direction, raw, missed, cost: raw.reduce((sum, value) => sum + value, 0) + missed * 10 };
   };
-  const chosen = settings.direction === 'auto'
-    ? (['up', 'down', 'left', 'right'] as Direction[]).map(plan).reduce((best, next) => (next.cost < best.cost ? next : best))
-    : plan(settings.direction);
+  const candidates: Direction[] = settings.direction === 'auto' ? ['up', 'down', 'left', 'right'] : settings.direction === 'side' ? ['left', 'right'] : [settings.direction];
+  const chosen = candidates.map(plan).reduce((best, next) => (next.cost < best.cost ? next : best));
   const fps = grid.fps || 15;
   const shifts = smoothShifts(chosen.raw, Math.round(LEAD_SECONDS * fps), Math.round((SMOOTH_SECONDS / 2) * fps));
   const { axis, sign } = AXIS[chosen.direction];

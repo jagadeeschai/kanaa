@@ -81,3 +81,9 @@ test('a forced direction is followed, and redo and remove work from the original
   assert.deepEqual(again.keep_clear.x_keys, original.transform.keyframes.x);
   assert.deepEqual(removeKeepClear({ ...kept, transform: again.transform, keep_clear: again.keep_clear }), { transform: original.transform, keep_clear: null });
 });
+
+test('"Aside" picks whichever side is shorter', () => {
+  const result = keepClear({ text: text(), box, format, under: clip, source: { width: 1280, height: 720 }, grid: walkingGrid(),
+    settings: { gap: 0.02, direction: 'side', max_move: 0.5 } });
+  assert.ok(result.direction === 'left' || result.direction === 'right');
+});

@@ -14,7 +14,7 @@ import { Search } from 'lucide-react';
 import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
 import { startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
-import { DEFAULT_KEEP_CLEAR, keepClear, removeKeepClear, type PeopleGrid } from '../timeline/keepClear';
+import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import KanaaSelect from '../components/KanaaSelect';
@@ -287,10 +287,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const clip = main.items.find((item) => item.start <= middle && middle < item.start + clipLength(item))
       ?? main.items.find((item) => item.start < text.start + text.length && text.start < item.start + clipLength(item));
     const media = clip && mediaById.get(clip.media_id);
-    if (!clip || media?.media_type !== 'video') { setError('Keep clear needs a video with people under the title on the main track.'); return; }
-    if (clip.ramp) { setError('Keep clear follows clips played at one speed. Turn off the speed effect first.'); return; }
+    if (!clip || media?.media_type !== 'video') { setError('Put the title over a video with people in it first.'); return; }
+    if (clip.ramp) { setError('This does not work with the speed effect yet. Turn the speed effect off on this clip first.'); return; }
     const box = engineRef.current?.titleBox(text);
-    if (!box) { setError('The title is still being measured. Play or scrub over it once, then try again.'); return; }
+    if (!box) { setError('Play the video over this title once, then tick the box again.'); return; }
     // The people a reveal keeps in front, when there is one; otherwise everyone.
     const person = current.layers.flatMap((layer) => layer.kind === 'video' && (layer.name === 'Person' || layer.name === 'Object') ? layer.items : []).find((item) => item.media_id === clip.media_id);
     const pick = person?.cutout_pick ?? null;
@@ -317,10 +317,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const result = keepClear({ text: fresh, box, format: latest.format, under: clip, source, grid: made.grid!, settings,
         pinAt: track && pinTo ? (time) => sceneMatrix(track, pinTo.clip, source, latest.format, time, fresh.pin!.at) : undefined });
       change(updateText(latest, text.id, { transform: result.transform, keep_clear: result.keep_clear }), `keep-clear-${text.id}`);
-      const where = { up: 'up', down: 'down', left: 'left', right: 'right' }[result.direction];
+      const times = result.uncleared.map(([from, to]) => (to - from < 0.2 ? `${from.toFixed(1)} s` : `${from.toFixed(1)}–${to.toFixed(1)} s`)).join(', ');
       setKeepClearNote({ textId: text.id, text: result.uncleared.length
-        ? `Moves ${where}. Couldn't fully clear at ${result.uncleared.map(([a, b]) => a === b ? `${a.toFixed(1)} s` : `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} — raise Max move, lower the gap or try another direction.`
-        : `Moves ${where}; the title stays clear of people throughout.` });
+        ? `Mostly clear. Someone still touches the title at ${times}. Try "A little" space, or another way to move.`
+        : 'Done. The title moves out of their way and comes back after they pass.' });
     } catch (problem) { setError((problem as Error).message); } finally { setClearProgress(null); }
   };
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
@@ -2285,18 +2285,20 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
     <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
 }
 
-/** Gap, direction and how far the title may go, then Keep clear; the move itself is ordinary x/y keys. */
+/** One tick box: people never cover the title. Then, only if wanted, how much room and which way it moves. Each pick applies at once. */
 function KeepClearPanel({ kept, busy, note, onRun, onRemove }: { kept: KeepClear | null; busy: number | null; note: string | null; onRun: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move'>) => void; onRemove: () => void }) {
-  const [settings, setSettings] = useState(() => ({ gap: kept?.gap ?? DEFAULT_KEEP_CLEAR.gap, direction: kept?.direction ?? DEFAULT_KEEP_CLEAR.direction, max_move: kept?.max_move ?? DEFAULT_KEEP_CLEAR.max_move }));
+  const room = roomOf(kept);
+  const way = kept?.direction === 'left' || kept?.direction === 'right' ? 'side' : kept?.direction ?? 'auto';
+  const run = (nextRoom: Room, nextWay: KeepClear['direction']) => onRun({ gap: KEEP_CLEAR_ROOM[nextRoom].gap, max_move: KEEP_CLEAR_ROOM[nextRoom].max_move, direction: nextWay });
+  const on = Boolean(kept) || busy !== null;
   return <>
-    <ValueSlider label="Gap" value={Math.round(settings.gap * 100)} min={0} max={15} step={1} defaultValue={4} unit="%" decimals={0} onChange={(gap) => setSettings((now) => ({ ...now, gap: gap / 100 }))}/>
-    <Chips label="Direction" options={[{ id: 'auto', label: 'Auto' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }, { id: 'left', label: 'Left' }, { id: 'right', label: 'Right' }]} value={settings.direction} onPick={(direction) => setSettings((now) => ({ ...now, direction: direction as KeepClear['direction'] }))}/>
-    <ValueSlider label="Max move" value={Math.round(settings.max_move * 100)} min={5} max={80} step={1} defaultValue={35} unit="%" decimals={0} onChange={(move) => setSettings((now) => ({ ...now, max_move: move / 100 }))}/>
-    <div className="ed-add-row">
-      <button type="button" className="ed-button" disabled={busy !== null} onClick={() => onRun(settings)}>{busy !== null ? `Finding people … ${busy}%` : kept ? 'Redo keep clear' : 'Keep clear'}</button>
-      {kept && <button type="button" className="ed-button" disabled={busy !== null} onClick={onRemove}>Remove</button>}
-    </div>
-    {note && <p className="ed-group-tip">{note}</p>}
+    <label className="ed-check"><input type="checkbox" checked={on} disabled={busy !== null} onChange={(event) => (event.target.checked ? run('comfortable', 'auto') : onRemove())}/>Don't let people cover the title</label>
+    {busy !== null && <p className="ed-group-tip">Finding the people in this clip … {busy}%</p>}
+    {kept && busy === null && <>
+      <p className="ed-sub">Space around them</p><Chips label="Space around them" options={(Object.keys(KEEP_CLEAR_ROOM) as Room[]).map((id) => ({ id, label: KEEP_CLEAR_ROOM[id].label }))} value={room} onPick={(id) => run(id, kept.direction)}/>
+      <p className="ed-sub">Title moves</p><Chips label="Title moves" options={[{ id: 'auto', label: 'Best way' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }, { id: 'side', label: 'Aside' }]} value={way} onPick={(id) => run(room, id as KeepClear['direction'])}/>
+    </>}
+    {note && busy === null && <p className="ed-group-tip">{note}</p>}
   </>;
 }
 
@@ -2350,6 +2352,7 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
     </Group>
     <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline" tip="Choose one reveal, then choose what passes in front of the title." help="cinema-titles">
       <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
+      <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>
       {(cover === 'people' || cover === 'object') && <>
         <Chips label="Space around people or objects" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }, { id: '4', label: 'Extra wide' }, { id: '5', label: 'Maximum' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3 | 4 | 5)}/>
         {text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through' ? <ValueSlider label="Enter time" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/> : null}
@@ -2357,9 +2360,6 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}</label>
       <p className="ed-group-tip">Lock to scene follows the camera. To keep a fixed distance from a moving person or object, place the title first and use Track subject below.</p>
       {follow}
-    </Group>
-    <Group title="Keep clear of people" tab="motion" changed={Boolean(text.keep_clear)} keywords="keep clear offset distance gap avoid overlap people person moving walking readable cover hidden" tip="The title moves aside just enough that no one comes within the gap, starting a moment before they arrive. Works with the title behind or in front.">
-      <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>
     </Group>
     <Group title="Advanced motion" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>

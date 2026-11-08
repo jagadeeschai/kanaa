@@ -286,7 +286,7 @@ class KeepClear(Strict):
     """The title moves aside so no person comes within `gap` of its letters (frame heights). The move itself is ordinary
     x/y keyframes; this only remembers the settings and the position keys from before, so it can be redone or removed."""
     gap: float = Field(default=0.04, ge=0, le=0.15)
-    direction: Literal['auto', 'up', 'down', 'left', 'right'] = 'auto'
+    direction: Literal['auto', 'up', 'down', 'left', 'right', 'side'] = 'auto'  # side: left or right, whichever is shorter.
     max_move: float = Field(default=0.35, ge=0.02, le=0.8)  # Frame heights (up/down) or widths (left/right).
     x: float = 0.5  # The position and keys before the move.
     y: float = 0.5
