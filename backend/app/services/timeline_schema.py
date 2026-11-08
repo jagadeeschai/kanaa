@@ -288,6 +288,7 @@ class KeepClear(Strict):
     gap: float = Field(default=0.04, ge=0, le=0.15)
     direction: Literal['auto', 'up', 'down', 'left', 'right', 'side'] = 'auto'  # side: left or right, whichever is shorter.
     max_move: float = Field(default=0.35, ge=0.02, le=0.8)  # Frame heights (up/down) or widths (left/right).
+    who: Optional[CutoutPick] = None  # The people kept clear of; None: everyone.
     x: float = 0.5  # The position and keys before the move.
     y: float = 0.5
     x_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)

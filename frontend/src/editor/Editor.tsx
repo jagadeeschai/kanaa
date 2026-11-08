@@ -279,21 +279,24 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [clearProgress, setClearProgress] = useState<number | null>(null);
   const [keepClearNote, setKeepClearNote] = useState<{ textId: string; text: string } | null>(null);
   /** Moves the title aside, as x/y keys, so no person comes within its gap (people masks of the clip under it). */
-  const keepTitleClear = async (text: TextItem, settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move'>) => {
-    const current = timelineRef.current;
-    if (!current) return;
+  /** The main-track clip a title sits over: the one at its middle, else any it overlaps. */
+  const clipUnderTitle = (current: Timeline, text: TextItem) => {
     const main = mainLayer(current);
     const middle = text.start + text.length / 2;
-    const clip = main.items.find((item) => item.start <= middle && middle < item.start + clipLength(item))
-      ?? main.items.find((item) => item.start < text.start + text.length && text.start < item.start + clipLength(item));
+    return main.items.find((item) => item.start <= middle && middle < item.start + clipLength(item))
+      ?? main.items.find((item) => item.start < text.start + text.length && text.start < item.start + clipLength(item)) ?? null;
+  };
+  const keepTitleClear = async (text: TextItem, settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => {
+    const current = timelineRef.current;
+    if (!current) return;
+    const clip = clipUnderTitle(current, text);
     const media = clip && mediaById.get(clip.media_id);
     if (!clip || media?.media_type !== 'video') { setError('Put the title over a video with people in it first.'); return; }
     if (clip.ramp) { setError('This does not work with the speed effect yet. Turn the speed effect off on this clip first.'); return; }
     const box = engineRef.current?.titleBox(text);
     if (!box) { setError('Play the video over this title once, then tick the box again.'); return; }
-    // The people a reveal keeps in front, when there is one; otherwise everyone.
-    const person = current.layers.flatMap((layer) => layer.kind === 'video' && (layer.name === 'Person' || layer.name === 'Object') ? layer.items : []).find((item) => item.media_id === clip.media_id);
-    const pick = person?.cutout_pick ?? null;
+    // Everyone, unless particular people were chosen in the panel.
+    const pick = settings.who ?? null;
     const from = Math.max(clip.start, text.start), to = Math.min(clip.start + clipLength(clip), text.start + text.length);
     const sources = [sourceAt(clip, from - clip.start), sourceAt(clip, to - clip.start)];
     const stretch = { start: Math.max(0, Math.min(...sources)), end: Math.max(...sources) };
@@ -2016,7 +2019,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
-        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(reveal, mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [], reveal }); }} cover={(() => { const index = timeline ? timeline.layers.findIndex((layer) => layer.kind === 'text' && (layer.items as TextItem[]).some((item) => item.id === selectedText.id)) : -1; const next = index >= 0 ? timeline!.layers[index + 1] : null; if (next?.kind === 'video') { if (next.name === 'Person') return 'people' as const; if (next.name === 'Object') return 'object' as const; if (next.name === 'In front') return 'drawn' as const; } return 'front' as const; })()} shapingMode={shaping && shaping.textId === selectedText.id ? shaping.mode : null} onCinemaClear={() => change(removeCinemaReveal(timeline!, selectedText.id), `cinema-clear-${selectedText.id}`)} onCinemaFront={(reveal) => { const next = cinemaRevealFront(timeline!, selectedText.id, reveal); change(next, `cinema-front-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); }} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; const next = cinemaReveal(timeline!, selectedText.id, reveal, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} clearing={clearProgress} clearNote={keepClearNote?.textId === selectedText.id ? keepClearNote.text : null} onKeepClear={(settings) => { void keepTitleClear(selectedText, settings); }} onRemoveClear={() => { change(updateText(timeline!, selectedText.id, removeKeepClear(selectedText)), `keep-clear-${selectedText.id}`); setKeepClearNote(null); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+        : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(reveal, mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [], reveal }); }} cover={(() => { const index = timeline ? timeline.layers.findIndex((layer) => layer.kind === 'text' && (layer.items as TextItem[]).some((item) => item.id === selectedText.id)) : -1; const next = index >= 0 ? timeline!.layers[index + 1] : null; if (next?.kind === 'video') { if (next.name === 'Person') return 'people' as const; if (next.name === 'Object') return 'object' as const; if (next.name === 'In front') return 'drawn' as const; } return 'front' as const; })()} shapingMode={shaping && shaping.textId === selectedText.id ? shaping.mode : null} onCinemaClear={() => change(removeCinemaReveal(timeline!, selectedText.id), `cinema-clear-${selectedText.id}`)} onCinemaFront={(reveal) => { const next = cinemaRevealFront(timeline!, selectedText.id, reveal); change(next, `cinema-front-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); }} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; const next = cinemaReveal(timeline!, selectedText.id, reveal, what, ids); if (next === timeline) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} clearing={clearProgress} clearUnder={timeline ? clipUnderTitle(timeline, selectedText) : null} clearNote={keepClearNote?.textId === selectedText.id ? keepClearNote.text : null} onKeepClear={(settings) => { void keepTitleClear(selectedText, settings); }} onRemoveClear={() => { change(updateText(timeline!, selectedText.id, removeKeepClear(selectedText)), `keep-clear-${selectedText.id}`); setKeepClearNote(null); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -2185,13 +2188,13 @@ function Timing({ fields }: { fields: TimeFieldProps[] }) {
 }
 
 /** Who stays: everyone, or the people or objects chosen from a numbered picture of the clip. */
-function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onChange: (changes: Partial<Clip>) => void; local: number; sourceDuration?: number | null }) {
-  const kind = clip.cutout_pick?.kind ?? 'people';
-  const ids = clip.cutout_pick?.ids ?? null;
-  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null;
+/** Each person (or object) found in a clip, numbered, found once in the background. */
+function useFoundInClip(clip: Clip | null, kind: 'people' | 'objects') {
+  const steady = Boolean(clip?.stabilise); const backwards = Boolean(clip?.reverse) && clip?.freeze == null;
   const [found, setFound] = useState<{ key: string; tracks: FoundOne[] | null; progress: number; problem?: string }>({ key: '', tracks: null, progress: 0 });
-  const key = `${clip.media_id}:${kind}:${steady}:${backwards}`;
+  const key = clip ? `${clip.media_id}:${kind}:${steady}:${backwards}` : '';
   useEffect(() => {
+    if (!clip) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
@@ -2204,8 +2207,14 @@ function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onCha
     };
     void check();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [key, clip.media_id, kind, steady, backwards]);
-  const tracks = found.key === key ? found.tracks : null;
+  }, [key, clip?.media_id, kind, steady, backwards]);
+  return { found, key, steady, backwards, tracks: found.key === key ? found.tracks : null };
+}
+
+function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onChange: (changes: Partial<Clip>) => void; local: number; sourceDuration?: number | null }) {
+  const kind = clip.cutout_pick?.kind ?? 'people';
+  const ids = clip.cutout_pick?.ids ?? null;
+  const { found, key, steady, backwards, tracks } = useFoundInClip(clip, kind);
   const everyone = kind === 'people' ? 'Everyone' : 'All of them';
   const blur = clip.cutout === 'blur';
   const toggle = (id: number) => {
@@ -2285,24 +2294,43 @@ function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fo
     <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
 }
 
-/** One tick box: people never cover the title. Then, only if wanted, how much room and which way it moves. Each pick applies at once. */
-function KeepClearPanel({ kept, busy, note, onRun, onRemove }: { kept: KeepClear | null; busy: number | null; note: string | null; onRun: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move'>) => void; onRemove: () => void }) {
+/** One tick box: people never cover the title. Then who (everyone, or numbered people), how much room and which way. Each pick applies at once. */
+function KeepClearPanel({ kept, under, busy, note, onRun, onRemove }: { kept: KeepClear | null; under: Clip | null; busy: number | null; note: string | null; onRun: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemove: () => void }) {
   const room = roomOf(kept);
   const way = kept?.direction === 'left' || kept?.direction === 'right' ? 'side' : kept?.direction ?? 'auto';
-  const run = (nextRoom: Room, nextWay: KeepClear['direction']) => onRun({ gap: KEEP_CLEAR_ROOM[nextRoom].gap, max_move: KEEP_CLEAR_ROOM[nextRoom].max_move, direction: nextWay });
+  const who = kept?.who ?? null;
+  const ids = who?.ids ?? null;
+  const run = (nextRoom: Room, nextWay: KeepClear['direction'], nextWho: CutoutPick | null) => onRun({ gap: KEEP_CLEAR_ROOM[nextRoom].gap, max_move: KEEP_CLEAR_ROOM[nextRoom].max_move, direction: nextWay, who: nextWho });
   const on = Boolean(kept) || busy !== null;
+  const { tracks, found, key, steady, backwards } = useFoundInClip(on ? under : null, 'people');
+  const toggle = (id: number) => {
+    const next = (ids ?? []).includes(id) ? (ids ?? []).filter((other) => other !== id) : [...(ids ?? []), id];
+    run(room, kept?.direction ?? 'auto', next.length && next.length < (tracks?.length ?? 0) ? { kind: 'people', ids: next.sort((p, q) => p - q) } : null);
+  };
   return <>
-    <label className="ed-check"><input type="checkbox" checked={on} disabled={busy !== null} onChange={(event) => (event.target.checked ? run('comfortable', 'auto') : onRemove())}/>Don't let people cover the title</label>
+    <label className="ed-check"><input type="checkbox" checked={on} disabled={busy !== null} onChange={(event) => (event.target.checked ? run('comfortable', 'auto', null) : onRemove())}/>Don't let people cover the title</label>
     {busy !== null && <p className="ed-group-tip">Finding the people in this clip … {busy}%</p>}
     {kept && busy === null && <>
-      <p className="ed-sub">Space around them</p><Chips label="Space around them" options={(Object.keys(KEEP_CLEAR_ROOM) as Room[]).map((id) => ({ id, label: KEEP_CLEAR_ROOM[id].label }))} value={room} onPick={(id) => run(id, kept.direction)}/>
-      <p className="ed-sub">Title moves</p><Chips label="Title moves" options={[{ id: 'auto', label: 'Best way' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }, { id: 'side', label: 'Aside' }]} value={way} onPick={(id) => run(room, id as KeepClear['direction'])}/>
+      <div className="ed-who">
+        <span className="ed-who-title">Keep clear of</span>
+        {found.key === key && found.problem ? <p className="ed-tip">{found.problem}</p>
+          : !tracks ? <p className="ed-tip">Numbering the people… {found.progress ? `${found.progress}%` : ''}</p>
+          : tracks.length > 1 ? <>
+            <img className="ed-who-picture" src={`${instancesPictureUrl(under!.media_id, 'people', steady, backwards)}&v=${tracks.map((track) => track.id).join('-')}`} alt="The clip with each person numbered"/>
+            <div className="ed-chips" role="group" aria-label="Keep clear of">
+              <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => run(room, kept.direction, null)}>Everyone</button>
+              {tracks.map((track) => <button key={track.id} className={ids?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(ids?.includes(track.id))} onClick={() => toggle(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
+            </div>
+          </> : <p className="ed-tip">{tracks.length ? 'One person in this clip.' : 'No people were found in this clip.'}</p>}
+      </div>
+      <p className="ed-sub">Space around them</p><Chips label="Space around them" options={(Object.keys(KEEP_CLEAR_ROOM) as Room[]).map((id) => ({ id, label: KEEP_CLEAR_ROOM[id].label }))} value={room} onPick={(id) => run(id, kept.direction, who)}/>
+      <p className="ed-sub">Title moves</p><Chips label="Title moves" options={[{ id: 'auto', label: 'Best way' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }, { id: 'side', label: 'Aside' }]} value={way} onPick={(id) => run(room, id as KeepClear['direction'], who)}/>
     </>}
     {note && busy === null && <p className="ed-group-tip">{note}</p>}
   </>;
 }
 
-function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, clearing, clearNote, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: 'person' | 'object') => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; clearing: number | null; clearNote: string | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: 'person' | 'object') => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; clearing: number | null; clearNote: string | null; clearUnder: Clip | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
@@ -2352,7 +2380,7 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
     </Group>
     <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline" tip="Choose one reveal, then choose what passes in front of the title." help="cinema-titles">
       <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
-      <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>
+      <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} under={clearUnder} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>
       {(cover === 'people' || cover === 'object') && <>
         <Chips label="Space around people or objects" options={[{ id: '0', label: 'None' }, { id: '1', label: 'Small' }, { id: '2', label: 'Medium' }, { id: '3', label: 'Wide' }, { id: '4', label: 'Extra wide' }, { id: '5', label: 'Maximum' }]} value={String(groundGap)} onPick={(gap) => onGroundGap(Number(gap) as 0 | 1 | 2 | 3 | 4 | 5)}/>
         {text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through' ? <ValueSlider label="Enter time" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/> : null}

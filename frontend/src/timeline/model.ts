@@ -36,7 +36,7 @@ export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boo
 export type TitleDepth = { amount: number; color: string; light: number; angle?: number };
 export type TitlePin = { clip_id: string; at: number };
 /** The title moves aside to keep `gap` (frame heights) from people; the move is ordinary x/y keys. Match timeline_schema.py. */
-export type KeepClear = { gap: number; direction: 'auto' | 'up' | 'down' | 'left' | 'right' | 'side'; max_move: number; x: number; y: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null };
+export type KeepClear = { gap: number; direction: 'auto' | 'up' | 'down' | 'left' | 'right' | 'side'; max_move: number; who?: CutoutPick | null; x: number; y: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null };
 export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f', light: 0.62, angle: 24.44 };
 export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };

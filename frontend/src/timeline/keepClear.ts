@@ -109,7 +109,7 @@ export function smoothShifts(raw: number[], half: number, soft: number): number[
   });
 }
 
-export type ClearJob = { text: TextItem; box: Box; format: Format; under: Clip; source: Size; grid: PeopleGrid; settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move'>; pinAt?: (timeline: number) => Matrix | null };
+export type ClearJob = { text: TextItem; box: Box; format: Format; under: Clip; source: Size; grid: PeopleGrid; settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>; pinAt?: (timeline: number) => Matrix | null };
 export type ClearResult = { transform: Transform; keep_clear: KeepClear; direction: Direction; uncleared: [number, number][] };
 
 /** New x/y keys that keep the title clear of people, and the moments where even the largest allowed move does not. */
