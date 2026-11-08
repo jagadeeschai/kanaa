@@ -32,7 +32,8 @@ from app.services.video_edit_service import run_cancellable
 
 logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'instance_mask.swift'
-KINDS = ('people', 'objects')
+KINDS = ('people', 'objects')  # Found one by one and numbered.
+LAND = 'land'  # Everything but the sky (sky_service): one whole, never numbered.
 VERSION = 2  # 2: solid, steady masks (cutout_service.Steadier).
 MAX_TRACKS = 6  # The helper sends at most this many a frame, and no more are followed.
 SMALL = 8  # Outlines are compared at an eighth of the mask's size.
@@ -64,6 +65,8 @@ def from_choice(choice) -> Optional[Pick]:
 def parse(token: str) -> Optional[Pick]:
     """'people-0-2' or 'objects-all' to a pick. None if it isn't one."""
     kind, _, rest = token.partition('-')
+    if kind == LAND:
+        return Pick(LAND, None) if rest == 'all' else None
     if kind not in KINDS or not rest:
         return None
     if rest == 'all':
@@ -391,6 +394,15 @@ def is_ready(source: Path, pick: Pick, gap: int = 0) -> bool:
 
 def prepare(facts: MediaFacts, pick: Pick, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None, joined: bool = True, see_through: bool = True, gap: int = 0) -> None:
     """Finds them all, then joins the chosen ones' masks, then makes the see-through preview copy, each once."""
+    if pick.kind == LAND:
+        from app.services import sky_service
+        with lock_for(f'{content_key(facts.path)}:{LAND}'):
+            mask, cut = pick_paths(facts.path, pick, gap)
+            if not mask.is_file():
+                sky_service.make_land_mask(facts, mask, on_progress, should_cancel)
+            if see_through and not cut.is_file():
+                cutout_service.make_see_through(facts, should_cancel, mask=mask, target=cut, gap=gap)
+        return
     with lock_for(f'{content_key(facts.path)}:{pick.kind}'):
         if not summary_path(facts.path, pick.kind).is_file():
             make_tracks(facts, pick.kind, on_progress, should_cancel, finder)
@@ -465,8 +477,8 @@ def ensure_mask(facts: MediaFacts, pick: Optional[Pick], should_cancel: Callable
 def request(facts: MediaFacts, pick: Pick, label: str, joined: bool = True, gap: int = 0) -> dict:
     """Ready, or being made in the background. Without `joined`, only finds them, for choosing."""
     ready = is_ready(facts.path, pick, gap) if joined else summary_path(facts.path, pick.kind).is_file()
-    what = 'people' if pick.kind == 'people' else 'objects'
-    return in_background(facts, f'{pick.token if joined else pick.kind}-gap{gap}', ready, f'Finding the {what} in {label}',
+    what = {'people': 'the people', 'objects': 'the objects', LAND: 'the sky'}[pick.kind]
+    return in_background(facts, f'{pick.token if joined else pick.kind}-gap{gap}', ready, f'Finding {what} in {label}',
                          lambda progress, should_cancel: prepare(facts, pick, progress, should_cancel, joined=joined, gap=gap))
 
 

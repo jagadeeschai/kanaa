@@ -99,7 +99,7 @@ class RampPoint(Strict):
 
 class CutoutPick(Strict):
     """Which of the people, or the objects, a cut-out keeps. Numbers are from the clip's list of them; None keeps them all."""
-    kind: Literal['people', 'objects']
+    kind: Literal['people', 'objects', 'land']  # land: everything but the sky, always all of it.
     ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=6)
 
     @field_validator('ids')
@@ -108,6 +108,12 @@ class CutoutPick(Strict):
         if ids is not None and any(not 0 <= number < 6 for number in ids):
             raise ValueError('Pick from the people or objects found.')
         return sorted(set(ids)) if ids is not None else None
+
+    @model_validator(mode='after')
+    def whole_land(self):
+        if self.kind == 'land' and self.ids is not None:
+            raise ValueError('The land is kept whole: no numbers.')
+        return self
 
 
 class FocusPull(Strict):

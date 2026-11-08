@@ -192,3 +192,19 @@ test('a focus pull names its copy and keeps its moment in the source, forwards o
   assert.equal(focusAt(backwards, 2.5, 10), 4.5);
   close(focusLocal(backwards, 4.5, 10), 2.5, 'back to the reversed clip');
 });
+
+test('sky only: the land goes in front, switches with people, and comes off cleanly', async () => {
+  const { addText, cinemaReveal, cinemaRevealFront, groundRiseGap, setGroundRiseGap, cutoutToken } = await import('../src/timeline/model.ts');
+  let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
+  timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Sunset', style: 'outline', position: 'top', color: '#ffffff', size: 80 }, 'words');
+  const sky = cinemaReveal(timeline, 't', 'push', 'land', ['l', 'land']);
+  assert.deepEqual([sky.layers[2].name, sky.layers[2].items[0].cutout, sky.layers[2].items[0].cutout_pick], ['Land', 'remove', { kind: 'land', ids: null }]);
+  assert.equal(cutoutToken(sky.layers[2].items[0]), 'land-all');
+  assert.equal(cutoutToken(setGroundRiseGap(sky, 't', 1).layers[2].items[0]), 'land-all.gap1');
+  assert.equal(groundRiseGap(setGroundRiseGap(sky, 't', 1), 't'), 1);
+  // Switching to people reuses the one foreground layer.
+  const people = cinemaReveal(sky, 't', 'push', 'person', ['x', 'y']);
+  assert.equal(people.layers.length, 3);
+  assert.deepEqual([people.layers[2].name, people.layers[2].items[0].cutout_pick], ['Person', null]);
+  assert.deepEqual(cinemaRevealFront(sky, 't', 'push').layers.map((layer) => layer.id), ['main', 'words']);
+});

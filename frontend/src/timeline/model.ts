@@ -23,7 +23,8 @@ export type Echo = { mode: 'echo' | 'smear'; trails: number; decay: number };
 export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
-export type CutoutPick = { kind: 'people' | 'objects'; ids: number[] | null };
+/** land: everything but the sky (always all of it), for a title that shows only in the sky. */
+export type CutoutPick = { kind: 'people' | 'objects' | 'land'; ids: number[] | null };
 export type Clip = { id: string; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
@@ -361,19 +362,29 @@ export function putBehindObject(timeline: Timeline, textId: string, ids: [string
   return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } }, ids, 'Object');
 }
 
+/** The title shows only in the sky: land, buildings, trees and people stay in front, found in every frame, so it
+ * follows the horizon as the camera moves. */
+export function putBehindLand(timeline: Timeline, textId: string, ids: [string, string]): Timeline {
+  return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'land', ids: null } }, ids, 'Land');
+}
+
+export type CoverKind = 'person' | 'object' | 'land';
+const COVER_LAYERS = ['Person', 'Object', 'Land'];
+const COVER_NAME: Record<CoverKind, string> = { person: 'Person', object: 'Object', land: 'Land' };
+
 /** Makes a title rise from ground level while a chosen foreground kind passes in front of it. */
-export function groundRiseBehind(timeline: Timeline, textId: string, what: 'person' | 'object', ids: [string, string], duration = 1.1): Timeline {
+export function groundRiseBehind(timeline: Timeline, textId: string, what: CoverKind, ids: [string, string], duration = 1.1): Timeline {
   const found = findText(timeline, textId);
   if (!found) return timeline;
   const nextLayer = timeline.layers[timeline.layers.indexOf(found.layer) + 1];
-  const expected = what === 'person' ? 'Person' : 'Object';
+  const expected = COVER_NAME[what];
   let behind = timeline;
   // A cinematic reveal owns one foreground layer. Switching People/Object changes that layer instead of silently
   // stacking another full copy of the clip above it.
-  if (nextLayer?.kind === 'video' && nextLayer.items.length > 0 && (nextLayer.name === 'Person' || nextLayer.name === 'Object')) {
+  if (nextLayer?.kind === 'video' && nextLayer.items.length > 0 && COVER_LAYERS.includes(nextLayer.name ?? '')) {
     const changes: Partial<Clip> = what === 'person'
       ? { cutout: 'remove', cutout_pick: null }
-      : { cutout: 'remove', cutout_pick: { kind: 'objects', ids: null } };
+      : { cutout: 'remove', cutout_pick: { kind: what === 'land' ? 'land' : 'objects', ids: null } };
     behind = { ...timeline, layers: timeline.layers.map((layer) => layer !== nextLayer ? layer : { ...layer, name: expected, items: layer.items.map((clip) => ({
       ...clip,
       ...changes,
@@ -382,13 +393,13 @@ export function groundRiseBehind(timeline: Timeline, textId: string, what: 'pers
       bypass: clip.bypass?.some((effect) => effect !== 'background') ? clip.bypass.filter((effect) => effect !== 'background') : null,
     })) }) };
   } else {
-    behind = (what === 'person' ? putBehindPerson : putBehindObject)(timeline, textId, ids);
+    behind = (what === 'person' ? putBehindPerson : what === 'land' ? putBehindLand : putBehindObject)(timeline, textId, ids);
     // Do not leave a half-configured animation behind when no main clip is under the title or the layer limit is hit.
     if (behind === timeline) return timeline;
   }
   // Older interrupted setups could leave empty Person/Object tracks behind. They cannot draw anything and previously
   // fooled the next click into thinking the reveal was ready, so discard them while repairing the reveal.
-  behind = { ...behind, layers: behind.layers.filter((layer) => !(layer.kind === 'video' && layer.items.length === 0 && (layer.name === 'Person' || layer.name === 'Object'))) };
+  behind = { ...behind, layers: behind.layers.filter((layer) => !(layer.kind === 'video' && layer.items.length === 0 && COVER_LAYERS.includes(layer.name ?? ''))) };
   return updateText(behind, textId, { enter: { preset: 'ground-rise', duration }, exit: found.text.exit ?? { preset: 'fade', duration: 0.5 } });
 }
 
@@ -401,7 +412,7 @@ export const CINEMA_REVEALS: { id: CinemaReveal; label: string; tamil: string; a
 
 /** A cinema title reveal in one step: the chosen person or object in front (as Ground rise does), the reveal's own
  * entrance, and extruded depth for the rising and flying reveals unless the title has its own already. */
-export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaReveal, what: 'person' | 'object', ids: [string, string]): Timeline {
+export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaReveal, what: CoverKind, ids: [string, string]): Timeline {
   const before = findText(timeline, textId);
   if (!before) return timeline;
   const behind = groundRiseBehind(timeline, textId, what, ids);
@@ -419,7 +430,7 @@ export function cinemaRevealFront(timeline: Timeline, textId: string, reveal: Ci
   let end = index + 1;
   while (end < timeline.layers.length) {
     const layer = timeline.layers[end];
-    if (layer.kind !== 'video' || !['Person', 'Object', 'In front'].includes(layer.name ?? '')) break;
+    if (layer.kind !== 'video' || ![...COVER_LAYERS, 'In front'].includes(layer.name ?? '')) break;
     end += 1;
   }
   const layers = [...timeline.layers.slice(0, index + 1), ...timeline.layers.slice(end)];
@@ -436,7 +447,7 @@ export function removeCinemaReveal(timeline: Timeline, textId: string): Timeline
   let end = index + 1;
   while (end < timeline.layers.length) {
     const layer = timeline.layers[end];
-    if (layer.kind !== 'video' || !['Person', 'Object', 'In front'].includes(layer.name ?? '')) break;
+    if (layer.kind !== 'video' || ![...COVER_LAYERS, 'In front'].includes(layer.name ?? '')) break;
     end += 1;
   }
   const layers = [...timeline.layers.slice(0, index + 1), ...timeline.layers.slice(end)];
@@ -459,13 +470,13 @@ export function cinemaRevealShape(timeline: Timeline, textId: string, reveal: Ci
 export function groundRiseGap(timeline: Timeline, textId: string): 0 | 1 | 2 | 3 | 4 | 5 {
   const found = findText(timeline, textId);
   const layer = found && timeline.layers[timeline.layers.indexOf(found.layer) + 1];
-  return layer?.kind === 'video' && (layer.name === 'Person' || layer.name === 'Object') ? layer.items[0]?.depth_gap ?? 0 : 0;
+  return layer?.kind === 'video' && COVER_LAYERS.includes(layer.name ?? '') ? layer.items[0]?.depth_gap ?? 0 : 0;
 }
 
 export function setGroundRiseGap(timeline: Timeline, textId: string, depth_gap: 0 | 1 | 2 | 3 | 4 | 5): Timeline {
   const found = findText(timeline, textId);
   const layer = found && timeline.layers[timeline.layers.indexOf(found.layer) + 1];
-  if (!layer || layer.kind !== 'video' || (layer.name !== 'Person' && layer.name !== 'Object')) return timeline;
+  if (!layer || layer.kind !== 'video' || !COVER_LAYERS.includes(layer.name ?? '')) return timeline;
   return { ...timeline, layers: timeline.layers.map((item) => item === layer ? { ...layer, items: layer.items.map((clip) => ({ ...clip, depth_gap })) } : item) };
 }
 
