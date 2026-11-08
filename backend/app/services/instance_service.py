@@ -33,7 +33,7 @@ from app.services.video_edit_service import run_cancellable
 logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'instance_mask.swift'
 KINDS = ('people', 'objects')
-VERSION = 1
+VERSION = 2  # 2: solid, steady masks (cutout_service.Steadier).
 MAX_TRACKS = 6  # The helper sends at most this many a frame, and no more are followed.
 SMALL = 8  # Outlines are compared at an eighth of the mask's size.
 MATCH = 0.2  # The overlap, as a share of the two outlines together, that makes it the same one.
@@ -259,7 +259,7 @@ def make_tracks(facts: MediaFacts, kind: str, on_progress: Callable[[int], None]
                 if track is None:
                     if len(live) >= MAX_TRACKS:
                         continue
-                    track = Track(number=len(live), outline=outline(mask), last_seen=index, born=index)
+                    track = Track(number=len(live), outline=outline(mask), last_seen=index, born=index, steady=Steadier(fps=fps))
                     track.process = encoder(track.number)
                     # Empty frames up to now, so every mask runs the whole clip.
                     for _ in range(index):

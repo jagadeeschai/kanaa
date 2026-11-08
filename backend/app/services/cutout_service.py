@@ -29,12 +29,19 @@ logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'person_mask.swift'
 # Version 3 rejects Vision's low-confidence aura more firmly and uses a wider temporal median. Older prepared copies
 # remain untouched on disk but are no longer selected, so existing projects rebuild clean cut-outs automatically.
-MASK = 'person-mask-3.mp4'
-SEE_THROUGH = 'person-cut-3b.webm'  # 3b: constant-quality alpha; 3's starved 3M realtime encode flickered at edges.
-PORTRAIT = 'portrait-3.mp4'
-PORTRAIT_PROXY = 'portrait-proxy-3.mp4'
+# Version 4 is solid and steady: each pixel is the person or not (only the anti-aliased edge is in between), holes are
+# filled, and a pixel stays the person for a moment after Vision loses it. A title behind no longer shows through
+# people as a ghost, or pops in front for a frame when Vision blinks.
+MASK = 'person-mask-4.mp4'
+SEE_THROUGH = 'person-cut-4.webm'
+PORTRAIT = 'portrait-4.mp4'
+PORTRAIT_PROXY = 'portrait-proxy-4.mp4'
 STEADY_RADIUS = 3  # Frames either side: seven-frame median removes short edge flashes without following behind.
 FIRM_LOW, FIRM_HIGH = 92, 210  # Reject the broad grey aura; keep only a narrow soft edge around a confident person.
+SOLID_AT = 110  # After the median, at or above this (of 255) is the person, fully; below is not.
+HOLD_SECONDS = 0.5  # At most this long a Vision blink is bridged; measured blinks on real footage ran to about this.
+BLINK_SHARE = 0.75  # Losing more than a quarter of the person from one frame to the next is a blink, not movement.
+FILL_PIXELS = 5  # Closes gaps this wide inside a person (between arms, a see-through patch on a shirt), at mask size.
 MASK_SIDE = 1280  # The mask's long side. The export scales it to the full frame, softly.
 PREVIEW_SIDE = 720
 PORTRAIT_BLUR = 0.015  # Of the frame height: a strong portrait-mode look.
@@ -86,11 +93,32 @@ class Steadier:
     behind the person shows through for that frame. Each mask frame becomes the middle value of its neighbours, which
     removes one- and two-frame dropouts without lagging, and the inside is firmed up so it can't half-vanish."""
 
-    def __init__(self, radius: int = STEADY_RADIUS):
+    def __init__(self, radius: int = STEADY_RADIUS, fps: float = 30):
         self.radius = radius
         self.window: list[np.ndarray] = []
         self.sent = 0
         self.seen = 0
+        self.hold = max(1, round(HOLD_SECONDS * fps))  # Frames.
+        self.held: np.ndarray | None = None  # The last frame Vision really saw, kept through a short blink.
+        self.blink = 0
+
+    def solid(self, mask: np.ndarray, index: int) -> np.ndarray:
+        """Each pixel fully the person or not: no half see-through people, and holes are closed. When Vision blinks
+        (the person suddenly shrinks or vanishes) the last good shape is kept for up to `hold` frames, so a title
+        behind can't pop through for a frame. Ordinary movement is not held, so nothing trails behind someone walking."""
+        import cv2
+        on = mask >= SOLID_AT
+        if on.any() and FILL_PIXELS:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (FILL_PIXELS * 2 + 1, FILL_PIXELS * 2 + 1))
+            on = cv2.morphologyEx(on.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(bool)
+        held = self.held
+        if held is not None and held.shape == on.shape and self.blink < self.hold and np.count_nonzero(on) < BLINK_SHARE * np.count_nonzero(held):
+            self.blink += 1
+            on = on | held
+        else:
+            self.blink = 0
+            self.held = on
+        return np.where(on, 255, 0).astype(np.uint8)
 
     def firm(self, mask: np.ndarray) -> np.ndarray:
         return np.clip((mask.astype(np.int32) - FIRM_LOW) * 255 // (FIRM_HIGH - FIRM_LOW), 0, 255).astype(np.uint8)
@@ -100,8 +128,8 @@ class Steadier:
         first = self.seen - len(self.window)
         picks = [self.window[min(max(index + offset, first), self.seen - 1) - first] for offset in range(-self.radius, self.radius + 1)]
         if all(pick is picks[0] for pick in picks):
-            return self.firm(picks[0])  # The same frame throughout, such as an empty one: no middle to find.
-        return self.firm(np.median(np.stack(picks), axis=0).astype(np.uint8))
+            return self.solid(self.firm(picks[0]), index)  # The same frame throughout, such as an empty one: no middle to find.
+        return self.solid(self.firm(np.median(np.stack(picks), axis=0).astype(np.uint8)), index)
 
     def push(self, mask: np.ndarray) -> list[np.ndarray]:
         self.window.append(mask)
@@ -143,7 +171,7 @@ def make_mask(facts: MediaFacts, on_progress: Callable[[int], None], should_canc
         stop_process_when(process, should_cancel)
     try:
         frame, done = width * height, 0
-        steady = Steadier()
+        steady = Steadier(fps=fps)
         while chunk := find.stdout.read(frame):
             if len(chunk) < frame:
                 break
@@ -176,7 +204,7 @@ def gap_filters(gap: int) -> str:
 
 
 def gap_cut_path(source: Path, gap: int) -> Path:
-    return files(source)[SEE_THROUGH] if not gap else files(source)[SEE_THROUGH].with_name(f'person-cut-gap{gap}-3b.webm')
+    return files(source)[SEE_THROUGH] if not gap else files(source)[SEE_THROUGH].with_name(f'person-cut-gap{gap}-4.webm')
 
 
 def make_see_through(facts: MediaFacts, should_cancel: Callable[[], bool], mask: Path | None = None, target: Path | None = None, gap: int = 0) -> None:
