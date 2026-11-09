@@ -12,7 +12,7 @@ import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useSta
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Blend, ChevronsRight, MoveHorizontal, ZoomIn, Wind, Zap, RectangleHorizontal, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search } from 'lucide-react';
 import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
-import { startPeopleGrid, startSceneTrack } from '../api/client';
+import { fetchRecorded, startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
 import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
@@ -24,7 +24,7 @@ import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
-import { onSkyline, snapshotFrame } from '../timeline/model';
+import { onSkyline, snapshotFrame, TITLE_DESIGNS } from '../timeline/model';
 import { applyTitleMove, stillTitle, TITLE_MOVES } from '../timeline/titleMoves';
 import { groundRiseBehind, groundRiseGap, setGroundRiseGap } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
@@ -51,7 +51,7 @@ import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } 
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
-import { ENGLISH_FONTS, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
+import { dateWords, ENGLISH_FONTS, isDateTemplate, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
@@ -394,7 +394,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const textImages = useRef(new Map<string, string | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
-  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, format.width, format.height]);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem) => {
     const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format));
     return found && found !== 'loading' ? found : undefined;
@@ -814,10 +814,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setMyStyles(next); saveStyles(next);
   };
   const forgetStyle = (id: string) => { const next = myStyles.filter((style) => style.id !== id); setMyStyles(next); saveStyles(next); };
-  const addTitle = (title: Template, dropAt?: number, words?: string) => {
+  const addTitle = async (title: Template, dropAt?: number, words?: string) => {
     if (!timeline) return;
-    const text: TextItem = { ...title.look, ...(words ? { text: words, subtitle: '' } : {}), id: newId(), start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: TEXT_SECONDS };
-    change(addText(timeline, text, newId()));
+    const at = dropAt ?? engineRef.current?.currentTime ?? 0;
+    // A date title says when the clip under it was filmed (or the photo taken); today when the file doesn't say.
+    let dated: Partial<TextItem> = {};
+    if (isDateTemplate(title.id) && !words) {
+      const under = mainLayer(timeline).items.find((item) => item.start <= at && at < item.start + clipLength(item));
+      const recorded = under ? await fetchRecorded(under.media_id).catch(() => null) : null;
+      dated = dateWords(recorded, title.id === 'date-tamil' ? 'ta' : 'en');
+      if (!recorded) setError(under ? 'This clip doesn\'t say when it was filmed, so the title shows today\'s date. Type the right one.' : 'No clip here, so the title shows today\'s date.');
+    }
+    const current = timelineRef.current ?? timeline;
+    const text: TextItem = { ...title.look, ...dated, ...(words ? { text: words, subtitle: '' } : {}), id: newId(), start: Math.round(at * 1000) / 1000, length: TEXT_SECONDS };
+    change(addText(current, text, newId()));
     setSelectedId(text.id);
     // A title starts hidden behind its enter animation, so show it at rest.
     setTimeout(() => engineRef.current?.seek(text.start + TEXT_SECONDS / 2), 0);
@@ -2359,13 +2369,15 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
     <Group title="Style" tab="style" startOpen keywords="font bigger size colour color band shadow outline style look" tip="Choose a style, size and colour. Drag the title in the preview to move it." help="title-styles">
       <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
       <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
+      <Chips label="Layout" options={[{ id: 'none' as const, label: 'Plain' }, ...TITLE_DESIGNS]} value={text.design ?? 'none'} onPick={(design) => onChange({ design: design === 'none' ? null : design })}/>
+      {text.design && <p className="ed-group-tip">{text.design === 'gradient' ? 'A bar behind the words, fading out to the right. Band colour (under More) sets its colour.' : text.design === 'formal' ? 'A light bar across the frame with fine rules; the subtitle colour sets the rules.' : text.design === 'overlap' ? 'The subtitle overlaps the end of the title, in the subtitle colour.' : 'The title in the top left corner, the subtitle in the bottom right.'}</p>}
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
       <More>
       <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
       <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
       <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
       <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
-      {text.style === 'band' && <label className="ed-color"><span>Band colour</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
+      {(text.style === 'band' || text.design === 'gradient' || text.design === 'formal') && <label className="ed-color"><span>{text.design ? 'Bar colour' : 'Band colour'}</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
     <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>
       </More>
     </Group>

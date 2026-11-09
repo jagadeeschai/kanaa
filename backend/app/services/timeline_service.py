@@ -549,9 +549,10 @@ def script_runs(text: str) -> list[str]:
     return runs or [text]
 
 
-def write_title(path: Path, item: Text, fmt: Format) -> None:
+def write_title(path: Path, item: Text, fmt: Format, plain: bool = False) -> None:
     """A template title: title and subtitle in one block, each line in its script's font, aligned and boxed as chosen.
-    Uses write_lyrics' sizes and borders, so a template's title line matches a plain title of the same size."""
+    Uses write_lyrics' sizes and borders, so a template's title line matches a plain title of the same size.
+    Plain: the letters alone, no outline, shadow or box, for a design that draws its own bar behind them."""
     width, height = fmt.width, fmt.height
     unit = width / 720
     title_size = max(20, item.size) * unit
@@ -563,7 +564,9 @@ def write_title(path: Path, item: Text, fmt: Format) -> None:
     }[item.style]
     if item.style == 'band' and item.band_color:
         outline_colour = back_colour = ass_colour(item.band_color, 0x20)
-    blur = rf'\blur{3 * unit}' if item.style == 'shadow' else ''
+    blur = rf'\blur{3 * unit}' if item.style == 'shadow' and not plain else ''
+    if plain:
+        border_style, outline, shadow = 1, 0, 0
     row = {'top': 7, 'center': 4, 'bottom': 1}[item.position]
     alignment = row + {'left': 0, 'center': 1, 'right': 2}[item.align]
     margin, side = round(height * 0.08), round(width * 0.055)
@@ -629,6 +632,10 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
                                        lyric_color=item.color, lyrics=[{'start': 0, 'end': 1, 'text': item.text}]), None
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
+        if layer is None and item.design:
+            from app.services.title_design import render_design
+            render_design(item, fmt, target)
+            return
         if layer is None and item.designed:
             write_title(folder / 'lyrics.ass', item, fmt)
         else:

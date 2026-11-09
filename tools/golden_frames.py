@@ -272,6 +272,16 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         texts.append({'id': name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'text': 'Happy பொங்கல்', 'style': 'band', 'position': 'center', 'size': 70, **extra})
         samples += [{'name': f'title move {name} {at}', 't': t + at} for at in (0.5, 1, 1.5)]
         t += SECONDS
+    # Laid-out titles: one picture for preview and export, also under a picture animation that wipes the bar too.
+    for name, look in (('gradient', {'design': 'gradient', 'position': 'bottom', 'enter': {'preset': 'reveal', 'duration': 1}}),
+                       ('gradient white', {'design': 'gradient', 'band_color': '#ffffff', 'color': '#1f2937', 'position': 'bottom'}),
+                       ('formal', {'design': 'formal', 'position': 'bottom', 'color': '#3b2f1e', 'font': 'Baskerville'}),
+                       ('overlap', {'design': 'overlap', 'size': 84, 'subtitle_size': 54, 'color': '#ef4444', 'subtitle_color': '#ffffff'}),
+                       ('corners', {'design': 'corners', 'enter': {'preset': 'soft-edge', 'duration': 1}})):
+        clips.append(clip('design-' + name.replace(' ', '-') + '-under', first, t))
+        texts.append({'id': 'design-' + name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'text': 'Meena Kumar', 'subtitle': 'மதுரை 2026', 'style': 'shadow', 'position': 'center', 'size': 44, 'color': '#ffffff', **look})
+        samples += [{'name': f'title design {name} {at}', 't': t + at} for at in (0.5, 1.5)]
+        t += SECONDS
     # Captions on top of everything, with the spoken word lit, in Tamil and English.
     captions = {'id': 'subs', 'kind': 'captions', 'style': 'outline', 'position': 'bottom', 'color': '#ffffff', 'highlight': '#ffd400', 'size': 56, 'items': [
         {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},

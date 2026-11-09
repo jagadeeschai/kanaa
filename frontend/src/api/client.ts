@@ -57,6 +57,8 @@ export const songUrl = (id: string) => `/api/video-audio/${id}`;
 export type Stems = { vocals: string; music: string };
 export const getStemsStatus = () => requestJson<{ available: boolean; install_command: string }>('/api/stems');
 export const startStems = (source: { asset_id?: string; media_id?: number }) => requestJson<{ job_id: string }>('/api/stems', { method: 'POST', body: JSON.stringify(source) });
+/** When a clip was filmed or a photo taken, 'YYYY-MM-DDTHH:MM' local time, or null when the file doesn't say. */
+export const fetchRecorded = async (id: number) => (await requestJson<{ recorded: string | null }>(`/api/photos/${id}/recorded`)).recorded;
 export const fetchTextImage = async (text: unknown, format: unknown) => {
   const response = await fetch('/api/text-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, format }) });
   if (!response.ok) throw new Error('This text could not be drawn.');

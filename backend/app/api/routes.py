@@ -154,6 +154,13 @@ def media_details(identifier: int):
     return describe(get_media(identifier))
 
 
+@router.get('/photos/{identifier}/recorded')
+def media_recorded(identifier: int):
+    """When the clip was filmed or the photo taken (local time), for a Date title. Null when the file doesn't say."""
+    from app.services.media_probe import recorded_at
+    return {'recorded': recorded_at(Path(get_media(identifier)['absolute_path']))}
+
+
 class MediaFolder(BaseModel):
     folder: str | None = Field(default=None, max_length=60)
 

@@ -52,3 +52,47 @@ def probe_video(path: Path) -> MediaFacts | None:
     return MediaFacts(path=path, media_type='video', width=width, height=height, duration=media_duration(info), fps=frame_rate(video), rotation=rotation,
                       has_audio=any(s.get('codec_type') == 'audio' for s in info.get('streams', [])),
                       color_space=video.get('color_space'), color_transfer=video.get('color_transfer'))
+
+
+LOCAL_DATE_TAGS = ('com.apple.quicktime.creationdate', 'com.blackmagic-design.camera.dateRecorded')
+
+
+def recorded_at(path: Path) -> str | None:
+    """When a video was filmed or a photo taken, as local wall-clock time 'YYYY-MM-DDTHH:MM', or None when it isn't recorded.
+
+    A tag written with the camera's own time and offset is used as written; a UTC creation_time is turned into this
+    Mac's time; a photo's EXIF DateTimeOriginal is already local."""
+    import json
+    import shutil
+    import subprocess
+    from datetime import datetime, timezone
+    path = Path(path)
+    if path.suffix.lower() in ('.jpg', '.jpeg', '.heic', '.png', '.tif', '.tiff', '.webp'):
+        try:
+            from PIL import Image
+            with Image.open(path) as image:
+                exif = image.getexif()
+                value = exif.get_ifd(0x8769).get(36867) or exif.get(306)
+            return datetime.strptime(str(value).strip(), '%Y:%m:%d %H:%M:%S').strftime('%Y-%m-%dT%H:%M') if value else None
+        except Exception:
+            return None
+    try:
+        info = json.loads(subprocess.run([shutil.which('ffprobe') or 'ffprobe', '-v', 'error', '-show_entries', 'format_tags:stream_tags', '-of', 'json', str(path)],
+                                         capture_output=True, text=True, timeout=30).stdout or '{}')
+    except Exception:
+        return None
+    tags = {**{k: v for stream in info.get('streams', []) for k, v in (stream.get('tags') or {}).items()}, **(info.get('format', {}).get('tags') or {})}
+    for name in LOCAL_DATE_TAGS:
+        if value := tags.get(name):
+            try:
+                return datetime.fromisoformat(value.replace('Z', '+00:00')[:19]).strftime('%Y-%m-%dT%H:%M')
+            except ValueError:
+                continue
+    if value := tags.get('creation_time'):
+        try:
+            moment = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if moment.year > 1971:  # Cameras with no clock write 1970 or 1904.
+                return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone().strftime('%Y-%m-%dT%H:%M')
+        except ValueError:
+            pass
+    return None

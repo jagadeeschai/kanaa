@@ -334,10 +334,13 @@ class Text(Strict):
     band_color: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # The box behind a band title.
     font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For English and other Latin lines.
     tamil_font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For Tamil lines.
+    # A laid-out title (title_design.py): a bar fading out to the right, a formal bar across the frame, the subtitle
+    # overlapping the end of the title, or the title and subtitle in opposite corners. Mirrors TitleDesign in model.ts.
+    design: Optional[Literal['gradient', 'formal', 'overlap', 'corners']] = None
 
     @property
     def designed(self) -> bool:
-        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font)
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None
 
     @property
     def length(self) -> float:

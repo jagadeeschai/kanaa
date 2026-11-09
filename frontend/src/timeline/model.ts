@@ -39,7 +39,11 @@ export type TitlePin = { clip_id: string; at: number };
 /** The title moves aside to keep `gap` (frame heights) from people; the move is ordinary x/y keys. Match timeline_schema.py. */
 export type KeepClear = { gap: number; direction: 'auto' | 'up' | 'down' | 'left' | 'right' | 'side'; max_move: number; who?: CutoutPick | null; x: number; y: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null };
 export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f', light: 0.62, angle: 24.44 };
-export type TextItem = { id: string; start: number; length: number; text: string; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null;
+/** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
+ * overlapping the title, or title and subtitle in opposite corners. */
+export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners';
+export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }];
+export type TextItem = { id: string; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
