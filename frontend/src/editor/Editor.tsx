@@ -9,8 +9,10 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Blend, ChevronsRight, MoveHorizontal, ZoomIn, Wind, Zap, RectangleHorizontal, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
-import { Search, Aperture, CircleDot, Droplets, DoorOpen, Focus as FocusIcon, Grid3x3, Puzzle, Waves, Box as CubeIcon, ArrowLeftRight, BookOpen } from 'lucide-react';
+import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
+import TransitionPopover from './TransitionPopover';
 import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
 import { fetchRecorded, startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
@@ -119,13 +121,6 @@ const DESIGN_TIPS: Record<TitleDesign, string> = {
 const BACKED_DESIGNS = new Set<TitleDesign>(['gradient', 'formal', 'clouds', 'paper', 'torn']);
 const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
-const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }, { id: 'circle-open', label: 'Circle open' }, { id: 'circle-close', label: 'Circle close' }, { id: 'cross-blur', label: 'Cross blur' },
-  { id: 'cross-zoom', label: 'Cross zoom' }, { id: 'spin-in', label: 'Spin in' }, { id: 'spin-out', label: 'Spin out' }, { id: 'doorway', label: 'Doorway' }, { id: 'puzzle-left', label: 'Puzzle left' }, { id: 'puzzle-right', label: 'Puzzle right' }, { id: 'mosaic', label: 'Mosaic' }, { id: 'ripple', label: 'Ripple' },
-  { id: 'cube', label: 'Cube' }, { id: 'swap', label: 'Swap' }, { id: 'page-curl-left', label: 'Page curl left' }, { id: 'page-curl-right', label: 'Page curl right' }];
-const TRANSITION_DIRECTIONS: { id: TransitionDirection; label: string }[] = [{ id: 'left', label: 'Left' }, { id: 'right', label: 'Right' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }];
-const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/>, 'circle-open': <Aperture size={13}/>, 'circle-close': <CircleDot size={13}/>, 'cross-blur': <Droplets size={13}/>,
-  'cross-zoom': <FocusIcon size={13}/>, 'spin-in': <RotateCw size={13}/>, 'spin-out': <RotateCcw size={13}/>, doorway: <DoorOpen size={13}/>, 'puzzle-left': <Puzzle size={13}/>, 'puzzle-right': <Puzzle size={13}/>, mosaic: <Grid3x3 size={13}/>, ripple: <Waves size={13}/>,
-  cube: <CubeIcon size={13}/>, swap: <ArrowLeftRight size={13}/>, 'page-curl-left': <BookOpen size={13}/>, 'page-curl-right': <BookOpen size={13} style={{ transform: 'scaleX(-1)' }}/> };
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
@@ -230,6 +225,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [panelOpen, setPanelOpen] = useState(true);
   /** The transition kind picked in the Transitions tab; used for click-apply and Every cut. */
   const [transitionPick, setTransitionPick] = useState<TransitionKind>('crossfade');
+  /** The cut whose transition popover is open: the clip after it, and its badge on screen. */
+  const [cutOpen, setCutOpen] = useState<{ clipId: string; anchor: DOMRect } | null>(null);
   /** True while the Remove-all-transitions confirmation is up. */
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [listening, setListening] = useState<string | null>(null);
@@ -2101,7 +2098,28 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         <button className="ed-button" aria-label="More view and help actions" onClick={openViewMenu}><MoreHorizontal size={15}/>More</button>
       </span>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}/>}
+    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+      onCut={(clipId, anchor) => setCutOpen((open) => open?.clipId === clipId ? null : { clipId, anchor })} openCut={cutOpen?.clipId ?? null}/>}
+    {cutOpen && timeline && (() => {
+      const items = mainLayer(timeline).items; const index = items.findIndex((clip) => clip.id === cutOpen.clipId);
+      if (index < 1) return null;
+      const before = items[index - 1]; const after = items[index]; const transition = after.transition_in ?? null;
+      const picture = (clip: Clip, at: number) => {
+        const strip = visuals.current.get(clip.media_id)?.filmstrip; const span = (facts(clip.media_id)?.duration ?? clip.out) || 1;
+        return strip?.image.src ? { image: strip.image.src, tiles: strip.tiles, tile: Math.min(strip.tiles - 1, Math.max(0, Math.floor(((clip.freeze ?? at) / span) * strip.tiles))) } : null;
+      };
+      const set = (next: Transition | null, group?: string) => change(updateClip(timeline, after.id, { transition_in: next }), group);
+      const longest = Math.min(2, clipLength(before), clipLength(after));
+      return <TransitionPopover key={after.id} transition={transition} anchor={cutOpen.anchor} longest={longest} locked={Boolean(mainLayer(timeline).locked)}
+        before={picture(before, before.reverse ? before.in : before.out - 0.05)} after={picture(after, after.reverse ? after.out - 0.05 : after.in)}
+        onPick={(kind) => { setTransitionPick(kind); set({ kind, duration: transition?.duration ?? Math.min(0.6, longest), direction: transition?.direction ?? null }); }}
+        onLength={(duration, group) => transition && set({ ...transition, duration: Math.min(duration, longest) }, group ?? 'transition-length')}
+        onDirection={(direction) => transition && set({ ...transition, direction: direction === 'left' ? null : direction })}
+        onRemove={() => { set(null); setCutOpen(null); }}
+        onEveryCut={() => transition && change(transitionEverywhere(timeline, transition.kind, transition.duration), 'transition-all')}
+        onPreview={() => { const half = (transition?.duration ?? 0) / 2; engineRef.current?.playRange(Math.max(0, after.start - half - 0.8), after.start + half + 0.8); }}
+        onGestureStart={pauseEngine} onClose={() => setCutOpen(null)}/>;
+    })()}
     </div></div>
     {confirmingClear && timeline && (() => { const count = mainLayer(timeline).items.filter((clip) => clip.transition_in).length; return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Remove all transitions"><div className="ed-card small">
       <h2 className="ed-confirm-title"><TriangleAlert size={18}/>Remove all transitions?</h2>

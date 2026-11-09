@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
+import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
@@ -14,9 +15,15 @@ type Props = {
   onItemMenu: (id: string | null, t: number, x: number, y: number) => void;
   /** Something from the side panel was dropped on the timeline. */
   onDropPayload?: (payload: DragPayload, target: DropTarget) => void;
+  /** A cut's badge was clicked: the clip after the cut, and where the badge is on screen. */
+  onCut?: (clipId: string, anchor: DOMRect) => void;
+  /** The clip whose cut has its popover open. */
+  openCut?: string | null;
 };
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
+/** 0.6 → "0.6", 1.25 → "1.25", 1 → "1". */
+const seconds = (value: number) => String(Number(value.toFixed(2)));
 const RULER = 26; const TRACK_TOP = 34; const TRACK_HEIGHT = 74; const SOUND_HEIGHT = 36; const SOUND_GAP = 4; const BASE_HEIGHT = 128; const HANDLE = 9; const PAD = 16; const SNAP_PIXELS = 8;
 type Colors = Record<'ruler' | 'rulerBg' | 'tick' | 'clip' | 'clipEdge' | 'selected' | 'wave' | 'band' | 'veil' | 'sound' | 'soundEdge' | 'text' | 'textEdge' | 'soundWave' | 'fade' | 'name' | 'head', string>;
 const TOKENS: Colors = { ruler: '--ruler-text', rulerBg: '--ruler-bg', tick: '--hairline', clip: '--clip', clipEdge: '--clip-edge', selected: '--accent-text', wave: '--clip-wave', band: '--wave-band', veil: '--veil', sound: '--sound', soundEdge: '--sound-edge', text: '--text-item', textEdge: '--text-item-edge', soundWave: '--sound-wave', fade: '--fade', name: '--clip-label', head: '--playhead' };
@@ -30,7 +37,7 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
@@ -224,6 +231,14 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.fillStyle = colors.current.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
       for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip.id, clip.transform, clipLength(clip), xOf(clip.start), TRACK_TOP + TRACK_HEIGHT); }
+      // Each transition's span, centred on its cut: a soft band over the clips' lower edge, as long as it lasts.
+      clips.forEach((clip, index) => {
+        if (!index || !clip.transition_in) return;
+        const span = clip.transition_in.duration * scale; const left = xOf(clip.start) - span / 2;
+        context.save(); context.globalAlpha = 0.85; context.fillStyle = colors.current.selected;
+        context.beginPath(); context.roundRect(left, TRACK_TOP + TRACK_HEIGHT - 5, span, 3, 1.5); context.fill();
+        context.globalAlpha = 0.16; context.fillRect(left, TRACK_TOP + 1, span, TRACK_HEIGHT - 2); context.restore();
+      });
       const veil = (hidden: boolean | undefined, y: number, h: number) => { if (hidden) { context.fillStyle = colors.current.veil; context.fillRect(0, y, width, h); } };
       veil(mainLayer(shown).hidden, TRACK_TOP, TRACK_HEIGHT);
       tracks.forEach((layer, row) => {
@@ -435,6 +450,16 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       <div className="tl-scroll" ref={hostRef}>
         <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
+        {onCut && <div className="tl-cuts" aria-label="Cuts">{main.items.map((clip, index) => {
+          if (!index) return null;
+          const transition = clip.transition_in; const room = Math.min(clipLength(main.items[index - 1]), clipLength(clip)) * zoom;
+          const label = transition ? `${transitionLabel(transition.kind)}, ${seconds(transition.duration)} ${transition.duration === 1 ? "second" : "seconds"}. Change transition` : `Cut ${index}: add a transition`;
+          return <button key={clip.id} className={`tl-cut ${transition ? '' : 'plain'} ${room < 64 ? 'narrow' : ''} ${openCut === clip.id ? 'open' : ''}`} style={{ left: PAD + clip.start * zoom, top: TRACK_TOP + TRACK_HEIGHT / 2 }}
+            aria-label={label} title={transition ? `${transitionLabel(transition.kind)} · ${seconds(transition.duration)} s` : 'Add a transition'} aria-haspopup="dialog" aria-expanded={openCut === clip.id}
+            onPointerDown={(event) => event.stopPropagation()} onClick={(event) => onCut(clip.id, event.currentTarget.getBoundingClientRect())}>
+            {transition ? <>{TRANSITION_ICONS[transition.kind]}<span>{seconds(transition.duration)}s</span></> : <Plus size={11}/>}
+          </button>;
+        })}</div>}
       </div>
     </div>
   </div>;
