@@ -24,7 +24,7 @@ import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
 import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
-import { snapshotFrame } from '../timeline/model';
+import { onSkyline, snapshotFrame } from '../timeline/model';
 import { groundRiseBehind, groundRiseGap, setGroundRiseGap } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import type { CoverKind } from '../timeline/model';
@@ -237,13 +237,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // Scene tracks for titles locked to the scene, by media and source stretch, and how far one being made has got.
   const [sceneTracks, setSceneTracks] = useState<Record<string, SceneTrack>>({});
   const [pinProgress, setPinProgress] = useState<number | null>(null);
-  const sceneTrackKey = (mediaId: number, stretch: { start: number; end: number; at: number }) => `${mediaId}:${Math.round(stretch.start * 30)}:${Math.round(stretch.end * 30)}:${Math.round(stretch.at * 30)}`;
+  const sceneTrackKey = (mediaId: number, stretch: { start: number; end: number; at: number; horizon?: boolean }) => `${mediaId}:${Math.round(stretch.start * 30)}:${Math.round(stretch.end * 30)}:${Math.round(stretch.at * 30)}${stretch.horizon ? ':horizon' : ''}`;
   /** The clip a title is locked to, its source stretch, and the key of its scene track. */
   const pinTarget = (current: Timeline, text: TextItem) => {
     if (!text.pin) return null;
     for (const layer of current.layers) if (layer.kind === 'video') for (const clip of layer.items) {
       if (clip.id !== text.pin.clip_id) continue;
-      const stretch = pinStretch(clip, text);
+      // With Sky only in front, the title rides the skyline: a different track, asked for when the cover changes too.
+      const stretch = { ...pinStretch(clip, text), horizon: onSkyline(current, text.id) };
       return { clip, stretch, key: sceneTrackKey(clip.media_id, stretch) };
     }
     return null;
@@ -260,7 +261,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!clip || mediaById.get(clip.media_id)?.media_type !== 'video') { setError('Lock to the scene needs a video under the title on the main track.'); return; }
     if (clip.reverse || clip.ramp) { setError('Lock to the scene follows clips played forwards at one speed. Turn off Backwards or the speed effect first.'); return; }
     const pinned = { ...text, pin: { clip_id: clip.id, at } };
-    const stretch = pinStretch(clip, pinned);
+    const stretch = { ...pinStretch(clip, pinned), horizon: onSkyline(current, text.id) };
     setPinProgress(0);
     try {
       let made = await startSceneTrack(clip.media_id, stretch);
@@ -528,7 +529,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     let stopped = false; let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
       for (const entry of pinnedNeeded.split('|')) {
-        const [mediaId, stretch, key] = JSON.parse(entry) as [number, { start: number; end: number; at: number }, string];
+        const [mediaId, stretch, key] = JSON.parse(entry) as [number, { start: number; end: number; at: number; horizon?: boolean }, string];
         try { const made = await startSceneTrack(mediaId, stretch); if (made.track && !stopped) setSceneTracks((tracks) => ({ ...tracks, [key]: made.track! })); } catch { /* The title shows unlocked until its track can be made. */ }
       }
       if (!stopped) timer = setTimeout(check, ASSET_POLL_MS);

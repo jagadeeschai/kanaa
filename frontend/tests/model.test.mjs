@@ -419,3 +419,15 @@ test('word times follow speed and trimmed clips', () => {
   assert.equal(tokens.filter((token) => token.text)[0].from, 1);
   assert.equal(tokens.some((token) => token.text === 'gone'), false);
 });
+
+test('a title rides the skyline only with Sky only in front of it (as on_skyline in title3d.py)', async () => {
+  const { onSkyline, putBehindLand, groundRiseBehind } = await import('../src/timeline/model.ts');
+  const withTitle = (() => { const t = start(); return addText(t, { id: 'title', start: 1, length: 3, text: 'Happy Pongal', style: 'outline', position: 'center', color: '#ffd400', size: 40 }, 'words'); })();
+  const titleId = withTitle.layers.flatMap((layer) => (layer.kind === 'text' ? layer.items : []))[0].id;
+  assert.equal(onSkyline(withTitle, titleId), false);
+  const sky = putBehindLand(withTitle, titleId, ['cover', 'cover-layer']);
+  assert.equal(onSkyline(sky, titleId), true);
+  assert.equal(onSkyline(groundRiseBehind(sky, titleId, 'person', ['p', 'pl']), titleId), false, 'People in front instead');
+  const off = { ...sky, layers: sky.layers.map((layer) => (layer.name === 'Land' ? { ...layer, items: layer.items.map((clip) => ({ ...clip, bypass: ['background'] })) } : layer)) };
+  assert.equal(onSkyline(off, titleId), false, 'the cover switched off');
+});

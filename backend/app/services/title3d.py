@@ -179,6 +179,18 @@ def pinned(timeline, text):
     return None
 
 
+def on_skyline(timeline, text) -> bool:
+    """Whether Sky only is in front of the title: the layer just above it shows the clip's land. A title locked to the
+    scene then rides the skyline (scene_track_service). Shared rule with onSkyline in model.ts."""
+    for index, layer in enumerate(timeline.layers):
+        if layer.kind != 'text' or not any(item.id == text.id for item in layer.items):
+            continue
+        above = timeline.layers[index + 1] if index + 1 < len(timeline.layers) else None
+        return bool(above is not None and above.kind == 'video' and not above.hidden and any(
+            clip.enabled and clip.cutout_pick is not None and clip.cutout_pick.kind == 'land' and 'background' not in (clip.bypass or []) for clip in above.items))
+    return False
+
+
 def scene_matrix(track: dict, clip, facts, fmt, timeline_seconds: float, pin_seconds: float) -> list[list[float]]:
     """Frame pixels at the pin moment to frame pixels at `timeline_seconds`, for a title locked to the scene."""
     from app.services.scene_track_service import matrix_at

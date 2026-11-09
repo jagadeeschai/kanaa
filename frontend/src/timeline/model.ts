@@ -368,6 +368,15 @@ export function putBehindLand(timeline: Timeline, textId: string, ids: [string, 
   return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'land', ids: null } }, ids, 'Land');
 }
 
+/** Whether Sky only is in front of the title: the layer just above it shows the clip's land. A title locked to the scene
+ * then rides the skyline (scene_track_service.py). Shared rule with on_skyline in title3d.py. */
+export function onSkyline(timeline: Timeline, textId: string): boolean {
+  const found = findText(timeline, textId);
+  if (!found) return false;
+  const above = timeline.layers[timeline.layers.indexOf(found.layer) + 1];
+  return above?.kind === 'video' && !above.hidden && above.items.some((clip) => clip.enabled !== false && clip.cutout_pick?.kind === 'land' && !clip.bypass?.includes('background'));
+}
+
 export type CoverKind = 'person' | 'object' | 'land';
 const COVER_LAYERS = ['Person', 'Object', 'Land'];
 const COVER_NAME: Record<CoverKind, string> = { person: 'Person', object: 'Object', land: 'Land' };

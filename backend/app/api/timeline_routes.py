@@ -326,7 +326,8 @@ def start_scene_track(identifier: int, body: dict):
     source, size = scene_track_source(facts), (facts.width or 1920, facts.height or 1080)
     person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
     person_mask = person_mask if person_mask.is_file() else None
-    made = scene_track_service.track_path(source, start, end, at, person_mask)
+    horizon = body.get('horizon') is True  # Sky only in front of the title: it rides the skyline.
+    made = scene_track_service.track_path(source, start, end, at, person_mask, horizon)
     if made.is_file():
         return {'status': 'ready', 'track': json.loads(made.read_text())}
     active = SCENE_TRACK_JOBS.get(str(made))
@@ -339,7 +340,7 @@ def start_scene_track(identifier: int, body: dict):
         ready.wait()
         update_job(job_id, status='running', phase='Following the camera', progress=0)
         try:
-            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress), person_mask)
+            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress), person_mask, horizon)
         finally:
             SCENE_TRACK_JOBS.pop(str(made), None)
         return {'progress': 100, 'phase': 'Followed', 'track': track}
