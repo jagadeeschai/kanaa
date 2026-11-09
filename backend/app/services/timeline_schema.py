@@ -82,7 +82,8 @@ class Animation(Strict):
 
 class Transition(Strict):
     kind: Literal['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip', 'circle-open', 'circle-close', 'cross-blur',
-                  'spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom']
+                  'spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom',
+                  'cube', 'swap', 'page-curl-left', 'page-curl-right']
     duration: float = Field(default=0.6, ge=0.1, le=2)
     # Which way a wipe's edge or a slide's pictures travel; none is left. Mirrors Transition in animation.ts.
     direction: Optional[Literal['left', 'right', 'up', 'down']] = None

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 
-MOVING_KINDS = ('spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom')
+MOVING_KINDS = ('spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom', 'cube', 'swap', 'page-curl-left', 'page-curl-right')
 SPIN_TURNS = 1
 DOOR_BACK = 0.75  # How small the new clip starts behind the doors.
 PUZZLE_COLS, PUZZLE_ROWS, PUZZLE_STAGGER = 4, 3, 0.5
@@ -21,6 +21,42 @@ MOSAIC_COLS, MOSAIC_ROWS, MOSAIC_STAGGER, MOSAIC_STEP = 8, 5, 0.6, 7  # Tiles tu
 RIPPLE_AMP, RIPPLE_WAVES, RIPPLE_SPEED = 0.012, 12, 18  # Height share; waves across the half diagonal; phase over the transition.
 RIPPLE_MAP_WIDTH = 320  # The ripple maps are drawn this wide, then scaled to the frame.
 ZOOM_REACH, ZOOM_BLUR, ZOOM_TAPS = 1.8, 0.25, 5
+# 3D: a camera this many frame widths from the frame looks at cards (each clip a flat card), as in card_corners().
+FOCAL = 1.6
+SWAP_REACH, SWAP_DEPTH, SWAP_TURN = 0.32, 0.9, 0.5  # Frame widths apart and back at the middle; radians each card turns.
+PAPER, PAPER_SHOW = 205, 0.18  # The back of a turned page: this light, with this much of the picture showing through.
+PAD = 2  # Clear pixels round a card before ffmpeg's perspective warps it, which repeats edge pixels outward.
+
+
+def card_corners(kind: str, which: str, q: str, width: int, height: int, half_w: float, half_h: float, sin=None, cos=None) -> list[tuple[str, str]]:
+    """Where a card's corners land on the frame (top left, top right, bottom left, bottom right), as expressions of q.
+    The card is the old clip (`a`) or the new (`b`), half_w × half_h about its middle. Points are (x, y, z): across and
+    down from the frame's middle, z away from it; seen by a camera FOCAL frame widths away: X = W/2 + x·f/(f + z).
+    Cube: a cube turns a quarter turn to the left about its middle, half a width behind the frame; the old clip is its
+    front face, the new its right face. Swap: each card slides apart (old left, new right), back and turns a little,
+    most at the middle, then the new card comes to the front."""
+    sin = sin or (lambda v: f'sin({v})')
+    cos = cos or (lambda v: f'cos({v})')
+    f = FOCAL * width
+    e = f'({q}*{q}*(3-2*{q}))'
+    points = []
+    for sy in (-half_h, half_h):
+        for sx in (-half_w, half_w):
+            if kind == 'cube':
+                turn = f'({e}*{math.pi / 2:.9f})'
+                # Front face (old): x = sx, about the middle half a width back; right face (new): x = W/2, depth = sx.
+                x0, zc = (f'{sx}', f'{-width / 2}') if which == 'a' else (f'{width / 2}', f'{sx}')
+                x = f'({x0}*{cos(turn)}+{zc}*{sin(turn)})'
+                z = f'(-{x0}*{sin(turn)}+{zc}*{cos(turn)}+{width / 2})'
+            else:
+                bump = sin(f'(PI*{q})')
+                side = -1 if which == 'a' else 1
+                turn = f'({side * SWAP_TURN}*{bump})'
+                x = f'({sx}*{cos(turn)}+{side * SWAP_REACH * width}*{bump})'
+                z = f'(-{sx}*{sin(turn)}+{SWAP_DEPTH * width}*{bump})'
+            scale = f'({f}/({f}+{z}))'
+            points.append((f'({width / 2}+{x}*{scale})', f'({height / 2}+{sy}*{scale})'))
+    return points
 
 
 class Moves:
@@ -181,7 +217,64 @@ class Moves:
         self.lines.append(f'[{a}][{b}]xfade=transition=fade:duration={self.frames / self.fps:.6f}:offset=0,trim=end_frame={self.frames}[{out}]')
         return out
 
+    def card(self, kind: str, which: str, source: str) -> str:
+        """The clip as a card in 3D (card_corners), warped by ffmpeg's perspective onto a clear frame."""
+        q = f'((in-1)/{self.frames})'  # perspective counts frames from 1.
+        corners = card_corners(kind, which, q, self.width, self.height, self.width / 2 + PAD, self.height / 2 + PAD)
+        at = ':'.join(f"x{k}='{x}+{PAD}':y{k}='{y}+{PAD}'" for k, (x, y) in enumerate(corners))
+        out = self.label('card')
+        self.lines.append(f'[{source}]format=rgba,pad=w=iw+{2 * PAD}:h=ih+{2 * PAD}:x={PAD}:y={PAD}:color=black@0,'
+                          f'perspective={at}:sense=destination:eval=frame:interpolation=linear,crop=w={self.width}:h={self.height}:x={PAD}:y={PAD}[{out}]')
+        return out
+
+    def cube(self, a: str, b: str) -> str:
+        return self.over(self.over(self.canvas(), self.card('cube', 'a', a), '0', '0'), self.card('cube', 'b', b), '0', '0')
+
+    def swap(self, a: str, b: str) -> str:
+        """The new card behind the old until halfway, then in front."""
+        old, new = self.card('swap', 'a', a), self.card('swap', 'b', b)
+        (old_back, old_front), (new_back, new_front) = self.copies(old, 2), self.copies(new, 2)
+        first = self.over(self.over(self.canvas(), new_back, '0', '0'), old_front, '0', '0')
+        second = self.over(self.over(self.canvas(), old_back, '0', '0'), new_front, '0', '0')
+        out = self.label('swapped')
+        self.lines.append(f"[{first}][{second}]blend=all_expr='if(lt(T,{self.frames / self.fps / 2:.6f}),A,B)'[{out}]")
+        return out
+
+    def page_turn(self, from_right: bool, a: str, b: str) -> str:
+        """The old picture turns over like a page from one side: right of a fold the new clip shows; left of it, the old
+        picture, and over it the turned flap, its back (the picture mirrored, faint on light paper). The fold moves from
+        the edge across the frame. From the left: the same with everything mirrored."""
+        if not from_right:
+            a_turned, b_turned = self.label('mirror'), self.label('mirror')
+            self.lines += [f'[{a}]hflip[{a_turned}]', f'[{b}]hflip[{b_turned}]']
+            out = self.label('unmirror')
+            self.lines.append(f'[{self.page_turn(True, a_turned, b_turned)}]hflip[{out}]')
+            return out
+        w, h = self.width, self.height
+        fold = f'floor({w}*(1-{self.e}))'
+        page, flap = self.copies(a, 2)
+        def plain(colour: str) -> str:
+            out = self.label(colour)
+            self.lines.append(f'color=c={colour}:s={w}x{h}:r={self.fps},trim=end_frame={self.frames},setpts=PTS-STARTPTS[{out}]')
+            return out
+
+        def strip(start: str, end: str) -> str:
+            """White from x = start to x = end, black elsewhere: frames slid in by overlay, placed afresh each frame."""
+            whitened, out = self.label('whitened'), self.label('strip')
+            self.lines += [f"[{plain('black')}][{plain('white')}]overlay=x='{start}':y=0:eval=frame[{whitened}]",
+                           f"[{whitened}][{plain('black')}]overlay=x='{end}':y=0:eval=frame,format=gray[{out}]"]
+            return out
+        # The old picture shows left of the fold; the flap only from where it reaches (2·fold − W) to the fold.
+        masks = [strip('0', fold), strip(f'2*{fold}-{w}', fold)]
+        left, mirrored, back, shown = self.label('left'), self.label('flapm'), self.label('back'), self.label('flapshown')
+        self.lines += [f'[{page}]format=rgba[{page}r]', f'[{page}r][{masks[0]}]alphamerge[{left}]',
+                       f"[{flap}]hflip,format=rgba,lutrgb=r='val*{PAPER_SHOW}+{PAPER}':g='val*{PAPER_SHOW}+{PAPER}':b='val*{PAPER_SHOW}+{PAPER}'[{mirrored}]"]
+        placed = self.over(self.canvas(), mirrored, f'2*{fold}-{w}', '0')
+        self.lines.append(f'[{placed}][{masks[1]}]alphamerge[{shown}]')
+        return self.over(self.over(b, left, '0', '0'), shown, '0', '0')
+
     def build(self, kind: str, a: str, b: str) -> str:
         return {'spin-in': lambda: self.spin(True, a, b), 'spin-out': lambda: self.spin(False, a, b), 'doorway': lambda: self.doorway(a, b),
                 'puzzle-left': lambda: self.puzzle(True, a, b), 'puzzle-right': lambda: self.puzzle(False, a, b), 'mosaic': lambda: self.mosaic(a, b),
-                'ripple': lambda: self.ripple(a, b), 'cross-zoom': lambda: self.cross_zoom(a, b)}[kind]()
+                'ripple': lambda: self.ripple(a, b), 'cross-zoom': lambda: self.cross_zoom(a, b), 'cube': lambda: self.cube(a, b), 'swap': lambda: self.swap(a, b),
+                'page-curl-left': lambda: self.page_turn(True, a, b), 'page-curl-right': lambda: self.page_turn(False, a, b)}[kind]()

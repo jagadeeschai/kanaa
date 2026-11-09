@@ -550,6 +550,10 @@ class Animations(Clips):
             'mosaic': lambda f: red(f) > 0.1 and blue(f) > 0.1,
             'ripple': lambda f: 100 < f[180, 320, 0] < 150 and 100 < f[180, 320, 2] < 150,
             'cross-zoom': lambda f: 100 < f[180, 320, 0] < 150 and 100 < f[180, 320, 2] < 150,
+            'cube': lambda f: red(f[120:240, 40:280]) > 0.9 and blue(f[120:240, 400:580]) > 0.9,  # Old face left, new right.
+            'swap': lambda f: red(f[150:210, 20:120]) > 0.9 and blue(f[150:210, 380:560]) > 0.9,  # Apart, the new in front.
+            'page-curl-left': lambda f: f[180, 160].min() > 180 and blue(f[:, 360:580]) > 0.9,  # The flap's paper over the left.
+            'page-curl-right': lambda f: f[180, 480].min() > 180 and blue(f[:, 60:280]) > 0.9,
         }
         for kind, check in middle.items():
             with self.subTest(kind=kind):

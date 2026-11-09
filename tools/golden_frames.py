@@ -20,7 +20,7 @@ API, OUTPUT, WORK = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 WIDTH, HEIGHT, FPS = 1280, 720, 30
 GRID = (64, 36)
 PRESETS = ['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce']
-TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip', 'circle-open', 'circle-close', 'cross-blur', 'spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom']
+TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip', 'circle-open', 'circle-close', 'cross-blur', 'spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom', 'cube', 'swap', 'page-curl-left', 'page-curl-right']
 # Wipes and slides each other way.
 DIRECTIONS = [(kind, way) for kind in ('wipe', 'slide') for way in ('right', 'up', 'down')]
 LOOKS = ['warm', 'cool', 'mono', 'vivid', 'film']

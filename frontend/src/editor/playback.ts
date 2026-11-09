@@ -1,4 +1,4 @@
-import { animatedLook, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -169,6 +169,7 @@ void main(){
 const TRANSITION_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color;
 uniform sampler2D a0, a1, b0, b1, under; uniform vec2 frame, viewport; uniform int kind; uniform float q;
+uniform mat3 cardA, cardB;  // Cube and swap: frame (pixel edges) back to each clip's picture.
 const float PI = 3.14159265;
 vec4 clip(sampler2D on0, sampler2D on1, vec2 at) {
   if (at.x < 0. || at.y < 0. || at.x > frame.x - 1. || at.y > frame.y - 1.) return vec4(0.);
@@ -249,6 +250,32 @@ void main() {
     float shiftY = floor(${MOVING.rippleAmp} * frame.y * sin(PI * q) * sin(${MOVING.rippleWaves}. * 2. * PI * d / length(mid) - q * ${MOVING.rippleSpeed}.) * r.y / max(d, 1.) + .5);
     vec2 source = at + vec2(shift, shiftY);
     color = A(source) * (1. - q) + B(source) * q;
+    return;
+  }
+  if (kind == 9 || kind == 10) {
+    // Cube and swap: each clip a card in 3D (cardCorners), drawn through its homography; in a swap the new card is
+    // behind the old until halfway.
+    vec3 sa = cardA * vec3(at + .5, 1.), sb = cardB * vec3(at + .5, 1.);
+    vec2 pa = sa.xy / sa.z, pb = sb.xy / sb.z;
+    vec4 old = sa.z > 0. && all(greaterThanEqual(pa, vec2(0.))) && all(lessThanEqual(pa, frame)) ? A(pa - .5) : vec4(0.);
+    vec4 fresh = sb.z > 0. && all(greaterThanEqual(pb, vec2(0.))) && all(lessThanEqual(pb, frame)) ? B(pb - .5) : vec4(0.);
+    bool newOnTop = kind == 9 || q >= .5;
+    color = newOnTop ? fresh + old * (1. - fresh.a) : old + fresh * (1. - old.a);
+    return;
+  }
+  if (kind == 11 || kind == 12) {
+    // A page turned from the right (or, mirrored, the left): the old picture left of the fold, its back over it from
+    // 2·fold − W (the picture mirrored, faint on light paper), the new clip right of it. Whole pixels, as the export.
+    bool mirrored = kind == 12;
+    float x = mirrored ? frame.x - 1. - at.x : at.x;
+    float fold = floor(frame.x * (1. - e)), from = 2. * fold - frame.x;
+    float i = floor(x + .5);
+    if (i >= fold) { color = B(vec2(mirrored ? frame.x - 1. - i : i, at.y)); return; }
+    if (i < from) { color = A(vec2(mirrored ? frame.x - 1. - i : i, at.y)); return; }
+    float j = frame.x - 1. - (i - from);
+    vec4 back = A(vec2(mirrored ? frame.x - 1. - j : j, at.y));
+    vec3 tint = (back.a > 0. ? back.rgb / back.a : vec3(0.)) * ${MOVING.paperShow} + ${MOVING.paper}. / 255.;
+    color = vec4(min(tint, vec3(1.)) * back.a, back.a);
     return;
   }
   // Cross zoom: the average of ${MOVING.zoomTaps} sizes along lines from the middle, into the old clip and out of the new, faded.
@@ -562,7 +589,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(moving, position, 'p');
     gl.linkProgram(moving);
     this.movingProgram = moving;
-    for (const name of ['a0', 'a1', 'b0', 'b1', 'under', 'frame', 'viewport', 'kind', 'q']) this.movingUniforms[name] = gl.getUniformLocation(moving, name);
+    for (const name of ['a0', 'a1', 'b0', 'b1', 'under', 'frame', 'viewport', 'kind', 'q', 'cardA', 'cardB']) this.movingUniforms[name] = gl.getUniformLocation(moving, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -934,6 +961,18 @@ export class PlaybackEngine {
     gl.uniform2f(u.frame, this.timeline!.format.width, this.timeline!.format.height);
     gl.uniform2f(u.viewport, canvas.width, canvas.height);
     gl.uniform1f(u.q, p);
+    if (kind === 'cube' || kind === 'swap') {
+      // Frame (pixel edges) back to each clip's picture: the inverse of the homography taking its corners where they land.
+      const { width, height } = this.timeline!.format;
+      const picture: Point[] = [[0, 0], [width, 0], [width, height], [0, height]];
+      for (const [which, name] of [['a', 'cardA'], ['b', 'cardB']] as const) {
+        const [tl, tr, bl, br] = cardCorners(kind, which, p, width, height);
+        try {
+          const back = invert(homography(picture, [tl, tr, br, bl]));
+          gl.uniformMatrix3fv(u[name], false, [back[0][0], back[1][0], back[2][0], back[0][1], back[1][1], back[2][1], back[0][2], back[1][2], back[2][2]]);
+        } catch { gl.uniformMatrix3fv(u[name], false, [0, 0, 0, 0, 0, 0, 0, 0, -1]); }
+      }
+    }
     gl.blendFunc(gl.ONE, gl.ZERO);
     gl.uniform1i(u.kind, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

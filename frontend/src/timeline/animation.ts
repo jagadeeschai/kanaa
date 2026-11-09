@@ -3,12 +3,41 @@ export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-
   | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
-  | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom';
+  | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right';
 /** Transitions that move pixels (moving_transitions.py), drawn in the preview by TRANSITION_FRAGMENT, by these numbers. */
-export const MOVING_KINDS: TransitionKind[] = ['spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom'];
+export const MOVING_KINDS: TransitionKind[] = ['spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom', 'cube', 'swap', 'page-curl-left', 'page-curl-right'];
 /** Their constants: the same as moving_transitions.py. */
 export const MOVING = { spinTurns: 1, doorBack: 0.75, puzzleCols: 4, puzzleRows: 3, puzzleStagger: 0.5, mosaicCols: 8, mosaicRows: 5, mosaicStagger: 0.6, mosaicStep: 7,
-  rippleAmp: 0.012, rippleWaves: 12, rippleSpeed: 18, zoomReach: 1.8, zoomBlur: 0.25, zoomTaps: 5 } as const;
+  rippleAmp: 0.012, rippleWaves: 12, rippleSpeed: 18, zoomReach: 1.8, zoomBlur: 0.25, zoomTaps: 5,
+  focal: 1.6, swapReach: 0.32, swapDepth: 0.9, swapTurn: 0.5, paper: 205, paperShow: 0.18 } as const;
+
+/**
+ * Where a card's corners land on the frame (top left, top right, bottom left, bottom right) `q` of the way through a
+ * cube or a swap, for the old clip (`a`) or the new (`b`): card_corners in moving_transitions.py, step for step.
+ */
+export function cardCorners(kind: 'cube' | 'swap', which: 'a' | 'b', q: number, width: number, height: number, halfW = width / 2, halfH = height / 2): [number, number][] {
+  const f = MOVING.focal * width;
+  const e = q * q * (3 - 2 * q);
+  const out: [number, number][] = [];
+  for (const sy of [-halfH, halfH]) for (const sx of [-halfW, halfW]) {
+    let x: number, z: number;
+    if (kind === 'cube') {
+      const turn = e * Math.PI / 2;
+      const [x0, zc] = which === 'a' ? [sx, -width / 2] : [width / 2, sx];
+      x = x0 * Math.cos(turn) + zc * Math.sin(turn);
+      z = -x0 * Math.sin(turn) + zc * Math.cos(turn) + width / 2;
+    } else {
+      const bump = Math.sin(Math.PI * q);
+      const side = which === 'a' ? -1 : 1;
+      const turn = side * MOVING.swapTurn * bump;
+      x = sx * Math.cos(turn) + side * MOVING.swapReach * width * bump;
+      z = -sx * Math.sin(turn) + MOVING.swapDepth * width * bump;
+    }
+    const scale = f / (f + z);
+    out.push([width / 2 + x * scale, height / 2 + sy * scale]);
+  }
+  return out;
+}
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 /** direction: which way a wipe's edge or a slide's pictures travel; none is left (xfade_name in animation.py). */
 export type Transition = { kind: TransitionKind; duration: number; direction?: TransitionDirection | null };
