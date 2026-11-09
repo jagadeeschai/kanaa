@@ -336,7 +336,7 @@ class Text(Strict):
     tamil_font: Optional[str] = Field(default=None, pattern=FONT_NAME)  # For Tamil lines.
     # A laid-out title (title_design.py): a bar fading out to the right, a formal bar across the frame, the subtitle
     # overlapping the end of the title, or the title and subtitle in opposite corners. Mirrors TitleDesign in model.ts.
-    design: Optional[Literal['gradient', 'formal', 'overlap', 'corners']] = None
+    design: Optional[Literal['gradient', 'formal', 'overlap', 'corners', 'clouds', 'paper', 'torn', 'organic']] = None
 
     @property
     def designed(self) -> bool:

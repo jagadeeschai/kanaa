@@ -129,3 +129,57 @@ class RecordedDate(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which('ffmpeg'), 'needs ffmpeg')
+class DrawnDesigns(unittest.TestCase):
+    def words(self, **look):
+        return box_of(design_picture(title(design=None, **look), FORMAT))
+
+    def test_a_cloud_sits_behind_the_words_with_bumps_along_its_top(self):
+        picture = design_picture(title(design='clouds', position='bottom', color='#1f3a5f'), FORMAT)
+        cloud = picture[..., 3] > 0.9
+        box = box_of(picture)
+        words = self.words(position='bottom', color='#1f3a5f')
+        self.assertLess(box[0], words[0]); self.assertGreater(box[2], words[2]); self.assertLess(box[1], words[1])
+        tops = [np.nonzero(cloud[:, x])[0].min() for x in range(box[0] + 30, box[2] - 30, 4) if cloud[:, x].any()]
+        self.assertGreater(np.ptp(tops), 3, 'a bumpy top, not a straight bar')
+
+    def test_paper_is_torn_at_both_ends(self):
+        picture = design_picture(title(design='paper', position='bottom', color='#2b2b2b'), FORMAT)
+        paper = picture[..., 3] > 0.5
+        rows = [y for y in range(360) if paper[y].any()]
+        lefts = [np.nonzero(paper[y])[0].min() for y in rows[3:-3]]
+        self.assertGreater(np.ptp(lefts), 2, 'a ragged end')
+        self.assertLess(float(picture[rows[len(rows) // 2], :, 3].min()), 0.01, 'a strip, not the whole width')
+
+    def test_a_torn_band_crosses_the_frame_under_a_ragged_pale_edge(self):
+        picture = design_picture(title(design='torn', position='bottom'), FORMAT)
+        band = picture[..., 3] > 0.9
+        self.assertTrue(band[-2].all(), 'down to the bottom, right across')
+        tops = [np.nonzero(band[:, x])[0].min() for x in range(0, 640, 5)]
+        self.assertGreater(np.ptp(tops), 3)
+        pale = (picture[..., :3].min(axis=2) > 0.85) & band
+        self.assertGreater(pale.sum(), 200, 'pale paper fibres along the tear')
+
+    def test_flourishes_reach_out_either_side_of_the_words(self):
+        picture = design_picture(title(design='organic', subtitle_color='#ff0000', color='#ffffff', subtitle=None), FORMAT)
+        red = (picture[..., 0] > 0.9) & (picture[..., 1] < 0.2) & (picture[..., 3] > 0.5)
+        words = self.words(color='#ffffff', subtitle=None)
+        cols = np.nonzero(red.any(axis=0))[0]
+        self.assertLess(cols.min(), words[0]); self.assertGreater(cols.max(), words[2])
+
+    def test_the_same_title_always_gets_the_same_picture(self):
+        for design in ('clouds', 'paper', 'torn', 'organic'):
+            self.assertTrue(np.array_equal(design_picture(title(design=design), FORMAT), design_picture(title(design=design), FORMAT)), design)
+
+
+@unittest.skipUnless(shutil.which('ffmpeg'), 'needs ffmpeg')
+class CloudsWhole(unittest.TestCase):
+    def test_no_gap_shows_through_the_cloud(self):
+        for text in ('Pongal at the hill', 'Hi', 'A much longer title for a cloud'):
+            picture = design_picture(title(design='clouds', text=text, position='bottom', subtitle='மலையில் பொங்கல்'), FORMAT)
+            cloud = picture[..., 3] > 0.9
+            box = box_of(picture)
+            inner = cloud[box[1] + round(0.3 * (box[3] - box[1])):box[3] - 6, box[0] + 30:box[2] - 30]  # Inside its soft edge.
+            self.assertTrue(inner.all(), f'{text}: solid inside')

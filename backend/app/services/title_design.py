@@ -5,6 +5,7 @@ The picture is made once here and both the preview (/api/text-image) and the exp
 - formal: a light bar across the whole frame with two fine rules, the words centred on it.
 - overlap: the subtitle tucked over the end of the title, in its own colour.
 - corners: the title in the top left corner and the subtitle in the bottom right.
+- clouds, paper, torn, organic: drawn backings and flourishes (title_art.py).
 Bars take `band_color` (black for a gradient, ivory for formal when none is chosen); the words are drawn plain on a bar.
 """
 from __future__ import annotations
@@ -142,6 +143,14 @@ def design_picture(item: Text, fmt: Format) -> np.ndarray:
             dy = margin - box[1] if corner == 'top left' else height - margin - box[3]
             out = over(moved(picture, dx, dy), out)
         return out
+    if item.design in ('clouds', 'paper', 'torn', 'organic'):
+        from app.services.title_art import ART
+        # The words plain on a backing, as they are (shadowed) beside flourishes.
+        words = letters(item, fmt, plain=item.design != 'organic')
+        box = box_of(words)
+        if box is None:
+            return words
+        return over(words, ART[item.design](box, (width, height), item, unit))
     return letters(item, fmt, plain=False)
 
 

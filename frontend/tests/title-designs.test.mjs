@@ -17,7 +17,7 @@ test('with no recorded date, today is used', () => {
 test('the new templates use the laid-out designs, and the date ones are known', () => {
   const designs = new Set(TITLE_DESIGNS.map((design) => design.id));
   const laid = TEMPLATES.filter((template) => template.look.design);
-  assert.deepEqual(laid.map((template) => template.id), ['gradient-black', 'gradient-white', 'formal', 'overlap', 'four-corners', 'date', 'date-tamil']);
+  assert.deepEqual(laid.map((template) => template.id), ['gradient-black', 'gradient-white', 'formal', 'overlap', 'four-corners', 'clouds', 'paper', 'torn-black', 'torn-tan', 'organic', 'organic-lower', 'date', 'date-tamil']);
   for (const template of laid) assert.ok(designs.has(template.look.design), template.id);
   assert.ok(isDateTemplate('date') && isDateTemplate('date-tamil') && !isDateTemplate('formal'));
   assert.equal(new Set(TEMPLATES.map((template) => template.id)).size, TEMPLATES.length);
