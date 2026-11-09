@@ -45,3 +45,22 @@ class Title3d(unittest.TestCase):
             w = h[2][0] * x + h[2][1] * y + h[2][2]
             self.assertAlmostEqual((h[0][0] * x + h[0][1] * y + h[0][2]) / w, u)
             self.assertAlmostEqual((h[1][0] * x + h[1][1] * y + h[1][2]) / w, v)
+
+
+class PictureTricks(unittest.TestCase):
+    """Enter and exit picture tricks combine as pictureLook in animation.ts (the same cases as title-moves.test.mjs)."""
+
+    def test_enter_and_exit_tricks_combine_as_in_the_preview(self):
+        from app.services.animation import PICTURE_REST, picture_look
+        from app.services.timeline_schema import Animation
+        self.assertEqual(picture_look({}, {}), PICTURE_REST)
+        both = title3d.animated_look(Animation(preset='reveal', duration=1), Animation(preset='line', duration=1), 0.5, 4)
+        self.assertTrue(0.8 < both['reveal'] < 1)
+        self.assertEqual(both['line'], 1)
+        copies = title3d.animated_look(Animation(preset='chromatic', duration=1), Animation(preset='echo', duration=1), 3.9, 4)
+        self.assertEqual(copies['trick'], 3)
+
+    def test_picture_animations_go_through_the_3d_path(self):
+        from app.services.timeline_schema import Text
+        for preset in ('reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo'):
+            self.assertTrue(title3d.is_3d(Text.model_validate({'id': 't', 'start': 0, 'length': 2, 'text': 'Hi', 'enter': {'preset': preset, 'duration': 1}})), preset)

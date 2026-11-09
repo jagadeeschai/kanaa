@@ -26,7 +26,7 @@ test('presets match the Python math exactly', () => {
   for (const [preset, rows] of Object.entries(animation.presets)) {
     for (const row of rows) {
       const look = lookAt(preset, row.p);
-      for (const key of ['dx', 'dy', 'scale', 'opacity', 'blur']) assert.ok(Math.abs(look[key] - row[key]) < 1e-9, `${preset} ${key} at ${row.p}`);
+      for (const key of Object.keys(row).filter((name) => name !== 'p')) assert.ok(Math.abs(look[key] - row[key]) < 1e-9, `${preset} ${key} at ${row.p}`);
     }
   }
 });

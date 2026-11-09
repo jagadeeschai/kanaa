@@ -25,6 +25,7 @@ import type { Animation, LookName, Preset, Transition, TransitionKind } from '..
 import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { onSkyline, snapshotFrame } from '../timeline/model';
+import { applyTitleMove, stillTitle, TITLE_MOVES } from '../timeline/titleMoves';
 import { groundRiseBehind, groundRiseGap, setGroundRiseGap } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import type { CoverKind } from '../timeline/model';
@@ -103,7 +104,9 @@ const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
 const CAPTION_FETCHES = 3;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }, { id: 'ground-rise', label: 'Ground rise' }, { id: 'blast', label: 'Blast' }, { id: 'magic-form', label: 'Magic form' }, { id: 'magic-vanish', label: 'Magic vanish' }, { id: 'particle-form', label: 'Particle form' }];
-const SIMPLE_TITLE_PRESETS = PRESETS.filter((preset) => preset.id !== 'ground-rise');
+// Picture tricks, for titles only: drawn in the title's own picture (PictureLook in animation.ts).
+const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }];
+const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
 const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
@@ -2400,6 +2403,10 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
     <Group title="Move with the scene" tab="motion" startOpen={Boolean(text.pin || text.transform?.keyframes?.x?.length)} changed={Boolean(text.pin)} keywords="lock scene camera pin follow track subject person moving stick" tip="Keep the title fixed to a spot in the scene, or moving with a person." help="follow-movement">
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
       {follow}
+    </Group>
+    <Group title="Title moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
+      <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
+      <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
     </Group>
     <Group title="Advanced motion" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>

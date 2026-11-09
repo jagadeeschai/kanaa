@@ -258,6 +258,20 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         for at in ats:
             samples.append({'name': f'{name} {at}', 't': t + at})
         t += SECONDS
+    # Title picture animations (drawn in the title's own picture on both sides), and the one-click title moves.
+    for preset in ('reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo'):
+        clips.append(clip(f'trick-{preset}-under', first, t))
+        texts.append({'id': f'trick-{preset}', 'start': t, 'length': SECONDS, 'text': 'Happy பொங்கல்', 'style': 'shadow', 'position': 'center', 'size': 80, 'color': '#ffd27a',
+                      'enter': {'preset': preset, 'duration': 1}, 'exit': {'preset': preset, 'duration': ANIMATION}})
+        samples += [{'name': f'title {preset} enter {share}', 't': t + share} for share in (0.25, 0.5, 0.8)]
+        samples += [{'name': f'title {preset} rest', 't': t + 1.2}, {'name': f'title {preset} exit 0.5', 't': t + SECONDS - ANIMATION * 0.5}]
+        t += SECONDS
+    for name, extra in (('ticker', {'position': 'bottom', 'transform': {'keyframes': {'x': keys((0, 1.5), (SECONDS, -0.5))}}}),
+                        ('story crawl', {'transform': {'tilt_x': 55, 'keyframes': {'y': keys((0, 1.25), (SECONDS, 0.3)), 'scale': keys((0, 1.3), (SECONDS, 0.45))}}})):
+        clips.append(clip(name.replace(' ', '-') + '-under', first, t))
+        texts.append({'id': name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'text': 'Happy பொங்கல்', 'style': 'band', 'position': 'center', 'size': 70, **extra})
+        samples += [{'name': f'title move {name} {at}', 't': t + at} for at in (0.5, 1, 1.5)]
+        t += SECONDS
     # Captions on top of everything, with the spoken word lit, in Tamil and English.
     captions = {'id': 'subs', 'kind': 'captions', 'style': 'outline', 'position': 'bottom', 'color': '#ffffff', 'highlight': '#ffd400', 'size': 56, 'items': [
         {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},

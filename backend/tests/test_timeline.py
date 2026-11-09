@@ -1179,6 +1179,53 @@ class MovingTitles(Clips):
         data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [text]}]}
         return self.frame(self.render(data, name), frame, (640, 360)).astype(int)
 
+    def test_picture_animations_draw_what_they_say(self):
+        enter = lambda preset: {'enter': {'preset': preset, 'duration': 1}}
+        lit = lambda frame: frame.min(axis=2) > 200  # White letters on the grey picture.
+        rest = lit(self.title_frame('rest.mp4', 45, text='IIIIIIII'))
+        columns, rows = np.nonzero(rest.any(axis=0))[0], np.nonzero(rest.any(axis=1))[0]
+        left, right, top, bottom = columns.min(), columns.max(), rows.min(), rows.max()
+        with self.subTest('reveal: the words wipe in from the left'):
+            half = lit(self.title_frame('reveal.mp4', 9, **enter('reveal')))  # e = 0.66: about two thirds shown.
+            shown = np.nonzero(half.any(axis=0))[0]
+            self.assertLess(abs(shown.min() - left), 3)
+            self.assertLess(shown.max(), left + 0.75 * (right - left))
+            self.assertGreater(shown.max(), left + 0.5 * (right - left))
+        with self.subTest('soft edge: the edge fades over a wide band'):
+            frame = self.title_frame('soft.mp4', 15, **enter('soft-edge'))
+            letters = frame[(top + bottom) // 2, left:right + 1, 0]
+            self.assertGreater(((letters > 70) & (letters < 190)).sum(), 6, 'partly shown letters along the soft edge')
+        with self.subTest('line: a line is drawn before the words rise from it'):
+            early = lit(self.title_frame('line-early.mp4', 9, **enter('line')))
+            band = np.nonzero(early.any(axis=1))[0]
+            self.assertTrue(band.size, 'the line shows')
+            self.assertGreater(band.min(), bottom - 0.2 * (bottom - top), 'only the line, at the bottom of the words')
+            settled = lit(self.title_frame('line-rest.mp4', 45, **enter('line')))
+            across = lambda picture: max(picture[row, left:right + 1].mean() for row in range(bottom - 8, min(359, bottom + 30)))
+            self.assertGreater(across(settled), 0.95, 'a line right across, under the words')
+            self.assertLess(across(rest), 0.9, 'the plain title has gaps between its letters')
+        with self.subTest('chromatic: red and blue copies either side'):
+            frame = self.title_frame('chromatic.mp4', 6, **enter('chromatic'))
+            red = (frame[..., 0] > 150) & (frame[..., 1] < 110) & (frame[..., 2] < 110)
+            blue = (frame[..., 2] > 150) & (frame[..., 0] < 110) & (frame[..., 1] < 110)
+            self.assertGreater(red.sum(), 30); self.assertGreater(blue.sum(), 30)
+            self.assertLess(np.nonzero(red.any(axis=0))[0].mean(), np.nonzero(blue.any(axis=0))[0].mean(), 'red to the left of blue')
+        with self.subTest('prism: rainbow copies'):
+            frame = self.title_frame('prism.mp4', 12, **enter('prism'))  # Fully seen, copies still apart.
+            yellow = (frame[..., 0] > 150) & (frame[..., 1] > 130) & (frame[..., 2] < 110)
+            cyan = (frame[..., 2] > 150) & (frame[..., 1] > 130) & (frame[..., 0] < 110)
+            self.assertGreater(yellow.sum(), 20); self.assertGreater(cyan.sum(), 20)
+        with self.subTest('echo: fading copies below the words'):
+            frame = self.title_frame('echo.mp4', 9, **enter('echo'))
+            plain = self.title_frame('echo-plain.mp4', 45)
+            below = lambda picture: picture[bottom + 1:, left:right + 1].sum()
+            self.assertGreater(below(frame), below(plain) * 1.02, 'more light below the words than the plain title has')
+        with self.subTest('every picture animation settles to the plain title'):
+            plain = self.title_frame('rest-again.mp4', 45).astype(int)
+            for preset in ('reveal', 'soft-edge', 'chromatic', 'prism', 'echo'):
+                settled = self.title_frame(f'{preset}-settled.mp4', 45, **enter(preset)).astype(int)
+                self.assertLess(np.abs(settled - plain).mean(), 1.0, preset)
+
     def test_a_title_leaning_back_narrows_towards_its_top_in_perspective(self):
         flat = self.title_frame('flat-title.mp4')
         leaning = self.title_frame('leaning-title.mp4', transform={'tilt_x': 60})

@@ -1,4 +1,4 @@
-import { animatedLook, dipWeights, LOOKS, REST, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, dipWeights, LOOKS, PICTURE_REST, REST, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -8,7 +8,7 @@ import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
-import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, homography, invert, is3d, layers, layerShade, poseAt, type Box, type Matrix, type Point } from '../timeline/title3d';
+import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
 function pictureBox(image: HTMLImageElement): Box | null {
@@ -89,14 +89,44 @@ void main(){
 const TITLE_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPicture; uniform vec2 frame, viewport;
 uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
+// Picture tricks (PictureLook in animation.ts), in the title picture's pixels; picture_tricks in title3d_render.py does the same.
+uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineColour;
+vec4 pm(vec2 at) { vec4 c = texture(tex, at / frame); return vec4(c.rgb * c.a, c.a); }
 void main(){
   vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport;
   vec3 q = toPicture * vec3(at, 1.);
   if (q.z <= 0.) discard;
   vec2 p = q.xy / q.z;
   if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.z || p.y > bounds.w) discard;
-  vec4 c = texture(tex, p / frame);
-  vec3 rgb = mix(c.rgb, shade.rgb, shade.a);
+  vec4 c = pm(p);
+  float lw = letters.z - letters.x, lh = letters.w - letters.y;
+  float d = copies.x * lh; int trick = int(copies.y + .5);
+  if (d > 0. && trick == 1) {
+    vec4 red = pm(p + vec2(d, 0.)), blue = pm(p - vec2(d, 0.));
+    c = vec4(red.r, c.g, blue.b, max(max(red.a, c.a), blue.a));
+  } else if (d > 0. && trick == 2) {
+    float w = .7 * min(1., copies.x / .05); vec2 dir = vec2(.94, .34) * d;
+    vec4 k1 = pm(p + 2. * dir), k2 = pm(p + dir), k3 = pm(p - dir), k4 = pm(p - 2. * dir);
+    c.rgb += w * (k1.rgb * vec3(1., .25, .25) + k2.rgb * vec3(1., .85, .2) + k3.rgb * vec3(.2, .9, 1.) + k4.rgb * vec3(.6, .3, 1.));
+    c.a = clamp(c.a + w * (k1.a + k2.a + k3.a + k4.a), 0., 1.);
+    c.rgb = min(c.rgb, vec3(c.a));
+  } else if (d > 0. && trick == 3) {
+    vec4 behind = vec4(0.);
+    for (int k = ${TRICK_COPIES}; k >= 1; k--) {
+      vec4 copy = pm(p - vec2(0., float(k) * d / ${TRICK_COPIES}.)) * pow(.5, float(k));
+      behind = copy + behind * (1. - copy.a);
+    }
+    c = c + behind * (1. - c.a);
+  }
+  if (wipe.x < 1.) { float soft = max(wipe.y, .01); float edge = wipe.x * (1. + soft); c *= 1. - smoothstep(edge - soft, edge, (p.x - letters.x) / lw); }
+  if (wipe.z < 1.) { float edge = wipe.z * 1.02; c *= 1. - smoothstep(edge - .02, edge, 1. - (p.y - letters.y) / lh); }
+  if (wipe.w >= 0.) {
+    float thick = max(2., .05 * lh);
+    float a = clamp(wipe.w / 2. * lw - abs(p.x - (letters.x + letters.z) / 2.) + .5, 0., 1.) * clamp(min(p.y - (letters.w - thick), letters.w - p.y) + .5, 0., 1.);
+    c = vec4(lineColour * a, a) + c * (1. - a);
+  }
+  vec3 straight = c.a > 1e-4 ? c.rgb / c.a : vec3(0.);
+  vec3 rgb = mix(straight, shade.rgb, shade.a);
   float a = c.a * opacity;
   color = vec4(rgb * a, a);
 }`;
@@ -386,7 +416,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -879,7 +909,8 @@ export class PlaybackEngine {
   private drawTitle3d(item: TextItem, local: number, box: Box, texture: WebGLTexture) {
     const { gl } = this; const u = this.titleUniforms;
     const { width, height } = this.timeline!.format;
-    const frameBox: Box = [box[0] * width, box[1] * height, box[2] * width, box[3] * height];
+    const letters: Box = [box[0] * width, box[1] * height, box[2] * width, box[3] * height];
+    const frameBox = trickBounds(item, letters, [width, height]);
     const { pose, look } = poseAt(item, local);
     const opacity = look.opacity * Math.max(0, Math.min(1, valueAt(item.transform ?? REST_TRANSFORM, 'opacity', local)));
     if (opacity <= 0) return;
@@ -895,6 +926,11 @@ export class PlaybackEngine {
     gl.uniform2f(u.viewport, this.canvas.width, this.canvas.height);
     gl.uniform4f(u.bounds, ...frameBox);
     gl.uniform1f(u.opacity, opacity);
+    const tricks = { ...PICTURE_REST, ...look };
+    gl.uniform4f(u.letters, ...letters);
+    gl.uniform4f(u.wipe, tricks.reveal, tricks.soft, tricks.rise, tricks.line);
+    gl.uniform2f(u.copies, tricks.split, tricks.trick);
+    gl.uniform3f(u.lineColour, ...hexColour(item.color));
     for (let index = shades.length - 1; index >= 0; index -= 1) {
       const share = shades[index];
       let toPicture: Matrix;

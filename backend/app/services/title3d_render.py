@@ -6,6 +6,7 @@ lays that video over the frame where a flat title's posed picture would go.
 """
 from __future__ import annotations
 
+import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.services import title3d
+from app.services.animation import TRICK_COPIES, TRICK_MARGIN
 
 PinAt = Callable[[float], 'list[list[float]] | None']  # Timeline seconds to the pin matrix, or None.
 
@@ -30,6 +32,83 @@ def alpha_box(alpha: np.ndarray) -> tuple[float, float, float, float] | None:
     x0, y0 = max(0, cols.min() - pad), max(0, rows.min() - pad)
     x1, y1 = min(width, cols.max() + 1 + pad), min(height, rows.max() + 1 + pad)
     return x0 / width, y0 / height, x1 / width, y1 / height
+
+
+COPY_TRICKS = {'chromatic', 'prism', 'echo'}
+PRISM_TINTS = {-2: (1, .25, .25), -1: (1, .85, .2), 1: (.2, .9, 1), 2: (.6, .3, 1)}  # Matches TITLE_FRAGMENT in playback.ts.
+PRISM_DIRECTION = (0.94, 0.34)
+
+
+def trick_bounds(text, letters: tuple[float, float, float, float], size: tuple[int, int]) -> tuple[float, float, float, float]:
+    """The part of the picture drawn: the letters' box, and room around it for copies that move apart. Same as trickBounds in title3d.ts."""
+    if not any(animation and animation.preset in COPY_TRICKS for animation in (text.enter, text.exit)):
+        return letters
+    width, height = size
+    margin = math.ceil(TRICK_MARGIN * (letters[3] - letters[1]))
+    return max(0, letters[0] - margin), max(0, letters[1] - margin), min(width, letters[2] + margin), min(height, letters[3] + margin)
+
+
+def _smoothstep(low: float, high: float, x: np.ndarray) -> np.ndarray:
+    t = np.clip((x - low) / (high - low), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def picture_tricks(crop: np.ndarray, look: dict, origin: tuple[int, int], letters, line_colour) -> np.ndarray:
+    """The title picture's tricks (PictureLook in animation.ts) on a premultiplied RGBA crop whose top left is `origin`
+    in the picture. The preview's TITLE_FRAGMENT does the same per pixel."""
+    split, trick = look.get('split', 0), look.get('trick', 0)
+    reveal, rise, line = look.get('reveal', 1), look.get('rise', 1), look.get('line', -1)
+    if not ((split > 0 and trick) or reveal < 1 or rise < 1 or line >= 0):
+        return crop
+    rows, cols = crop.shape[:2]
+    lx0, ly0, lx1, ly1 = letters
+    lw, lh = lx1 - lx0, ly1 - ly0
+    out = crop
+
+    def moved(dx: float, dy: float) -> np.ndarray:
+        """The crop with its picture moved by (dx, dy): what sampling at p - (dx, dy) gives."""
+        return cv2.warpAffine(crop, np.float32([[1, 0, dx], [0, 1, dy]]), (cols, rows), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+    if split > 0 and trick:
+        d = split * lh
+        if trick == 1:  # Chromatic: red to the left, blue to the right.
+            red, blue = moved(-d, 0), moved(d, 0)
+            out = np.stack([red[..., 0], crop[..., 1], blue[..., 2], np.maximum(np.maximum(red[..., 3], crop[..., 3]), blue[..., 3])], -1)
+        elif trick == 2:  # Prism: rainbow copies fanned out on a slant.
+            weight = .7 * min(1, split / .05)
+            out = crop.copy()
+            for k, tint in PRISM_TINTS.items():
+                copy = moved(k * d * PRISM_DIRECTION[0], k * d * PRISM_DIRECTION[1])
+                out[..., :3] += weight * copy[..., :3] * np.float32(tint)
+                out[..., 3] += weight * copy[..., 3]
+            out[..., 3] = np.clip(out[..., 3], 0, 1)
+            out[..., :3] = np.minimum(out[..., :3], out[..., 3:4])
+        else:  # Echo: fading copies below, closing in.
+            behind = np.zeros_like(crop)
+            for k in range(TRICK_COPIES, 0, -1):
+                copy = moved(0, k * d / TRICK_COPIES) * np.float32(.5 ** k)
+                behind = copy + behind * (1 - copy[..., 3:4])
+            out = crop + behind * (1 - crop[..., 3:4])
+    xs = (origin[0] + np.arange(cols, dtype=np.float32) + .5)[None, :]
+    ys = (origin[1] + np.arange(rows, dtype=np.float32) + .5)[:, None]
+    if reveal < 1:
+        soft = max(look.get('soft', 0), .01)
+        edge = reveal * (1 + soft)
+        out = out * (1 - _smoothstep(edge - soft, edge, (xs - lx0) / lw))[..., None]
+    if rise < 1:
+        edge = rise * 1.02
+        out = out * (1 - _smoothstep(edge - .02, edge, 1 - (ys - ly0) / lh))[..., None]
+    if line >= 0:
+        thick = max(2.0, .05 * lh)
+        across = np.clip(line / 2 * lw - np.abs(xs - (lx0 + lx1) / 2) + .5, 0, 1)
+        down = np.clip(np.minimum(ys - (ly1 - thick), ly1 - ys) + .5, 0, 1)
+        alpha = (across * down)[..., None]
+        out = np.concatenate([np.float32(line_colour) * alpha, alpha], -1) + out * (1 - alpha)
+    return out.astype(np.float32)
+
+
+def text_colour(text) -> tuple[float, float, float]:
+    colour = text.color or '#ffffff'
+    return tuple(int(colour[at:at + 2], 16) / 255 for at in (1, 3, 5))
 
 
 def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, frames: int, target: Path, pin_at: PinAt | None = None,
@@ -76,10 +155,11 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     opacity = look['opacity'] * max(0.0, min(1.0, value_at(text.transform, 'opacity', local)))
     if opacity <= 0:
         return out
-    frame_box = (box[0] * width, box[1] * height, box[2] * width, box[3] * height)
+    letters = (box[0] * width, box[1] * height, box[2] * width, box[3] * height)
+    frame_box = trick_bounds(text, letters, size)
     source = [(frame_box[0], frame_box[1]), (frame_box[2], frame_box[1]), (frame_box[2], frame_box[3]), (frame_box[0], frame_box[3])]
     x0, y0, x1, y1 = (round(v) for v in frame_box)
-    crop = np.ascontiguousarray(premultiplied[y0:y1, x0:x1])
+    crop = picture_tricks(np.ascontiguousarray(premultiplied[y0:y1, x0:x1]), look, (x0, y0), letters, text_colour(text))
     shift = np.array([[1, 0, x0], [0, 1, y0], [0, 0, 1]], np.float64)
     placed = []
     for index in range(len(shares) - 1, -1, -1):  # Back to front.

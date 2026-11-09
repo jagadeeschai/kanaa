@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 
-from app.services.animation import look_at
+from app.services.animation import PICTURE_PRESETS, look_at, picture_look
 
 FOV = 40  # Degrees, vertical, of the virtual camera. Mirrored in title3d.ts.
 MAX_LAYERS = 15  # Depth layers at full depth, the front one included.
@@ -25,10 +25,10 @@ ALPHA_EDGE = 8  # A pixel with more alpha than this (of 255) is part of the titl
 
 
 def is_3d(text) -> bool:
-    """Whether the title needs this path: any tilt, depth, pin, or a preset that tilts."""
+    """Whether the title needs this path: any tilt, depth, pin, or a preset that tilts or is a picture trick."""
     transform = text.transform
     tilts = any(getattr(transform, name) for name in ('tilt_x', 'tilt_y')) or any(transform.keyframes.get(name) for name in ('tilt_x', 'tilt_y'))
-    presets = any(animation and animation.preset in TILTING for animation in (text.enter, text.exit))
+    presets = any(animation and (animation.preset in TILTING or animation.preset in PICTURE_PRESETS) for animation in (text.enter, text.exit))
     return bool(tilts or presets or (text.depth and text.depth.amount > 0) or text.pin)
 
 
@@ -42,7 +42,8 @@ def animated_look(enter, exit_, local: float, length: float) -> dict[str, float]
     first = look_at(enter.preset, local / (enter.duration / excess)) if enter else rest
     last = look_at(exit_.preset, (length - local) / (exit_.duration / excess)) if exit_ else rest
     return {'dx': first['dx'] + last['dx'], 'dy': first['dy'] + last['dy'], 'scale': first['scale'] * last['scale'],
-            'opacity': first['opacity'] * last['opacity'], 'blur': max(first['blur'], last['blur']), 'tilt': first.get('tilt', 0) + last.get('tilt', 0)}
+            'opacity': first['opacity'] * last['opacity'], 'blur': max(first['blur'], last['blur']), 'tilt': first.get('tilt', 0) + last.get('tilt', 0),
+            **picture_look(first, last)}
 
 
 def layers(depth) -> list[float]:

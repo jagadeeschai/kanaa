@@ -5,7 +5,14 @@ import math
 
 MAX_BLUR = 0.03  # Of the frame height.
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
-OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35}
+OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
+                'chromatic': .4, 'prism': .4, 'echo': .5}
+# Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
+PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo'}
+PICTURE_REST = {'reveal': 1.0, 'soft': 0.0, 'rise': 1.0, 'line': -1.0, 'split': 0.0, 'trick': 0}
+TRICK_COPIES = 4
+TRICK_MARGIN = 1.25  # How far beyond the letters, in letter heights, the tricks may reach.
+LINE_DRAW, RISE_FROM = .45, .35
 XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft'}
 WHIP_BLUR = 0.05  # Peak horizontal blur of a whip, as a share of the frame height. Matches animation.ts.
 # Red, green and blue gain, contrast, saturation.
@@ -51,6 +58,21 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look.update(dy=-.32 * (1 - e), tilt=68 * e)
     elif preset == 'push-through':
         look.update(scale=.18 + .82 * e + .08 * math.sin(math.pi * p) * e, dy=-.08 * (1 - e), tilt=75 * (1 - e) ** 2)
+    # Picture tricks: a wipe across the letters, hard or soft; a line drawn out, then the letters rising from it; colour
+    # copies or fading copies that close in on the letters.
+    elif preset == 'reveal':
+        look.update(reveal=e, soft=.04)
+    elif preset == 'soft-edge':
+        look.update(reveal=p * p * (3 - 2 * p), soft=.35)
+    elif preset == 'line':
+        drawn, risen = min(1, p / LINE_DRAW), min(1, max(0, (p - RISE_FROM) / (1 - RISE_FROM)))
+        look.update(line=1 - (1 - drawn) ** 3, rise=1 - (1 - risen) ** 3)
+    elif preset == 'chromatic':
+        look.update(split=.35 * (1 - e), trick=1)
+    elif preset == 'prism':
+        look.update(split=.3 * (1 - e), trick=2)
+    elif preset == 'echo':
+        look.update(split=.8 * (1 - e), trick=3)
     return look
 
 
@@ -88,3 +110,14 @@ def chroma_yuv(color: str) -> tuple[int, int, int]:
     r, g, b = (int(color[index:index + 2], 16) / 255 for index in (1, 3, 5))
     luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
     return round(16 + 219 * luma), round(128 + 224 * (b - luma) / 1.8556), round(128 + 224 * (r - luma) / 1.5748)
+
+
+def picture_look(first: dict, last: dict) -> dict:
+    """Enter and exit picture tricks together, as pictureLook in animation.ts: the less shown wins, a line is drawn by
+    whichever has one, the wider copies win."""
+    a = {**PICTURE_REST, **{key: first[key] for key in PICTURE_REST if key in first}}
+    b = {**PICTURE_REST, **{key: last[key] for key in PICTURE_REST if key in last}}
+    line = b['line'] if a['line'] < 0 else a['line'] if b['line'] < 0 else min(a['line'], b['line'])
+    copies = b if b['split'] > a['split'] else a
+    return {'reveal': min(a['reveal'], b['reveal']), 'soft': max(a['soft'], b['soft']), 'rise': min(a['rise'], b['rise']), 'line': line,
+            'split': copies['split'], 'trick': copies['trick'] if copies['split'] > 0 else max(a['trick'], b['trick'])}

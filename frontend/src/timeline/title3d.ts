@@ -3,7 +3,7 @@
  * backend/app/services/title3d.py step for step, and both are tested on the same numbers.
  * Frame pixels, y down. A flat title (no tilt, depth or pin) lands exactly where it does today.
  */
-import { animatedLook } from './animation.ts';
+import { animatedLook, PICTURE_PRESETS, TRICK_MARGIN } from './animation.ts';
 import { valueAt } from './evaluate.ts';
 import type { TextItem, TitleDepth } from './model.ts';
 
@@ -25,9 +25,23 @@ export type Box = [number, number, number, number];
 export function is3d(text: TextItem): boolean {
   const t = text.transform;
   const tilts = Boolean(t?.tilt_x || t?.tilt_y || t?.keyframes?.tilt_x?.length || t?.keyframes?.tilt_y?.length);
-  const presets = [text.enter, text.exit].some((animation) => animation && TILTING.has(animation.preset));
+  const presets = [text.enter, text.exit].some((animation) => animation && (TILTING.has(animation.preset) || PICTURE_PRESETS.has(animation.preset)));
   return tilts || presets || Boolean(text.depth && text.depth.amount > 0) || Boolean(text.pin);
 }
+
+const COPY_TRICKS = new Set(['chromatic', 'prism', 'echo']);
+/** The part of the title picture drawn: the letters' box, and room around it for copies that move apart. Same as trick_bounds in title3d_render.py. */
+export function trickBounds(text: TextItem, letters: Box, [width, height]: [number, number]): Box {
+  if (![text.enter, text.exit].some((animation) => animation && COPY_TRICKS.has(animation.preset))) return letters;
+  const margin = Math.ceil(TRICK_MARGIN * (letters[3] - letters[1]));
+  return [Math.max(0, letters[0] - margin), Math.max(0, letters[1] - margin), Math.min(width, letters[2] + margin), Math.min(height, letters[3] + margin)];
+}
+
+/** A title's #rrggbb colour as 0..1 red, green and blue. */
+export const hexColour = (colour: string | null | undefined): [number, number, number] => {
+  const hex = colour ?? '#ffffff';
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255) as [number, number, number];
+};
 
 /** Each layer's share of the full depth, front (0) to back. */
 export function layers(depth: TitleDepth | null | undefined): number[] {
