@@ -419,8 +419,15 @@ export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaR
   if (behind === timeline) return timeline;
   const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter?.preset === 'ground-rise' ? null : before.text.enter ?? null;
   const depth = reveal === 'pass' ? before.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
-  return updateText(behind, textId, { enter, depth });
+  // People and objects get comfortable space by default: steady room around them stops letters at their edges flickering.
+  const spaced = what === 'land' || groundRiseGap(behind, textId) ? behind : setGroundRiseGap(behind, textId, TITLE_SPACE.comfortable);
+  return updateText(spaced, textId, { enter, depth });
 }
+
+/** The space a title keeps from people or objects in front of it, as plain choices over the stored levels 0 to 5. */
+export const TITLE_SPACE = { none: 0, close: 1, comfortable: 3, wide: 5 } as const;
+export type TitleSpace = keyof typeof TITLE_SPACE;
+export const titleSpaceOf = (gap: number): TitleSpace => (gap <= 0 ? 'none' : gap <= 2 ? 'close' : gap === 3 ? 'comfortable' : 'wide');
 
 /** Keeps the cinematic pose but removes its generated foreground copy, so the whole title draws over people. */
 export function cinemaRevealFront(timeline: Timeline, textId: string, reveal: CinemaReveal): Timeline {

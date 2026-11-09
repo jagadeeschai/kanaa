@@ -208,3 +208,15 @@ test('sky only: the land goes in front, switches with people, and comes off clea
   assert.deepEqual([people.layers[2].name, people.layers[2].items[0].cutout_pick], ['Person', null]);
   assert.deepEqual(cinemaRevealFront(sky, 't', 'push').layers.map((layer) => layer.id), ['main', 'words']);
 });
+
+test('people or objects in front get comfortable space by default; sky only and a chosen space are kept', async () => {
+  const { addText, cinemaReveal, groundRiseGap, setGroundRiseGap, TITLE_SPACE, titleSpaceOf } = await import('../src/timeline/model.ts');
+  let timeline = insertClip(emptyTimeline(format), video('a', { in: 1, out: 5 }));
+  timeline = addText(timeline, { id: 't', start: 1, length: 2, text: 'Pongal', style: 'outline', position: 'top', color: '#ffffff', size: 80 }, 'words');
+  const people = cinemaReveal(timeline, 't', 'pass', 'person', ['p', 'person']);
+  assert.equal(groundRiseGap(people, 't'), TITLE_SPACE.comfortable);
+  assert.equal(groundRiseGap(cinemaReveal(timeline, 't', 'push', 'land', ['l', 'land']), 't'), 0, 'sky only has no space');
+  const close = setGroundRiseGap(people, 't', TITLE_SPACE.close);
+  assert.equal(groundRiseGap(cinemaReveal(close, 't', 'rise', 'person', ['x', 'y']), 't'), TITLE_SPACE.close, 'a space already chosen stays');
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(titleSpaceOf), ['none', 'close', 'close', 'comfortable', 'wide', 'wide']);
+});

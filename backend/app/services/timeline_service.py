@@ -19,7 +19,7 @@ from PIL import Image
 
 from app.api.schemas import VideoEditRequest
 from app.services.finish_service import finish_filters
-from app.services.cutout_service import gap_filters
+from app.services.cutout_service import make_space_mask
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
 from app.services import title3d
@@ -845,8 +845,12 @@ class Builder:
                 timing = f'({ramp_time_expression(clip.ramp, share)}*{clip.length:.6f}+{(head - held) / fps:.6f})/TB'
             if cut:
                 # The mask is read over the same stretch as the video, frame for frame, and applied at the source's size.
-                mask = self.add_input(*reading, '-i', str(self.masks(facts, clip.cutout_pick)))
-                self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray{gap_filters(clip.depth_gap)}[{label}_shape]',
+                # With space around them, the same steady space as the preview copy: made once from the mask, frame for frame.
+                shape = self.masks(facts, clip.cutout_pick)
+                if clip.depth_gap:
+                    shape = make_space_mask(shape, clip.depth_gap)
+                mask = self.add_input(*reading, '-i', str(shape))
+                self.graph += [f"[{index}:v]{','.join(source_steps(facts))}[{label}_full]", f'[{mask}:v]format=gray[{label}_shape]',
                                f'[{label}_shape][{label}_full]scale2ref=flags=bicubic[{label}_mask][{label}_sized]', f'[{label}_sized][{label}_mask]alphamerge[{label}_cut]',
                                f'[{label}_cut]{clip_chain(clip, facts, canvas, fps, frames, held, timing, sourced=True, tag=label)}[{label}]']
             else:

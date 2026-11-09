@@ -172,7 +172,7 @@ def portrait_paths(source: Path, pick: Optional[Pick], amount: str, pull: Option
 def pick_paths(source: Path, pick: Pick, gap: int = 0) -> tuple[Path, Path]:
     """The chosen ones' mask, for export, and its see-through preview copy."""
     folder = folder_for(content_key(source))
-    suffix = f'-gap{gap}' if gap else ''
+    suffix = f'-space{gap}.{cutout_service.SPACE_VERSION}' if gap else ''
     return folder / f'{pick.token}-{VERSION}-mask.mp4', folder / f'{pick.token}-{VERSION}{suffix}-cut.webm'
 
 
