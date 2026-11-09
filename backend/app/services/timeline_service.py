@@ -83,15 +83,31 @@ def ease_expression(name: str, p: str) -> str:
 
 
 def property_expression(transform: Transform, prop: str, clock: str = 't') -> str:
-    """The curve from timeline_schema.value_at as an ffmpeg expression of `clock`."""
+    """The curve from timeline_schema.value_at as an ffmpeg expression of `clock`.
+
+    The pieces are picked by a balanced tree of if(lt(...)), not a chain: ffmpeg's expression parser gives up past about
+    a hundred nested levels, and followed or kept-clear titles carry hundreds of keys. A tree of n keys is only about
+    log2(n) deep, and each frame evaluates only one path through it. The values are exactly value_at's.
+    """
     keys = transform.keyframes.get(prop)
     if not keys:
         return f'{getattr(transform, prop)}'
-    tail = f'{keys[-1].v}'
-    for a, b in reversed(list(zip(keys, keys[1:]))):
+    # Each piece holds from its start time until the next piece's start: the first key's value before it, each segment
+    # between two keys, then the last key's value. At a key's own time a segment gives that key's value, as value_at does.
+    pieces: list[tuple[float | None, str]] = [(None, f'{keys[0].v}')]
+    for a, b in zip(keys, keys[1:]):
+        if b.t <= a.t:
+            continue  # Never reached by value_at.
         p = f'(({clock}-{a.t})/{b.t - a.t})'
-        tail = f'if(lt({clock},{b.t}),{a.v}+({b.v - a.v})*{ease_expression(a.ease, p)},{tail})'
-    return f'if(lte({clock},{keys[0].t}),{keys[0].v},{tail})'
+        pieces.append((a.t, f'{a.v}+({b.v - a.v})*{ease_expression(a.ease, p)}'))
+    pieces.append((keys[-1].t, f'{keys[-1].v}'))
+
+    def pick(low: int, high: int) -> str:
+        if low == high:
+            return pieces[low][1]
+        middle = (low + high + 1) // 2
+        return f'if(lt({clock},{pieces[middle][0]}),{pick(low, middle - 1)},{pick(middle, high)})'
+    return pick(0, len(pieces) - 1)
 
 
 def adjust_filters(adjust: Adjust) -> list[str]:

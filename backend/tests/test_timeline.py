@@ -750,6 +750,23 @@ class Rules(unittest.TestCase):
         for t in fixture['samples']:
             self.assertAlmostEqual(eval(python, {**functions, 't': t}), value_at(transform, 'x', t), places=9)
 
+    def test_expression_with_many_keys_stays_shallow_and_exact(self):
+        rng = np.random.default_rng(7)
+        times = np.cumsum(rng.uniform(0.01, 0.06, 900)).round(4)
+        keys = [{'t': float(t), 'v': float(v), 'ease': ease} for t, v, ease in zip(times, rng.uniform(-0.2, 1.2, 900).round(5), rng.choice(['linear', 'easeOut', 'easeInOut'], 900))]
+        transform = Transform.model_validate({'keyframes': {'x': keys}})
+        expression = property_expression(transform, 'x')
+        depth = deepest = 0
+        for character in expression:
+            depth += {'(': 1, ')': -1}.get(character, 0)
+            deepest = max(deepest, depth)
+        self.assertLess(deepest, 60, 'ffmpeg stops parsing at about a hundred nested levels')
+        python = _expression_to_python(expression.replace('pow', 'POW'))
+        functions = {'POW': pow, 'lt': lambda a, b: a < b, 'lte': lambda a, b: a <= b}
+        samples = [0, float(times[0]), float(times[-1]), float(times[-1]) + 1, *map(float, times[::37]), *rng.uniform(0, float(times[-1]) + 0.5, 300)]
+        for t in samples:
+            self.assertAlmostEqual(eval(python, {**functions, 't': t}), value_at(transform, 'x', t), places=9)
+
     def test_atempo_stays_in_range(self):
         self.assertEqual(atempo_chain(1), [])
         self.assertEqual(atempo_chain(4), ['atempo=2.0', 'atempo=2.0'])
@@ -1130,6 +1147,26 @@ class MovingTitles(Clips):
             centres.append((columns.min() + columns.max()) / 2 / 640)
         for got, want in zip(centres, (0.25 + 0.5 * 3 / 60, 0.5, 0.25 + 0.5 * 57 / 60)):
             self.assertAlmostEqual(got, want, delta=0.03)
+
+    def test_a_title_with_hundreds_of_position_keys_exports(self):
+        # A followed or kept-clear title carries a key every frame or so; ffmpeg once refused the overlay's x/y expression.
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        times = [round(index * 2 / 499, 4) for index in range(500)]
+        keys = {'x': [{'t': t, 'v': round(0.5 + 0.2 * math.sin(math.pi * t), 5)} for t in times],
+                'y': [{'t': t, 'v': round(0.5 + 0.15 * math.cos(math.pi * t), 5)} for t in times]}
+        title = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIII', 'style': 'shadow', 'position': 'center', 'size': 40, 'color': '#ffffff', 'transform': {'keyframes': keys}}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [title]}]}
+        path = self.render(data, 'many-keys.mp4')
+        self.assertEqual(self.frame_count(path), 60)
+        transform = Transform.model_validate(title['transform'])
+        for number in (5, 20, 35, 50):
+            frame = self.frame(path, number, (640, 360))
+            lit = frame[:, :, 0] > 200
+            columns, rows = np.nonzero(lit.any(axis=0))[0], np.nonzero(lit.any(axis=1))[0]
+            self.assertAlmostEqual((columns.min() + columns.max()) / 2 / 640, value_at(transform, 'x', number / 30), delta=0.02)
+            self.assertAlmostEqual((rows.min() + rows.max()) / 2 / 360, value_at(transform, 'y', number / 30), delta=0.03)
 
     def test_old_titles_without_a_transform_still_load(self):
         Timeline.model_validate({'layers': [{'id': 'w', 'kind': 'text', 'items': [{'id': 't', 'start': 0, 'length': 1, 'text': 'Hi'}]}]})
