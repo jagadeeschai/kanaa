@@ -86,3 +86,13 @@ test('each letter moves as the Python letter_look says', async () => {
     }
   }
 });
+
+test('circle transitions weigh the old clip as xfade does: open from the middle, close from the edges', async () => {
+  const { circleWeight } = await import('../src/timeline/animation.ts');
+  assert.equal(circleWeight('circle-open', 0, 0), 1, 'all old at the start');
+  assert.equal(circleWeight('circle-open', 1, 1), 0, 'all new at the end');
+  assert.ok(circleWeight('circle-open', 0, 0.5) < circleWeight('circle-open', 1, 0.5), 'new in the middle first');
+  assert.equal(circleWeight('circle-close', 1, 0), 1);
+  assert.equal(circleWeight('circle-close', 0, 1), 0);
+  assert.ok(circleWeight('circle-close', 1, 0.5) < circleWeight('circle-close', 0, 0.5), 'new at the edges first');
+});

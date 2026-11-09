@@ -21,7 +21,7 @@ from app.api.schemas import VideoEditRequest
 from app.services.finish_service import finish_filters
 from app.services.cutout_service import make_space_mask
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
-from app.services.animation import chroma_yuv, LOOKS, OPACITY_SPAN, WHIP_BLUR, XFADE_NAMES, look_at, offset_expression, scale_expression
+from app.services.animation import chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
 from app.services import title3d
 from app.services.title3d_render import render_title_frames
 from app.services.job_service import JobCancelled, stop_process_when
@@ -913,9 +913,11 @@ class Builder:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
             if head:
                 merged = f'x{position}_{number}'
-                self.graph.append(f'[{joined_label}][{shown}]xfade=transition={XFADE_NAMES[clip.transition_in.kind]}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
+                self.graph.append(f'[{joined_label}][{shown}]xfade=transition={xfade_name(clip.transition_in)}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
                 if clip.transition_in.kind == 'whip':
                     merged = self.whip_blur(merged, joined_frames - 2 * head, 2 * head, joined_frames + frames - 2 * head)
+                elif clip.transition_in.kind == 'cross-blur':
+                    merged = self.whip_blur(merged, joined_frames - 2 * head, 2 * head, joined_frames + frames - 2 * head, peak=CROSS_BLUR, sideways=False)
                 joined_label, joined_frames = merged, joined_frames + frames - 2 * head
             elif tail:
                 joined_label, joined_frames = shown, frames
@@ -946,10 +948,14 @@ class Builder:
                        f'[{name}_alpha][{name}_shape]blend=all_mode=multiply[{name}_both]', f'[{name}_body][{name}_both]alphamerge[{name}_shaped]']
         return f'{name}_shaped'
 
-    def whip_blur(self, label: str, first: int, frames: int, total: int) -> str:
-        """A sideways blur that peaks halfway through the slide, so the cut reads as a fast camera pan."""
+    def whip_blur(self, label: str, first: int, frames: int, total: int, peak: float = WHIP_BLUR, sideways: bool = True) -> str:
+        """A blur that peaks halfway through the transition: sideways for a whip, so the cut reads as a fast camera pan;
+        every way for a cross blur."""
         fps = self.fmt.fps
-        lines = [f'{frame / fps:.6f} gblur@{label}w sigma {WHIP_BLUR * self.fmt.height * math.sin(math.pi * min(1, max(0, (frame - first + 0.5) / frames))) if first <= frame < first + frames else 0:.3f};' for frame in range(total)]
+
+        def sigma(frame: int) -> float:
+            return peak * self.fmt.height * math.sin(math.pi * min(1, max(0, (frame - first + 0.5) / frames))) if first <= frame < first + frames else 0
+        lines = [f'{frame / fps:.6f} gblur@{label}w sigma {sigma(frame):.3f}' + ('' if sideways else f', gblur@{label}w sigmaV {sigma(frame):.3f}') + ';' for frame in range(total)]
         (self.folder / f'{label}-w.cmd').write_text('\n'.join(lines), encoding='utf-8')
         blurred = f'{label}_whip'
         self.graph.append(f'[{label}]sendcmd=f={label}-w.cmd,gblur@{label}w=sigma=0:sigmaV=0:steps=3[{blurred}]')

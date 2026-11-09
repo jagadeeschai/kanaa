@@ -19,7 +19,16 @@ STREAK_TAPS = 8  # A sideways blur's taps either side of the middle. Matches ani
 TRICK_COPIES = 4
 TRICK_MARGIN = 1.25  # How far beyond the letters, in letter heights, the tricks may reach.
 LINE_DRAW, RISE_FROM = .45, .35
-XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft'}
+XFADE_NAMES = {'crossfade': 'fade', 'wipe': 'wipeleft', 'slide': 'slideleft', 'zoom': 'zoomin', 'flash': 'fadewhite', 'dip': 'fadeblack', 'whip': 'slideleft',
+               'circle-open': 'circleopen', 'circle-close': 'circleclose', 'cross-blur': 'fade'}
+CROSS_BLUR = 0.025  # Peak blur of a cross blur, as a share of the frame height, halfway through. Matches animation.ts.
+
+
+def xfade_name(transition) -> str:
+    """ffmpeg's xfade transition for a timeline transition: a wipe or slide goes the chosen way (left when none)."""
+    if transition.kind in ('wipe', 'slide') and transition.direction:
+        return f'{transition.kind}{transition.direction}'
+    return XFADE_NAMES[transition.kind]
 WHIP_BLUR = 0.05  # Peak horizontal blur of a whip, as a share of the frame height. Matches animation.ts.
 # Red, green and blue gain, contrast, saturation.
 LOOKS = {'none': (1, 1, 1, 1, 1), 'warm': (1.08, 1, 0.9, 1.02, 1.05), 'cool': (0.92, 1, 1.1, 1.02, 1), 'mono': (1, 1, 1, 1.1, 0),

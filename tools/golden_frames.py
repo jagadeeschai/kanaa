@@ -20,7 +20,9 @@ API, OUTPUT, WORK = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 WIDTH, HEIGHT, FPS = 1280, 720, 30
 GRID = (64, 36)
 PRESETS = ['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce']
-TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip']
+TRANSITIONS = ['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip', 'circle-open', 'circle-close', 'cross-blur']
+# Wipes and slides each other way.
+DIRECTIONS = [(kind, way) for kind in ('wipe', 'slide') for way in ('right', 'up', 'down')]
 LOOKS = ['warm', 'cool', 'mono', 'vivid', 'film']
 ANIMATION = 0.6
 SECONDS = 2.0
@@ -132,6 +134,11 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         clips.append(clip(f't{number}', first if number % 2 else second, t, transition_in={'kind': kind, 'duration': 1}))
         for share in (0.2, 0.5, 0.8):
             samples.append({'name': f'transition {kind} {share}', 't': t - 0.5 + share})
+        t += SECONDS
+    for number, (kind, way) in enumerate(DIRECTIONS):
+        clips.append(clip(f'd{number}', first if number % 2 else second, t, transition_in={'kind': kind, 'duration': 1, 'direction': way}))
+        for share in (0.3, 0.7):
+            samples.append({'name': f'transition {kind} {way} {share}', 't': t - 0.5 + share})
         t += SECONDS
     for number, look in enumerate(LOOKS):
         clips.append(clip(f'l{number}', first, t, look=look))

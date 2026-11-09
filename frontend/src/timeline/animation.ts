@@ -2,8 +2,20 @@
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
   | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways';
 export type Animation = { preset: Preset; duration: number };
-export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip';
-export type Transition = { kind: TransitionKind; duration: number };
+export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur';
+export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
+/** direction: which way a wipe's edge or a slide's pictures travel; none is left (xfade_name in animation.py). */
+export type Transition = { kind: TransitionKind; duration: number; direction?: TransitionDirection | null };
+/** Peak blur of a cross blur, as a share of the frame height, halfway through. Matches CROSS_BLUR in animation.py. */
+export const CROSS_BLUR = 0.025;
+/** A circle transition's weight for the old clip at a point `distance` from the middle (a share of the half diagonal),
+ * as ffmpeg's xfade circleopen and circleclose mix: smoothstep(0, 1, distance + shift). */
+export function circleWeight(kind: 'circle-open' | 'circle-close', distance: number, p: number): number {
+  const shift = kind === 'circle-open' ? ((1 - p) - 0.5) * 3 : (p - 0.5) * 3;
+  const t = Math.min(1, Math.max(0, distance + shift));
+  const m = t * t * (3 - 2 * t);
+  return kind === 'circle-open' ? m : 1 - m;
+}
 export type LookName = 'none' | 'warm' | 'cool' | 'mono' | 'vivid' | 'film';
 export type Look = { dx: number; dy: number; scale: number; opacity: number; blur: number; tilt?: number } & Partial<PictureLook>;
 /**

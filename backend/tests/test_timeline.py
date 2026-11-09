@@ -505,6 +505,39 @@ class Animations(Clips):
         self.assertGreater(middle[120, 0], 200)  # Red on the left.
         self.assertGreater(middle[520, 2], 200)  # Blue on the right.
 
+    def transition_frame(self, transition, number=60):
+        data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},
+            {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'duration': 1, **transition}}]}]}
+        return self.frame(self.render(data, f"{transition['kind']}-{transition.get('direction')}-{number}.mp4"), number, self.size())
+
+    def test_wipes_and_slides_go_the_chosen_way(self):
+        red = lambda pixel: pixel[0] > 200 and pixel[2] < 60
+        blue = lambda pixel: pixel[2] > 200 and pixel[0] < 60
+        for kind in ('wipe', 'slide'):
+            for direction, old_at, new_at in (('right', (180, 520), (180, 120)), ('up', (60, 320), (300, 320)), ('down', (300, 320), (60, 320)), ('left', (180, 120), (180, 520))):
+                with self.subTest(kind=kind, direction=direction):
+                    frame = self.transition_frame({'kind': kind, 'direction': direction})
+                    self.assertTrue(red(frame[old_at]), f'the old clip still at {old_at}')
+                    self.assertTrue(blue(frame[new_at]), f'the new clip already at {new_at}')
+
+    def test_circles_open_from_the_middle_and_close_from_the_edges(self):
+        opening = self.transition_frame({'kind': 'circle-open'})
+        self.assertGreater(opening[180, 320, 2], 200, 'new in the middle')
+        self.assertGreater(opening[5, 5, 0], 200, 'old in the corner')
+        closing = self.transition_frame({'kind': 'circle-close'})
+        self.assertGreater(closing[180, 320, 0], 200, 'old in the middle')
+        self.assertGreater(closing[10, 90, 2], 200, 'new near the corner (inside the narrower blue picture)')
+
+    def test_a_cross_blur_blurs_the_mix_most_at_its_middle(self):
+        data = lambda kind: {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'a', 'media_id': 7, 'start': 0, 'in': 0, 'out': 2},
+            {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'kind': kind, 'duration': 1}}]}]}
+        sharpness = lambda frame: np.abs(np.diff(frame[..., 1], axis=1)).max()
+        fade, blur = self.render(data('crossfade'), 'fade.mp4'), self.render(data('cross-blur'), 'cross-blur.mp4')
+        self.assertLess(sharpness(self.frame(blur, 60, self.size())), sharpness(self.frame(fade, 60, self.size())) * 0.5, "the white square's edge is soft halfway")
+        self.assertLess(np.abs(self.frame(blur, 20, self.size()) - self.frame(fade, 20, self.size())).mean(), 1, 'and sharp before the transition')
+
     def test_transition_past_the_start_of_a_source_holds_its_first_frame(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
             {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},

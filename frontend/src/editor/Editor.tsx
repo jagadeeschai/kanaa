@@ -10,7 +10,7 @@ import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Blend, ChevronsRight, MoveHorizontal, ZoomIn, Wind, Zap, RectangleHorizontal, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
-import { Search } from 'lucide-react';
+import { Search, Aperture, CircleDot, Droplets } from 'lucide-react';
 import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
 import { fetchRecorded, startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
@@ -21,7 +21,7 @@ import KanaaSelect from '../components/KanaaSelect';
 import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
-import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
+import type { Animation, LookName, Preset, Transition, TransitionDirection, TransitionKind } from '../timeline/animation';
 import { LETTER_PRESETS } from '../timeline/animation';
 import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
@@ -119,8 +119,9 @@ const DESIGN_TIPS: Record<TitleDesign, string> = {
 const BACKED_DESIGNS = new Set<TitleDesign>(['gradient', 'formal', 'clouds', 'paper', 'torn']);
 const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
-const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
-const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
+const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }, { id: 'circle-open', label: 'Circle open' }, { id: 'circle-close', label: 'Circle close' }, { id: 'cross-blur', label: 'Cross blur' }];
+const TRANSITION_DIRECTIONS: { id: TransitionDirection; label: string }[] = [{ id: 'left', label: 'Left' }, { id: 'right', label: 'Right' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }];
+const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/>, 'circle-open': <Aperture size={13}/>, 'circle-close': <CircleDot size={13}/>, 'cross-blur': <Droplets size={13}/> };
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
@@ -1894,6 +1895,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           </>}
           {selected?.transition_in ? <ValueSlider label="Length" value={selected.transition_in.duration} min={0.2} max={2} step={0.05} defaultValue={0.6} unit="s" decimals={2} onGestureStart={pauseEngine} onChange={(duration, group) => change(updateClip(timeline!, selected.id, { transition_in: { ...selected.transition_in!, duration } }), group ?? 'transition-length')}/>
             : <p className="ed-tip">Select a clip with a transition to adjust its length.</p>}
+          {selected?.transition_in && (selected.transition_in.kind === 'wipe' || selected.transition_in.kind === 'slide') &&
+            <Chips label="Direction" options={TRANSITION_DIRECTIONS} value={selected.transition_in.direction ?? 'left'} onPick={(direction) => change(updateClip(timeline!, selected.id, { transition_in: { ...selected.transition_in!, direction: direction === 'left' ? null : direction } }))}/>}
         </>}
         {leftTab === 'ask' && timeline && <div data-keep-panel><AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/></div>}
         {leftTab === 'effects' && <div className="ed-effect-search"><Search size={14}/><input type="search" value={effectSearch} onChange={(event) => setEffectSearch(event.target.value)} placeholder="Search effects…" aria-label="Search effects"/>{effectSearch && <button className="ed-icon small" aria-label="Clear effect search" onClick={() => setEffectSearch('')}><X size={12}/></button>}</div>}

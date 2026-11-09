@@ -1,4 +1,4 @@
-import { animatedLook, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, CROSS_BLUR, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -162,7 +162,7 @@ void main(){
 }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
-uniform float opacity, brightness, contrast, saturation, gamma, fade, blur; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
+uniform float opacity, brightness, contrast, saturation, gamma, fade, blur; uniform int crossMode, crossFlip; uniform float crossShift; uniform int rotation, blendMode, keyType; uniform sampler2D backdrop; uniform vec2 keyColor; uniform float keySimilarity, keySoftness, keySpill; uniform vec2 flip, blurAspect; uniform vec3 tint; uniform int hideMode, hideShape; uniform float hideAmount; uniform vec2 pixelGrid; uniform vec4 fill; uniform int useShape; uniform sampler2D shapeTex; uniform vec2 viewport;
 uniform float oldFilm, oldGrain, oldScratches, oldDust, oldWeave, oldSeed;
 uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, signalScanlines, signalNoise;
 uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
@@ -373,6 +373,11 @@ void main(){
     else if (blendMode == 4) rgb = min(b, rgb);
     else rgb = max(b, rgb);
   }
+  if (crossMode > 0) {
+    // A circle transition: this clip's share of the pixel, as xfade mixes them (circleWeight in animation.ts).
+    float m = smoothstep(0., 1., length(gl_FragCoord.xy - viewport / 2.) / length(viewport / 2.) + crossShift);
+    a *= crossFlip == 1 ? 1. - m : m;
+  }
   color = vec4(rgb * a, a);
 }`;
 
@@ -431,7 +436,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -794,21 +799,48 @@ export class PlaybackEngine {
     const { gl, canvas } = this;
     const kind = after.transition_in!.kind;
     const remaining = 1 - p;
+    const direction = after.transition_in!.direction ?? 'left';
     if (kind === 'wipe') {
+      // The new clip is uncovered from the far side as the edge travels the chosen way, as xfade's wipes are.
       gl.enable(gl.SCISSOR_TEST);
-      const edge = Math.round(canvas.width * remaining);
-      gl.scissor(0, 0, edge, canvas.height);
+      const { width: w, height: h } = canvas;
+      const across = direction === 'left' || direction === 'right';
+      const edge = Math.round((across ? w : h) * (direction === 'left' || direction === 'up' ? remaining : p));
+      // GL's scissor counts y from the bottom; 'up' and 'down' are about the picture, top first.
+      const [oldBox, newBox]: [number, number, number, number][] = direction === 'left' ? [[0, 0, edge, h], [edge, 0, w - edge, h]]
+        : direction === 'right' ? [[edge, 0, w - edge, h], [0, 0, edge, h]]
+          : direction === 'up' ? [[0, h - edge, w, edge], [0, 0, w, h - edge]]
+            : [[0, 0, w, h - edge], [0, h - edge, w, edge]];
+      gl.scissor(...oldBox);
       this.drawClip(layer, before, {});
-      gl.scissor(edge, 0, canvas.width - edge, canvas.height);
+      gl.scissor(...newBox);
       this.drawClip(layer, after, {});
       gl.disable(gl.SCISSOR_TEST);
       return;
     }
     if (kind === 'slide' || kind === 'whip') {
-      // A whip is a slide with a sideways blur that peaks halfway, as the export blurs the joined frames.
+      // A whip is a slide with a sideways blur that peaks halfway, as the export blurs the joined frames. A slide goes
+      // the chosen way (xfade's slides): the old clip leaves that way and the new one follows it in.
       const blur = kind === 'whip' ? WHIP_BLUR * Math.sin(Math.PI * p) : 0;
-      this.drawClip(layer, before, { look: { ...REST, dx: -p, blur }, sideways: true });
-      this.drawClip(layer, after, { look: { ...REST, dx: remaining, blur }, sideways: true });
+      const way = kind === 'whip' ? 'left' : direction;
+      const [x, y] = way === 'left' ? [-1, 0] : way === 'right' ? [1, 0] : way === 'up' ? [0, -1] : [0, 1];
+      this.drawClip(layer, before, { look: { ...REST, dx: x * p, dy: y * p, blur }, sideways: true });
+      this.drawClip(layer, after, { look: { ...REST, dx: -x * remaining, dy: -y * remaining, blur }, sideways: true });
+      return;
+    }
+    if (kind === 'circle-open' || kind === 'circle-close') {
+      // Both clips weighted per pixel by xfade's soft circle, adding to one, on black.
+      const { uniforms } = this;
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.uniform2f(uniforms.viewport, canvas.width, canvas.height);
+      gl.uniform1i(uniforms.crossMode, 1);
+      gl.uniform1f(uniforms.crossShift, kind === 'circle-open' ? (remaining - 0.5) * 3 : (p - 0.5) * 3);
+      gl.uniform1i(uniforms.crossFlip, kind === 'circle-open' ? 0 : 1);
+      this.drawClip(layer, before, {});
+      gl.uniform1i(uniforms.crossFlip, kind === 'circle-open' ? 1 : 0);
+      this.drawClip(layer, after, {});
+      gl.uniform1i(uniforms.crossMode, 0);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       return;
     }
     if (kind === 'flash' || kind === 'dip') {
@@ -822,9 +854,11 @@ export class PlaybackEngine {
     }
     // Two weights that add to one, on black, as xfade mixes them.
     gl.blendFunc(gl.ONE, gl.ONE);
-    if (kind === 'crossfade') {
-      this.drawClip(layer, before, { opacity: remaining });
-      this.drawClip(layer, after, { opacity: p });
+    if (kind === 'crossfade' || kind === 'cross-blur') {
+      // A cross blur: a crossfade blurred every way, peaking halfway, as the export blurs the mixed frames.
+      const blur = kind === 'cross-blur' ? CROSS_BLUR * Math.sin(Math.PI * p) : 0;
+      this.drawClip(layer, before, { opacity: remaining, look: { ...REST, blur } });
+      this.drawClip(layer, after, { opacity: p, look: { ...REST, blur } });
     } else {
       const weight = smoothstep(0, 0.5, remaining);
       this.drawClip(layer, before, { opacity: weight, scale: 1 / Math.max(MIN_ZOOM, smoothstep(0.5, 1, remaining)) });
