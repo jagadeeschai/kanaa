@@ -22,3 +22,22 @@ test('the new templates use the laid-out designs, and the date ones are known', 
   assert.ok(isDateTemplate('date') && isDateTemplate('date-tamil') && !isDateTemplate('formal'));
   assert.equal(new Set(TEMPLATES.map((template) => template.id)).size, TEMPLATES.length);
 });
+
+test('pull focus softens the picture behind while the title sharpens, then lets it go', async () => {
+  const { defocusBox, DEFOCUS_AMOUNT } = await import('../src/timeline/templates.ts');
+  const { valueAt } = await import('../src/timeline/evaluate.ts');
+  const box = defocusBox('b', 2, 4, 1, 0.6);
+  assert.equal(box.width, 1); assert.equal(box.height, 1); assert.equal(box.amount, DEFOCUS_AMOUNT);
+  assert.equal(valueAt(box.transform, 'opacity', 0), 0);
+  assert.equal(valueAt(box.transform, 'opacity', 1), 1);
+  assert.equal(valueAt(box.transform, 'opacity', 3.4), 1);
+  assert.equal(valueAt(box.transform, 'opacity', 4), 0);
+  const short = defocusBox('c', 0, 1, 2, 2);
+  assert.ok(short.transform.keyframes.opacity.every((key, index, all) => index === 0 || key.t >= all[index - 1].t), 'fades never cross on a short title');
+});
+
+test('the effect titles say what they bring', async () => {
+  const { TEMPLATES } = await import('../src/timeline/templates.ts');
+  const extra = Object.fromEntries(TEMPLATES.filter((template) => template.extra).map((template) => [template.id, template.extra]));
+  assert.deepEqual(extra, { 'lens-flare': { effect: 'lens-flare' }, 'pixie-dust': { effect: 'sparkles' }, 'boogie-lights': { effect: 'bokeh' }, 'pull-focus': { defocus: true } });
+});

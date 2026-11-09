@@ -133,3 +133,26 @@ class LetterExports(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_horizontal_blur_smears_sideways_then_settles(self):
+        enter = {'enter': {'preset': 'blur-sideways', 'duration': 1}}
+        rest = self.frame('plain', 45)
+        early = self.frame('sideways', 6, **enter)
+        lit = lambda frame: (np.abs(frame - 40).max(axis=2) > 30)
+        cols_rest, cols_early = np.nonzero(lit(rest).any(axis=0))[0], np.nonzero(lit(early).any(axis=0))[0]
+        rows_rest, rows_early = np.nonzero(lit(rest).any(axis=1))[0], np.nonzero(lit(early).any(axis=1))[0]
+        self.assertGreater(cols_early.max() - cols_early.min(), cols_rest.max() - cols_rest.min() + 10, 'wider: smeared sideways')
+        self.assertLess(rows_early.max() - rows_early.min(), rows_rest.max() - rows_rest.min() + 4, 'not taller: only sideways')
+        self.assertLess(np.abs(self.frame('sideways-settled', 45, **enter) - rest).mean(), 1.0)
+
+
+class TemplateEffects(unittest.TestCase):
+    def test_the_effects_titles_bring_exist(self):
+        import re
+        from app.services.effect_service import BY_ID
+        templates = (Path(__file__).parents[2] / 'frontend/src/timeline/templates.ts').read_text()
+        named = re.findall(r"effect: '([a-z-]+)'", templates)
+        self.assertEqual(sorted(named), ['bokeh', 'lens-flare', 'sparkles'])
+        for effect in named:
+            self.assertIn(effect, BY_ID)
+

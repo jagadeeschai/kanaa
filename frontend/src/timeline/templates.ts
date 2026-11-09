@@ -2,7 +2,10 @@ import type { TextItem } from './model.ts';
 
 /** Everything about a title's look, without its timing. A template is one, with sample words to replace. */
 export type TitleLook = Omit<TextItem, 'id' | 'start' | 'length' | 'transform'>;
-export type Template = { id: string; label: string; look: TitleLook };
+/** What else a template brings: an effect laid over the video for the title's length (effect_service.py ids), or the
+ * picture behind softening while the title sharpens (a full-frame blur box fading in). */
+export type TemplateExtra = { effect?: string; defocus?: boolean };
+export type Template = { id: string; label: string; look: TitleLook; extra?: TemplateExtra };
 
 const fade = (duration: number) => ({ preset: 'fade' as const, duration });
 
@@ -45,6 +48,12 @@ export const TEMPLATES: Template[] = [
   { id: 'torn-tan', label: 'Torn edge tan', look: { design: 'torn', band_color: '#d8c9a3', font: 'Baskerville', tamil_font: 'Arima', text: 'Our story', subtitle: 'நம் கதை', subtitle_color: '#7c2d12', style: 'shadow', align: 'right', position: 'bottom', color: '#3b2f1e', size: 40, enter: { preset: 'slide-up', duration: 0.5 }, exit: fade(0.4) } },
   { id: 'organic', label: 'Flourishes', look: { design: 'organic', font: 'Snell Roundhand', tamil_font: 'Arima', text: 'Happy Pongal', subtitle: 'இனிய பொங்கல் வாழ்த்துகள்', subtitle_color: '#ffffff', style: 'shadow', position: 'center', color: '#ffd400', size: 60, enter: fade(0.8), exit: fade(0.6) } },
   { id: 'organic-lower', label: 'Flourishes lower', look: { design: 'organic', font: 'Snell Roundhand', tamil_font: 'Arima', text: 'Arun & Priya', subtitle_color: '#f3dfb0', style: 'shadow', position: 'bottom', color: '#ffffff', size: 40, enter: fade(0.8), exit: fade(0.6) } },
+  // Titles that bring their own light, sparkle or focus.
+  { id: 'horizontal-blur', label: 'Horizontal blur', look: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'Into the city', subtitle: 'நகருக்குள்', subtitle_color: '#e5e5e5', style: 'shadow', position: 'center', color: '#ffffff', size: 64, enter: { preset: 'blur-sideways', duration: 0.8 }, exit: { preset: 'blur-sideways', duration: 0.6 } } },
+  { id: 'lens-flare', label: 'Lens flare', look: { font: 'Optima', tamil_font: 'Catamaran', text: 'Golden hour', subtitle: 'மாலைப் பொழுது', subtitle_color: '#fde68a', style: 'shadow', position: 'center', color: '#ffffff', size: 60, enter: fade(0.8), exit: fade(0.6) }, extra: { effect: 'lens-flare' } },
+  { id: 'pixie-dust', label: 'Pixie dust', look: { font: 'Snell Roundhand', tamil_font: 'Arima', text: 'Once upon a time', subtitle: 'ஒரு காலத்தில்', subtitle_color: '#e9d5ff', style: 'shadow', position: 'center', color: '#ffffff', size: 60, enter: { preset: 'magic-form', duration: 1.2 }, exit: { preset: 'magic-vanish', duration: 0.8 } }, extra: { effect: 'sparkles' } },
+  { id: 'boogie-lights', label: 'Boogie lights', look: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'Party time', subtitle: 'கொண்டாட்டம்', subtitle_color: '#fbcfe8', style: 'shadow', position: 'center', color: '#ffffff', size: 64, enter: { preset: 'pop-letters', duration: 1 }, exit: fade(0.5) }, extra: { effect: 'bokeh' } },
+  { id: 'pull-focus', label: 'Pull focus', look: { font: 'Optima', tamil_font: 'Catamaran', text: 'Remember this', subtitle: 'இதை நினைவில் கொள்', subtitle_color: '#e5e5e5', style: 'shadow', position: 'center', color: '#ffffff', size: 56, enter: { preset: 'blur', duration: 1 }, exit: fade(0.6) }, extra: { defocus: true } },
   { id: 'date', label: 'Date', look: { design: 'corners', font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'The date', subtitle: 'The day', style: 'shadow', position: 'center', color: '#ffffff', size: 40, enter: fade(0.5), exit: fade(0.5) } },
   { id: 'date-tamil', label: 'Date in Tamil', look: { design: 'corners', font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'தேதி', subtitle: 'நாள்', style: 'shadow', position: 'center', color: '#ffffff', size: 40, enter: fade(0.5), exit: fade(0.5) } },
 ];
@@ -82,4 +91,15 @@ export function dateWords(recorded: string | null, language: 'en' | 'ta', now: D
   const weekday = new Date(year, month - 1, day).getDay();
   const clock = `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'am' : 'pm'}`;
   return { text: `${day} ${MONTHS[language][month - 1]} ${year}`, subtitle: `${DAYS[language][weekday]} · ${clock}` };
+}
+
+export const DEFOCUS_AMOUNT = 0.35;
+/** Pull focus: a full-frame soft blur over the picture under the title, fading in as the title sharpens and out as it leaves. */
+export function defocusBox(id: string, start: number, length: number, inSeconds: number, outSeconds: number) {
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  const fadeIn = Math.min(inSeconds, length / 2), fadeOut = Math.min(outSeconds, length / 2);
+  return { id, start: round(start), length: round(length), style: 'blur' as const, shape: 'box' as const, amount: DEFOCUS_AMOUNT, width: 1, height: 1,
+    transform: { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0, keyframes: { opacity: [
+      { t: 0, v: 0, ease: 'easeInOut' as const }, { t: round(fadeIn), v: 1, ease: 'linear' as const },
+      { t: round(length - fadeOut), v: 1, ease: 'easeInOut' as const }, { t: round(length), v: 0, ease: 'linear' as const }] } } };
 }

@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.services import title3d
-from app.services.animation import LETTER_PRESETS, LETTER_REST, TRICK_COPIES, TRICK_MARGIN, letter_looks
+from app.services.animation import LETTER_PRESETS, LETTER_REST, STREAK_TAPS, TRICK_COPIES, TRICK_MARGIN, letter_looks
 
 PinAt = Callable[[float], 'list[list[float]] | None']  # Timeline seconds to the pin matrix, or None.
 
@@ -53,6 +53,8 @@ def trick_margins(text, letters: tuple[float, float, float, float]) -> tuple[flo
             along = max(along, 1.45 * h)
         elif preset == 'pop-letters':
             across, along = max(across, .15 * h), max(along, .15 * h)
+        elif preset == 'blur-sideways':
+            across = max(across, 1.0 * h)
     return across, along
 
 
@@ -97,8 +99,8 @@ def picture_tricks(crop: np.ndarray, look: dict, origin: tuple[int, int], letter
     """The title picture's tricks (PictureLook in animation.ts) on a premultiplied RGBA crop whose top left is `origin`
     in the picture. The preview's TITLE_FRAGMENT does the same per pixel."""
     split, trick = look.get('split', 0), look.get('trick', 0)
-    reveal, rise, line = look.get('reveal', 1), look.get('rise', 1), look.get('line', -1)
-    if not ((split > 0 and trick) or reveal < 1 or rise < 1 or line >= 0):
+    reveal, rise, line, streak = look.get('reveal', 1), look.get('rise', 1), look.get('line', -1), look.get('streak', 0)
+    if not ((split > 0 and trick) or reveal < 1 or rise < 1 or line >= 0 or streak > 0):
         return crop
     rows, cols = crop.shape[:2]
     lx0, ly0, lx1, ly1 = letters
@@ -108,6 +110,14 @@ def picture_tricks(crop: np.ndarray, look: dict, origin: tuple[int, int], letter
     def moved(dx: float, dy: float) -> np.ndarray:
         """The crop with its picture moved by (dx, dy): what sampling at p - (dx, dy) gives."""
         return cv2.warpAffine(crop, np.float32([[1, 0, dx], [0, 1, dy]]), (cols, rows), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+    if streak > 0:  # A sideways blur: STREAK_TAPS samples either side, weighted by a bell curve out to three of its widths.
+        sigma, blurred, total = streak * lh, np.zeros_like(crop), 0.0
+        for k in range(-STREAK_TAPS, STREAK_TAPS + 1):
+            x = k * 3 / STREAK_TAPS
+            weight = math.exp(-.5 * x * x)
+            blurred += weight * moved(-x * sigma, 0)
+            total += weight
+        crop = out = blurred / np.float32(total)
     if split > 0 and trick:
         d = split * lh
         if trick == 1:  # Chromatic: red to the left, blue to the right.

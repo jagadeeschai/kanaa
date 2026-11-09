@@ -40,6 +40,7 @@ export function trickMargins(text: TextItem, letters: Box): [number, number] {
     else if (preset === 'split') across = Math.max(across, 0.62 * w);
     else if (preset === 'gravity') along = Math.max(along, 1.45 * h);
     else if (preset === 'pop-letters') { across = Math.max(across, 0.15 * h); along = Math.max(along, 0.15 * h); }
+    else if (preset === 'blur-sideways') across = Math.max(across, 1.0 * h);
   }
   return [across, along];
 }

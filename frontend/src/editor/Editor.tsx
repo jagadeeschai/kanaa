@@ -52,7 +52,7 @@ import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } 
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
-import { dateWords, ENGLISH_FONTS, isDateTemplate, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
+import { dateWords, defocusBox, ENGLISH_FONTS, isDateTemplate, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
@@ -117,7 +117,7 @@ const DESIGN_TIPS: Record<TitleDesign, string> = {
   organic: 'Curling vines either side of the words and a fine line beneath, in the subtitle colour.',
 };
 const BACKED_DESIGNS = new Set<TitleDesign>(['gradient', 'formal', 'clouds', 'paper', 'torn']);
-const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
+const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
 const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
@@ -853,7 +853,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }
     const current = timelineRef.current ?? timeline;
     const text: TextItem = { ...title.look, ...dated, ...(words ? { text: words, subtitle: '' } : {}), id: newId(), start: Math.round(at * 1000) / 1000, length: TEXT_SECONDS };
-    change(addText(current, text, newId()));
+    let next = addText(current, text, newId());
+    // Pull focus: the picture behind softens while the title sharpens.
+    if (title.extra?.defocus) next = addBlur(next, defocusBox(newId(), text.start, text.length, text.enter?.duration ?? 1, text.exit?.duration ?? 0.6), newId());
+    change(next);
+    // A title that brings an effect (lens flare, sparkles, bokeh) lays it over the video for the title's length.
+    if (title.extra?.effect) void addEffect(title.extra.effect, text.start, text.length);
     setSelectedId(text.id);
     // A title starts hidden behind its enter animation, so show it at rest.
     setTimeout(() => engineRef.current?.seek(text.start + TEXT_SECONDS / 2), 0);
@@ -1160,7 +1165,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     fogDensity: 0.65, fogSpeed: 0.55, fogDirection: 'right' as 'left' | 'straight' | 'right', snowDensity: 0.8, snowSpeed: 0.8, snowDirection: 'right' as 'left' | 'straight' | 'right', seed: 0 });
   useEffect(() => { if (leftTab === 'effects' && !effects.length) listEffects().then(setEffects).catch((problem) => setError((problem as Error).message)); }, [leftTab, effects.length]);
   /** Makes the effect once in this project's shape (later uses are instant), then lays it over the video at `dropAt` or the playhead. */
-  const addEffect = async (effectId: string, dropAt?: number) => {
+  const addEffect = async (effectId: string, dropAt?: number, length?: number) => {
     if (!timeline || effectBusy) return;
     const at = Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000;
     const format = timeline.format;
@@ -1189,7 +1194,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const current = timelineRef.current ?? timeline;
       // A film leader opens the video: an ordinary clip at the very start of the main track, with its beep.
       const opening = effects.find((effect) => effect.id === effectId)?.placement === 'start';
-      const clip = { ...newClip(source, newId()), start: opening ? 0 : at, muted: !opening };
+      const whole = { ...newClip(source, newId()), start: opening ? 0 : at, muted: !opening };
+      // For a title's effect: only as long as the title.
+      const clip = length && !opening ? { ...whole, out: Math.min(whole.out, Math.round((whole.in + length) * 1000) / 1000) } : whole;
       change(opening ? dropClip(current, clip, 0) : placeEffect(current, clip, newId()));
       setSelectedId(clip.id);
     } catch (problem) { setError((problem as Error).message); } finally { setEffectBusy(null); }

@@ -1,6 +1,6 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
-  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand';
+  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip';
 export type Transition = { kind: TransitionKind; duration: number };
@@ -13,10 +13,12 @@ export type Look = { dx: number; dy: number; scale: number; opacity: number; blu
  * middle, or -1 for none. split: how far apart the copies are, as a share of the letters' height, for `trick`
  * 1 chromatic (red and blue apart), 2 prism (rainbow copies) or 3 echo (fading copies below).
  */
-export type PictureLook = { reveal: number; soft: number; rise: number; line: number; split: number; trick: number };
-export const PICTURE_REST: PictureLook = { reveal: 1, soft: 0, rise: 1, line: -1, split: 0, trick: 0 };
+export type PictureLook = { reveal: number; soft: number; rise: number; line: number; split: number; trick: number; streak: number };
+export const PICTURE_REST: PictureLook = { reveal: 1, soft: 0, rise: 1, line: -1, split: 0, trick: 0, streak: 0 };
+/** A sideways blur's taps either side of the middle, out to three of its widths. Matches STREAK_TAPS in animation.py. */
+export const STREAK_TAPS = 8;
 /** Presets drawn as picture tricks: such a title goes through the 3D path on both sides. Matches PICTURE_PRESETS in animation.py. */
-export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand']);
+export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways']);
 /**
  * Letter by letter: each letter (title_letters.py finds them) moves on its own. dx is in widths of the title's letters
  * box, dy in its heights; scale is about the letter's own middle. Pop-up letters and Gravity start one letter after
@@ -65,7 +67,7 @@ export function dipWeights(p: number): [number, number, number] {
   const q = 1 - p; const before = smooth(0.8, 1, q); const after = smooth(0.2, 1, q);
   return [q * before, (1 - q) * (1 - after), q * (1 - before) + (1 - q) * after];
 }
-const OPACITY_SPAN: Partial<Record<Preset, number>> = { fade: 1, zoom: 1, pop: 1 / 3, blur: 1, bounce: 1 / 3, blast: 0.22, 'magic-form': 0.7, 'magic-vanish': 0.8, 'particle-form': 0.9, 'rise-behind': 0.25, 'push-through': 0.35, chromatic: 0.4, prism: 0.4, echo: 0.5 };
+const OPACITY_SPAN: Partial<Record<Preset, number>> = { fade: 1, zoom: 1, pop: 1 / 3, blur: 1, bounce: 1 / 3, blast: 0.22, 'magic-form': 0.7, 'magic-vanish': 0.8, 'particle-form': 0.9, 'rise-behind': 0.25, 'push-through': 0.35, chromatic: 0.4, prism: 0.4, echo: 0.5, 'blur-sideways': 0.6 };
 const SLIDES: Partial<Record<Preset, [number, number]>> = { 'slide-up': [0, 1], 'slide-down': [0, -1], 'slide-left': [1, 0], 'slide-right': [-1, 0] };
 export const LOOKS: Record<LookName, [number, number, number, number, number]> = { none: [1, 1, 1, 1, 1], warm: [1.08, 1, 0.9, 1.02, 1.05], cool: [0.92, 1, 1.1, 1.02, 1], mono: [1, 1, 1, 1.1, 0], vivid: [1, 1, 1, 1.1, 1.35], film: [1.03, 1, 0.96, 0.88, 0.85] };
 export const REST: Look = { dx: 0, dy: 0, scale: 1, opacity: 1, blur: 0 };
@@ -102,6 +104,8 @@ export function lookAt(preset: Preset, progress: number): Look {
   else if (preset === 'chromatic') Object.assign(look, { split: 0.35 * (1 - e), trick: 1 });
   else if (preset === 'prism') Object.assign(look, { split: 0.3 * (1 - e), trick: 2 });
   else if (preset === 'echo') Object.assign(look, { split: 0.8 * (1 - e), trick: 3 });
+  // A sideways blur, its width a share of the letters' height, easing to sharp.
+  else if (preset === 'blur-sideways') Object.assign(look, { streak: 0.3 * (1 - e) });
   return look;
 }
 
@@ -118,5 +122,5 @@ export function pictureLook(first: Partial<PictureLook>, last: Partial<PictureLo
   const a = { ...PICTURE_REST, ...first }; const b = { ...PICTURE_REST, ...last };
   const line = a.line < 0 ? b.line : b.line < 0 ? a.line : Math.min(a.line, b.line);
   const copies = b.split > a.split ? b : a;
-  return { reveal: Math.min(a.reveal, b.reveal), soft: Math.max(a.soft, b.soft), rise: Math.min(a.rise, b.rise), line, split: copies.split, trick: copies.split > 0 ? copies.trick : Math.max(a.trick, b.trick) };
+  return { reveal: Math.min(a.reveal, b.reveal), soft: Math.max(a.soft, b.soft), rise: Math.min(a.rise, b.rise), line, split: copies.split, trick: copies.split > 0 ? copies.trick : Math.max(a.trick, b.trick), streak: Math.max(a.streak, b.streak) };
 }

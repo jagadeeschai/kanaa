@@ -6,15 +6,16 @@ import math
 MAX_BLUR = 0.03  # Of the frame height.
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
 OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
-                'chromatic': .4, 'prism': .4, 'echo': .5}
+                'chromatic': .4, 'prism': .4, 'echo': .5, 'blur-sideways': .6}
 # Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
-PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand'}
+PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways'}
 # Letter by letter (letterLook in animation.ts): dx in widths of the title's letters box, dy in its heights, scale about
 # each letter's own middle. Pop-up letters and Gravity start one after another across LETTER_STAGGER of the animation.
 LETTER_PRESETS = {'pop-letters', 'gravity', 'split', 'expand'}
 LETTER_STAGGER = 0.6
 LETTER_REST = {'dx': 0.0, 'dy': 0.0, 'scale': 1.0, 'opacity': 1.0}
-PICTURE_REST = {'reveal': 1.0, 'soft': 0.0, 'rise': 1.0, 'line': -1.0, 'split': 0.0, 'trick': 0}
+PICTURE_REST = {'reveal': 1.0, 'soft': 0.0, 'rise': 1.0, 'line': -1.0, 'split': 0.0, 'trick': 0, 'streak': 0.0}
+STREAK_TAPS = 8  # A sideways blur's taps either side of the middle. Matches animation.ts.
 TRICK_COPIES = 4
 TRICK_MARGIN = 1.25  # How far beyond the letters, in letter heights, the tricks may reach.
 LINE_DRAW, RISE_FROM = .45, .35
@@ -78,6 +79,8 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look.update(split=.3 * (1 - e), trick=2)
     elif preset == 'echo':
         look.update(split=.8 * (1 - e), trick=3)
+    elif preset == 'blur-sideways':  # A sideways blur, its width a share of the letters' height, easing to sharp.
+        look.update(streak=.3 * (1 - e))
     return look
 
 
@@ -125,7 +128,7 @@ def picture_look(first: dict, last: dict) -> dict:
     line = b['line'] if a['line'] < 0 else a['line'] if b['line'] < 0 else min(a['line'], b['line'])
     copies = b if b['split'] > a['split'] else a
     return {'reveal': min(a['reveal'], b['reveal']), 'soft': max(a['soft'], b['soft']), 'rise': min(a['rise'], b['rise']), 'line': line,
-            'split': copies['split'], 'trick': copies['trick'] if copies['split'] > 0 else max(a['trick'], b['trick'])}
+            'split': copies['split'], 'trick': copies['trick'] if copies['split'] > 0 else max(a['trick'], b['trick']), 'streak': max(a['streak'], b['streak'])}
 
 
 def letter_look(preset: str, progress: float, index: int, count: int, u: float) -> dict:

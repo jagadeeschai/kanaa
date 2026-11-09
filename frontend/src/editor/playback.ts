@@ -1,4 +1,4 @@
-import { animatedLook, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -90,7 +90,7 @@ const TITLE_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPicture; uniform vec2 frame, viewport;
 uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
 // Picture tricks (PictureLook in animation.ts), in the title picture's pixels; picture_tricks in title3d_render.py does the same.
-uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineColour;
+uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineColour; uniform float streak;
 // Letter by letter (letterLook in animation.ts; moving_letters in title3d_render.py): the letter map's red is each
 // pixel's letter (0: none, it stays); letterA is a letter's middle and how far it moves, letterB its size and opacity.
 uniform sampler2D labels; uniform int letterCount; uniform vec4 letterA[${MAX_LETTERS}]; uniform vec4 letterB[${MAX_LETTERS}];
@@ -121,6 +121,15 @@ void main(){
   if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.z || p.y > bounds.w) discard;
   vec4 c = pm(p);
   float lw = letters.z - letters.x, lh = letters.w - letters.y;
+  if (streak > 0.) {
+    // A sideways blur: STREAK_TAPS samples either side, weighted by a bell curve out to three of its widths.
+    vec4 sum = vec4(0.); float total = 0.;
+    for (int k = -${STREAK_TAPS}; k <= ${STREAK_TAPS}; k++) {
+      float x = float(k) * 3. / ${STREAK_TAPS}.; float w = exp(-.5 * x * x);
+      sum += pm(p + vec2(x * streak * lh, 0.)) * w; total += w;
+    }
+    c = sum / total;
+  }
   float d = copies.x * lh; int trick = int(copies.y + .5);
   if (d > 0. && trick == 1) {
     vec4 red = pm(p + vec2(d, 0.)), blue = pm(p - vec2(d, 0.));
@@ -437,7 +446,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -951,6 +960,7 @@ export class PlaybackEngine {
     gl.uniform4f(u.letters, ...letters);
     gl.uniform4f(u.wipe, tricks.reveal, tricks.soft, tricks.rise, tricks.line);
     gl.uniform2f(u.copies, tricks.split, tricks.trick);
+    gl.uniform1f(u.streak, tricks.streak);
     gl.uniform3f(u.lineColour, ...hexColour(item.color));
     this.setLetters(item, local, letters);
     for (let index = shades.length - 1; index >= 0; index -= 1) {
@@ -1039,7 +1049,8 @@ export class PlaybackEngine {
     gl.uniform4f(uniforms.box, valueAt(item.transform, 'x', local), valueAt(item.transform, 'y', local), item.width * scale, item.height * scale);
     gl.uniform1f(uniforms.turn, 0);
     gl.uniform2f(uniforms.frame, this.timeline!.format.width, this.timeline!.format.height);
-    gl.uniform1f(uniforms.opacity, 1);
+    // A blur box can fade in and out by its opacity keys, as the export's pose() fades its mask.
+    gl.uniform1f(uniforms.opacity, Math.max(0, Math.min(1, valueAt(item.transform, 'opacity', local))));
     gl.uniform1i(uniforms.hideMode, item.style === 'pixelate' ? 2 : 1);
     gl.uniform1i(uniforms.hideShape, item.shape === 'oval' ? 0 : 1);
     gl.uniform1f(uniforms.hideAmount, item.amount * BLUR_REACH);

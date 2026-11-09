@@ -290,6 +290,18 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         samples += [{'name': f'title letters {preset} enter {share}', 't': t + share} for share in (0.2, 0.45, 0.7)]
         samples += [{'name': f'title letters {preset} rest', 't': t + 1.2}, {'name': f'title letters {preset} exit 0.5', 't': t + SECONDS - ANIMATION * 0.5}]
         t += SECONDS
+    # Horizontal blur, and Pull focus: the title sharpening while a full-frame blur box fades in behind it.
+    clips.append(clip('sideways-under', first, t))
+    texts.append({'id': 'sideways', 'start': t, 'length': SECONDS, 'text': 'Happy பொங்கல்', 'style': 'shadow', 'position': 'center', 'size': 80, 'color': '#ffd27a',
+                  'enter': {'preset': 'blur-sideways', 'duration': 1}, 'exit': {'preset': 'blur-sideways', 'duration': ANIMATION}})
+    samples += [{'name': f'title sideways enter {share}', 't': t + share} for share in (0.2, 0.5, 0.8)] + [{'name': 'title sideways exit 0.5', 't': t + SECONDS - ANIMATION * 0.5}]
+    t += SECONDS
+    clips.append(clip('pull-focus-under', first, t))
+    texts.append({'id': 'pull-focus', 'start': t, 'length': SECONDS, 'text': 'Remember this', 'style': 'shadow', 'position': 'center', 'size': 70, 'enter': {'preset': 'blur', 'duration': 1}})
+    hides.append({'id': 'pull-focus-blur', 'start': t, 'length': SECONDS, 'style': 'blur', 'shape': 'box', 'amount': 0.35, 'width': 1, 'height': 1,
+                  'transform': {'keyframes': {'opacity': [{'t': 0, 'v': 0, 'ease': 'easeInOut'}, {'t': 1, 'v': 1, 'ease': 'linear'}, {'t': 1.4, 'v': 1, 'ease': 'easeInOut'}, {'t': SECONDS, 'v': 0, 'ease': 'linear'}]}}})
+    samples += [{'name': f'title pull focus {at}', 't': t + at} for at in (0.3, 0.7, 1.2, 1.8)]
+    t += SECONDS
     # Captions on top of everything, with the spoken word lit, in Tamil and English.
     captions = {'id': 'subs', 'kind': 'captions', 'style': 'outline', 'position': 'bottom', 'color': '#ffffff', 'highlight': '#ffd400', 'size': 56, 'items': [
         {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},
