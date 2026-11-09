@@ -538,6 +538,30 @@ class Animations(Clips):
         self.assertLess(sharpness(self.frame(blur, 60, self.size())), sharpness(self.frame(fade, 60, self.size())) * 0.5, "the white square's edge is soft halfway")
         self.assertLess(np.abs(self.frame(blur, 20, self.size()) - self.frame(fade, 20, self.size())).mean(), 1, 'and sharp before the transition')
 
+    def test_moving_transitions_keep_the_length_and_go_from_old_to_new(self):
+        red = lambda frame: ((frame[..., 0] > 180) & (frame[..., 2] < 80)).mean()
+        blue = lambda frame: ((frame[..., 2] > 180) & (frame[..., 0] < 80)).mean()
+        middle = {
+            'spin-in': lambda f: blue(f[150:210, 290:350]) > 0.9 and red(f[:20, :20]) > 0.9,  # The new clip small in the middle.
+            'spin-out': lambda f: red(f[150:210, 290:350]) > 0.9 and blue(f[:40, 100:140]) > 0.9,
+            'doorway': lambda f: red(f[:, :140]) > 0.9 and red(f[:, 500:]) > 0.9 and blue(f[150:210, 290:350]) > 0.9,
+            'puzzle-left': lambda f: 0.2 < blue(f) < 0.8 and blue(f[:, 520:]) > blue(f[:, :120]),  # From the right, so more in on the right.
+            'puzzle-right': lambda f: 0.2 < blue(f) < 0.8 and blue(f[:, :120]) >= blue(f[:, 520:]),
+            'mosaic': lambda f: red(f) > 0.1 and blue(f) > 0.1,
+            'ripple': lambda f: 100 < f[180, 320, 0] < 150 and 100 < f[180, 320, 2] < 150,
+            'cross-zoom': lambda f: 100 < f[180, 320, 0] < 150 and 100 < f[180, 320, 2] < 150,
+        }
+        for kind, check in middle.items():
+            with self.subTest(kind=kind):
+                data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+                    {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},
+                    {'id': 'b', 'media_id': 3, 'start': 2, 'in': 0, 'out': 2, 'transition_in': {'kind': kind, 'duration': 1}}]}]}
+                target = self.render(data, f'{kind}.mp4')
+                self.assertEqual(probe_frames(target), 120)
+                self.assertGreater(red(self.frame(target, 44, self.size())), 0.95, 'the old clip before')
+                self.assertGreater(blue(self.frame(target, 76, self.size())), 0.7, 'the new clip after (inside its side bars)')
+                self.assertTrue(check(self.frame(target, 60, self.size())), 'halfway')
+
     def test_transition_past_the_start_of_a_source_holds_its_first_frame(self):
         data = {'format': self.FORMAT, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
             {'id': 'a', 'media_id': 1, 'start': 0, 'in': 0, 'out': 2},
@@ -2111,3 +2135,22 @@ class CaptionPlaces(Clips):
         self.assertLess(white_rows(self.frame(target, 45, (640, 360))), 0.4, 'this caption moved to the top')
         with self.assertRaises(ValidationError):
             Timeline.model_validate({**data, 'layers': [data['layers'][0], {**data['layers'][1], 'items': [{**captions[1], 'position': 'left'}]}]})
+
+
+class ThreadBudget(unittest.TestCase):
+    def test_a_short_video_keeps_every_thread(self):
+        from app.services.timeline_service import Compiled, fit_threads
+        small = Compiled(args=['-i', 'a.mp4', '-i', 'b.mp4'], graph="[0:v]scale=w='max(2,iw*2)':h=ih[a];[a]format=gbrp[b]", duration=4, audio_args=[], audio_graph='')
+        self.assertEqual(fit_threads(small, cores=8), (small.args, small.graph, []))
+
+    def test_a_big_graph_gives_decoders_and_scales_few_threads(self):
+        from app.services.timeline_service import Compiled, FEW_THREADS, THREAD_BUDGET, fit_threads
+        graph = ';'.join([f"[{i}:v]scale=w='max(2,trunc(iw*1.5,2))':h=ih:eval=frame,format=gbrp[s{i}]" for i in range(160)] * 3)
+        big = Compiled(args=sum((['-loop', '1', '-i', f'{i}.png'] for i in range(160)), []), graph=graph, duration=200, audio_args=[], audio_graph='')
+        args, limited, extra = fit_threads(big, cores=8)
+        self.assertEqual(args.count('-threads'), 160)
+        self.assertEqual(args[args.index('-i') - 2:args.index('-i')], ['-threads', str(FEW_THREADS)])
+        self.assertEqual(limited.count(f':threads={FEW_THREADS}'), 480)
+        self.assertIn("scale=w='max(2,trunc(iw*1.5,2))':h=ih:eval=frame:threads=2,format=gbrp", limited, 'quoted commas left whole')
+        threads = int(extra[1]) if extra else 8
+        self.assertLessEqual(160 * (FEW_THREADS + 2) + 480 * FEW_THREADS + 480 * threads, THREAD_BUDGET)

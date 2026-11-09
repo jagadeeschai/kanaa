@@ -1,4 +1,4 @@
-import { animatedLook, CROSS_BLUR, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -159,6 +159,107 @@ void main(){
   vec3 rgb = mix(straight, shade.rgb, shade.a);
   float a = c.a * opacity;
   color = vec4(rgb * a, a);
+}`;
+/**
+ * Transitions that move pixels, as moving_transitions.py builds them in the export: each clip has been drawn on black
+ * (c0) and on white (c1), so its colour and how see-through it is are both known. Positions are frame pixels from the
+ * top left. kind: 0 copies `under` back, 1 spin in, 2 spin out, 3 doorway, 4 puzzle left, 5 puzzle right, 6 mosaic,
+ * 7 ripple, 8 cross zoom.
+ */
+const TRANSITION_FRAGMENT = `#version 300 es
+precision highp float; out vec4 color;
+uniform sampler2D a0, a1, b0, b1, under; uniform vec2 frame, viewport; uniform int kind; uniform float q;
+const float PI = 3.14159265;
+vec4 clip(sampler2D on0, sampler2D on1, vec2 at) {
+  if (at.x < 0. || at.y < 0. || at.x > frame.x - 1. || at.y > frame.y - 1.) return vec4(0.);
+  vec2 uv = vec2((at.x + .5) / frame.x, 1. - (at.y + .5) / frame.y);
+  vec3 dark = texture(on0, uv).rgb, light = texture(on1, uv).rgb;
+  return vec4(dark, clamp(1. - dot(light - dark, vec3(1. / 3.)), 0., 1.));
+}
+vec4 A(vec2 at) { return clip(a0, a1, at); }
+vec4 B(vec2 at) { return clip(b0, b1, at); }
+float even(float size) { return max(2., floor(size / 2.) * 2.); }
+// A picture scaled by s and laid in the middle: even sizes, a whole-pixel place, and pixel centres mapped as ffmpeg's
+// scale and overlay do.
+vec2 inScaled(vec2 at, float s) {
+  vec2 size = vec2(even(frame.x * s), even(frame.y * s));
+  vec2 corner = floor((frame - size) / 2.);
+  return (at - corner + .5) * frame / size - .5;
+}
+void main() {
+  vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport - .5;
+  if (kind == 0) { color = vec4(texture(under, gl_FragCoord.xy / viewport).rgb, 1.); return; }
+  float e = q * q * (3. - 2. * q);
+  vec2 mid = frame / 2.;
+  if (kind == 1 || kind == 2) {
+    bool inward = kind == 1;
+    float s = inward ? max(e, .001) : max(1. - e, .001);
+    float turn = (inward ? 1. - e : e) * 2. * PI * ${MOVING.spinTurns}.;
+    // Turned back (clockwise) out of the picture's anticlockwise turn, then back to its own size.
+    vec2 r = at - mid;
+    vec2 back = vec2(r.x * cos(turn) - r.y * sin(turn), r.x * sin(turn) + r.y * cos(turn)) + mid;
+    vec2 source = inScaled(back, s);
+    vec4 spun = inward ? B(source) : A(source);
+    vec4 still = inward ? A(at) : B(at);
+    color = spun + still * (1. - spun.a);
+    return;
+  }
+  if (kind == 3) {
+    // The doors move by whole pixels, as overlay places them.
+    float half_ = floor(frame.x / 2.), open = floor(e * frame.x / 2.);
+    vec4 behind = B(inScaled(at, ${MOVING.doorBack} + ${(1 - 0.75).toFixed(2)} * e));
+    vec4 left = at.x + open < half_ ? A(at + vec2(open, 0.)) : vec4(0.);
+    vec4 right = at.x - open >= half_ ? A(at - vec2(open, 0.)) : vec4(0.);
+    color = right + (left + behind * (1. - left.a)) * (1. - right.a);
+    return;
+  }
+  if (kind == 4 || kind == 5) {
+    bool fromRight = kind == 4;
+    float cols = ${MOVING.puzzleCols}., rows = ${MOVING.puzzleRows}.;
+    float r = min(floor(at.y / (frame.y / rows)), rows - 1.);
+    color = A(at);
+    // Pieces laid one after another, latest on top: look from the latest down.
+    for (int i = 0; i < ${MOVING.puzzleCols}; i++) {
+      float c = fromRight ? float(i) : cols - 1. - float(i);
+      float order = (fromRight ? cols - 1. - c : c) + r;
+      float p = clamp((q - ${MOVING.puzzleStagger} * order / (cols - 1. + rows - 1.)) / ${(1 - 0.5).toFixed(1)}, 0., 1.);
+      float shift = pow(1. - p, 3.) * frame.x * (fromRight ? 1. : -1.);
+      float x0 = floor(c * frame.x / cols + .5), x1 = floor((c + 1.) * frame.x / cols + .5);
+      float x = at.x - trunc(x0 + shift) + x0;  // overlay's place: towards zero.
+      if (x >= x0 && x < x1) { color = B(vec2(x, at.y)); break; }
+    }
+    return;
+  }
+  if (kind == 6) {
+    float cols = ${MOVING.mosaicCols}., rows = ${MOVING.mosaicRows}., tiles = cols * rows;
+    float c = min(floor(at.x / (frame.x / cols)), cols - 1.), r = min(floor(at.y / (frame.y / rows)), rows - 1.);
+    float x0 = floor(c * frame.x / cols + .5), x1 = floor((c + 1.) * frame.x / cols + .5), wide = x1 - x0;
+    float p = clamp((q - ${MOVING.mosaicStagger} * mod((c + r * cols) * ${MOVING.mosaicStep}. + 3., tiles) / (tiles - 1.)) / ${(1 - 0.6).toFixed(1)}, 0., 1.);
+    bool old = p < .5;
+    float shown = max(2., floor(wide * (old ? 1. - 2. * p : 2. * p - 1.) / 2.) * 2.);
+    float left = x0 + floor((wide - shown) / 2.);
+    if (at.x < left || at.x >= left + shown) { color = vec4(0.); return; }
+    vec2 source = vec2(x0 + (at.x - left + .5) * wide / shown - .5, at.y);
+    color = old ? A(source) : B(source);
+    return;
+  }
+  if (kind == 7) {
+    vec2 r = at - mid; float d = length(r);
+    float shift = floor(${MOVING.rippleAmp} * frame.y * sin(PI * q) * sin(${MOVING.rippleWaves}. * 2. * PI * d / length(mid) - q * ${MOVING.rippleSpeed}.) * r.x / max(d, 1.) + .5);
+    float shiftY = floor(${MOVING.rippleAmp} * frame.y * sin(PI * q) * sin(${MOVING.rippleWaves}. * 2. * PI * d / length(mid) - q * ${MOVING.rippleSpeed}.) * r.y / max(d, 1.) + .5);
+    vec2 source = at + vec2(shift, shiftY);
+    color = A(source) * (1. - q) + B(source) * q;
+    return;
+  }
+  // Cross zoom: the average of ${MOVING.zoomTaps} sizes along lines from the middle, into the old clip and out of the new, faded.
+  vec4 old = vec4(0.), fresh = vec4(0.);
+  float streaks = sin(PI * q);
+  for (int t = 0; t < ${MOVING.zoomTaps}; t++) {
+    float factor = 1. + ${MOVING.zoomBlur} * streaks * float(t) / ${MOVING.zoomTaps - 1}.;
+    old += A(inScaled(at, (1. + ${(1.8 - 1).toFixed(1)} * e) * factor));
+    fresh += B(inScaled(at, (${MOVING.zoomReach} - ${(1.8 - 1).toFixed(1)} * e) * factor));
+  }
+  color = old / ${MOVING.zoomTaps}. * (1. - q) + fresh / ${MOVING.zoomTaps}. * q;
 }`;
 const FRAGMENT = `#version 300 es
 precision highp float; in vec2 uv; out vec4 color; uniform sampler2D tex;
@@ -408,6 +509,9 @@ export class PlaybackEngine {
   private layers = new Map<string, LayerSlots>();
   private images = new Map<string, { texture: WebGLTexture; ready: boolean; box?: Box | null; measuring?: boolean }>();
   private titleProgram!: WebGLProgram;
+  private movingProgram!: WebGLProgram;
+  private movingUniforms: Record<string, WebGLUniformLocation | null> = {};
+  private movingTextures: WebGLTexture[] = [];
   private titleUniforms: Record<string, WebGLUniformLocation | null> = {};
   private timeline: Timeline | null = null;
   private sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined = () => undefined;
@@ -452,6 +556,13 @@ export class PlaybackEngine {
     gl.linkProgram(titles);
     this.titleProgram = titles;
     for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    const moving = gl.createProgram()!;
+    gl.attachShader(moving, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
+    gl.attachShader(moving, shader(gl.FRAGMENT_SHADER, TRANSITION_FRAGMENT));
+    gl.bindAttribLocation(moving, position, 'p');
+    gl.linkProgram(moving);
+    this.movingProgram = moving;
+    for (const name of ['a0', 'a1', 'b0', 'b1', 'under', 'frame', 'viewport', 'kind', 'q']) this.movingUniforms[name] = gl.getUniformLocation(moving, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -795,9 +906,48 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.mirrorMode, 0); gl.uniform1f(uniforms.zoomReach, 0); gl.uniform1f(uniforms.tiltBlur, 0); gl.uniform1f(uniforms.tiltSat, 0); gl.uniform1i(uniforms.toneMode, 0);
   }
 
-  private drawCrossing(layer: VideoLayer, { before, after, p }: Crossing) {
+  /**
+   * A transition that moves pixels (TRANSITION_FRAGMENT; moving_transitions.py in the export). What is under the layer is
+   * kept; each clip is drawn alone on black and on white, so its colour and see-through are both known; then the frame is
+   * put back and the transition laid over it.
+   */
+  private drawMoving(layer: VideoLayer, { before, after, p }: Crossing, kind: TransitionKind) {
+    const { gl, canvas } = this; const u = this.movingUniforms;
+    if (!this.movingTextures.length) this.movingTextures = [0, 1, 2, 3, 4].map(() => this.newTexture());
+    const [a0, a1, b0, b1, under] = this.movingTextures;
+    const keep = (texture: WebGLTexture, unit: number) => {
+      gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, canvas.width, canvas.height, 0);
+      gl.activeTexture(gl.TEXTURE0);
+    };
+    keep(under, 7);
+    for (const [clip, onBlack, onWhite, unit] of [[before, a0, a1, 3], [after, b0, b1, 5]] as const) {
+      for (const [texture, shade, slot] of [[onBlack, 0, unit], [onWhite, 1, unit + 1]] as const) {
+        gl.clearColor(shade, shade, shade, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+        this.drawClip(layer, clip, {});
+        keep(texture, slot);
+      }
+    }
+    gl.clearColor(0, 0, 0, 1);
+    gl.useProgram(this.movingProgram);
+    for (const [name, unit] of [['a0', 3], ['a1', 4], ['b0', 5], ['b1', 6], ['under', 7]] as const) gl.uniform1i(u[name], unit);
+    gl.uniform2f(u.frame, this.timeline!.format.width, this.timeline!.format.height);
+    gl.uniform2f(u.viewport, canvas.width, canvas.height);
+    gl.uniform1f(u.q, p);
+    gl.blendFunc(gl.ONE, gl.ZERO);
+    gl.uniform1i(u.kind, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1i(u.kind, MOVING_KINDS.indexOf(kind) + 1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.useProgram(this.main);
+  }
+
+  private drawCrossing(layer: VideoLayer, crossing: Crossing) {
     const { gl, canvas } = this;
+    const { before, after, p } = crossing;
     const kind = after.transition_in!.kind;
+    if (MOVING_KINDS.includes(kind)) { this.drawMoving(layer, crossing, kind); return; }
     const remaining = 1 - p;
     const direction = after.transition_in!.direction ?? 'left';
     if (kind === 'wipe') {

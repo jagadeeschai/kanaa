@@ -2,7 +2,13 @@
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
   | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways';
 export type Animation = { preset: Preset; duration: number };
-export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur';
+export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
+  | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom';
+/** Transitions that move pixels (moving_transitions.py), drawn in the preview by TRANSITION_FRAGMENT, by these numbers. */
+export const MOVING_KINDS: TransitionKind[] = ['spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom'];
+/** Their constants: the same as moving_transitions.py. */
+export const MOVING = { spinTurns: 1, doorBack: 0.75, puzzleCols: 4, puzzleRows: 3, puzzleStagger: 0.5, mosaicCols: 8, mosaicRows: 5, mosaicStagger: 0.6, mosaicStep: 7,
+  rippleAmp: 0.012, rippleWaves: 12, rippleSpeed: 18, zoomReach: 1.8, zoomBlur: 0.25, zoomTaps: 5 } as const;
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 /** direction: which way a wipe's edge or a slide's pictures travel; none is left (xfade_name in animation.py). */
 export type Transition = { kind: TransitionKind; duration: number; direction?: TransitionDirection | null };

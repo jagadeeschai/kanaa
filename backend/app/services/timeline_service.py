@@ -24,6 +24,7 @@ from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
 from app.services import title3d
 from app.services.title3d_render import render_title_frames
+from app.services.moving_transitions import MOVING_KINDS, Moves
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
@@ -913,7 +914,10 @@ class Builder:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
             if head:
                 merged = f'x{position}_{number}'
-                self.graph.append(f'[{joined_label}][{shown}]xfade=transition={xfade_name(clip.transition_in)}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
+                if clip.transition_in.kind in MOVING_KINDS:
+                    self.moving_transition(clip.transition_in.kind, joined_label, joined_frames, shown, frames, 2 * head, merged)
+                else:
+                    self.graph.append(f'[{joined_label}][{shown}]xfade=transition={xfade_name(clip.transition_in)}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
                 if clip.transition_in.kind == 'whip':
                     merged = self.whip_blur(merged, joined_frames - 2 * head, 2 * head, joined_frames + frames - 2 * head)
                 elif clip.transition_in.kind == 'cross-blur':
@@ -947,6 +951,31 @@ class Builder:
                        f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB,alphaextract[{name}_shape]',
                        f'[{name}_alpha][{name}_shape]blend=all_mode=multiply[{name}_both]', f'[{name}_body][{name}_both]alphamerge[{name}_shaped]']
         return f'{name}_shaped'
+
+    def moving_transition(self, kind: str, joined: str, joined_frames: int, shown: str, frames: int, overlap: int, out: str) -> None:
+        """As xfade joins two clips over `overlap` frames, but with the frames between built by moving_transitions.py."""
+        n = f'{out}m'
+        tail, head = f'{n}_tail', f'{n}_head'
+        parts = []
+        self.graph.append(f'[{joined}]split=2[{n}_j1][{n}_j2]')
+        if joined_frames > overlap:
+            self.graph.append(f'[{n}_j1]trim=end_frame={joined_frames - overlap},setpts=PTS-STARTPTS,format=gbrap[{n}_pre]')
+            parts.append(f'{n}_pre')
+        else:
+            self.graph.append(f'[{n}_j1]nullsink')
+        self.graph += [f'[{n}_j2]trim=start_frame={joined_frames - overlap},setpts=PTS-STARTPTS,format=rgba[{tail}]', f'[{shown}]split=2[{n}_s1][{n}_s2]',
+                       f'[{n}_s1]trim=end_frame={overlap},setpts=PTS-STARTPTS,format=rgba[{head}]']
+        moves = Moves(n, self.fmt.width, self.fmt.height, self.fmt.fps, overlap)
+        made = moves.build(kind, tail, head)
+        self.graph += moves.lines
+        self.graph.append(f'[{made}]format=gbrap[{n}_made]')
+        parts.append(f'{n}_made')
+        if frames > overlap:
+            self.graph.append(f'[{n}_s2]trim=start_frame={overlap},setpts=PTS-STARTPTS,format=gbrap[{n}_post]')
+            parts.append(f'{n}_post')
+        else:
+            self.graph.append(f'[{n}_s2]nullsink')
+        self.graph.append(f"{''.join(f'[{part}]' for part in parts)}concat=n={len(parts)}:v=1:a=0[{out}]")
 
     def whip_blur(self, label: str, first: int, frames: int, total: int, peak: float = WHIP_BLUR, sideways: bool = True) -> str:
         """A blur that peaks halfway through the transition: sideways for a whip, so the cut reads as a fast camera pan;
@@ -1232,6 +1261,52 @@ def normalize_loudness(ffmpeg: str, compiled: Compiled, source: Path, folder: Pa
     return target
 
 
+THREAD_BUDGET = 3000  # Of the 4096 threads macOS allows one program, with room to spare.
+DECODER_THREADS = 11  # About what each input's reading and decoding start when left to choose.
+FEW_THREADS = 2  # For each decoder and each scale when a graph is big. Measured on the golden test: no slower.
+
+
+def limit_scale_threads(graph: str, threads: int) -> str:
+    """threads=N on every written scale filter (quoted expressions left whole)."""
+    out, i, n = [], 0, len(graph)
+    while i < n:
+        if not (graph.startswith('scale=', i) and (i == 0 or graph[i - 1] in ',;]')):
+            out.append(graph[i])
+            i += 1
+            continue
+        j, quoted = i, False
+        while j < n and (quoted or graph[j] not in ',;['):
+            quoted ^= graph[j] == "'"
+            j += 1
+        piece = graph[i:j]
+        out.append(piece if 'threads=' in piece else f'{piece}:threads={threads}')
+        i = j
+    return ''.join(out)
+
+
+def fit_threads(compiled: Compiled, cores: int | None = None) -> tuple[list[str], str, list[str]]:
+    """The inputs, graph and extra options with threads to spare. Every input's decoder and every scale (written, or put
+    in by ffmpeg where a format changes) starts its own threads, as many as the machine has cores: a long video can need
+    more than the 4096 one program may have (the golden test, 160 inputs and 600 scales, needed 3,729 before this batch).
+    A big graph gets FEW_THREADS for each decoder and written scale, which measured no slower; if even that is too many,
+    the graph's own thread count comes down. A short video is left as it is."""
+    import os
+    cores = cores or os.cpu_count() or 8
+    inputs = compiled.args.count('-i')
+    written, changes = compiled.graph.count('scale='), compiled.graph.count('format=')
+    if inputs * DECODER_THREADS + (written + changes) * cores <= THREAD_BUDGET:
+        return compiled.args, compiled.graph, []
+    args = []
+    for arg in compiled.args:
+        if arg == '-i':
+            args += ['-threads', str(FEW_THREADS)]
+        args.append(arg)
+    graph = limit_scale_threads(compiled.graph, FEW_THREADS)
+    room = THREAD_BUDGET - inputs * (FEW_THREADS + 2) - written * FEW_THREADS
+    threads = max(1, min(cores, room // max(1, changes)))
+    return args, graph, [] if threads >= cores else ['-filter_complex_threads', str(threads)]
+
+
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
                     on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None, hardware: bool = True) -> None:
     """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
@@ -1242,7 +1317,8 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
         compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks, voices)
-        (folder / 'graph.txt').write_text(compiled.graph, encoding='utf-8')
+        video_args, graph, extra_threads = fit_threads(compiled)
+        (folder / 'graph.txt').write_text(graph, encoding='utf-8')
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.
         audio_input, audio = [], ['-an']
@@ -1261,7 +1337,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
             megabits = {720: 9, 1080: 16, 1440: 28}.get(short, 50 if short >= 2160 else round(short * 0.015))
             encoder = ['-c:v', 'h264_videotoolbox', '-b:v', f'{megabits}M']
         # The graph goes in a file: a long timeline's graph can exceed the command-line limit.
-        args = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', *compiled.args, *audio_input, '-filter_complex_script', str(folder / 'graph.txt'),
+        args = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', *video_args, *audio_input, *extra_threads, '-filter_complex_script', str(folder / 'graph.txt'),
                 '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', *encoder, '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-n', str(output)]
         with tempfile.TemporaryFile(mode='w+') as errors:
