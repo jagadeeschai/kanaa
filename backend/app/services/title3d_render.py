@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from app.services import title3d
-from app.services.animation import TRICK_COPIES, TRICK_MARGIN
+from app.services.animation import LETTER_PRESETS, LETTER_REST, TRICK_COPIES, TRICK_MARGIN, letter_looks
 
 PinAt = Callable[[float], 'list[list[float]] | None']  # Timeline seconds to the pin matrix, or None.
 
@@ -39,13 +39,53 @@ PRISM_TINTS = {-2: (1, .25, .25), -1: (1, .85, .2), 1: (.2, .9, 1), 2: (.6, .3, 
 PRISM_DIRECTION = (0.94, 0.34)
 
 
+def trick_margins(text, letters: tuple[float, float, float, float]) -> tuple[float, float]:
+    """Room needed beside and above/below the letters' box for copies or letters that move out. Same as trickMargins in title3d.ts."""
+    w, h = letters[2] - letters[0], letters[3] - letters[1]
+    across = along = 0.0
+    for animation in (text.enter, text.exit):
+        preset = animation.preset if animation else None
+        if preset in COPY_TRICKS:
+            across, along = max(across, TRICK_MARGIN * h), max(along, TRICK_MARGIN * h)
+        elif preset == 'split':
+            across = max(across, .62 * w)
+        elif preset == 'gravity':
+            along = max(along, 1.45 * h)
+        elif preset == 'pop-letters':
+            across, along = max(across, .15 * h), max(along, .15 * h)
+    return across, along
+
+
 def trick_bounds(text, letters: tuple[float, float, float, float], size: tuple[int, int]) -> tuple[float, float, float, float]:
-    """The part of the picture drawn: the letters' box, and room around it for copies that move apart. Same as trickBounds in title3d.ts."""
-    if not any(animation and animation.preset in COPY_TRICKS for animation in (text.enter, text.exit)):
+    """The part of the picture drawn: the letters' box, and room around it for what moves out. Same as trickBounds in title3d.ts."""
+    across, along = trick_margins(text, letters)
+    if not across and not along:
         return letters
     width, height = size
-    margin = math.ceil(TRICK_MARGIN * (letters[3] - letters[1]))
-    return max(0, letters[0] - margin), max(0, letters[1] - margin), min(width, letters[2] + margin), min(height, letters[3] + margin)
+    mx, my = math.ceil(across), math.ceil(along)
+    return max(0, letters[0] - mx), max(0, letters[1] - my), min(width, letters[2] + mx), min(height, letters[3] + my)
+
+
+def moving_letters(crop: np.ndarray, labels: np.ndarray, boxes, looks, origin: tuple[int, int], letters) -> np.ndarray:
+    """Each letter of a premultiplied crop moved, sized about its middle and faded by its look (letterLook in
+    animation.ts); pixels of no letter (a band's box) stay. The preview's TITLE_FRAGMENT does the same in pm()."""
+    lw, lh = letters[2] - letters[0], letters[3] - letters[1]
+    rows, cols = crop.shape[:2]
+    out = crop * (labels == 0)[..., None]
+    for number, (box, look) in enumerate(zip(boxes, looks), start=1):
+        if look['opacity'] <= 0 or box[2] <= box[0]:
+            continue
+        mine = labels == number
+        if not mine.any():
+            continue
+        cx, cy = (box[0] + box[2]) / 2 - origin[0], (box[1] + box[3]) / 2 - origin[1]
+        s = look['scale']
+        ox, oy = look['dx'] * lw, look['dy'] * lh
+        matrix = np.float32([[s, 0, cx - s * cx + ox], [0, s, cy - s * cy + oy]])
+        letter = cv2.warpAffine(crop * mine[..., None] * np.float32(look['opacity']), matrix, (cols, rows), flags=cv2.INTER_LINEAR,
+                                borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+        out = letter + out * (1 - letter[..., 3:4])
+    return out
 
 
 def _smoothstep(low: float, high: float, x: np.ndarray) -> np.ndarray:
@@ -121,6 +161,14 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
     premultiplied[..., :3] *= premultiplied[..., 3:4]
     depth = text.depth if text.depth and text.depth.amount > 0 else None
     shares = title3d.layers(depth)
+    # Letter by letter: where each letter is, found once (title_letters.py), as the preview fetches it.
+    lettered = None
+    if box is not None and any(animation and animation.preset in LETTER_PRESETS for animation in (text.enter, text.exit)):
+        from app.services.timeline_schema import Format
+        from app.services.title_letters import letters_for
+        labels, boxes = letters_for(text, Format(width=width, height=height, fps=fps))
+        if boxes:
+            lettered = (labels, boxes)
     colour = np.array([int(depth.color[at:at + 2], 16) / 255 for at in (1, 3, 5)], np.float32) if depth else None
     target.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{width}x{height}',
@@ -130,7 +178,7 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
         for n in range(frames):
             if should_cancel():
                 raise RuntimeError('Cancelled.')
-            process.stdin.write(frame_at(text, n / fps, premultiplied, box, shares, depth, colour, size, pin_at(text.start + n / fps) if pin_at else None).tobytes())
+            process.stdin.write(frame_at(text, n / fps, premultiplied, box, shares, depth, colour, size, pin_at(text.start + n / fps) if pin_at else None, lettered).tobytes())
         process.stdin.close()
         if process.wait(timeout=600):
             raise RuntimeError('Could not draw this 3D title.')
@@ -141,7 +189,7 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
     return target
 
 
-def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, colour, size: tuple[int, int], pin) -> np.ndarray:
+def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, colour, size: tuple[int, int], pin, lettered=None) -> np.ndarray:
     """One frame of the title, 8-bit straight RGBA, as the preview's drawTitle3d draws it.
 
     Only the letters' box of the title picture is warped, and only into the part of the frame its corners reach: a
@@ -159,7 +207,14 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     frame_box = trick_bounds(text, letters, size)
     source = [(frame_box[0], frame_box[1]), (frame_box[2], frame_box[1]), (frame_box[2], frame_box[3]), (frame_box[0], frame_box[3])]
     x0, y0, x1, y1 = (round(v) for v in frame_box)
-    crop = picture_tricks(np.ascontiguousarray(premultiplied[y0:y1, x0:x1]), look, (x0, y0), letters, text_colour(text))
+    crop = np.ascontiguousarray(premultiplied[y0:y1, x0:x1])
+    if lettered is not None:
+        labels, boxes = lettered
+        middle, wide = (letters[0] + letters[2]) / 2, max(1.0, letters[2] - letters[0])
+        looks = letter_looks(text.enter, text.exit, local, text.length, [((b[0] + b[2]) / 2 - middle) / wide for b in boxes])
+        if any(look != LETTER_REST for look in looks):
+            crop = moving_letters(crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)
+    crop = picture_tricks(crop, look, (x0, y0), letters, text_colour(text))
     shift = np.array([[1, 0, x0], [0, 1, y0], [0, 0, 1]], np.float64)
     placed = []
     for index in range(len(shares) - 1, -1, -1):  # Back to front.

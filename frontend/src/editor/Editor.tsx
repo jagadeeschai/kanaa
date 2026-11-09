@@ -15,13 +15,14 @@ import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
 import { fetchRecorded, startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
 import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
-import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchTextLetters, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import KanaaSelect from '../components/KanaaSelect';
 import AIImageGenerator from '../components/CoverArtGenerator';
 import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
 import type { Photo } from '../types/photo';
 import type { Animation, LookName, Preset, Transition, TransitionKind } from '../timeline/animation';
+import { LETTER_PRESETS } from '../timeline/animation';
 import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { onSkyline, snapshotFrame, TITLE_DESIGNS } from '../timeline/model';
@@ -105,7 +106,7 @@ const TEXT_TYPE_DELAY_MS = 250;
 const CAPTION_FETCHES = 3;
 const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }, { id: 'ground-rise', label: 'Ground rise' }, { id: 'blast', label: 'Blast' }, { id: 'magic-form', label: 'Magic form' }, { id: 'magic-vanish', label: 'Magic vanish' }, { id: 'particle-form', label: 'Particle form' }];
 // Picture tricks, for titles only: drawn in the title's own picture (PictureLook in animation.ts).
-const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }];
+const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
 const TRANSITIONS: { id: TransitionKind; label: string }[] = [{ id: 'crossfade', label: 'Crossfade' }, { id: 'wipe', label: 'Wipe' }, { id: 'slide', label: 'Slide' }, { id: 'zoom', label: 'Zoom' }, { id: 'whip', label: 'Whip' }, { id: 'flash', label: 'Flash' }, { id: 'dip', label: 'Dip to black' }];
 const TRANSITION_ICONS: Record<TransitionKind, React.ReactNode> = { crossfade: <Blend size={13}/>, wipe: <ChevronsRight size={13}/>, slide: <MoveHorizontal size={13}/>, zoom: <ZoomIn size={13}/>, whip: <Wind size={13}/>, flash: <Zap size={13}/>, dip: <RectangleHorizontal size={13}/> };
@@ -393,6 +394,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [mediaById, ready, preparedReady]);
 
   const textImages = useRef(new Map<string, string | 'loading'>());
+  // Where each letter of a letter-by-letter title is, by look (/api/text-letters).
+  const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string } | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
   const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem) => {
@@ -407,6 +410,14 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         if (textImages.current.has(key)) continue;
         textImages.current.set(key, 'loading');
         void fetchTextImage(text, timeline.format).then((url) => { textImages.current.set(key, url); redrawText(); }).catch((problem: Error) => { textImages.current.delete(key); setError(problem.message); });
+      }
+      // Letter-by-letter titles also need to know where each letter is (the same map the export finds).
+      for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
+        if (![text.enter, text.exit].some((animation) => animation && LETTER_PRESETS.has(animation.preset))) continue;
+        const key = textKey(text, timeline.format);
+        if (textLetterMaps.current.has(key)) continue;
+        textLetterMaps.current.set(key, 'loading');
+        void fetchTextLetters(text, timeline.format).then((map) => { textLetterMaps.current.set(key, map); redrawText(); }).catch(() => { textLetterMaps.current.delete(key); });
       }
     }, TEXT_TYPE_DELAY_MS);
     return () => clearTimeout(timer);
@@ -512,6 +523,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   useEffect(() => { if (!timeline) return;
     const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
+    if (engineRef.current) engineRef.current.letterMap = (item) => {
+      const found = textLetterMaps.current.get(textKey(item, timeline.format));
+      return found && found !== 'loading' ? found : null;
+    };
     if (engineRef.current) engineRef.current.pinMatrix = (item, time) => {
       const target = pinTarget(timeline, item);
       const track = target && sceneTracks[target.key];

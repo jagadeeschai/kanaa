@@ -59,6 +59,8 @@ export const getStemsStatus = () => requestJson<{ available: boolean; install_co
 export const startStems = (source: { asset_id?: string; media_id?: number }) => requestJson<{ job_id: string }>('/api/stems', { method: 'POST', body: JSON.stringify(source) });
 /** When a clip was filmed or a photo taken, 'YYYY-MM-DDTHH:MM' local time, or null when the file doesn't say. */
 export const fetchRecorded = async (id: number) => (await requestJson<{ recorded: string | null }>(`/api/photos/${id}/recorded`)).recorded;
+/** Where each letter of a title is (title_letters.py): boxes in the picture's pixels and the letter map as a PNG data URL. */
+export const fetchTextLetters = (text: unknown, format: unknown) => requestJson<{ boxes: [number, number, number, number][]; labels: string }>('/api/text-letters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, format }) });
 export const fetchTextImage = async (text: unknown, format: unknown) => {
   const response = await fetch('/api/text-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, format }) });
   if (!response.ok) throw new Error('This text could not be drawn.');

@@ -458,6 +458,15 @@ class Animations(Clips):
     def size(self):
         return (640, 360)
 
+    def test_letters_match_the_shared_math(self):
+        from app.services.animation import letter_look
+        expected = json.loads((Path(__file__).parents[2] / 'timeline/fixtures/animation.expected.json').read_text())
+        for preset, rows in expected['letters'].items():
+            for row in rows:
+                look = letter_look(preset, row['p'], row['index'], row['count'], row['u'])
+                for key in ('dx', 'dy', 'scale', 'opacity'):
+                    self.assertAlmostEqual(look[key], row[key], places=9)
+
     def test_presets_match_the_shared_math(self):
         expected = json.loads((Path(__file__).parents[2] / 'timeline/fixtures/animation.expected.json').read_text())
         for preset, rows in expected['presets'].items():

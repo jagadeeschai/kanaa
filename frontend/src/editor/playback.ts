@@ -1,4 +1,4 @@
-import { animatedLook, dipWeights, LOOKS, PICTURE_REST, REST, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { animatedLook, dipWeights, LETTER_PRESETS, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -91,7 +91,28 @@ precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPic
 uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
 // Picture tricks (PictureLook in animation.ts), in the title picture's pixels; picture_tricks in title3d_render.py does the same.
 uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineColour;
-vec4 pm(vec2 at) { vec4 c = texture(tex, at / frame); return vec4(c.rgb * c.a, c.a); }
+// Letter by letter (letterLook in animation.ts; moving_letters in title3d_render.py): the letter map's red is each
+// pixel's letter (0: none, it stays); letterA is a letter's middle and how far it moves, letterB its size and opacity.
+uniform sampler2D labels; uniform int letterCount; uniform vec4 letterA[${MAX_LETTERS}]; uniform vec4 letterB[${MAX_LETTERS}];
+vec4 raw(vec2 at) { vec4 c = texture(tex, at / frame); return vec4(c.rgb * c.a, c.a); }
+float letterAt(vec2 at) {
+  if (at.x < 0. || at.y < 0. || at.x >= frame.x || at.y >= frame.y) return 0.;
+  return floor(texelFetch(labels, ivec2(at), 0).r * 255. + .5);
+}
+vec4 pm(vec2 at) {
+  if (letterCount == 0) return raw(at);
+  vec4 c = letterAt(at) < .5 ? raw(at) : vec4(0.);
+  for (int i = 0; i < ${MAX_LETTERS}; i++) {
+    if (i >= letterCount) break;
+    vec4 a = letterA[i], b = letterB[i];
+    if (b.y <= 0.) continue;
+    vec2 q = a.xy + (at - a.xy - a.zw) / b.x;
+    if (abs(letterAt(q) - float(i + 1)) > .5) continue;
+    vec4 top = raw(q) * b.y;
+    c = top + c * (1. - top.a);
+  }
+  return c;
+}
 void main(){
   vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport;
   vec3 q = toPicture * vec3(at, 1.);
@@ -416,7 +437,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -931,6 +952,7 @@ export class PlaybackEngine {
     gl.uniform4f(u.wipe, tricks.reveal, tricks.soft, tricks.rise, tricks.line);
     gl.uniform2f(u.copies, tricks.split, tricks.trick);
     gl.uniform3f(u.lineColour, ...hexColour(item.color));
+    this.setLetters(item, local, letters);
     for (let index = shades.length - 1; index >= 0; index -= 1) {
       const share = shades[index];
       let toPicture: Matrix;
@@ -943,6 +965,53 @@ export class PlaybackEngine {
     }
     gl.useProgram(this.main);
   }
+
+  /** Letter by letter: each letter's middle, move, size and opacity now, and its letter map on texture unit 1. None until the map has loaded. */
+  private setLetters(item: TextItem, local: number, letters: Box) {
+    const { gl } = this; const u = this.titleUniforms;
+    const map = [item.enter, item.exit].some((animation) => animation && LETTER_PRESETS.has(animation.preset)) ? this.letterMap?.(item) : null;
+    const labels = map && this.labelTexture(map.labels);
+    if (!map || !labels || !map.boxes.length) { gl.uniform1i(u.letterCount, 0); return; }
+    const middle = (letters[0] + letters[2]) / 2, wide = Math.max(1, letters[2] - letters[0]), tall = letters[3] - letters[1];
+    const boxes = map.boxes.slice(0, MAX_LETTERS);
+    const looks = letterLooks(item.enter, item.exit, local, item.length, boxes.map((box) => ((box[0] + box[2]) / 2 - middle) / wide));
+    const a = new Float32Array(MAX_LETTERS * 4), b = new Float32Array(MAX_LETTERS * 4);
+    boxes.forEach((box, index) => {
+      a.set([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, looks[index].dx * wide, looks[index].dy * tall], index * 4);
+      b.set([looks[index].scale, box[2] > box[0] ? looks[index].opacity : 0, 0, 0], index * 4);
+    });
+    gl.uniform4fv(u.letterA, a); gl.uniform4fv(u.letterB, b);
+    gl.uniform1i(u.letterCount, boxes.length);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, labels); gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(u.labels, 1);
+  }
+
+  private labels = new Map<string, { texture: WebGLTexture; ready: boolean }>();
+  /** A letter map as a texture read exactly (nearest), once loaded; null until then. */
+  private labelTexture(url: string): WebGLTexture | null {
+    let entry = this.labels.get(url);
+    if (!entry) {
+      const { gl } = this;
+      const texture = gl.createTexture()!;
+      entry = { texture, ready: false };
+      this.labels.set(url, entry);
+      const image = new Image();
+      image.onload = () => {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, name, value);
+        entry!.ready = true;
+        this.requestDraw();
+      };
+      image.src = url;
+    }
+    return entry.ready ? entry.texture : null;
+  }
+
+  /** Set by the editor: a title's letter boxes and letter map, once fetched (/api/text-letters). */
+  letterMap: ((item: TextItem) => { boxes: [number, number, number, number][]; labels: string } | null) | null = null;
 
   /** The scene track a pinned title follows, as a matrix from the pin moment's frame to this one; null when not pinned or not ready. */
   private titlePin(item: TextItem): Matrix | null {

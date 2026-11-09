@@ -30,11 +30,26 @@ export function is3d(text: TextItem): boolean {
 }
 
 const COPY_TRICKS = new Set(['chromatic', 'prism', 'echo']);
-/** The part of the title picture drawn: the letters' box, and room around it for copies that move apart. Same as trick_bounds in title3d_render.py. */
+/** Room beside and above/below the letters' box for copies or letters that move out. Same as trick_margins in title3d_render.py. */
+export function trickMargins(text: TextItem, letters: Box): [number, number] {
+  const w = letters[2] - letters[0], h = letters[3] - letters[1];
+  let across = 0, along = 0;
+  for (const animation of [text.enter, text.exit]) {
+    const preset = animation?.preset;
+    if (preset && COPY_TRICKS.has(preset)) { across = Math.max(across, TRICK_MARGIN * h); along = Math.max(along, TRICK_MARGIN * h); }
+    else if (preset === 'split') across = Math.max(across, 0.62 * w);
+    else if (preset === 'gravity') along = Math.max(along, 1.45 * h);
+    else if (preset === 'pop-letters') { across = Math.max(across, 0.15 * h); along = Math.max(along, 0.15 * h); }
+  }
+  return [across, along];
+}
+
+/** The part of the title picture drawn: the letters' box, and room around it for what moves out. Same as trick_bounds in title3d_render.py. */
 export function trickBounds(text: TextItem, letters: Box, [width, height]: [number, number]): Box {
-  if (![text.enter, text.exit].some((animation) => animation && COPY_TRICKS.has(animation.preset))) return letters;
-  const margin = Math.ceil(TRICK_MARGIN * (letters[3] - letters[1]));
-  return [Math.max(0, letters[0] - margin), Math.max(0, letters[1] - margin), Math.min(width, letters[2] + margin), Math.min(height, letters[3] + margin)];
+  const [across, along] = trickMargins(text, letters);
+  if (!across && !along) return letters;
+  const mx = Math.ceil(across), my = Math.ceil(along);
+  return [Math.max(0, letters[0] - mx), Math.max(0, letters[1] - my), Math.min(width, letters[2] + mx), Math.min(height, letters[3] + my)];
 }
 
 /** A title's #rrggbb colour as 0..1 red, green and blue. */

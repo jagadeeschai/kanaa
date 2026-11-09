@@ -1,6 +1,6 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
-  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo';
+  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip';
 export type Transition = { kind: TransitionKind; duration: number };
@@ -16,7 +16,40 @@ export type Look = { dx: number; dy: number; scale: number; opacity: number; blu
 export type PictureLook = { reveal: number; soft: number; rise: number; line: number; split: number; trick: number };
 export const PICTURE_REST: PictureLook = { reveal: 1, soft: 0, rise: 1, line: -1, split: 0, trick: 0 };
 /** Presets drawn as picture tricks: such a title goes through the 3D path on both sides. Matches PICTURE_PRESETS in animation.py. */
-export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo']);
+export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand']);
+/**
+ * Letter by letter: each letter (title_letters.py finds them) moves on its own. dx is in widths of the title's letters
+ * box, dy in its heights; scale is about the letter's own middle. Pop-up letters and Gravity start one letter after
+ * another across LETTER_STAGGER of the animation; Split and Expand move them all together. Matches letter_look in animation.py.
+ */
+export const LETTER_PRESETS = new Set<Preset>(['pop-letters', 'gravity', 'split', 'expand']);
+export const MAX_LETTERS = 64; // Matches title_letters.py.
+export const LETTER_STAGGER = 0.6;
+export type LetterLook = { dx: number; dy: number; scale: number; opacity: number };
+export const LETTER_REST: LetterLook = { dx: 0, dy: 0, scale: 1, opacity: 1 };
+
+/** Letter `index` of `count`, whose middle is `u` widths of the letters box from its middle, `progress` of the way through. */
+export function letterLook(preset: Preset, progress: number, index: number, count: number, u: number): LetterLook {
+  if (!LETTER_PRESETS.has(preset)) return LETTER_REST;
+  const p = Math.min(1, Math.max(0, progress));
+  const staggered = preset === 'pop-letters' || preset === 'gravity';
+  const k = staggered && count > 1 ? Math.min(1, Math.max(0, (p - (LETTER_STAGGER * index) / (count - 1)) / (1 - LETTER_STAGGER))) : p;
+  const e = 1 - (1 - k) ** 3;
+  if (preset === 'pop-letters') return { dx: 0, dy: 0, scale: Math.max(0.01, 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2), opacity: Math.min(1, k * 3) };
+  if (preset === 'gravity') return { dx: 0, dy: -1.4 * Math.abs(Math.cos(3 * Math.PI * k)) * (1 - k) ** 2, scale: 1, opacity: Math.min(1, k * 4) };
+  if (preset === 'split') return { dx: u * 1.2 * (1 - e), dy: 0, scale: 1, opacity: Math.min(1, k * 2.5) };
+  return { dx: -u * 0.85 * (1 - e), dy: 0, scale: 1, opacity: Math.min(1, k * 2) };
+}
+
+/** Every letter's look `local` seconds in, enter and exit together (offsets add, scale and opacity multiply). */
+export function letterLooks(enter: Animation | null | undefined, exit: Animation | null | undefined, local: number, length: number, us: number[]): LetterLook[] {
+  const excess = Math.max(1, ((enter?.duration ?? 0) + (exit?.duration ?? 0)) / length);
+  return us.map((u, index) => {
+    const a = enter ? letterLook(enter.preset, local / (enter.duration / excess), index, us.length, u) : LETTER_REST;
+    const b = exit ? letterLook(exit.preset, (length - local) / (exit.duration / excess), index, us.length, u) : LETTER_REST;
+    return { dx: a.dx + b.dx, dy: a.dy + b.dy, scale: a.scale * b.scale, opacity: a.opacity * b.opacity };
+  });
+}
 /** Copies in a prism or an echo, and how far beyond the letters (in letter heights) the tricks may reach. */
 export const TRICK_COPIES = 4;
 export const TRICK_MARGIN = 1.25;

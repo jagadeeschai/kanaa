@@ -76,7 +76,7 @@ class Adjust(Strict):
 
 class Animation(Strict):
     preset: Literal['fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form', 'rise-behind', 'push-through',
-                    'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo']
+                    'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand']
     duration: float = Field(default=0.5, ge=0.1, le=3)
 
 

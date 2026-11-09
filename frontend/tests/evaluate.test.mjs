@@ -76,3 +76,13 @@ test('a path with a key on every frame counts as followed, a few hand-placed key
   assert.equal(isFollowed(transform(FOLLOWED_KEYS + 1)), true);
   assert.equal(isFollowed({ x: 0.5, y: 0.5, scale: 1, opacity: 1 }), false);
 });
+
+test('each letter moves as the Python letter_look says', async () => {
+  const { letterLook } = await import('../src/timeline/animation.ts');
+  for (const [preset, rows] of Object.entries(animation.letters)) {
+    for (const row of rows) {
+      const look = letterLook(preset, row.p, row.index, row.count, row.u);
+      for (const key of ['dx', 'dy', 'scale', 'opacity']) assert.ok(Math.abs(look[key] - row[key]) < 1e-9, `${preset} ${key} at ${row.p} letter ${row.index}`);
+    }
+  }
+});

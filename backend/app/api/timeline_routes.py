@@ -443,14 +443,39 @@ def text_image(body: dict):
         item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
     except (KeyError, ValidationError) as exc:
         raise HTTPException(400, 'This text is not valid.') from exc
-    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design')}
-    key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
-    folder = settings.data_dir / 'cache' / 'text'
-    target = folder / f'{key}.png'
+    target = text_cache(item, fmt).with_suffix('.png')
     if not target.is_file():
-        folder.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         render_text_image(item, fmt, target)
     return FileResponse(target, media_type='image/png')
+
+
+def text_cache(item: Text, fmt: Format) -> Path:
+    """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
+    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design')}
+    key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
+    return settings.data_dir / 'cache' / 'text' / key
+
+
+@router.post('/text-letters')
+def text_letters(body: dict):
+    """Where each letter of a title is (title_letters.py), for letter-by-letter animations: each letter's box in the
+    picture's pixels, and the letter map as a PNG (red = the letter's number, 0 for none). The export finds the same."""
+    import base64
+    from app.services.title_letters import letters_for
+    try:
+        item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
+    except (KeyError, ValidationError) as exc:
+        raise HTTPException(400, 'This text is not valid.') from exc
+    base = text_cache(item, fmt)
+    found, picture = base.with_name(base.name + '-letters.json'), base.with_name(base.name + '-letters.png')
+    if not (found.is_file() and picture.is_file()):
+        from PIL import Image
+        labels, boxes = letters_for(item, fmt)
+        base.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(labels, 'L').save(picture)
+        found.write_text(json.dumps(boxes))
+    return {'boxes': json.loads(found.read_text()), 'labels': 'data:image/png;base64,' + base64.b64encode(picture.read_bytes()).decode()}
 
 
 def voice_source(media_id: int | None, asset_id: str | None) -> tuple[Path, str]:

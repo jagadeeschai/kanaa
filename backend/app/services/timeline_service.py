@@ -549,10 +549,27 @@ def script_runs(text: str) -> list[str]:
     return runs or [text]
 
 
-def write_title(path: Path, item: Text, fmt: Format, plain: bool = False) -> None:
+def letter_clusters(text: str) -> list[str]:
+    """The text as letters a reader sees: a Tamil consonant with its vowel sign or pulli stays one letter (கொ, ங்),
+    as do marks and joiners with what they follow. Spaces are their own pieces."""
+    import unicodedata
+    out: list[str] = []
+    for char in text:
+        joins = out and not out[-1].isspace() and (unicodedata.category(char).startswith('M') or char in '\u200c\u200d' or out[-1][-1] in '\u200c\u200d')
+        if joins:
+            out[-1] += char
+        else:
+            out.append(char)
+    return out
+
+
+def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter_ids: list[int] | None = None, letter_group: Callable[[int], int] = lambda number: number) -> None:
     """A template title: title and subtitle in one block, each line in its script's font, aligned and boxed as chosen.
     Uses write_lyrics' sizes and borders, so a template's title line matches a plain title of the same size.
-    Plain: the letters alone, no outline, shadow or box, for a design that draws its own bar behind them."""
+    Plain: the letters alone, no outline, shadow or box, for a design that draws its own bar behind them.
+    letter_ids: drawn plain with each letter in its own colour, red = 3 × its number (title_letters.py); filled with the
+    number given to each letter in reading order; letter_group turns that into the number drawn (neighbours share one
+    when a title has more letters than can move apart)."""
     width, height = fmt.width, fmt.height
     unit = width / 720
     title_size = max(20, item.size) * unit
@@ -580,13 +597,26 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False) -> Non
             return item.font, scale
         return family, scale
 
+    if letter_ids is not None:
+        plain, blur = True, ''
+        border_style, outline, shadow = 1, 0, 0
+
     def line(text: str, size: float, colour: str, spacing: int = 0) -> str:
         # Every line sets its own spacing and colour: override tags carry on past a line break.
         head = rf'{{\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}'
         pieces = []
         for run in script_runs(text):
             family, scale = font_for(run)
-            pieces.append(rf'{{\fn{family}\fs{size * scale}}}{ass_text(run)}')
+            if letter_ids is None:
+                pieces.append(rf'{{\fn{family}\fs{size * scale}}}{ass_text(run)}')
+                continue
+            body = ''
+            for cluster in letter_clusters(run):
+                if not cluster.isspace():
+                    letter_ids.append(len(letter_ids) + 1)
+                    body += rf'{{\1c&H0000{3 * letter_group(len(letter_ids)):02X}&}}'  # Spaced out: edge blending can't reach a neighbour's number.
+                body += ass_text(cluster)
+            pieces.append(rf'{{\fn{family}\fs{size * scale}}}{body}')
         return head + ''.join(pieces)
 
     lines = [line(item.text, title_size, item.color, item.spacing)]

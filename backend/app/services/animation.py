@@ -8,7 +8,12 @@ MAX_BLUR = 0.03  # Of the frame height.
 OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
                 'chromatic': .4, 'prism': .4, 'echo': .5}
 # Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
-PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo'}
+PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand'}
+# Letter by letter (letterLook in animation.ts): dx in widths of the title's letters box, dy in its heights, scale about
+# each letter's own middle. Pop-up letters and Gravity start one after another across LETTER_STAGGER of the animation.
+LETTER_PRESETS = {'pop-letters', 'gravity', 'split', 'expand'}
+LETTER_STAGGER = 0.6
+LETTER_REST = {'dx': 0.0, 'dy': 0.0, 'scale': 1.0, 'opacity': 1.0}
 PICTURE_REST = {'reveal': 1.0, 'soft': 0.0, 'rise': 1.0, 'line': -1.0, 'split': 0.0, 'trick': 0}
 TRICK_COPIES = 4
 TRICK_MARGIN = 1.25  # How far beyond the letters, in letter heights, the tricks may reach.
@@ -121,3 +126,31 @@ def picture_look(first: dict, last: dict) -> dict:
     copies = b if b['split'] > a['split'] else a
     return {'reveal': min(a['reveal'], b['reveal']), 'soft': max(a['soft'], b['soft']), 'rise': min(a['rise'], b['rise']), 'line': line,
             'split': copies['split'], 'trick': copies['trick'] if copies['split'] > 0 else max(a['trick'], b['trick'])}
+
+
+def letter_look(preset: str, progress: float, index: int, count: int, u: float) -> dict:
+    """Letter `index` of `count`, whose middle is `u` widths of the letters box from its middle. As letterLook in animation.ts."""
+    if preset not in LETTER_PRESETS:
+        return dict(LETTER_REST)
+    p = min(1, max(0, progress))
+    staggered = preset in ('pop-letters', 'gravity')
+    k = min(1, max(0, (p - LETTER_STAGGER * index / (count - 1)) / (1 - LETTER_STAGGER))) if staggered and count > 1 else p
+    e = 1 - (1 - k) ** 3
+    if preset == 'pop-letters':
+        return {'dx': 0.0, 'dy': 0.0, 'scale': max(0.01, 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2), 'opacity': min(1, k * 3)}
+    if preset == 'gravity':
+        return {'dx': 0.0, 'dy': -1.4 * abs(math.cos(3 * math.pi * k)) * (1 - k) ** 2, 'scale': 1.0, 'opacity': min(1, k * 4)}
+    if preset == 'split':
+        return {'dx': u * 1.2 * (1 - e), 'dy': 0.0, 'scale': 1.0, 'opacity': min(1, k * 2.5)}
+    return {'dx': -u * .85 * (1 - e), 'dy': 0.0, 'scale': 1.0, 'opacity': min(1, k * 2)}
+
+
+def letter_looks(enter, exit_, local: float, length: float, us: list[float]) -> list[dict]:
+    """Every letter's look `local` seconds in, enter and exit together. As letterLooks in animation.ts."""
+    excess = max(1, ((enter.duration if enter else 0) + (exit_.duration if exit_ else 0)) / length)
+    out = []
+    for index, u in enumerate(us):
+        a = letter_look(enter.preset, local / (enter.duration / excess), index, len(us), u) if enter else LETTER_REST
+        b = letter_look(exit_.preset, (length - local) / (exit_.duration / excess), index, len(us), u) if exit_ else LETTER_REST
+        out.append({'dx': a['dx'] + b['dx'], 'dy': a['dy'] + b['dy'], 'scale': a['scale'] * b['scale'], 'opacity': a['opacity'] * b['opacity']})
+    return out

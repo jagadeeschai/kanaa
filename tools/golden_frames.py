@@ -282,6 +282,14 @@ def build(first, second, logo, screen_image, screen_video, detail, motion, perso
         texts.append({'id': 'design-' + name.replace(' ', '-'), 'start': t, 'length': SECONDS, 'text': 'Meena Kumar', 'subtitle': 'மதுரை 2026', 'style': 'shadow', 'position': 'center', 'size': 44, 'color': '#ffffff', **look})
         samples += [{'name': f'title design {name} {at}', 't': t + at} for at in (0.5, 1.5)]
         t += SECONDS
+    # Letter by letter: each letter moved through the same letter map on both sides.
+    for preset in ('pop-letters', 'gravity', 'split', 'expand'):
+        clips.append(clip(f'letters-{preset}-under', first, t))
+        texts.append({'id': f'letters-{preset}', 'start': t, 'length': SECONDS, 'text': 'Happy பொங்கல்', 'subtitle': 'கொஞ்சம் தமிழ்', 'font': 'Futura', 'style': 'outline', 'position': 'center', 'size': 80, 'color': '#ffd27a',
+                      'enter': {'preset': preset, 'duration': 1}, 'exit': {'preset': preset, 'duration': ANIMATION}})
+        samples += [{'name': f'title letters {preset} enter {share}', 't': t + share} for share in (0.2, 0.45, 0.7)]
+        samples += [{'name': f'title letters {preset} rest', 't': t + 1.2}, {'name': f'title letters {preset} exit 0.5', 't': t + SECONDS - ANIMATION * 0.5}]
+        t += SECONDS
     # Captions on top of everything, with the spoken word lit, in Tamil and English.
     captions = {'id': 'subs', 'kind': 'captions', 'style': 'outline', 'position': 'bottom', 'color': '#ffffff', 'highlight': '#ffd400', 'size': 56, 'items': [
         {'id': 'cap1', 'start': 1.0, 'length': 1.6, 'words': [{'w': 'தமிழ்', 's': 0}, {'w': 'வாழ்க', 's': 0.6}]},
