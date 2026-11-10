@@ -226,6 +226,8 @@ class Echo(Strict):
 class Clip(Strict):
     """A video or photo on a video layer. `in` and `out` are source seconds, `start` timeline seconds."""
     id: str = Field(min_length=1, max_length=64)
+    # What the clip is for, shown on it in the timeline; none shows the file's name. The export ignores it.
+    name: Optional[str] = Field(default=None, max_length=80)
     media_id: int
     start: float = Field(ge=0)
     in_: float = Field(default=0, ge=0, alias='in')

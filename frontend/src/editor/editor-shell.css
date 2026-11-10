@@ -340,3 +340,20 @@
 .ed .tl-head-compact>.tl-layer-volume::-webkit-slider-thumb{width:9px;height:9px;margin-top:-3px}
 .ed .tl-head-compact>.tl-layer-volume::-moz-range-thumb{width:9px;height:9px}
 @media(min-width:901px){.tl-heads{width:140px}}
+
+/* On the clips in the timeline: an on/off button, a hover card and the rename box. */
+.tl-clip-layer{position:absolute;left:0;top:0;height:0;pointer-events:none;z-index:2}
+.tl-clip-ui{pointer-events:auto}
+.tl-clip-power{position:absolute;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:rgba(12,10,20,.62);color:#fff;cursor:pointer;transition:background .12s ease,transform .12s ease}
+.tl-clip-power:hover,.tl-clip-power:focus-visible{background:var(--accent);transform:scale(1.1);outline:0}
+.tl-clip-power.off{background:var(--panel);color:var(--muted);box-shadow:0 0 0 1px var(--hairline)}
+.tl-clip-power.off:hover{background:var(--accent);color:var(--on-accent)}
+.tl-clip-card{position:absolute;transform:translateY(-100%);display:flex;flex-direction:column;gap:2px;max-width:300px;padding:7px 10px;border-radius:8px;background:var(--panel);color:var(--text);box-shadow:var(--shade3),0 0 0 1px var(--hairline);font-size:11px;pointer-events:none;white-space:nowrap;animation:tp-in .12s ease-out}
+.tl-clip-card b{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.tl-clip-card span{color:var(--text-2);overflow:hidden;text-overflow:ellipsis}
+.tl-clip-card small{color:var(--muted);font-variant-numeric:tabular-nums}
+.tl-clip-rename{position:absolute;height:20px;padding:0 6px;border:0;border-radius:4px;background:var(--panel);color:var(--text);font:600 11px Inter,system-ui,sans-serif;box-shadow:0 0 0 2px var(--accent);outline:0}
+.ed-selection-name{min-width:0;flex:1;height:24px;padding:0 6px;margin-left:-6px;border:1px solid transparent;border-radius:5px;background:none;color:var(--text);font:inherit;font-weight:600}
+.ed-selection-name:hover{border-color:var(--hairline)}
+.ed-selection-name:focus{border-color:var(--accent);background:var(--well);outline:0}
+.tl-clip-card.below{transform:none}

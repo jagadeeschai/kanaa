@@ -226,6 +226,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   /** The transition kind picked in the Transitions tab; used for click-apply and Every cut. */
   const [transitionPick, setTransitionPick] = useState<TransitionKind>('crossfade');
   /** The cut whose transition popover is open: the clip after it, and its badge on screen. */
+  /** The clip being renamed right on the timeline. */
+  const [renamingClip, setRenamingClip] = useState<string | null>(null);
   const [cutOpen, setCutOpen] = useState<{ clipId: string; anchor: DOMRect } | null>(null);
   /** True while the Remove-all-transitions confirmation is up. */
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -720,7 +722,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
   const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
-  const selectedIdentity = selected ? { kind: 'Clip', name: mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}` }
+  const selectedIdentity = selected ? { kind: 'Clip', name: selected.name || (mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}`) }
     : selectedText ? { kind: 'Title', name: selectedText.text || 'Untitled title' }
       : selectedSound ? { kind: 'Sound', name: selectedSound.sound.name || 'Untitled sound' }
         : selectedBlur ? { kind: 'Privacy', name: selectedBlur.style === 'pixelate' ? 'Pixelated area' : 'Blurred area' }
@@ -1691,7 +1693,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const items: MenuItem[] = [];
     if (clip || sound) items.push({ label: 'Split here', hint: 'S', onSelect: () => { const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) change(next); } });
     const clipItem = clip ? mediaById.get(clip.media_id) : undefined;
-    if (clip) items.push({ label: clip.enabled === false ? 'Activate clip' : 'Deactivate clip', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
+    if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
+    if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
     if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) items.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
     if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) items.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
     items.push({ label: 'Duplicate', onSelect: () => { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } });
@@ -2062,7 +2065,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }) }}>
-      <aside className="ed-inspector" aria-label="Clip settings">{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span><strong title={selectedIdentity.name}>{selectedIdentity.name}</strong></div>}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+      <aside className="ed-inspector" aria-label="Clip settings">{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span>{selected ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
+        onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
+        onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
@@ -2096,6 +2101,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     </div>
     {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
+      fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
+      onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
       onZoom={(factor) => setZoom((value) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value * factor)))}
       onCut={(clipId, anchor) => setCutOpen((open) => open?.clipId === clipId ? null : { clipId, anchor })} openCut={cutOpen?.clipId ?? null}/>}
     {cutOpen && timeline && (() => {

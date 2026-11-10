@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Power, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
 import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
-import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -23,6 +23,11 @@ type Props = {
   onSplitAt?: (id: string, t: number) => void;
   /** A pinch or Ctrl/⌘ + scroll: multiply the zoom by `factor`. */
   onZoom?: (factor: number) => void;
+  /** The file a clip shows, for its label when it has no name of its own. */
+  fileName?: (clip: Clip) => string;
+  /** The clip being renamed on the timeline, from the item menu; done with its new name (null for the file's). */
+  renaming?: string | null;
+  onRenamed?: (id: string, name: string | null) => void;
 };
 /** A held item: a picture of it follows the pointer, and where it would land. */
 type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
@@ -44,11 +49,13 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
-  const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
-  props.current = { timeline, selectedId, zoom, visuals, soundPeaks, source };
+  const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source, fileName, renaming });
+  props.current = { timeline, selectedId, zoom, visuals, soundPeaks, source, fileName, renaming };
+  /** The clip under the pointer, for its hover card and on/off button. */
+  const [hover, setHover] = useState<{ id: string; x: number } | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const liftRef = useRef<Lift | null>(null);
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
@@ -68,6 +75,19 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   useEffect(() => {
     const canvas = canvasRef.current!; const host = hostRef.current!; const context = canvas.getContext('2d')!;
     let frame = 0;
+    /** The clip's name in a small dark pill at its top left, cut to fit; hidden while it is being renamed. */
+    const drawName = (clip: Clip, x: number, y: number, width: number) => {
+      const name = clip.name || props.current.fileName?.(clip) || '';
+      if (!name || width < 44 || props.current.renaming === clip.id) return;
+      context.save();
+      context.font = '600 10.5px Inter, system-ui, sans-serif'; context.textBaseline = 'middle';
+      const room = width - 34; let text = name;
+      if (context.measureText(text).width > room) { while (text.length > 1 && context.measureText(`${text}…`).width > room) text = text.slice(0, -1); text = `${text}…`; }
+      const w = context.measureText(text).width + 10;
+      context.fillStyle = 'rgba(12,10,20,.62)'; context.beginPath(); context.roundRect(x + 4, y + 4, w, 16, 4); context.fill();
+      context.fillStyle = clip.name ? '#fff' : 'rgba(255,255,255,.82)'; context.fillText(text, x + 9, y + 12.5);
+      context.restore();
+    };
     const drawClip = (clip: Clip, x: number, width: number) => {
       const { selectedId: selected, visuals: look } = props.current;
       const y = TRACK_TOP; const h = TRACK_HEIGHT;
@@ -98,7 +118,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         }
       }
       context.restore();
-      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Inactive', x + 8, y + 13); context.restore(); }
+      drawName(clip, x, y, width);
+      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Off', x + 8, y + h - 10); context.restore(); }
       context.lineWidth = clip.id === selected ? 2 : 1;
       context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, Math.max(2, width - 1), h - 1, 7); context.stroke();
@@ -207,7 +228,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         for (let left = 0; left < width; left += tile) context.drawImage(filmstrip.image, 0, 0, filmstrip.tile_width, filmstrip.tile_height, x + left, y, tile, h);
       }
       context.restore();
-      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Inactive', x + 8, y + 13); context.restore(); }
+      drawName(clip, x, y, width);
+      if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Off', x + 8, y + h - 10); context.restore(); }
       context.lineWidth = clip.id === selected ? 2 : 1;
       context.strokeStyle = clip.id === selected ? colors.current.selected : colors.current.clipEdge;
       context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
@@ -382,7 +404,10 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     if (pinch(event, 'move')) return;
     const x = pointerTime(event); const drag = dragRef.current;
     if (!drag) {
-      const zone = (hit(x, pointerY(event)) ?? hitSound(x, pointerY(event)))?.zone;
+      const over = hit(x, pointerY(event)) ?? hitSound(x, pointerY(event));
+      const hovered = over && 'clip' in over ? over.clip : over && isClip(over.sound) ? over.sound : null;
+      if ((hovered?.id ?? null) !== (hover?.id ?? null)) setHover(hovered ? { id: hovered.id, x } : null);
+      const zone = over?.zone;
       event.currentTarget.style.cursor = zone === 'in' || zone === 'out' ? 'ew-resize' : zone === 'body' ? 'grab' : 'default';
       return;
     }
@@ -574,8 +599,42 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick}
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
+        <div className="tl-clip-layer">{(() => {
+          // Each clip's place: on the main track or its video layer's row.
+          const place = (id: string) => {
+            const own = main.items.find((clip) => clip.id === id);
+            if (own) return { clip: own, left: PAD + own.start * zoom, top: TRACK_TOP, height: TRACK_HEIGHT };
+            const row = tracks.findIndex((layer) => layer.kind === 'video' && layer.items.some((clip) => clip.id === id));
+            if (row < 0) return null;
+            const clip = (tracks[row].items as Clip[]).find((item) => item.id === id)!;
+            return { clip, left: PAD + clip.start * zoom, top: rowTop(tracks, row, collapsedLayers), height: rowHeight(tracks[row], collapsedLayers) };
+          };
+          const all = [...main.items, ...tracks.flatMap((layer) => layer.kind === 'video' ? layer.items as Clip[] : [])];
+          const shown = all.filter((clip) => clip.id === hover?.id || clip.id === selectedId || clip.enabled === false);
+          const card = hover && place(hover.id);
+          const renamed = renaming ? place(renaming) : null;
+          const length = (clip: Clip) => clipLength(clip);
+          return <>
+            {shown.map((clip) => { const at = place(clip.id); if (!at || length(clip) * zoom < 40 || at.height < 30) return null; const off = clip.enabled === false;
+              return <button key={clip.id} className={`tl-clip-ui tl-clip-power ${off ? 'off' : ''}`} style={{ left: at.left + length(clip) * zoom - 24, top: at.top + 4 }}
+                aria-label={`${off ? 'Turn on' : 'Turn off'} ${clip.name || fileName?.(clip) || 'clip'}`} aria-pressed={!off} title={off ? 'Off: not in the preview or the export. Click to turn on.' : 'On. Click to turn this clip off without deleting it.'}
+                onPointerEnter={() => setHover({ id: clip.id, x: at.left })} onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => onChange(updateClip(timeline, clip.id, { enabled: off }), `clip-power-${clip.id}`)}><Power size={11}/></button>; })}
+            {card && card.clip.id !== renaming && !dragRef.current && (() => { const clip = card.clip; const file = fileName?.(clip) ?? '';
+              return <div className={`tl-clip-card ${card.top === TRACK_TOP ? 'below' : ''}`} role="tooltip" style={{ left: Math.max(4, card.left), top: card.top === TRACK_TOP ? card.top + card.height + 6 : card.top - 6 }}>
+                <b>{clip.name || file || 'Clip'}</b>
+                {clip.name && file && <span>{file}</span>}
+                <small>{timecode(length(clip))} long · from {timecode(clip.in)} to {timecode(clip.out)} of the file{clip.enabled === false ? ' · Off' : ''}</small>
+              </div>; })()}
+            {renamed && <input className="tl-clip-ui tl-clip-rename" autoFocus defaultValue={renamed.clip.name ?? ''} placeholder={fileName?.(renamed.clip) ?? 'Clip name'} maxLength={80} aria-label="Clip name"
+              style={{ left: renamed.left + 4, top: renamed.top + 3, width: Math.max(120, Math.min(260, length(renamed.clip) * zoom - 8)) }}
+              onPointerDown={(event) => event.stopPropagation()} onFocus={(event) => event.currentTarget.select()}
+              onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.currentTarget.value = renamed.clip.name ?? ''; event.currentTarget.blur(); } }}
+              onBlur={(event) => onRenamed?.(renamed.clip.id, event.currentTarget.value.trim() || null)}/>}
+          </>;
+        })()}</div>
         {onCut && <div className="tl-cuts" aria-label="Cuts">{main.items.map((clip, index) => {
           if (!index) return null;
           const transition = clip.transition_in; const room = Math.min(clipLength(main.items[index - 1]), clipLength(clip)) * zoom;
