@@ -78,7 +78,7 @@ export type PanelTab = { id: string; label: string; Icon: LucideIcon; changed?: 
 const lastTab = new Map<string, string>();
 
 /** The right-hand settings panel folds to its icon rail. Provided by the editor around the workspace. */
-export const RailContext = createContext<{ folded: boolean; setOpen: (open: boolean) => void }>({ folded: false, setOpen: () => {} });
+export const RailContext = createContext<{ folded: boolean; setOpen: (open: boolean) => void; tools?: ReactNode }>({ folded: false, setOpen: () => {} });
 
 /**
  * A gentle settings panel: its tabs become a slim icon rail on the panel's right edge, like the left media rail.
@@ -106,7 +106,7 @@ export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; ch
           onClick={() => { if (active) rail.setOpen(false); else { if (folded) rail.setOpen(true); pick(key); } }}>
           <Icon size={17}/>{changed && <i className="ed-rail-dot" title="Has changes"/>}
         </button>;
-      })}</div>
+      })}{rail.tools}</div>
     </div>
   </PanelContext.Provider>;
 }

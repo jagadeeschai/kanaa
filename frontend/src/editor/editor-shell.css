@@ -380,3 +380,8 @@
 .ed-rail-tabs .ed-top-menu .ed-top-item{width:100%;height:auto;justify-content:flex-start;padding:8px}
 .ed-rail-tabs .ed-top-menu .ed-mode button{width:auto;height:auto;padding:4px 12px}
 .ed-rail-tabs .ed-top-menu button::after{display:none}
+
+/* Edit and export tools at the foot of the right rail */
+.ed-rail-tabs.right .ed-rail-tools .ed-top-menu{left:auto;right:calc(100% + 10px)}
+.ed-rail-tabs.right .ed-rail-tools .ed-top-settings>button::after{left:auto;right:calc(100% + 12px)}
+.ed-inspector{position:relative;z-index:6}
