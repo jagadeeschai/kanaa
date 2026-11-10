@@ -279,6 +279,21 @@ class Color(Clips):
     def test_export_keeps_image_color(self):
         self.assert_color(self.frame(self.exported(6, 'image'), 5), (255, 0, 255))
 
+    def test_export_applies_a_project_lut_at_its_strength(self):
+        # An inverting LUT, in a file name with a space and an apostrophe, as LUT packs have.
+        from unittest.mock import patch
+        from app.services import lut_service
+        pack = self.out / 'pack'; pack.mkdir()
+        rows = [f'{1 - r} {1 - g} {1 - b}' for b in (0, 1) for g in (0, 1) for r in (0, 1)]
+        (pack / "Night's Film 01.CUBE").write_text('TITLE "Invert"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n' + '\n'.join(rows) + '\n')
+        with patch.object(lut_service, 'SOURCE', pack):
+            lut = lut_service.library()[0]['id']
+            for amount, expected in ((1, (0, 255, 0)), (0.5, (128, 128, 128))):
+                with self.subTest(amount=amount):
+                    data = {'format': {'width': 1280, 'height': 720, 'fps': 30}, 'lut': lut, 'lut_amount': amount, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+                        {'id': 'c', 'media_id': 6, 'start': 0, 'in': 0, 'out': 1}]}]}
+                    self.assert_color(self.frame(self.render(data, f'lut-{amount}.mp4'), 5), expected)
+
     def test_proxy_keeps_sd_and_hd_colors(self):
         for matrix in ('bt470bg', 'bt709'):
             with self.subTest(matrix=matrix):
