@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activeCinematicPreset, applyCinematicPreset, CINEMATIC_PRESETS } from '../src/timeline/cinematic.ts';
+import { activeCinematicPreset, applyCinematicPreset, clearCinematicPreset, CINEMATIC_PRESETS } from '../src/timeline/cinematic.ts';
 import { emptyTimeline, insertClip, newClip } from '../src/timeline/model.ts';
 
 const format = { width: 1920, height: 1080, fps: 30 };
@@ -31,4 +31,11 @@ test('mixed or adjusted looks are not a preset', () => {
   const adjusted = applyCinematicPreset(timelineWith([video('a')]), CINEMATIC_PRESETS[0]);
   const ownFinish = { ...adjusted.finish, grain: 0.7 };
   assert.equal(activeCinematicPreset({ ...adjusted, finish: ownFinish }), null, 'a tweaked finish is custom, not the preset');
+});
+
+test('widescreen bars are the frame, chosen on their own', () => {
+  const applied = applyCinematicPreset(timelineWith([video('a')]), CINEMATIC_PRESETS[0]);
+  assert.equal(activeCinematicPreset({ ...applied, finish: { ...applied.finish, letterbox: false } })?.id, CINEMATIC_PRESETS[0].id, 'bars off, still the preset');
+  assert.deepEqual(clearCinematicPreset(applied).finish, { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 }, 'None keeps the bars');
+  assert.equal(clearCinematicPreset({ ...applied, finish: { ...applied.finish, letterbox: false } }).finish, null);
 });

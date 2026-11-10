@@ -21,7 +21,8 @@ export function clearCinematicPreset(timeline: Timeline): Timeline {
   const main = mainLayer(timeline);
   return {
     ...timeline,
-    finish: null,
+    // The widescreen bars are the frame, not the look: they stay as chosen.
+    finish: timeline.finish?.letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null,
     layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((clip) => ({ ...clip, look: 'none' as LookName })) } : layer)),
   };
 }
@@ -33,7 +34,9 @@ export function activeCinematicPreset(timeline: Timeline): CinematicPreset | nul
   const look = mainLayer(timeline).items[0]?.look ?? 'none';
   const uniform = mainLayer(timeline).items.every((clip) => (clip.look ?? 'none') === look);
   if (!uniform) return null;
-  return CINEMATIC_PRESETS.find((preset) => preset.look === look && JSON.stringify(preset.finish) === JSON.stringify(finish)) ?? null;
+  // Bars on or off, it is still the preset: they are chosen on their own.
+  const same = (a: Finish, b: Finish) => (['grade', 'glow', 'vignette', 'grain'] as const).every((key) => Math.abs((a[key] ?? 0) - (b[key] ?? 0)) < 1e-9);
+  return CINEMATIC_PRESETS.find((preset) => preset.look === look && same(preset.finish, finish)) ?? null;
 }
 
 /** Applies a preset: the finish over the whole film, the look on every main-track clip, and any LUT taken off. */

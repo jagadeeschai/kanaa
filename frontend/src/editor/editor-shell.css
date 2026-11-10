@@ -310,3 +310,5 @@
 .tp-foot .ed-button.danger{color:var(--danger)}
 @media(max-width:900px){.tp{left:8px!important;right:8px;width:auto!important}.tp::after{display:none}.tp-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:520px){.tp-grid{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){.tp,.tl-cut{animation:none;transition:none}}
+
+.ed-finish-head{margin:12px 0 6px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.ed-finish-head:first-of-type{margin-top:2px}

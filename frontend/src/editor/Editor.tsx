@@ -2197,13 +2197,27 @@ function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImport
       <Group title="Theme" tab="look" startOpen keywords="theme look style wedding festival travel birthday" tip="One click dresses the whole video: colours, transitions, titles and music." help="themes">
         <div className="ed-add-row"><span>{theme ? <>Now: <b>{theme.label}</b></> : 'No theme'}</span><button className="ed-button" onClick={onThemes}>{theme ? 'Change theme' : 'Choose a theme'}</button></div>
       </Group>
-      <Group title="Cinematic finish" tab="look" startOpen changed={cinematicOn} keywords="cinematic film grade teal orange glow vignette grain preset" tip="A film look over the whole video. It does not change the frame shape." help="cinematic-finish">
-        <div className="ed-chips" role="group" aria-label="Cinematic presets">{CINEMATIC_PRESETS.map((preset) => { const on = activeCinematicPreset(timeline)?.id === preset.id; return <button key={preset.id} className={on ? 'on' : ''} aria-pressed={on} title={on ? 'Turn this preset off' : preset.about} onClick={() => onChange(on ? clearCinematicPreset(timeline) : applyCinematicPreset(timeline, preset), on ? 'cinematic-off' : `cinematic-${preset.id}`)}>{preset.label}</button>; })}</div>
-        <p className="ed-group-tip">One click: finish plus a colour look on every clip. Sliders stay adjustable.</p>
-        <label className="ed-check"><input type="checkbox" checked={cinematicOn} onChange={(event) => { const letterbox = Boolean(finish?.letterbox); setFinish(event.target.checked ? { ...CINEMATIC, letterbox } : letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null); }}/><span>Cinematic finish<small>Teal and orange grade, glow, darker edges, grain. Your frame shape stays as chosen.</small></span></label>
+      <Group title="Cinematic finish" tab="look" startOpen changed={cinematicOn || Boolean(finish?.letterbox)} keywords="cinematic film grade teal orange glow vignette grain preset bars letterbox widescreen 2.39 framing" tip="A film look over the whole video, and cinema bars if you want them." help="cinematic-finish">
+        <h4 className="ed-finish-head">Look</h4>
+        {(() => {
+          const active = activeCinematicPreset(timeline);
+          const custom = cinematicOn && !active;
+          const bars = Boolean(finish?.letterbox);
+          return <div className="ed-chips" role="group" aria-label="Cinematic look">
+            <button className={!cinematicOn ? 'on' : ''} aria-pressed={!cinematicOn} title="No film look; your clips' own colours" onClick={() => onChange(clearCinematicPreset(timeline), 'cinematic-off')}>None</button>
+            {CINEMATIC_PRESETS.map((preset) => { const on = active?.id === preset.id; return <button key={preset.id} className={on ? 'on' : ''} aria-pressed={on} title={preset.about}
+              onClick={() => { if (on) return; const next = applyCinematicPreset(timeline, preset); onChange(bars ? { ...next, finish: { ...next.finish!, letterbox: true } } : next, `cinematic-${preset.id}`); }}>{preset.label}</button>; })}
+            <button className={custom ? 'on' : ''} aria-pressed={custom} title="Teal and orange grade, glow, darker edges and grain, set by the sliders" onClick={() => { if (!custom) setFinish({ ...CINEMATIC, letterbox: bars }, 'cinematic-custom'); }}>Custom</button>
+          </div>;
+        })()}
+        <p className="ed-group-tip">A preset sets the grade below and a colour look on every clip; changing a slider makes it your own.</p>
         {cinematicOn && <>
-          {part('grade', 'Teal and orange')}{part('glow', 'Glow')}<More>{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}</More>
+          <h4 className="ed-finish-head">Adjust</h4>
+          {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
         </>}
+        <h4 className="ed-finish-head">Frame</h4>
+        {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape, with or without a look.</small></span></label>
+          : <p className="ed-group-tip">Widescreen bars are for landscape and square projects.</p>}
       </Group>
       <Group title="Brand watermark" tab="look" startOpen changed={Boolean(brand)} keywords="logo watermark brand mark corner badge" tip="Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best." help="brand-watermark">
         {!brand ? <>
@@ -2220,10 +2234,6 @@ function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImport
             <ValueSlider label="Opacity" value={brand.transform.opacity} min={0.1} max={1} step={0.05} defaultValue={0.9} unit="%" factor={100} onGestureStart={onPause} onChange={(value, group) => onChange(fadeBrand(timeline, value), group ?? 'brand-opacity')}/>
           </>}
         </>}
-      </Group>
-      <Group pro title="Widescreen framing" tab="look" changed={Boolean(finish?.letterbox)} keywords="bars letterbox widescreen 2.39 framing" tip="Optional 2.39:1 bars, independent from the Cinematic finish." help="cinematic-finish">
-        {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape. This is not enabled by Cinematic finish.</small></span></label>
-          : <p className="ed-group-tip">Widescreen bars are available for landscape and square projects.</p>}
       </Group>
       <Group pro title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
         <label className="ed-lut-field"><span>LUT</span><KanaaSelect searchable searchPlaceholder={`Search ${luts.length || ''} LUTs…`} aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>
