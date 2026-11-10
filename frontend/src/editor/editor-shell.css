@@ -312,3 +312,20 @@
 @media(prefers-reduced-motion:reduce){.tp,.tl-cut{animation:none;transition:none}}
 
 .ed-finish-head{margin:12px 0 6px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.ed-finish-head:first-of-type{margin-top:2px}
+
+/* The top bar: slim, with the less-used controls behind a gear. */
+.ed-top{height:42px}
+.ed-top-settings{position:relative}
+.ed-top-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;display:flex;flex-direction:column;gap:2px;min-width:260px;padding:6px;border-radius:10px;background:var(--panel);box-shadow:var(--shade3),0 0 0 1px var(--hairline)}
+.ed-top-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px;font-size:12px;color:var(--text-2)}
+.ed-top-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:0;border-radius:7px;background:none;color:var(--text);font-size:12px;font-weight:500;text-align:left;cursor:pointer}
+.ed-top-item svg{color:var(--text-2);flex-shrink:0}
+.ed-top-item span{flex:1}
+.ed-top-item em{font-style:normal;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ed-top-item:hover,.ed-top-item:focus-visible{background:var(--selected-bg);color:var(--selected-text);outline:0}
+/* Hidden top bar: gone from the layout, it slides down over the editor while the pointer is at the top edge or on it,
+   or while its menu is open. */
+.ed.ed-hide-top>.ed-top{position:absolute;left:0;right:0;top:0;z-index:35;background:var(--bg);box-shadow:var(--shade3);transform:translateY(-100%);transition:transform .16s ease}
+.ed.ed-hide-top>.ed-top-reveal{position:absolute;left:0;right:0;top:0;height:8px;z-index:34}
+.ed.ed-hide-top>.ed-top-reveal:hover+.ed-top,.ed.ed-hide-top>.ed-top:hover,.ed.ed-hide-top>.ed-top:focus-within{transform:none}
+.ed-top-item input{margin:0 1px;accent-color:var(--accent)}

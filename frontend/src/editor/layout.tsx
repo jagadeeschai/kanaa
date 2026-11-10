@@ -28,7 +28,7 @@ export function useAppTheme() {
 }
 
 /** `simple` hides rarely used controls (keyframes, More sections, Pro-only groups) for an easier editor. */
-export type Layout = { media: number; inspector: number; timeline: number; mediaOpen: boolean; inspectorOpen: boolean; simple: boolean };
+export type Layout = { media: number; inspector: number; timeline: number; mediaOpen: boolean; inspectorOpen: boolean; simple: boolean; hideTop?: boolean };
 export const DEFAULT_LAYOUT: Layout = { media: 240, inspector: 280, timeline: 230, mediaOpen: true, inspectorOpen: true, simple: false };
 export const LIMITS = { media: [180, 360], inspector: [240, 420], timeline: [128, 620] } as const;
 

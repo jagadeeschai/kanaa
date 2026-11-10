@@ -10,7 +10,7 @@ import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
-import { Search } from 'lucide-react';
+import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
 import { pinStretch, sceneMatrix, type SceneTrack } from '../timeline/title3d';
@@ -1809,20 +1809,16 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
   const matchingClipEffects = CLIP_EFFECT_PRESETS.filter((preset) => !effectNeedle || `${preset.label} ${preset.group} ${preset.about}`.toLocaleLowerCase().includes(effectNeedle));
   const matchingOverlayEffects = effects.filter((effect) => !effectNeedle || `${effect.label} ${effect.tamil} ${effect.mood} ${effect.about}`.toLocaleLowerCase().includes(effectNeedle));
   const activeClipEffects = selected ? clipEffects(selected) : [];
-  return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''}`} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
+  return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''} ${layout.hideTop ? 'ed-hide-top' : ''}`} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
+    {layout.hideTop && <div className="ed-top-reveal" aria-hidden/>}
     <header className="ed-top">
       <button className="ed-icon" onClick={() => { void closeEditor(); }} aria-label="Back to projects"><ArrowLeft size={18}/></button>
       <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
       <div className="ed-spacer"/>
-      <button className="ed-icon" aria-label={`Theme: ${themeChoice}. Change theme`} title={`Theme: ${themeChoice === 'system' ? 'same as this Mac' : themeChoice}`} onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
-      <div className="ed-mode" role="group" aria-label="Editor mode">
-        <button aria-pressed={layout.simple} className={layout.simple ? 'on' : ''} onClick={() => updateLayout({ simple: true })} title="Lite: a guided, template-driven path. The main choices only.">Lite</button>
-        <button aria-pressed={!layout.simple} className={layout.simple ? '' : 'on'} onClick={() => updateLayout({ simple: false })} title="Pro: every control, including keyframes and More options">Pro</button>
-      </div>
-      <span className="ed-divide ed-hide-small"/>
       <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
       <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
-      <button className="ed-button" title="Project settings: shape, frame rate, look and loudness" onClick={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}>{timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'}</button>
+      <TopSettings themeChoice={themeChoice} nextTheme={nextTheme} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })} hideTop={Boolean(layout.hideTop)} onHideTop={(hideTop) => updateLayout({ hideTop })}
+        format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
       <button className="ed-primary" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }}><Download size={16}/>Export</button>
     </header>
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
@@ -2144,6 +2140,32 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       onCreated={(item) => { setMedia((current) => current.some((entry) => entry.id === item.id) ? current : [item, ...current]); setLeftTab('media'); }}/>
     }
   </div></SimpleContext.Provider>;
+}
+
+/** The editor's less-used top-bar controls behind one gear: theme, Lite or Pro, and the project's format. */
+function TopSettings({ themeChoice, nextTheme, simple, onSimple, hideTop, onHideTop, format, onProject }: { themeChoice: ThemeChoice; nextTheme: () => void; simple: boolean; onSimple: (simple: boolean) => void; hideTop: boolean; onHideTop: (hide: boolean) => void; format: string; onProject: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('pointerdown', away, true); window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', key); };
+  }, [open]);
+  const themeName = themeChoice === 'system' ? 'Same as this Mac' : themeChoice === 'light' ? 'Light' : 'Dark';
+  return <div className="ed-top-settings" ref={box}>
+    <button className={`ed-icon ${open ? 'on' : ''}`} aria-label="Editor settings" aria-haspopup="menu" aria-expanded={open} title="Theme, Lite or Pro, and the video's format" onClick={() => setOpen((value) => !value)}><Settings2 size={17}/></button>
+    {open && <div className="ed-top-menu" role="menu">
+      <div className="ed-top-row"><span>Editor</span><div className="ed-mode" role="group" aria-label="Editor mode">
+        <button aria-pressed={simple} className={simple ? 'on' : ''} onClick={() => onSimple(true)} title="Lite: a guided, template-driven path. The main choices only.">Lite</button>
+        <button aria-pressed={!simple} className={simple ? '' : 'on'} onClick={() => onSimple(false)} title="Pro: every control, including keyframes and More options">Pro</button>
+      </div></div>
+      <button className="ed-top-item" role="menuitem" onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={15}/> : themeChoice === 'light' ? <Sun size={15}/> : <Moon size={15}/>}<span>Theme</span><em>{themeName}</em></button>
+      <label className="ed-top-item"><input type="checkbox" checked={hideTop} onChange={(event) => onHideTop(event.target.checked)}/><span>Hide top bar</span><em>Shows at the top edge</em></label>
+      <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>Project settings</span><em>{format}</em></button>
+    </div>}
+  </div>;
 }
 
 const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
