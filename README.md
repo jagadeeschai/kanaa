@@ -56,8 +56,10 @@ Environment overrides: `WIDEANGLE_MOTION_DATA_DIR`, `WIDEANGLE_MOTION_MODEL_CACH
 
 ## Animating with an AI agent (MCP)
 
-Kanaa has an MCP server, so an AI agent (Claude Code, Claude Desktop or any MCP client) can find a clip or title in a
-project, look at frames of it, and animate it: titles, keyframes, enter and exit animations, Place in scene. It works on
+Kanaa has an MCP server, so an AI agent (Claude Code, Claude Desktop or any MCP client) can make a simple video from
+your media (look at the clips, pick their best moments, put them in order with transitions, add titles and music from
+your library, export), or find a clip or title in a project, look at frames of it, and animate it: titles, keyframes,
+enter and exit animations, Place in scene. It works on
 the running Kanaa through its own API; every change is checked against Kanaa's timeline rules first, and `undo` takes
 the agent's last change back. An editor with the project open picks changes up within a few seconds (Undo there works
 too). The agent's own AI use is paid by whoever runs the agent; Kanaa itself makes no AI calls for this.
@@ -77,8 +79,10 @@ To connect Claude Code, add this to the `.mcp.json` of the folder you run it in 
 ```
 
 Then ask, for example: *"In Kanaa project 26, put the title BENGALURU on the wall on the right at 3 seconds, pop the letters
-in, and check how it looks."* Tools: list_projects, get_project, find_items, get_item, look, update_item, set_keyframes,
-set_animation, add_title, place_in_scene, history, undo, export. Undo history is kept in
+in, and check how it looks."* Or: *"Make a 3-minute video of my Bengaluru clips: best moments, a few gentle transitions, an
+opening title and calm music."* Tools: list_media, look_at_media, best_moments, create_project, add_clips,
+set_transition, remove_item, list_music, add_music, list_projects, get_project, find_items, get_item, look, update_item,
+set_keyframes, set_animation, add_title, place_in_scene, history, undo, export. Undo history is kept in
 `~/Library/Application Support/Kanaa/agent-history` (KANAA_MCP_HISTORY).
 
 ## Development and checks

@@ -40,7 +40,12 @@ Ease = Literal['linear', 'easeOut', 'easeInOut']
 INSTRUCTIONS = """\
 Kanaa is a video editor. These tools animate titles and clips in a Kanaa project; the person watches the result in Kanaa.
 
-Workflow:
+To make a video from scratch: list_media (and look_at_media to see what each clip shows), best_moments to pick the best
+stretch of long clips, create_project, add_clips in the order of the story (each with a transition if wanted), add_title
+for an opening or names, list_music and add_music, then look at a few moments and export. Keep it simple: a transition
+on some cuts, not every one; 0.5-1 s. Photos show 4 s unless told otherwise.
+
+Workflow for changing a project:
 1. list_projects, then get_project to see its clips and titles (with ids, names, times). find_items searches by name or words.
 2. look renders a stretch (up to 10 s) and shows you frames: use it before and after changing anything visual.
 3. Change things with update_item, set_keyframes, set_animation, add_title and place_in_scene. Each is one undoable step;
@@ -359,6 +364,165 @@ def build_server(api: KanaaApi) -> MCPServer:
                 after['layers'].insert(index + 1, {'id': f'layer-{uuid.uuid4().hex[:8]}', 'kind': 'video', 'name': 'Person', 'items': [copy_clip]})
         save(project_id, before, after, f'Placed {title_id} in the scene ({pose["kind"]})')
         return {'id': title_id, 'surface': pose['kind'], 'read_from_picture': pose['found'], 'tilt_x': pose['tilt_x'], 'tilt_y': pose['tilt_y'], 'turn': pose['turn']}
+
+    def relay(timeline: dict) -> None:
+        """Main-track clips play one after another: each starts where the one before ends (transitions overlap the cut)."""
+        main = next(layer for layer in timeline['layers'] if layer['kind'] == 'video')
+        at = 0.0
+        for clip in main['items']:
+            clip['start'] = round(at, 3)
+            at += length_of(clip)
+
+    @server.tool(annotations=READ_ONLY)
+    def list_media(kind: Literal['video', 'image'] | None = None, query: str = '', folder: str | None = None, limit: int = 100) -> list[dict]:
+        """Videos and photos in Kanaa's media library, newest first: id, file name, type, length (s), size and folder.
+        query matches file names; folder narrows to one of the library's folders."""
+        params = {'limit': max(1, min(500, limit)), 'collection': 'imports'}
+        if kind:
+            params['media_type'] = kind
+        if query:
+            params['q'] = query
+        if folder:
+            params['folder'] = folder
+        found = api.http.get('/photos', params=params)
+        rows = api._check(found)['photos']
+        keys = ('id', 'filename', 'media_type', 'duration', 'width', 'height', 'folder', 'recorded_at', 'created_at')
+        return [{key: row.get(key) for key in keys if row.get(key) is not None} for row in rows]
+
+    @server.tool(annotations=READ_ONLY)
+    def look_at_media(media_id: int, times: list[float] | None = None, frames: int = 4) -> list[Image]:
+        """Pictures from a video in the library (or the photo itself), 480 pixels wide, to see what it shows before
+        using it: at `times` (seconds into the file), or `frames` (1-8) evenly spread."""
+        item = media(media_id)
+        path = item.get('absolute_path')
+        if not path or not Path(path).is_file():
+            raise ToolError('That file is not on this Mac any more.')
+        if item.get('media_type') != 'video':
+            times = [0.0]
+        elif not times:
+            duration = float(item.get('duration') or 1)
+            count = max(1, min(8, frames))
+            times = [duration * (index + 0.5) / count for index in range(count)]
+        pictures = []
+        with tempfile.TemporaryDirectory() as folder:
+            for index, at in enumerate(times[:8]):
+                target = Path(folder) / f'{index}.jpg'
+                seek = ['-ss', f'{max(0.0, at):.3f}'] if item.get('media_type') == 'video' else []
+                subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', *seek, '-i', path, '-frames:v', '1', '-vf', 'scale=480:-2', '-q:v', '5', str(target)], check=False)
+                if target.is_file():
+                    pictures.append(Image(data=target.read_bytes(), format='jpeg'))
+        if not pictures:
+            raise ToolError('Could not read pictures from that file.')
+        return pictures
+
+    @server.tool(annotations=READ_ONLY)
+    def best_moments(items: list[dict]) -> list[dict]:
+        """The best stretch of each video for a story, as Kanaa's Story templates pick them (steady, sharp, faces,
+        movement): items [{"media_id": id, "length": seconds wanted}] in, each with "start" (seconds into the file, or
+        null for a photo) out. Takes a while for long videos."""
+        status = api.wait(api.post('/best-moments', {'items': items})['job_id'], timeout=1800)
+        starts = status.get('starts') or status.get('result', {}).get('starts') or []
+        return [{**item, 'start': start} for item, start in zip(items, starts)]
+
+    @server.tool(annotations=CHANGES)
+    def create_project(name: str, width: int = 1920, height: int = 1080, fps: int = 30) -> dict:
+        """A new, empty edit project: 1920x1080 for YouTube, 1080x1920 for Reels and Shorts, 1080x1080 square. Returns its id."""
+        anything = next(iter(list_media(limit=1)), None)
+        if anything is None:
+            raise ToolError('Kanaa has no media yet: import some videos or photos first.')
+        project = api.post('/projects', {'name': name, 'kind': 'edit', 'media_id': anything['id'], 'media_ids': []})
+        timeline = {'version': 2, 'format': {'width': width, 'height': height, 'fps': fps}, 'layers': [{'id': 'main', 'kind': 'video', 'magnetic': True, 'items': []}]}
+        validate(timeline)
+        api.put(f"/projects/{project['id']}/recipe", {'recipe': timeline})
+        return {'id': project['id'], 'name': name, 'format': timeline['format']}
+
+    @server.tool(annotations=CHANGES)
+    def add_clips(project_id: int, clips: list[dict], at: int | None = None) -> list[dict]:
+        """Adds videos or photos to the main track, in this order, after the last clip (or before position `at`).
+        Each: {"media_id": id, "in": seconds into the file (default 0), "out": where it stops (default its end; for a
+        photo, in + 4), "name": what it is for, "transition": {"kind": ..., "duration": 0.6} into this clip}. Transition
+        kinds: crossfade, cross-blur, dip, flash, wipe, slide, whip, zoom, cross-zoom, circle-open, circle-close, spin-in,
+        spin-out, doorway, mosaic, puzzle-left, puzzle-right, ripple, swap, cube, page-curl-left, page-curl-right. Returns
+        the clips added, with ids and start times."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        main = next(layer for layer in after['layers'] if layer['kind'] == 'video')
+        made = []
+        for entry in clips:
+            item = media(int(entry['media_id']))
+            photo = item.get('media_type') != 'video'
+            start_in = float(entry.get('in', 0))
+            out = float(entry.get('out', start_in + 4 if photo else float(item.get('duration') or start_in + 4)))
+            if not photo and item.get('duration') and out > float(item['duration']) + 1e-3:
+                raise ToolError(f"{item.get('filename')} is only {float(item['duration']):.2f} s long.")
+            clip = {'id': f'clip-{uuid.uuid4().hex[:8]}', 'media_id': item['id'], 'start': 0, 'in': start_in, 'out': out, 'speed': 1, 'volume': 1, 'muted': False,
+                    'fade_in': 0, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}, 'frame_locked': True}
+            if entry.get('name'):
+                clip['name'] = str(entry['name'])[:80]
+            if entry.get('transition'):
+                clip['transition_in'] = {'kind': entry['transition']['kind'], 'duration': float(entry['transition'].get('duration', 0.6))}
+            made.append(clip)
+        if not main['items'] and made:
+            made[0].pop('transition_in', None)  # Nothing to come in from.
+        position = len(main['items']) if at is None else max(0, min(at, len(main['items'])))
+        main['items'][position:position] = made
+        relay(after)
+        save(project_id, before, after, f'Added {len(made)} clip(s)')
+        return [{'id': clip['id'], 'name': clip.get('name') or media(clip['media_id']).get('filename'), 'start': clip['start'], 'length': round(length_of(clip), 3),
+                 'transition_in': clip.get('transition_in')} for clip in made]
+
+    @server.tool(annotations=CHANGES)
+    def set_transition(project_id: int, clip_id: str, kind: str | None, duration: float = 0.6, direction: Literal['left', 'right', 'up', 'down'] | None = None) -> dict:
+        """The transition into a main-track clip from the one before it (kinds as in add_clips), or none (kind null).
+        direction is for wipe and slide."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        _, clip = find(after, clip_id)
+        clip['transition_in'] = None if kind is None else {'kind': kind, 'duration': duration, **({'direction': direction} if direction and direction != 'left' else {})}
+        save(project_id, before, after, f'Transition into {clip_id}: {kind or "none"}')
+        return {'id': clip_id, 'transition_in': clip['transition_in']}
+
+    @server.tool(annotations=CHANGES)
+    def remove_item(project_id: int, item_id: str) -> dict:
+        """Takes a clip, title or sound out of the project (the main track closes up behind a clip). undo brings it back."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        layer, item = find(after, item_id)
+        layer['items'].remove(item)
+        if layer['kind'] == 'video' and layer is next(entry for entry in after['layers'] if entry['kind'] == 'video'):
+            if layer['items']:
+                layer['items'][0].pop('transition_in', None)
+            relay(after)
+        save(project_id, before, after, f'Removed {item_id}')
+        return {'removed': item_id}
+
+    @server.tool(annotations=READ_ONLY)
+    def list_music(mood: str | None = None) -> list[dict]:
+        """Tracks in the person's own music library (the Music app's folder), sorted into moods: id, name, artist,
+        length (s) and mood. mood narrows the list (for example calm, happy, energetic, emotional, cinematic)."""
+        tracks = api.get('/music-library')['tracks']
+        return [{key: track.get(key) for key in ('id', 'name', 'artist', 'seconds', 'mood')} for track in tracks if not mood or track.get('mood') == mood]
+
+    @server.tool(annotations=CHANGES)
+    def add_music(project_id: int, track_id: str, start: float = 0, volume: float = 0.6, fade_in: float = 1.0, fade_out: float = 2.0,
+                  duck: bool = True, until_end: bool = True) -> dict:
+        """A track from list_music under the video, on its own sound layer: from `start` (s), at `volume` (0-2; 0.6
+        sits under voices), fading in and out, ducking under people talking. until_end stops it where the video ends."""
+        song = api.post(f'/music-library/{track_id}/use')
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        end = max([item.get('start', 0) + length_of(item) for layer in after['layers'] if layer['kind'] == 'video' for item in layer.get('items', [])] or [0])
+        out = float(song['duration'])
+        if until_end and end > start:
+            out = min(out, end - start)
+        if out <= 0:
+            raise ToolError('Add clips first: the music would end before it starts.')
+        sound = {'id': f'sound-{uuid.uuid4().hex[:8]}', 'asset_id': song['asset_id'], 'start': start, 'in': 0, 'out': round(out, 3), 'speed': 1,
+                 'volume': volume, 'muted': False, 'fade_in': fade_in, 'fade_out': min(fade_out, out / 2), 'duck': duck, 'name': song['name'][:120],
+                 'source_length': float(song['duration'])}
+        after['layers'].append({'id': f'music-{uuid.uuid4().hex[:8]}', 'kind': 'audio', 'name': 'Music', 'volume': 1, 'items': [sound]})
+        save(project_id, before, after, f'Added music {song["name"]!r}')
+        return {'id': sound['id'], 'name': song['name'], 'start': start, 'length': sound['out']}
 
     @server.tool(annotations=READ_ONLY)
     def history(project_id: int) -> list[dict]:

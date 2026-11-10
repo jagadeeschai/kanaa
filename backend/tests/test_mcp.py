@@ -24,7 +24,9 @@ class FakeApi:
         if path == '/projects/1/timeline':
             return copy.deepcopy(self.timeline)
         if path == '/photos/1':
-            return {'id': 1, 'filename': 'walk.mp4', 'media_type': 'video', 'width': 1280, 'height': 720}
+            return {'id': 1, 'filename': 'walk.mp4', 'media_type': 'video', 'width': 1280, 'height': 720, 'duration': 10}
+        if path == '/photos/2':
+            return {'id': 2, 'filename': 'still.jpg', 'media_type': 'image', 'width': 1280, 'height': 720}
         raise AssertionError(path)
 
     def put(self, path, body):
@@ -84,6 +86,31 @@ class Server(unittest.TestCase):
         self.assertEqual([len(layer['items']) for layer in text_layers], [1, 1])
         self.call('add_title', project_id=1, text='Later', start=4.5, length=1)
         self.assertEqual(len([layer for layer in self.api.timeline['layers'] if layer['kind'] == 'text']), 2, 'room on the first layer after 4 s')
+
+
+class Building(Server):
+    def main(self):
+        return self.api.timeline['layers'][0]['items']
+
+    def test_clips_go_on_in_order_one_after_another_with_their_transitions(self):
+        self.call('add_clips', project_id=1, clips=[{'media_id': 2, 'name': 'Photo'}, {'media_id': 1, 'in': 2, 'out': 5, 'transition': {'kind': 'crossfade', 'duration': 0.8}}])
+        self.assertEqual([(clip['start'], clip['in'], clip['out']) for clip in self.main()], [(0, 0, 6), (6, 0, 4), (10, 2, 5)], 'a photo shows 4 s')
+        self.assertEqual(self.main()[2]['transition_in'], {'kind': 'crossfade', 'duration': 0.8})
+        self.assertEqual(self.main()[1]['name'], 'Photo')
+
+    def test_past_the_end_of_a_video_is_refused(self):
+        with self.assertRaises(ToolError):
+            self.call('add_clips', project_id=1, clips=[{'media_id': 1, 'in': 5, 'out': 12}])
+
+    def test_removing_a_clip_closes_the_gap_and_the_first_clip_has_no_transition(self):
+        self.call('add_clips', project_id=1, clips=[{'media_id': 1, 'out': 3, 'transition': {'kind': 'wipe'}}])
+        self.call('remove_item', project_id=1, item_id='c0')
+        self.assertEqual(self.main()[0]['start'], 0)
+        self.assertNotIn('transition_in', self.main()[0])
+        self.call('set_transition', project_id=1, clip_id=self.main()[0]['id'], kind=None)
+        self.call('undo', project_id=1)
+        self.call('undo', project_id=1)
+        self.assertEqual([clip['id'] for clip in self.main()][0], 'c0', 'undo brings it back')
 
 
 if __name__ == '__main__':
