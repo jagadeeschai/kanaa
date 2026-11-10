@@ -211,6 +211,8 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
         return out
     pose, look = title3d.pose_at(text, local)
     opacity = look['opacity'] * max(0.0, min(1.0, value_at(text.transform, 'opacity', local)))
+    if pin is not None and getattr(text.pin, 'region', None):
+        opacity *= title3d.pin_fade(pin, pose['cx'] * width, pose['cy'] * height)  # Placed in the scene: fades as it nears the camera.
     if opacity <= 0:
         return out
     letters = (box[0] * width, box[1] * height, box[2] * width, box[3] * height)

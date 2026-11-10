@@ -32,7 +32,8 @@ WORK_WIDTH = 640
 MAX_CORNERS = 500
 MIN_MATCHES = 24  # Fewer than this and the step is a guess: hold the last good motion and say so.
 SMOOTH_FRAMES = 5
-VERSION = 2
+VERSION = 3  # 3: a placed title's surface widens instead of being lost, and its path is smoothed over half a second.
+SURFACE_SIGMA = 4.0  # Frames: how gently a placed title's path is smoothed (a Gaussian, about half a second across).
 
 
 REGION_RADIUS = 0.2  # Of the picture's width: how far around a placed title's spot its surface is followed.
@@ -148,6 +149,7 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
     spot has moved to so far, so a title placed there stays on it, in perspective, while the rest of the scene moves
     differently."""
     out, found, last_step, previous = [np.eye(3)], [True], np.eye(3), None
+    previous_wider: list = []
     mask_iterator = iter(masks) if masks is not None else None
     previous_allowed = None
     for picture in pictures:
@@ -165,12 +167,18 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
                 person = cv2.cvtColor(mask_picture, cv2.COLOR_BGR2GRAY)
                 person = cv2.dilate((person > 24).astype(np.uint8) * 255, np.ones((7, 7), np.uint8), iterations=1)
                 allowed = cv2.bitwise_not(person)
+        wider = []  # For a placed surface: the same step looked for in twice the circle, then the whole picture.
         if region is not None:
             import cv2
             spot = out[-1] @ np.array([region[0], region[1], 1.0])
-            around = np.zeros(grey.shape, np.uint8)
-            cv2.circle(around, (int(spot[0] / spot[2]), int(spot[1] / spot[2])), int(REGION_RADIUS * grey.shape[1]), 255, -1)
-            allowed = around if allowed is None else cv2.bitwise_and(allowed, around)
+            centre = (int(spot[0] / spot[2]), int(spot[1] / spot[2])) if abs(spot[2]) > 1e-9 else (grey.shape[1] // 2, grey.shape[0] // 2)
+            people = allowed
+            circles = []
+            for radius in (REGION_RADIUS, REGION_RADIUS * 2):
+                around = np.zeros(grey.shape, np.uint8)
+                cv2.circle(around, centre, int(radius * grey.shape[1]), 255, -1)
+                circles.append(around if people is None else cv2.bitwise_and(people, around))
+            allowed, wider = circles[0], [circles[1], people]
         if lines is not None:
             lines.append(skyline(picture))
             band = _band(grey.shape, lines[-1] if lines[-1] is not None else next((line for line in reversed(lines) if line is not None), None))
@@ -178,6 +186,11 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
                 allowed = band if allowed is None else cv2.bitwise_and(allowed, band)
         if previous is not None:
             step, _ = _step(previous, grey, previous_allowed, upright=upright or lines is not None)
+            for mask in previous_wider:
+                if step is not None:
+                    break
+                # The spot is leaving the picture or passing under the camera: follow the wider scene rather than guess.
+                step, _ = _step(previous, grey, mask, upright=upright or lines is not None)
             held = step is None
             if held:
                 step = last_step  # Lost for a moment: keep moving as the camera was.
@@ -186,6 +199,7 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
             found.append(not held)
         previous = grey
         previous_allowed = allowed
+        previous_wider = wider
     return out, found
 
 
@@ -202,6 +216,30 @@ def _smooth(matrices: list[np.ndarray]) -> list[np.ndarray]:
     for index in range(len(paths)):
         centre = index + shift
         window = padded[max(0, centre - half):centre + half + 1].mean(axis=0)
+        out.append(cv2.getPerspectiveTransform(square.reshape(4, 2), np.float32(window)))
+    return out
+
+
+def _smooth_gently(matrices: list[np.ndarray]) -> list[np.ndarray]:
+    """A placed title's path: where the picture's corners go, smoothed with a Gaussian over about half a second, then the
+    matrix fitted again. A frame's noisy step no longer jolts the title; the camera's own walk or pan stays."""
+    import cv2
+    square = np.float32([[0, 0], [1, 0], [1, 1], [0, 1]]).reshape(-1, 1, 2)
+    paths = np.array([cv2.perspectiveTransform(square, m).reshape(4, 2) for m in matrices])
+    reach = int(3 * SURFACE_SIGMA)
+    if len(paths) < 3:
+        return matrices
+    # Mirrored through the end points, so a steady move keeps its line up to the first and last frame.
+    before = 2 * paths[:1] - paths[min(reach, len(paths) - 1):0:-1]
+    after = 2 * paths[-1:] - paths[-2:max(-reach - 2, -len(paths) - 1):-1]
+    padded = np.concatenate([before, paths, after])
+    weights = np.exp(-0.5 * (np.arange(-reach, reach + 1) / SURFACE_SIGMA) ** 2)
+    out = []
+    for index in range(len(paths)):
+        centre = index + len(before)
+        lo, hi = max(0, centre - reach), min(len(padded), centre + reach + 1)
+        w = weights[lo - centre + reach:hi - centre + reach]
+        window = (padded[lo:hi] * w[:, None, None]).sum(axis=0) / w.sum()
         out.append(cv2.getPerspectiveTransform(square.reshape(4, 2), np.float32(window)))
     return out
 
@@ -232,7 +270,7 @@ def scene_track(source: Path, size: tuple[int, int], start: float, end: float, a
     # In pixels of the work size, from the anchor frame; the backward chain is reversed back into time order.
     matrices = [*backward[:0:-1], *forward]
     lost = [not ok for ok in [*found_backward[:0:-1], *found_forward]]
-    matrices = _smooth(matrices)
+    matrices = _smooth_gently(matrices) if region else _smooth(matrices)
     if horizon:
         lines = _steady_lines([*(lines_backward or [None])[:0:-1], *lines_forward]) if lines_forward else None
         if lines is not None:

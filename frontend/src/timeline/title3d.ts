@@ -206,3 +206,17 @@ export function pinTrackOptions(skyline: boolean, text: TextItem): { horizon: bo
   if (pin?.region) return { horizon: false, region: pin.region, upright: pin.surface === 'upright' };
   return { horizon: skyline, region: null, upright: false };
 }
+
+/** A placed title fades out as it grows from 2.5 to 4 times its placed size (FADE_FROM, FADE_TO in title3d.py). */
+const FADE_FROM = 2.5, FADE_TO = 4;
+/** How much of a placed title shows (0..1) once the scene matrix has carried it towards the camera: pin_fade in title3d.py. */
+export function pinFade(pin: Matrix, x: number, y: number): number {
+  const at = (px: number, py: number): [number, number] | null => {
+    const w = pin[2][0] * px + pin[2][1] * py + pin[2][2];
+    return w <= 1e-9 ? null : [(pin[0][0] * px + pin[0][1] * py + pin[0][2]) / w, (pin[1][0] * px + pin[1][1] * py + pin[1][2]) / w];
+  };
+  const centre = at(x, y), right = at(x + 1, y), down = at(x, y + 1);
+  if (!centre || !right || !down) return 0;
+  const grown = Math.sqrt(Math.abs((right[0] - centre[0]) * (down[1] - centre[1]) - (right[1] - centre[1]) * (down[0] - centre[0])));
+  return Math.max(0, Math.min(1, (FADE_TO - grown) / (FADE_TO - FADE_FROM)));
+}

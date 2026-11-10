@@ -8,7 +8,7 @@ import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
-import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
+import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
 function pictureBox(image: HTMLImageElement): Box | null {
@@ -1168,9 +1168,10 @@ export class PlaybackEngine {
     const letters: Box = [box[0] * width, box[1] * height, box[2] * width, box[3] * height];
     const frameBox = trickBounds(item, letters, [width, height]);
     const { pose, look } = poseAt(item, local);
-    const opacity = look.opacity * Math.max(0, Math.min(1, valueAt(item.transform ?? REST_TRANSFORM, 'opacity', local)));
-    if (opacity <= 0) return;
     const pin = this.titlePin(item);
+    // Placed in the scene: fades as it nears the camera, before it can smear across the frame (pinFade).
+    const opacity = look.opacity * Math.max(0, Math.min(1, valueAt(item.transform ?? REST_TRANSFORM, 'opacity', local))) * (pin && item.pin?.region ? pinFade(pin, pose.cx * width, pose.cy * height) : 1);
+    if (opacity <= 0) return;
     const source: Point[] = [[frameBox[0], frameBox[1]], [frameBox[2], frameBox[1]], [frameBox[2], frameBox[3]], [frameBox[0], frameBox[3]]];
     const depth = item.depth && item.depth.amount > 0 ? item.depth : null;
     const shades = layers(depth);

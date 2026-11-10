@@ -211,3 +211,22 @@ def pin_track_options(timeline, text) -> dict:
     if region is not None:
         return {'horizon': False, 'region': region, 'upright': surface == 'upright'}
     return {'horizon': on_skyline(timeline, text), 'region': None, 'upright': False}
+
+
+FADE_FROM, FADE_TO = 2.5, 4.0  # A placed title fades out as it grows from 2.5 to 4 times its placed size.
+
+
+def pin_fade(pin, x: float, y: float) -> float:
+    """How much of a placed title shows (0..1) when the scene matrix `pin` has carried it towards the camera: a word on
+    the ground the camera walks over grows without limit and smears across the frame just before it passes underneath,
+    so it fades out first. Measured as how much the matrix magnifies a small area at the title's middle (x, y pixels).
+    Mirrored by pinFade in title3d.ts."""
+    def at(px: float, py: float):
+        w = pin[2][0] * px + pin[2][1] * py + pin[2][2]
+        return None if w <= 1e-9 else ((pin[0][0] * px + pin[0][1] * py + pin[0][2]) / w, (pin[1][0] * px + pin[1][1] * py + pin[1][2]) / w)
+    centre, right, down = at(x, y), at(x + 1, y), at(x, y + 1)
+    if centre is None or right is None or down is None:
+        return 0.0  # Behind the camera.
+    area = abs((right[0] - centre[0]) * (down[1] - centre[1]) - (right[1] - centre[1]) * (down[0] - centre[0]))
+    grown = math.sqrt(area)
+    return max(0.0, min(1.0, (FADE_TO - grown) / (FADE_TO - FADE_FROM)))
