@@ -329,3 +329,14 @@
 .ed.ed-hide-top>.ed-top-reveal{position:absolute;left:0;right:0;top:0;height:8px;z-index:34}
 .ed.ed-hide-top>.ed-top-reveal:hover+.ed-top,.ed.ed-hide-top>.ed-top:hover,.ed.ed-hide-top>.ed-top:focus-within{transform:none}
 .ed-top-item input{margin:0 1px;accent-color:var(--accent)}
+
+/* Layer heads: names shorten with an ellipsis; a sound row puts its name and buttons on one line and a slim volume
+   slider across the whole head under them, so nothing is pushed out of view. */
+.tl-layer-title{min-width:0;align-items:center}
+.tl-layer-title>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-head-compact{flex-wrap:wrap;align-content:center;row-gap:1px;column-gap:2px}
+.tl-head-compact>.tl-layer-actions{flex-shrink:0}
+.tl-head-compact>.tl-layer-volume{flex:0 0 100%;width:100%;min-width:0;height:8px;margin:0;padding:0 2px;box-sizing:border-box}
+.ed .tl-head-compact>.tl-layer-volume::-webkit-slider-thumb{width:9px;height:9px;margin-top:-3px}
+.ed .tl-head-compact>.tl-layer-volume::-moz-range-thumb{width:9px;height:9px}
+@media(min-width:901px){.tl-heads{width:140px}}

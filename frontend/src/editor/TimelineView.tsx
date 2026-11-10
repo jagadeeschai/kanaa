@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
 import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
@@ -604,16 +604,16 @@ function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, 
         ? <input className="tl-rename" autoFocus value={draft} maxLength={80} aria-label="Layer name" onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setEditing(false); }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}/>
         : <span title="Double-click to rename this layer" onDoubleClick={(event) => { event.stopPropagation(); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
     </div>
-    {layer.kind === 'audio' && <input className="tl-layer-volume" type="range" min={0} max={1} step={0.05} value={layer.volume ?? 1} aria-label={`${name} volume`} title="This track's volume" onChange={(event) => onToggle({ volume: Number(event.target.value) })} onPointerDown={(event) => event.stopPropagation()}/>}
     <div className="tl-layer-actions">
       {position >= 0 && <>
-        <button aria-label={`Bring ${name} forward`} title="Bring forward" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ChevronUp size={13}/></button>
-        <button aria-label={`Send ${name} back`} title="Send back" disabled={position === 0} onClick={() => onMove('back')}><ChevronDown size={13}/></button>
+        <button aria-label={`Bring ${name} forward`} title="Bring forward (above the layers under it)" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ArrowUp size={13}/></button>
+        <button aria-label={`Send ${name} back`} title="Send back (under the layers above it)" disabled={position === 0} onClick={() => onMove('back')}><ArrowDown size={13}/></button>
       </>}
       {layer.kind !== 'audio' && <button className={layer.hidden ? 'on' : ''} aria-pressed={Boolean(layer.hidden)} aria-label={`Hide ${name}`} title={layer.hidden ? 'Show this layer' : 'Hide this layer'} onClick={() => onToggle({ hidden: !layer.hidden })}>{layer.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</button>}
       {(layer.kind === 'video' || layer.kind === 'audio') && <button className={layer.muted ? 'on' : ''} aria-pressed={Boolean(layer.muted)} aria-label={`Mute ${name}`} title={layer.muted ? 'Turn sound on' : 'Mute this layer'} onClick={() => onToggle({ muted: !layer.muted })}>{layer.muted ? <VolumeX size={13}/> : <Volume2 size={13}/>}</button>}
       <button className={layer.locked ? 'on' : ''} aria-pressed={Boolean(layer.locked)} aria-label={`Lock ${name}`} title={layer.locked ? 'Unlock this layer' : 'Lock this layer'} onClick={() => onToggle({ locked: !layer.locked })}>{layer.locked ? <Lock size={13}/> : <LockOpen size={13}/>}</button>
       {!isMain && <button className="tl-delete-layer" aria-label={`Delete ${name} layer`} title="Delete this entire layer" onClick={onDelete}><Trash2 size={13}/></button>}
     </div>
+    {layer.kind === 'audio' && <input className="tl-layer-volume" type="range" min={0} max={1} step={0.05} value={layer.volume ?? 1} aria-label={`${name} volume`} title="This track's volume" onChange={(event) => onToggle({ volume: Number(event.target.value) })} onPointerDown={(event) => event.stopPropagation()}/>}
   </div>;
 }
