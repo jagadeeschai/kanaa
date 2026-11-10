@@ -26,6 +26,16 @@ export class ProjectSaveQueue {
     this.onState('saved');
   }
 
+  /** Whether there are edits not saved yet (waiting or being written). */
+  get pending(): boolean {
+    return this.latest !== this.confirmed || this.running !== null;
+  }
+
+  /** The last timeline this editor loaded or saved: what the server should hold unless someone else changed it. */
+  get saved(): string {
+    return this.confirmed;
+  }
+
   change(serialized: string) {
     this.latest = serialized;
     if (serialized === this.confirmed) {

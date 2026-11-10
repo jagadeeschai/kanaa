@@ -12,3 +12,6 @@ spike/.media/
 spike/.out/
 backend/.stems/
 desktop/dist/
+
+# Local MCP client settings hold API keys; never commit them.
+.mcp.json

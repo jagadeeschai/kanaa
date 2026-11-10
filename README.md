@@ -54,6 +54,33 @@ silently migrated from Photos. Import any source media you want to use here.
 Environment overrides: `WIDEANGLE_MOTION_DATA_DIR`, `WIDEANGLE_MOTION_MODEL_CACHE`,
 `WIDEANGLE_MOTION_LYRIC_MODEL` (default `small`).
 
+## Animating with an AI agent (MCP)
+
+Kanaa has an MCP server, so an AI agent (Claude Code, Claude Desktop or any MCP client) can find a clip or title in a
+project, look at frames of it, and animate it: titles, keyframes, enter and exit animations, Place in scene. It works on
+the running Kanaa through its own API; every change is checked against Kanaa's timeline rules first, and `undo` takes
+the agent's last change back. An editor with the project open picks changes up within a few seconds (Undo there works
+too). The agent's own AI use is paid by whoever runs the agent; Kanaa itself makes no AI calls for this.
+
+To connect Claude Code, add this to the `.mcp.json` of the folder you run it in (the file is ignored by git):
+
+```json
+{
+  "mcpServers": {
+    "kanaa": {
+      "command": "/path/to/wideangle-motion/backend/.venv/bin/python",
+      "args": ["-m", "kanaa_mcp"],
+      "env": { "PYTHONPATH": "/path/to/wideangle-motion/backend", "KANAA_API_URL": "http://127.0.0.1:8010/api" }
+    }
+  }
+}
+```
+
+Then ask, for example: *"In Kanaa project 26, put the title BENGALURU on the wall on the right at 3 seconds, pop the letters
+in, and check how it looks."* Tools: list_projects, get_project, find_items, get_item, look, update_item, set_keyframes,
+set_animation, add_title, place_in_scene, history, undo, export. Undo history is kept in
+`~/Library/Application Support/Kanaa/agent-history` (KANAA_MCP_HISTORY).
+
 ## Development and checks
 
 ```sh

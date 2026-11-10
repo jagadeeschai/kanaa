@@ -1311,8 +1311,10 @@ def fit_threads(compiled: Compiled, cores: int | None = None) -> tuple[list[str]
 
 
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
-                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None, hardware: bool = True) -> None:
-    """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first."""
+                    on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None, hardware: bool = True,
+                    window: tuple[float, float] | None = None) -> None:
+    """Encode into a private folder, then publish a complete file. A draft is for watching in the editor, so speed comes first.
+    window: only that stretch (timeline seconds), silent, for looking at one moment without encoding the whole video."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
         raise ValueError('Exporting requires ffmpeg on the server.')
@@ -1325,7 +1327,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
         output = folder / 'output.mp4'
         # Audio is mixed in its own pass: sharing a graph with video let ffmpeg lose the end of a clip's sound.
         audio_input, audio = [], ['-an']
-        if compiled.has_audio:
+        if compiled.has_audio and window is None:
             mix = mix_audio(ffmpeg, compiled, folder, should_cancel)
             if compiled.normalize_audio and not draft:
                 mix = normalize_loudness(ffmpeg, compiled, mix, folder, should_cancel)
@@ -1339,9 +1341,14 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
         if hardware and not draft and _hardware_h264(ffmpeg):
             megabits = {720: 9, 1080: 16, 1440: 28}.get(short, 50 if short >= 2160 else round(short * 0.015))
             encoder = ['-c:v', 'h264_videotoolbox', '-b:v', f'{megabits}M']
+        # A window is cut on the output side: ffmpeg still works through the frames before it, but encodes only the window.
+        start, end = (max(0.0, window[0]), min(compiled.duration, window[1])) if window else (0.0, compiled.duration)
+        if end <= start:
+            raise ValueError('Choose a moment inside the video.')
+        span = ['-ss', f'{start:.6f}', '-t', f'{end - start:.6f}'] if window else ['-t', f'{compiled.duration:.6f}']
         # The graph goes in a file: a long timeline's graph can exceed the command-line limit.
         args = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', *video_args, *audio_input, *extra_threads, '-filter_complex_script', str(folder / 'graph.txt'),
-                '-map', '[final]', *audio, '-t', f'{compiled.duration:.6f}', *encoder, '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
+                '-map', '[final]', *audio, *span, *encoder, '-pix_fmt', 'yuv420p', *BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-n', str(output)]
         with tempfile.TemporaryFile(mode='w+') as errors:
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=errors, text=True, cwd=folder)
@@ -1359,7 +1366,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
                     last_output[0] = time.monotonic()
                     key, _, value = line.strip().partition('=')
                     if key == 'out_time_us' and value.lstrip('-').isdigit():
-                        on_progress(min(99, max(0, int(int(value) / (compiled.duration * 1_000_000) * 100))))
+                        on_progress(min(99, max(0, int(int(value) / ((end - start) * 1_000_000) * 100))))
                 code = process.wait()
                 if should_cancel():
                     raise JobCancelled()

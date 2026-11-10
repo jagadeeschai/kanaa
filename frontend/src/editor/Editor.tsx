@@ -566,6 +566,31 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     return () => { cancelled = true; };
   }, [projectId]);
 
+  // Someone else (an AI agent through Kanaa's MCP server, or another window) may change the saved project. Every few
+  // seconds while this window is visible, the saved timeline is compared with the one this editor last loaded or
+  // saved; a change comes in as an ordinary step, so Undo takes it back. Unsaved edits here are never overwritten.
+  const remoteNoted = useRef('');
+  useEffect(() => {
+    const canonical = (value: unknown) => JSON.stringify(value);
+    const check = async () => {
+      const queue = saveQueue.current;
+      if (!loadedRef.current || !queue || document.visibilityState !== 'visible' || !queue.saved) return;
+      let recipe: Timeline | null;
+      try { recipe = (await getVideoProject<Timeline>(projectId, 'edit')).recipe; } catch { return; }
+      if (!recipe || canonical(recipe) === canonical(JSON.parse(queue.saved))) return;
+      if (queue.pending) {
+        if (remoteNoted.current !== canonical(recipe)) { remoteNoted.current = canonical(recipe); setNote('This project was changed outside this window while you were editing. Your edits are kept; reopen the project to see the other change.'); }
+        return;
+      }
+      const next = normalizeTimeline(recipe);
+      queue.load(JSON.stringify(next));
+      dispatch({ type: 'change', timeline: next, group: `outside-${Date.now()}` });
+      setNote('Updated from outside this window (an AI agent or another window). Undo takes it back.');
+    };
+    const timer = window.setInterval(() => { void check(); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [projectId]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;

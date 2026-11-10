@@ -670,6 +670,36 @@ def preview_render_file(identifier: int, request: Request):
     return serve_file_with_ranges(target, 'video/mp4', request)
 
 
+@router.post('/projects/{identifier}/look')
+def look_render(identifier: int, body: dict):
+    """A short silent draft of one stretch of a project (its saved timeline, or `timeline` when given), for an agent or a
+    test to look at: `start` and `end` in timeline seconds, at most 10 seconds. The job's result has the file's `path`."""
+    row = project_for(identifier)
+    try:
+        start, end = float(body['start']), float(body['end'])
+        if not (0 <= start < end and end - start <= 10):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a stretch of up to 10 seconds.') from exc
+    try:
+        parsed = Timeline.model_validate(body.get('timeline') or json.loads(row['recipe'] or 'null'))
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc.errors()[0].get('msg', 'This timeline is not valid.')).removeprefix('Value error, ')) from exc
+    target = settings.data_dir / 'cache' / 'looks' / f'{identifier}-{uuid.uuid4().hex}.mp4'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for old in sorted(target.parent.glob('*.mp4'), key=lambda path: path.stat().st_mtime)[:-20]:
+        old.unlink(missing_ok=True)  # Keep the latest few.
+
+    def run(should_cancel):
+        render_timeline(parsed, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, draft=True,
+                        prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel),
+                        masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), window=(start, end))
+        return {'progress': 100, 'path': str(target), 'start': start, 'end': end}
+
+    job_id = enqueue_render('look', f"Look: {row['name']}", run, total=100)
+    return {'job_id': job_id}
+
+
 @router.post('/projects/{identifier}/export')
 def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
     row = project_for(identifier)
