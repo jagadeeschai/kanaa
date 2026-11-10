@@ -141,7 +141,7 @@ export const fetchShapeMask = async (mask: unknown, format: unknown) => {
   return URL.createObjectURL(await response.blob());
 };
 export const startPeopleGrid = (id: number, body: { start: number; end: number; pick: import('../timeline/model').CutoutPick | null; steady: boolean; backwards: boolean }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; grid?: import('../timeline/keepClear').PeopleGrid }>(`/api/photos/${id}/people-grid`, { method: 'POST', body: JSON.stringify(body) });
-export const startSceneTrack = (id: number, body: { at: number; start: number; end: number; horizon?: boolean }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; track?: import('../timeline/title3d').SceneTrack }>(`/api/photos/${id}/scene-track`, { method: 'POST', body: JSON.stringify(body) });
+export const startSceneTrack = (id: number, body: { at: number; start: number; end: number; horizon?: boolean; region?: [number, number] | null; upright?: boolean }) => requestJson<{ status: 'ready' | 'preparing'; job_id?: string; track?: import('../timeline/title3d').SceneTrack }>(`/api/photos/${id}/scene-track`, { method: 'POST', body: JSON.stringify(body) });
 export const startTracking = (id: number, body: { at: number; start: number; end: number; box: [number, number, number, number] }) => requestJson<{ job_id: string }>(`/api/photos/${id}/track`, { method: 'POST', body: JSON.stringify(body) });
 export const startWords = (id: number, language: string) => requestJson<{ job_id: string }>(`/api/photos/${id}/words?language=${language}`, { method: 'POST' });
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
@@ -153,3 +153,7 @@ export type PhoneAccess = { enabled: boolean; pin: string | null; locked: boolea
 export const getPhoneAccess = () => requestJson<PhoneAccess>('/api/phone');
 export const setPhoneAccess = (enabled: boolean) => requestJson<PhoneAccess>('/api/phone', { method: 'POST', body: JSON.stringify({ enabled }) });
 export const newPhonePin = () => requestJson<PhoneAccess>('/api/phone/new-pin', { method: 'POST' });
+
+/** How the surface at a spot of a video faces the camera: the pose a title needs to lie on it (surface_service.py). */
+export type SurfacePose = { kind: import('../timeline/model').SurfaceKind; turn: number; tilt_x: number; tilt_y: number; found: boolean; lines: number };
+export const getSurface = (id: number, body: { t: number; x: number; y: number; kind?: import('../timeline/model').SurfaceKind | null }) => requestJson<SurfacePose>(`/api/photos/${id}/surface`, { method: 'POST', body: JSON.stringify(body) });

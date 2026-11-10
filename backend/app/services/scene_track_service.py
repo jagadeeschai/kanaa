@@ -35,14 +35,17 @@ SMOOTH_FRAMES = 5
 VERSION = 2
 
 
+REGION_RADIUS = 0.2  # Of the picture's width: how far around a placed title's spot its surface is followed.
 HORIZON_BAND = 0.15  # Corners within this share of the height of the skyline: the distant scene the camera turns past.
 HORIZON_SMOOTH_FRAMES = 15  # The skyline is steadied over about half a second (median, then mean).
 HORIZON_OUTLIER = 0.012  # Points this far (share of the height) above the fitted skyline are heads, trees or masts.
 MIN_SKY_COLUMNS = 0.35  # A skyline fitted from fewer of the columns is a guess: the frame borrows its neighbours' line.
 
 
-def track_path(source: Path, start: float, end: float, at: float, person_mask: Path | None = None, horizon: bool = False) -> Path:
-    ident = json.dumps([VERSION, round(start * FPS), round(end * FPS), round(at * FPS), bool(person_mask and person_mask.is_file())] + (['horizon'] if horizon else []))
+def track_path(source: Path, start: float, end: float, at: float, person_mask: Path | None = None, horizon: bool = False,
+               region: tuple[float, float] | None = None, upright: bool = False) -> Path:
+    ident = json.dumps([VERSION, round(start * FPS), round(end * FPS), round(at * FPS), bool(person_mask and person_mask.is_file())] + (['horizon'] if horizon else [])
+                       + ([round(region[0], 3), round(region[1], 3)] if region else []) + (['upright'] if upright else []))
     return folder_for(content_key(source)) / f'scene-track-{hashlib.sha256(ident.encode()).hexdigest()[:12]}.json'
 
 
@@ -137,9 +140,13 @@ def _step(previous: np.ndarray, current: np.ndarray, allowed: np.ndarray | None 
     return (matrix, count) if matrix is not None and count >= MIN_MATCHES else (None, count)
 
 
-def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], None], masks=None, lines: list | None = None) -> tuple[list[np.ndarray], list[bool]]:
+def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], None], masks=None, lines: list | None = None,
+           region: tuple[float, float] | None = None, upright: bool = False) -> tuple[list[np.ndarray], list[bool]]:
     """Matrices from the first picture to each one, in pixels, and whether each step was found rather than held.
-    With `lines` (a list to fill: each picture's skyline), the skyline track: upright steps from the band around it."""
+    With `lines` (a list to fill: each picture's skyline), the skyline track: upright steps from the band around it.
+    With `region` (x, y in the first picture's pixels), only that surface: corners within REGION_RADIUS of where the
+    spot has moved to so far, so a title placed there stays on it, in perspective, while the rest of the scene moves
+    differently."""
     out, found, last_step, previous = [np.eye(3)], [True], np.eye(3), None
     mask_iterator = iter(masks) if masks is not None else None
     previous_allowed = None
@@ -158,13 +165,19 @@ def _chain(pictures, should_cancel: Callable[[], bool], on_frame: Callable[[], N
                 person = cv2.cvtColor(mask_picture, cv2.COLOR_BGR2GRAY)
                 person = cv2.dilate((person > 24).astype(np.uint8) * 255, np.ones((7, 7), np.uint8), iterations=1)
                 allowed = cv2.bitwise_not(person)
+        if region is not None:
+            import cv2
+            spot = out[-1] @ np.array([region[0], region[1], 1.0])
+            around = np.zeros(grey.shape, np.uint8)
+            cv2.circle(around, (int(spot[0] / spot[2]), int(spot[1] / spot[2])), int(REGION_RADIUS * grey.shape[1]), 255, -1)
+            allowed = around if allowed is None else cv2.bitwise_and(allowed, around)
         if lines is not None:
             lines.append(skyline(picture))
             band = _band(grey.shape, lines[-1] if lines[-1] is not None else next((line for line in reversed(lines) if line is not None), None))
             if band is not None:
                 allowed = band if allowed is None else cv2.bitwise_and(allowed, band)
         if previous is not None:
-            step, _ = _step(previous, grey, previous_allowed, upright=lines is not None)
+            step, _ = _step(previous, grey, previous_allowed, upright=upright or lines is not None)
             held = step is None
             if held:
                 step = last_step  # Lost for a moment: keep moving as the camera was.
@@ -194,7 +207,8 @@ def _smooth(matrices: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def scene_track(source: Path, size: tuple[int, int], start: float, end: float, at: float, on_progress: Callable[[int], None] = lambda _: None,
-                should_cancel: Callable[[], bool] = lambda: False, person_mask: Path | None = None, horizon: bool = False) -> dict:
+                should_cancel: Callable[[], bool] = lambda: False, person_mask: Path | None = None, horizon: bool = False,
+                region: tuple[float, float] | None = None, upright: bool = False) -> dict:
     """How the scene moves from `at` to every frame between `start` and `end` (source seconds), in 0..1 coordinates.
 
     {'fps', 'first' (frame number of the first matrix), 'matrices' (3x3, the at moment is the identity), 'lost' (frames held)}."""
@@ -210,10 +224,11 @@ def scene_track(source: Path, size: tuple[int, int], start: float, end: float, a
     mask_source = person_mask if person_mask and person_mask.is_file() else None
     forward_masks = frames(mask_source, anchor, last - anchor + 1, (width, height)) if mask_source else None
     lines_forward, lines_backward = ([], []) if horizon else (None, None)
-    forward, found_forward = _chain(frames(source, anchor, last - anchor + 1, (width, height)), should_cancel, tick, forward_masks, lines_forward)
+    spot = (region[0] * width, region[1] * height) if region else None
+    forward, found_forward = _chain(frames(source, anchor, last - anchor + 1, (width, height)), should_cancel, tick, forward_masks, lines_forward, spot, upright)
     backward_pictures = list(frames(source, first, anchor - first + 1, (width, height)))[::-1] if anchor > first else []
     backward_masks = list(frames(mask_source, first, anchor - first + 1, (width, height)))[::-1] if mask_source and anchor > first else None
-    backward, found_backward = _chain(iter(backward_pictures), should_cancel, tick, backward_masks, lines_backward) if backward_pictures else ([np.eye(3)], [True])
+    backward, found_backward = _chain(iter(backward_pictures), should_cancel, tick, backward_masks, lines_backward, spot, upright) if backward_pictures else ([np.eye(3)], [True])
     # In pixels of the work size, from the anchor frame; the backward chain is reversed back into time order.
     matrices = [*backward[:0:-1], *forward]
     lost = [not ok for ok in [*found_backward[:0:-1], *found_forward]]
@@ -230,11 +245,12 @@ def scene_track(source: Path, size: tuple[int, int], start: float, end: float, a
 
 
 def ensure(source: Path, size: tuple[int, int], start: float, end: float, at: float, should_cancel: Callable[[], bool] = lambda: False,
-           on_progress: Callable[[int], None] = lambda _: None, person_mask: Path | None = None, horizon: bool = False) -> dict:
-    target = track_path(source, start, end, at, person_mask, horizon)
+           on_progress: Callable[[int], None] = lambda _: None, person_mask: Path | None = None, horizon: bool = False,
+           region: tuple[float, float] | None = None, upright: bool = False) -> dict:
+    target = track_path(source, start, end, at, person_mask, horizon, region, upright)
     if target.is_file():
         return json.loads(target.read_text())
-    result = scene_track(source, size, start, end, at, on_progress, should_cancel, person_mask, horizon)
+    result = scene_track(source, size, start, end, at, on_progress, should_cancel, person_mask, horizon, region, upright)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result))
     return result

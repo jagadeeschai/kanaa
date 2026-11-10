@@ -308,6 +308,34 @@ def start_tracking(identifier: int, body: dict):
     return {'job_id': job_id}
 
 
+@router.post('/photos/{identifier}/surface')
+def surface_at_spot(identifier: int, body: dict):
+    """How the surface at a spot of a video (x, y: 0..1 of the source picture, at `t` source seconds) faces the camera:
+    the pose a title needs to lie on it. `kind` (floor, wall, upright, sky) says what it is; none to guess."""
+    from app.services import surface_service
+    from app.services.sky_service import find_sky
+    from app.services.timeline_service import scene_track_source
+    from app.services.tracking_service import FPS, frames
+    if get_media(identifier)['media_type'] != 'video':
+        raise HTTPException(400, 'Place in scene works on videos.')
+    try:
+        t, x, y = (float(body[key]) for key in ('t', 'x', 'y'))
+        if not (t >= 0 and 0 <= x <= 1 and 0 <= y <= 1):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a spot in the picture.') from exc
+    kind = body.get('kind')
+    if kind is not None and kind not in surface_service.KINDS:
+        raise HTTPException(400, 'Choose floor, wall, upright or sky.')
+    facts = media_facts(identifier)
+    width, height = facts.width or 1920, facts.height or 1080
+    size = (1280, max(2, round(height * 1280 / width / 2) * 2))
+    picture = next(frames(scene_track_source(facts), round(t * FPS), 1, size), None)
+    if picture is None:
+        raise HTTPException(400, 'That moment is past the end of the video.')
+    return surface_service.surface_at(picture, x, y, None if kind else find_sky(picture), kind)
+
+
 @router.post('/photos/{identifier}/scene-track')
 def start_scene_track(identifier: int, body: dict):
     """How the whole scene moves, from `at` to every moment between `start` and `end` (source seconds), for a title
@@ -327,7 +355,13 @@ def start_scene_track(identifier: int, body: dict):
     person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
     person_mask = person_mask if person_mask.is_file() else None
     horizon = body.get('horizon') is True  # Sky only in front of the title: it rides the skyline.
-    made = scene_track_service.track_path(source, start, end, at, person_mask, horizon)
+    region = body.get('region')
+    try:
+        region = (min(1.0, max(0.0, float(region[0]))), min(1.0, max(0.0, float(region[1])))) if region else None
+    except (TypeError, ValueError, IndexError) as exc:
+        raise HTTPException(400, 'Choose a spot in the picture.') from exc
+    upright = body.get('upright') is True
+    made = scene_track_service.track_path(source, start, end, at, person_mask, horizon, region, upright)
     if made.is_file():
         return {'status': 'ready', 'track': json.loads(made.read_text())}
     active = SCENE_TRACK_JOBS.get(str(made))
@@ -340,7 +374,7 @@ def start_scene_track(identifier: int, body: dict):
         ready.wait()
         update_job(job_id, status='running', phase='Following the camera', progress=0)
         try:
-            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress), person_mask, horizon)
+            track = scene_track_service.ensure(source, size, start, end, at, should_cancel, lambda progress: update_job(job_id, progress=progress), person_mask, horizon, region, upright)
         finally:
             SCENE_TRACK_JOBS.pop(str(made), None)
         return {'progress': 100, 'phase': 'Followed', 'track': track}

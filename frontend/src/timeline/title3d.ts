@@ -197,3 +197,12 @@ export function sceneMatrix(track: SceneTrack, clip: Placed, source: { width: nu
   const place = clipPlacement(clip, source, format, pinSeconds - clip.start);
   return multiply(multiply(place, matrixAt(track, sourceSeconds(clip, timelineSeconds))), invert(place));
 }
+
+/** How a locked title's scene track is made: placed on a surface, that spot only (upright: panning and turning only);
+ * on the sky, the skyline; otherwise the whole scene, or the skyline with only sky in front. As pin_track_options. */
+export function pinTrackOptions(skyline: boolean, text: TextItem): { horizon: boolean; region: [number, number] | null; upright: boolean } {
+  const pin = text.pin;
+  if (pin?.surface === 'sky') return { horizon: true, region: null, upright: false };
+  if (pin?.region) return { horizon: false, region: pin.region, upright: pin.surface === 'upright' };
+  return { horizon: skyline, region: null, upright: false };
+}

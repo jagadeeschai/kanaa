@@ -312,6 +312,10 @@ class TitlePin(Strict):
     """Locks the title to the scene in a clip: it keeps its place in the world as that clip's camera moves."""
     clip_id: str = Field(min_length=1, max_length=64)
     at: float = Field(ge=0)  # Timeline seconds where the title is placed as it is drawn.
+    # Placed in the scene: the spot it sits on (x, y of the source picture, 0..1) and what kind of surface that is. The
+    # track then follows that surface only: floor and wall in perspective, upright and sky only panning and turning.
+    region: Optional[Tuple[float, float]] = None
+    surface: Optional[Literal['floor', 'wall', 'upright', 'sky']] = None
 
 
 class Text(Strict):

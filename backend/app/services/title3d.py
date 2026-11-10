@@ -197,3 +197,17 @@ def scene_matrix(track: dict, clip, facts, fmt, timeline_seconds: float, pin_sec
     from app.services.scene_track_service import matrix_at
     place = clip_placement(clip, facts, fmt, pin_seconds - clip.start)
     return _multiply(_multiply(place, matrix_at(track, source_seconds(clip, timeline_seconds))), _inverse(place))
+
+
+def pin_track_options(timeline, text) -> dict:
+    """How a locked title's scene track is made. Placed on a surface: that spot only, in perspective on a floor or a
+    wall, only panning and turning when upright; on the sky, the skyline. Otherwise as before: the whole scene, or the
+    skyline when only sky passes in front of it. Mirrored by pinTrackOptions in title3d.ts."""
+    pin = text.pin
+    surface = getattr(pin, 'surface', None)
+    region = tuple(pin.region) if getattr(pin, 'region', None) else None
+    if surface == 'sky':
+        return {'horizon': True, 'region': None, 'upright': False}
+    if region is not None:
+        return {'horizon': False, 'region': region, 'upright': surface == 'upright'}
+    return {'horizon': on_skyline(timeline, text), 'region': None, 'upright': False}

@@ -35,7 +35,9 @@ export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boo
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
 /** Extruded letters (sides in `color`), and a title locked to the scene of a clip. Match timeline_schema.py. */
 export type TitleDepth = { amount: number; color: string; light: number; angle?: number };
-export type TitlePin = { clip_id: string; at: number };
+/** region: the spot it was placed on (x, y of the source picture, 0..1) and `surface` what that is; see timeline_schema.py. */
+export type SurfaceKind = 'floor' | 'wall' | 'upright' | 'sky';
+export type TitlePin = { clip_id: string; at: number; region?: [number, number] | null; surface?: SurfaceKind | null };
 /** The title moves aside to keep `gap` (frame heights) from people; the move is ordinary x/y keys. Match timeline_schema.py. */
 export type KeepClear = { gap: number; direction: 'auto' | 'up' | 'down' | 'left' | 'right' | 'side'; max_move: number; who?: CutoutPick | null; x: number; y: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null };
 export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f', light: 0.62, angle: 24.44 };

@@ -1018,7 +1018,7 @@ class Builder:
         from app.services import cutout_service, scene_track_service
         person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
         track = scene_track_service.ensure(scene_track_source(facts), (facts.width or 1920, facts.height or 1080), start, end, at,
-                                           person_mask=person_mask if person_mask.is_file() else None, horizon=title3d.on_skyline(self.timeline, text))
+                                           person_mask=person_mask if person_mask.is_file() else None, **title3d.pin_track_options(self.timeline, text))
         return lambda seconds: title3d.scene_matrix(track, clip, facts, self.fmt, seconds, text.pin.at)
 
     def add_text_layer(self, layer, position: int, base: str) -> str:
