@@ -357,3 +357,26 @@
 .ed-selection-name:hover{border-color:var(--hairline)}
 .ed-selection-name:focus{border-color:var(--accent);background:var(--well);outline:0}
 .tl-clip-card.below{transform:none}
+
+/* Project tools at the foot of the left rail (replaces the top bar) */
+.ed-rail-tabs{overflow:visible}
+.ed-rail-tools{display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:auto;padding-top:8px;border-top:1px solid var(--hairline)}
+.ed-rail-tools button:disabled{opacity:.35;background:none}
+.ed-rail-tools .ed-top-settings>button{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:none;color:var(--text-2);position:relative}
+.ed-rail-tools .ed-top-settings>button:hover,.ed-rail-tools .ed-top-settings>button.on{background:var(--wash);color:var(--text)}
+.ed-rail-tools .ed-top-settings>button::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translateY(-50%);padding:5px 10px;border-radius:7px;background:var(--raised);box-shadow:var(--shade2);color:var(--text);font-size:11.5px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .1s;z-index:30}
+.ed-rail-tools .ed-top-settings>button:hover::after{opacity:1}
+.ed-rail-tools .ed-top-settings>button.on::after{opacity:0}
+.ed-rail-tools .ed-top-menu{left:calc(100% + 10px);right:auto;top:auto;bottom:0}
+.ed-rail-tabs .ed-rail-export{background:var(--accent);color:#fff}
+.ed-rail-tabs .ed-rail-export:hover{background:var(--accent);color:#fff;filter:brightness(1.08)}
+.ed-rail-save{position:relative;width:6px;height:6px;margin:6px 0 4px;border-radius:50%;background:var(--muted);opacity:.6}
+.ed-rail-save.saving{background:var(--accent);opacity:1}
+.ed-rail-save.failed{background:#e5484d;opacity:1}
+.ed-rail-save::after{content:attr(data-tip);position:absolute;left:calc(100% + 16px);top:50%;transform:translateY(-50%);padding:5px 10px;border-radius:7px;background:var(--raised);box-shadow:var(--shade2);color:var(--text);font-size:11.5px;white-space:nowrap;opacity:0;pointer-events:none;z-index:30}
+.ed-rail-save:hover::after{opacity:1}
+.ed-media{overflow:visible;position:relative;z-index:6}
+.ed-rail-tabs .ed-top-menu{width:270px}
+.ed-rail-tabs .ed-top-menu .ed-top-item{width:100%;height:auto;justify-content:flex-start;padding:8px}
+.ed-rail-tabs .ed-top-menu .ed-mode button{width:auto;height:auto;padding:4px 12px}
+.ed-rail-tabs .ed-top-menu button::after{display:none}

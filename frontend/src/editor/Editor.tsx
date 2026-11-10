@@ -1891,25 +1891,23 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
   const matchingClipEffects = CLIP_EFFECT_PRESETS.filter((preset) => !effectNeedle || `${preset.label} ${preset.group} ${preset.about}`.toLocaleLowerCase().includes(effectNeedle));
   const matchingOverlayEffects = effects.filter((effect) => !effectNeedle || `${effect.label} ${effect.tamil} ${effect.mood} ${effect.about}`.toLocaleLowerCase().includes(effectNeedle));
   const activeClipEffects = selected ? clipEffects(selected) : [];
-  return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''} ${layout.hideTop ? 'ed-hide-top' : ''}`} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
-    {layout.hideTop && <div className="ed-top-reveal" aria-hidden/>}
-    <header className="ed-top">
-      <button className="ed-icon" onClick={() => { void closeEditor(); }} aria-label="Back to projects"><ArrowLeft size={18}/></button>
-      <div className="ed-title"><strong>{projectName}</strong><span>{saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}</span></div>
-      <div className="ed-spacer"/>
-      <button className="ed-icon" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17}/></button>
-      <button className="ed-icon" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
-      <TopSettings themeChoice={themeChoice} nextTheme={nextTheme} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })} hideTop={Boolean(layout.hideTop)} onHideTop={(hideTop) => updateLayout({ hideTop })}
-        format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
-      <button className="ed-primary" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }}><Download size={16}/>Export</button>
-    </header>
+  return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''} `} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
     {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
     {note && <div className="ed-note" role="status">{note}<button className="ed-icon small" aria-label="Dismiss" onClick={() => setNote('')}><X size={13}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
-        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={LEFT_TAB_LABELS[tab]} data-tip={TAB_TIPS[tab]} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}</div>
+        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={LEFT_TAB_LABELS[tab]} data-tip={TAB_TIPS[tab]} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
+          <div className="ed-rail-tools" role="group" aria-label="Project">
+            <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label="Undo" data-tip="Undo (⌘Z)"><Undo2 size={17}/></button>
+            <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label="Redo" data-tip="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
+            <TopSettings themeChoice={themeChoice} nextTheme={nextTheme} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
+              format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
+            <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label="Export" data-tip="Export"><Download size={17}/></button>
+            <span className={`ed-rail-save ${saved}`} role="status" aria-label={saved === 'saving' ? 'Saving' : saved === 'failed' ? 'Could not save' : 'Saved'} data-tip={`${projectName} · ${saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}`}/>
+            <button onClick={() => { void closeEditor(); }} aria-label="Back to projects" data-tip="Back to projects"><ArrowLeft size={17}/></button>
+          </div></div>
         {panelOpen && <div className="ed-panel-content">
         {leftTab === 'media' && <>
           <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
@@ -2229,7 +2227,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
 }
 
 /** The editor's less-used top-bar controls behind one gear: theme, Lite or Pro, and the project's format. */
-function TopSettings({ themeChoice, nextTheme, simple, onSimple, hideTop, onHideTop, format, onProject }: { themeChoice: ThemeChoice; nextTheme: () => void; simple: boolean; onSimple: (simple: boolean) => void; hideTop: boolean; onHideTop: (hide: boolean) => void; format: string; onProject: () => void }) {
+function TopSettings({ themeChoice, nextTheme, simple, onSimple, format, onProject }: { themeChoice: ThemeChoice; nextTheme: () => void; simple: boolean; onSimple: (simple: boolean) => void; format: string; onProject: () => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2241,14 +2239,13 @@ function TopSettings({ themeChoice, nextTheme, simple, onSimple, hideTop, onHide
   }, [open]);
   const themeName = themeChoice === 'system' ? 'Same as this Mac' : themeChoice === 'light' ? 'Light' : 'Dark';
   return <div className="ed-top-settings" ref={box}>
-    <button className={`ed-icon ${open ? 'on' : ''}`} aria-label="Editor settings" aria-haspopup="menu" aria-expanded={open} title="Theme, Lite or Pro, and the video's format" onClick={() => setOpen((value) => !value)}><Settings2 size={17}/></button>
+    <button className={open ? 'on' : ''} aria-label="Editor settings" aria-haspopup="menu" aria-expanded={open} data-tip="Settings" onClick={() => setOpen((value) => !value)}><Settings2 size={17}/></button>
     {open && <div className="ed-top-menu" role="menu">
       <div className="ed-top-row"><span>Editor</span><div className="ed-mode" role="group" aria-label="Editor mode">
         <button aria-pressed={simple} className={simple ? 'on' : ''} onClick={() => onSimple(true)} title="Lite: a guided, template-driven path. The main choices only.">Lite</button>
         <button aria-pressed={!simple} className={simple ? '' : 'on'} onClick={() => onSimple(false)} title="Pro: every control, including keyframes and More options">Pro</button>
       </div></div>
       <button className="ed-top-item" role="menuitem" onClick={nextTheme}>{themeChoice === 'system' ? <Monitor size={15}/> : themeChoice === 'light' ? <Sun size={15}/> : <Moon size={15}/>}<span>Theme</span><em>{themeName}</em></button>
-      <label className="ed-top-item"><input type="checkbox" checked={hideTop} onChange={(event) => onHideTop(event.target.checked)}/><span>Hide top bar</span><em>Shows at the top edge</em></label>
       <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>Project settings</span><em>{format}</em></button>
     </div>}
   </div>;
