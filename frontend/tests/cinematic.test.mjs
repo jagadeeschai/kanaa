@@ -39,3 +39,19 @@ test('widescreen bars are the frame, chosen on their own', () => {
   assert.deepEqual(clearCinematicPreset(applied).finish, { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 }, 'None keeps the bars');
   assert.equal(clearCinematicPreset({ ...applied, finish: { ...applied.finish, letterbox: false } }).finish, null);
 });
+
+test('a preset colours clips laid over the main track too, but not the brand watermark', async () => {
+  const { brandLayer } = await import('../src/timeline/brand.ts');
+  const base = timelineWith([video('a')]);
+  const timeline = { ...base, layers: [...base.layers,
+    { id: 'over', kind: 'video', name: 'Overlay', items: [{ ...video('o'), start: 6 }] },
+    { id: 'brand', kind: 'video', name: 'Brand watermark', items: [{ ...video('logo') }] }] };
+  const isBrand = (layer) => brandLayer({ ...timeline, layers: [layer] }) !== null;
+  const applied = applyCinematicPreset(timeline, CINEMATIC_PRESETS.find((preset) => preset.id === 'mono-classic'));
+  for (const layer of applied.layers) for (const clip of layer.items)
+    assert.equal(clip.look ?? 'none', isBrand(layer) ? 'none' : 'mono', `${layer.id} ${clip.id}`);
+  assert.equal(activeCinematicPreset(applied)?.id, 'mono-classic');
+  const overlayInColour = { ...applied, layers: applied.layers.map((layer) => layer.id === 'over' ? { ...layer, items: layer.items.map((clip) => ({ ...clip, look: 'none' })) } : layer) };
+  assert.equal(activeCinematicPreset(overlayInColour), null, 'an overlay in colour is not the preset');
+  assert.ok(clearCinematicPreset(applied).layers.flatMap((layer) => layer.items).every((clip) => (clip.look ?? 'none') === 'none'));
+});

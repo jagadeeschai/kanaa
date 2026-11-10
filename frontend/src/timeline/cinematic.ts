@@ -1,5 +1,11 @@
 import { CINEMATIC, mainLayer, type Finish, type Timeline } from './model.ts';
 import type { LookName } from './animation.ts';
+import { isBrandLayer } from './brand.ts';
+
+/** Layers whose clips take a preset's colour look: every video layer but the brand watermark, so a clip laid over
+ * the main track matches it and the logo keeps its colours. */
+const looked = (layer: Timeline['layers'][number]) => layer.kind === 'video' && !isBrandLayer(layer);
+const withLook = (timeline: Timeline, look: LookName) => timeline.layers.map((layer) => (looked(layer) ? { ...layer, items: (layer.items as { look?: LookName }[]).map((clip) => ({ ...clip, look })) } : layer)) as Timeline['layers'];
 
 /**
  * One-click cinematic looks. Each is only a combination of settings the export already understands —
@@ -18,12 +24,11 @@ export const CINEMATIC_PRESETS: CinematicPreset[] = [
 
 /** Turns a preset off: no finish and the Original look on every main-track clip. */
 export function clearCinematicPreset(timeline: Timeline): Timeline {
-  const main = mainLayer(timeline);
   return {
     ...timeline,
     // The widescreen bars are the frame, not the look: they stay as chosen.
     finish: timeline.finish?.letterbox ? { letterbox: true, grade: 0, glow: 0, vignette: 0, grain: 0 } : null,
-    layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((clip) => ({ ...clip, look: 'none' as LookName })) } : layer)),
+    layers: withLook(timeline, 'none'),
   };
 }
 
@@ -31,8 +36,9 @@ export function clearCinematicPreset(timeline: Timeline): Timeline {
 export function activeCinematicPreset(timeline: Timeline): CinematicPreset | null {
   const finish = timeline.finish;
   if (!finish || timeline.lut) return null;
+  const clips = timeline.layers.filter(looked).flatMap((layer) => layer.items as { look?: LookName }[]);
   const look = mainLayer(timeline).items[0]?.look ?? 'none';
-  const uniform = mainLayer(timeline).items.every((clip) => (clip.look ?? 'none') === look);
+  const uniform = clips.every((clip) => (clip.look ?? 'none') === look);
   if (!uniform) return null;
   // Bars on or off, it is still the preset: they are chosen on their own.
   const same = (a: Finish, b: Finish) => (['grade', 'glow', 'vignette', 'grain'] as const).every((key) => Math.abs((a[key] ?? 0) - (b[key] ?? 0)) < 1e-9);
@@ -41,11 +47,10 @@ export function activeCinematicPreset(timeline: Timeline): CinematicPreset | nul
 
 /** Applies a preset: the finish over the whole film, the look on every main-track clip, and any LUT taken off. */
 export function applyCinematicPreset(timeline: Timeline, preset: CinematicPreset): Timeline {
-  const main = mainLayer(timeline);
   return {
     ...timeline,
     finish: { ...preset.finish },
     lut: null,
-    layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((clip) => ({ ...clip, look: preset.look })) } : layer)),
+    layers: withLook(timeline, preset.look),
   };
 }

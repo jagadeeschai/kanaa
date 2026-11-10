@@ -2210,7 +2210,7 @@ function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImport
             <button className={custom ? 'on' : ''} aria-pressed={custom} title="Teal and orange grade, glow, darker edges and grain, set by the sliders" onClick={() => { if (!custom) setFinish({ ...CINEMATIC, letterbox: bars }, 'cinematic-custom'); }}>Custom</button>
           </div>;
         })()}
-        <p className="ed-group-tip">A preset sets the grade below and a colour look on every clip; changing a slider makes it your own.</p>
+        <p className="ed-group-tip">A preset sets the grade below and a colour look on every clip, on every video layer but the watermark; changing a slider makes it your own.</p>
         {cinematicOn && <>
           <h4 className="ed-finish-head">Adjust</h4>
           {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
