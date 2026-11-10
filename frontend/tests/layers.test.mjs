@@ -24,3 +24,33 @@ test('a layer can be renamed and cleared back', () => {
   const cleared = updateLayer(named, id, { name: '' });
   assert.equal(audioLayers(cleared)[0].name, '');
 });
+
+test('a main clip dragged onto a video layer leaves the main track and lands there', async () => {
+  const { clipToLayer, clipToMain, emptyTimeline, insertClip, newClip, mainLayer, overlayLayers, addLayer, clipLength } = await import('../src/timeline/model.ts');
+  const make = (id) => newClip({ media_id: 1, media_type: 'video', duration: 10 }, id);
+  let timeline = ['a', 'b', 'c'].reduce((t, id) => insertClip(t, make(id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
+  timeline = addLayer(timeline, 'video', 'over');
+  const b = mainLayer(timeline).items[1];
+  const moved = clipToLayer({ ...timeline, layers: timeline.layers.map((l) => l.id === 'b' ? l : l) }, b.id, 'over', 3);
+  assert.deepEqual(mainLayer(moved).items.map((clip) => clip.id), ['a', 'c'], 'the main track closes up');
+  assert.equal(mainLayer(moved).items[1].start, clipLength(mainLayer(moved).items[0]), 'with no gap');
+  const landed = overlayLayers(moved).find((layer) => layer.id === 'over').items;
+  assert.deepEqual(landed.map((clip) => [clip.id, clip.start, clip.transition_in ?? null]), [['b', 3, null]]);
+  const back = clipToMain(moved, 'b', 0);
+  assert.deepEqual(mainLayer(back).items.map((clip) => clip.id), ['b', 'a', 'c'], 'and back onto the main track where dropped');
+  assert.equal(overlayLayers(back).find((layer) => layer.id === 'over')?.items.length, 0, 'its layer stays, empty');
+  const only = ['a'].reduce((t, id) => insertClip(t, make(id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
+  const lone = addLayer(only, 'video', 'over');
+  assert.equal(clipToLayer(lone, 'a', 'over', 0), lone, 'the last main clip stays');
+});
+
+test('dropped over a clip on the layer, it takes the nearest free place', async () => {
+  const { clipToLayer, emptyTimeline, insertClip, newClip, overlayLayers, addLayer } = await import('../src/timeline/model.ts');
+  const make = (id) => newClip({ media_id: 1, media_type: 'video', duration: 2 }, id);
+  let timeline = ['a', 'b'].reduce((t, id) => insertClip(t, make(id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
+  timeline = addLayer(timeline, 'video', 'over');
+  timeline = { ...timeline, layers: timeline.layers.map((layer) => layer.id === 'over' ? { ...layer, items: [{ ...make('o'), start: 1 }] } : layer) };
+  const moved = clipToLayer(timeline, 'b', 'over', 1.4);
+  const landed = overlayLayers(moved).find((layer) => layer.id === 'over').items.find((clip) => clip.id === 'b');
+  assert.equal(landed.start, 3, 'no room before 1 s, so right after the clip it covered');
+});

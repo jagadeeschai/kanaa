@@ -939,3 +939,31 @@ export function setSpeed(timeline: Timeline, id: string, speed: number): Timelin
   const changes = { speed: next, ...(clip ? { transform: scaleKeys(clip.transform, item.speed / next) } : {}) };
   return free ? changeItem(timeline, id, changes) : updateClip(timeline, id, changes);
 }
+
+/**
+ * A main-track clip dragged onto a video layer: it leaves the main track (which closes up behind it) and lands in that
+ * layer at `start`, nudged clear of the clips there as a move within the layer is. It keeps its picture and place;
+ * a transition only joins main-track clips, so it goes. Unchanged if it can't land without overlapping.
+ */
+export function clipToLayer(timeline: Timeline, id: string, layerId: string, start: number): Timeline {
+  const clip = mainLayer(timeline).items.find((item) => item.id === id);
+  const layer = overlayLayers(timeline).find((item) => item.id === layerId);
+  if (!clip || !layer || mainLayer(timeline).items.length < 2) return timeline;
+  const without = withClips(timeline, mainLayer(timeline).items.filter((item) => item.id !== id));
+  const target = overlayLayers(without).find((item) => item.id === layerId)!;
+  // The nearest free place: where it was dropped, or just before or after a clip it would cover.
+  const length = clipLength(clip); const wanted = Math.max(0, start);
+  const free = (at: number) => at >= 0 && target.items.every((other) => at + length <= other.start + 1e-6 || at >= other.start + clipLength(other) - 1e-6);
+  const places = [wanted, ...target.items.flatMap((other) => [other.start - length, other.start + clipLength(other)])].filter(free).sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted));
+  if (!places.length) return timeline;
+  return withItems(without, target, [...target.items, { ...clip, start: round(places[0]), transition_in: null }]);
+}
+
+/** A clip from a video layer dragged onto the main track: it joins it at `index`, full frame, and its layer stays. */
+export function clipToMain(timeline: Timeline, id: string, index: number): Timeline {
+  const from = overlayLayers(timeline).find((layer) => layer.items.some((item) => item.id === id));
+  if (!from) return timeline;
+  const clip = from.items.find((item) => item.id === id)!;
+  const without = withItems(timeline, from, from.items.filter((item) => item.id !== id));
+  return insertClip(without, { ...clip, transform: { ...REST_TRANSFORM } }, index);
+}

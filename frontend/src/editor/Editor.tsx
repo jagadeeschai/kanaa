@@ -2099,6 +2099,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       </span>
     </div>
     {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+      onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
+      onZoom={(factor) => setZoom((value) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value * factor)))}
       onCut={(clipId, anchor) => setCutOpen((open) => open?.clipId === clipId ? null : { clipId, anchor })} openCut={cutOpen?.clipId ?? null}/>}
     {cutOpen && timeline && (() => {
       const items = mainLayer(timeline).items; const index = items.findIndex((clip) => clip.id === cutOpen.clipId);
@@ -2150,7 +2152,9 @@ const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full s
 /** What is active on this clip, each with a switch to compare with and without it, and Remove. */
 function ActiveEffects({ clip, onChange }: { clip: Clip; onChange: (changes: Partial<Clip>) => void }) {
   const effects = clipEffects(clip);
-  if (!effects.length) return null;
+  // A folded panel is only its tab rail: there is no room for the list.
+  const folded = useContext(RailContext).folded;
+  if (!effects.length || folded) return null;
   const allOff = effects.every((effect) => !effect.on);
   return <section className="ed-effects" aria-label="Active on this clip">
     <div className="ed-effects-head"><span>Active on this clip</span>{effects.length > 1 && <button className="ed-link" onClick={() => onChange(toggleAllEffects(clip))}>{allOff ? 'All back on' : 'All off'}</button>}</div>

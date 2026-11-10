@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash
 import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
-import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -19,7 +19,14 @@ type Props = {
   onCut?: (clipId: string, anchor: DOMRect) => void;
   /** The clip whose cut has its popover open. */
   openCut?: string | null;
+  /** Double-click on an item: split it at time `t`. */
+  onSplitAt?: (id: string, t: number) => void;
+  /** A pinch or Ctrl/⌘ + scroll: multiply the zoom by `factor`. */
+  onZoom?: (factor: number) => void;
 };
+/** A held item: a picture of it follows the pointer, and where it would land. */
+type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
+  target: { kind: 'main'; index: number } | { kind: 'layer'; layerId: string; start: number } | null };
 type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
 /** 0.6 → "0.6", 1.25 → "1.25", 1 → "1". */
@@ -37,12 +44,15 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const props = useRef({ timeline, selectedId, zoom, visuals, soundPeaks, source });
   props.current = { timeline, selectedId, zoom, visuals, soundPeaks, source };
   const dragRef = useRef<Drag | null>(null);
+  const liftRef = useRef<Lift | null>(null);
+  /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
+  const zoomAnchor = useRef<{ time: number; offset: number } | null>(null);
   const colors = useRef(TOKENS);
   useLayoutEffect(() => { colors.current = readColors(hostRef.current!); }, [theme]);
   const groupCount = useRef(0);
@@ -249,6 +259,35 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
         veil(layer.hidden, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers));
       });
+      const lift = liftRef.current;
+      if (lift?.picture) {
+        // Its slot dims while it is carried; where it will land: a dashed outline. The item follows the pointer, lifted.
+        context.save();
+        const own = mainLayer(shown).items.find((clip) => clip.id === lift.id);
+        const ownRow = own ? -1 : trackLayers(shown).findIndex((layer) => (layer.items as TrackItem[]).some((item) => item.id === lift.id));
+        const ownItem = own ?? (ownRow >= 0 ? (trackLayers(shown)[ownRow].items as TrackItem[]).find((item) => item.id === lift.id) : undefined);
+        if (ownItem) {
+          context.globalAlpha = 0.55; context.fillStyle = colors.current.veil;
+          context.beginPath(); context.roundRect(xOf(ownItem.start), own ? TRACK_TOP : topOf(ownRow), (own ? clipLength(own) : itemLength(ownItem as TrackItem)) * scale, own ? TRACK_HEIGHT : rowHeight(trackLayers(shown)[ownRow], collapsedLayers), 7); context.fill();
+          context.globalAlpha = 1;
+        }
+        if (lift.target) {
+          context.strokeStyle = colors.current.selected; context.lineWidth = 2; context.setLineDash([6, 4]);
+          const landing = lift.target.kind === 'layer' ? (() => { const tracks2 = trackLayers(shown); const row = tracks2.findIndex((layer) => layer.id === (lift.target as { layerId: string }).layerId);
+            return row < 0 ? null : [xOf((lift.target as { start: number }).start), topOf(row), lift.w, rowHeight(tracks2[row], collapsedLayers)] as const; })()
+            : [xOf(mainLayer(shown).items.slice(0, lift.target.index).reduce((sum, clip) => sum + clipLength(clip), 0)) - 2, TRACK_TOP, 4, TRACK_HEIGHT] as const;
+          if (landing) { context.beginPath(); context.roundRect(landing[0] + 1, landing[1] + 1, Math.max(4, landing[2] - 2), landing[3] - 2, 6); context.stroke(); }
+        }
+        context.setLineDash([]);
+        const left = lift.x - lift.dx; const top = lift.y - lift.dy;
+        context.shadowColor = 'rgba(0,0,0,.35)'; context.shadowBlur = 18; context.shadowOffsetY = 8; context.globalAlpha = 0.92;
+        context.translate(left + lift.w / 2, top + lift.h / 2); context.rotate(-0.012); context.scale(1.04, 1.04);
+        context.beginPath(); context.roundRect(-lift.w / 2, -lift.h / 2, lift.w, lift.h, 7); context.fillStyle = colors.current.clip; context.fill();
+        context.shadowColor = 'transparent'; context.save(); context.clip();
+        context.drawImage(lift.picture, -lift.w / 2, -lift.h / 2, lift.w, lift.h); context.restore();
+        context.lineWidth = 2; context.strokeStyle = colors.current.selected; context.stroke();
+        context.restore();
+      }
       const drop = dropRef.current;
       if (drop) {
         context.fillStyle = colors.current.selected;
@@ -276,6 +315,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     return () => cancelAnimationFrame(frame);
   }, [playhead, collapsedLayers]);
 
+  /** Down from the canvas's top, from the pointer's place on screen (offsetY can be wrong for some events). */
+  const pointerY = (event: { clientY: number }) => event.clientY - canvasRef.current!.getBoundingClientRect().top;
   const pointerTime = (event: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
     return event.clientX - rect.left;
@@ -306,9 +347,10 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     return null;
   };
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pinch(event, 'down')) return;
     // Right-click, and Control-click on a Mac, open the menu. They must never drag or trim.
     if (event.button !== 0 || event.ctrlKey) return;
-    const x = pointerTime(event); const y = event.nativeEvent.offsetY;
+    const x = pointerTime(event); const y = pointerY(event);
     event.currentTarget.setPointerCapture(event.pointerId);
     onScrubStart();
     const found = hit(x, y);
@@ -318,6 +360,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       const { sound, zone } = foundSound;
       onSelect(sound.id);
       if (trackLayers(props.current.timeline)[rowAt(y)]?.locked) return;
+      if (zone === 'body') liftRef.current = { id: sound.id, x, y, sx: x, sy: y, dx: x - xOf(sound.start), dy: y - topOf(rowAt(y)), w: Math.max(4, itemLength(sound) * props.current.zoom), h: rowHeight(trackLayers(props.current.timeline)[rowAt(y)], collapsedLayers), picture: null, target: null };
       dragRef.current = zone === 'body' ? { kind: 'soundMove', id: sound.id, startX: x, origin: sound, base: props.current.timeline, group }
         : { kind: 'soundTrim', id: sound.id, edge: zone, startX: x, origin: sound, base: props.current.timeline, group };
       return;
@@ -329,21 +372,46 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     }
     onSelect(found.clip.id);
     if (mainLayer(props.current.timeline).locked) { onSeek(timeOf(x)); return; }
-    if (found.zone === 'body') { dragRef.current = { kind: 'move', id: found.clip.id, startX: x, moved: false, base: props.current.timeline, group }; onSeek(timeOf(x)); }
+    if (found.zone === 'body') {
+      dragRef.current = { kind: 'move', id: found.clip.id, startX: x, moved: false, base: props.current.timeline, group }; onSeek(timeOf(x));
+      liftRef.current = { id: found.clip.id, x, y, sx: x, sy: y, dx: x - xOf(found.clip.start), dy: y - TRACK_TOP, w: Math.max(4, clipLength(found.clip) * props.current.zoom), h: TRACK_HEIGHT, picture: null, target: null };
+    }
     else dragRef.current = { kind: 'trim', id: found.clip.id, edge: found.zone, startX: x, origin: found.clip, base: props.current.timeline, group };
   };
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pinch(event, 'move')) return;
     const x = pointerTime(event); const drag = dragRef.current;
     if (!drag) {
-      const zone = (hit(x, event.nativeEvent.offsetY) ?? hitSound(x, event.nativeEvent.offsetY))?.zone;
+      const zone = (hit(x, pointerY(event)) ?? hitSound(x, pointerY(event)))?.zone;
       event.currentTarget.style.cursor = zone === 'in' || zone === 'out' ? 'ew-resize' : zone === 'body' ? 'grab' : 'default';
       return;
     }
     const reach = SNAP_PIXELS / props.current.zoom;
+    const y = pointerY(event); const lift = liftRef.current;
+    if (lift && (drag.kind === 'move' || drag.kind === 'soundMove')) {
+      lift.x = x; lift.y = y;
+      if (!lift.picture && Math.hypot(x - lift.sx, y - lift.sy) > 5) lift.picture = snapshot({ ...lift, x: lift.sx, y: lift.sy });
+      const inMain = y >= TRACK_TOP && y <= TRACK_TOP + TRACK_HEIGHT;
+      const row = rowAt(y); const over = trackLayers(drag.base)[row];
+      if (drag.kind === 'move' && !inMain) {
+        // Off the main track: onto a video layer, or nowhere (it goes back).
+        if (props.current.timeline !== drag.base) onChange(drag.base, drag.group);
+        lift.target = over?.kind === 'video' && !mainLayer(drag.base).locked && !over.locked ? { kind: 'layer', layerId: over.id, start: snap(Math.max(0, timeOf(x - lift.dx)), snapPoints(drag.base, playhead.current, drag.id), reach) } : null;
+        return;
+      }
+      if (drag.kind === 'soundMove' && inMain) {
+        const fromVideo = overlayLayers(drag.base).some((layer) => layer.items.some((item) => item.id === drag.id));
+        if (props.current.timeline !== drag.base) onChange(drag.base, drag.group);
+        const t = timeOf(x);
+        lift.target = fromVideo && !mainLayer(drag.base).locked ? { kind: 'main', index: mainLayer(drag.base).items.filter((clip) => clip.start + clipLength(clip) / 2 < t).length } : null;
+        return;
+      }
+      lift.target = null;
+    }
     if (drag.kind === 'seek') onSeek(snap(timeOf(x), snapPoints(props.current.timeline, -1), reach));
     else if (drag.kind === 'soundMove') {
       const shift = (x - drag.startX) / props.current.zoom;
-      const layer = trackLayers(drag.base)[rowAt(event.nativeEvent.offsetY)];
+      const layer = trackLayers(drag.base)[rowAt(pointerY(event))];
       const length = itemLength(drag.origin);
       const points = snapPoints(drag.base, playhead.current, drag.id);
       const fromStart = snap(drag.origin.start + shift, points, reach);
@@ -383,12 +451,70 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   };
   const onContextMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault(); event.stopPropagation();
-    const x = event.clientX - canvasRef.current!.getBoundingClientRect().left; const y = event.nativeEvent.offsetY;
+    const x = event.clientX - canvasRef.current!.getBoundingClientRect().left; const y = pointerY(event);
     const item = hitSound(x, y)?.sound.id ?? hit(x, y)?.clip.id ?? null;
     if (item) onSelect(item);
     onItemMenu(item, timeOf(x), event.clientX, event.clientY);
   };
-  const onPointerUp = () => { dragRef.current = null; };
+  const onPointerUp = () => {
+    const drag = dragRef.current; const lift = liftRef.current;
+    dragRef.current = null; liftRef.current = null;
+    if (!drag || !lift?.target || (drag.kind !== 'move' && drag.kind !== 'soundMove')) return;
+    const next = lift.target.kind === 'layer' ? clipToLayer(drag.base, drag.id, lift.target.layerId, lift.target.start) : clipToMain(drag.base, drag.id, lift.target.index);
+    if (next !== drag.base) onChange(next, drag.group);
+  };
+  /** The held item as it is drawn now, to carry under the pointer. */
+  const snapshot = (lift: Lift) => {
+    const canvas = canvasRef.current!; const dpr = window.devicePixelRatio || 1;
+    const picture = document.createElement('canvas'); picture.width = Math.max(1, Math.round(lift.w * dpr)); picture.height = Math.max(1, Math.round(lift.h * dpr));
+    const left = lift.x - lift.dx; const top = lift.y - lift.dy;
+    picture.getContext('2d')!.drawImage(canvas, left * dpr, top * dpr, lift.w * dpr, lift.h * dpr, 0, 0, picture.width, picture.height);
+    return picture;
+  };
+  const onDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!onSplitAt) return;
+    const x = event.clientX - canvasRef.current!.getBoundingClientRect().left; const y = pointerY(event);
+    const id = hitSound(x, y)?.sound.id ?? hit(x, y)?.clip.id;
+    if (id) onSplitAt(id, timeOf(x));
+  };
+  // Zoom by pinching a trackpad (Ctrl + wheel in Chrome and Firefox, gesture events in Safari), Ctrl/⌘ + mouse wheel,
+  // or two fingers on a touch screen; the time under the pointer stays under it.
+  const pinchRef = useRef<{ pointers: Map<number, number>; distance: number } >({ pointers: new Map(), distance: 0 });
+  useEffect(() => {
+    const host = hostRef.current!;
+    const anchorAt = (clientX: number) => { const offset = clientX - host.getBoundingClientRect().left; zoomAnchor.current = { time: timeOf(host.scrollLeft + offset), offset }; };
+    const wheel = (event: WheelEvent) => {
+      if (!onZoom || !(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault(); anchorAt(event.clientX);
+      onZoom(Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)));
+    };
+    let last = 1;
+    const gestureStart = (event: Event) => { event.preventDefault(); last = 1; anchorAt((event as unknown as { clientX: number }).clientX); };
+    const gestureChange = (event: Event) => { const scale = (event as unknown as { scale: number }).scale; event.preventDefault(); if (onZoom && scale > 0) onZoom(scale / last); last = scale; };
+    host.addEventListener('wheel', wheel, { passive: false });
+    host.addEventListener('gesturestart', gestureStart); host.addEventListener('gesturechange', gestureChange);
+    return () => { host.removeEventListener('wheel', wheel); host.removeEventListener('gesturestart', gestureStart); host.removeEventListener('gesturechange', gestureChange); };
+  }, [onZoom]);
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current; if (!anchor) return;
+    hostRef.current!.scrollLeft = Math.max(0, PAD + anchor.time * zoom - anchor.offset);
+  }, [zoom]);
+  /** Two touches on the canvas: pinch to zoom. Returns true while pinching, so nothing else takes the touch. */
+  const pinch = (event: React.PointerEvent<HTMLCanvasElement>, phase: 'down' | 'move' | 'up') => {
+    if (event.pointerType !== 'touch') return false;
+    const { pointers } = pinchRef.current;
+    if (phase === 'up') { pointers.delete(event.pointerId); return pointers.size > 0 && pinchRef.current.distance > 0; }
+    pointers.set(event.pointerId, event.clientX);
+    if (pointers.size !== 2) return false;
+    const [a, b] = [...pointers.values()]; const distance = Math.abs(a - b);
+    if (phase === 'down' || !pinchRef.current.distance) {
+      pinchRef.current.distance = distance; dragRef.current = null; liftRef.current = null;
+      const host = hostRef.current!; const offset = (a + b) / 2 - host.getBoundingClientRect().left; zoomAnchor.current = { time: timeOf(host.scrollLeft + offset), offset };
+      return true;
+    }
+    if (distance > 0 && onZoom) { onZoom(distance / pinchRef.current.distance); pinchRef.current.distance = distance; }
+    return true;
+  };
   /** Main track (and the ruler above it) inserts; anything below goes on top as an overlay, title or sound. */
   const dropTarget = (event: React.DragEvent<HTMLCanvasElement>): DropTarget => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -448,7 +574,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onContextMenu={onContextMenu}
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         {onCut && <div className="tl-cuts" aria-label="Cuts">{main.items.map((clip, index) => {
           if (!index) return null;
