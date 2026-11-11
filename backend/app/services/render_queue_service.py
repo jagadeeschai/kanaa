@@ -1,4 +1,7 @@
-"""One-at-a-time queue for heavy media jobs. Job records survive restarts; running work does not."""
+"""Queues for heavy media jobs, in two lanes so an export never holds up preparation and preparation never holds up an
+export. Each lane runs one job at a time (two 4K encodes at once would only slow both). Cancelling a running job frees
+its lane at once: the job is marked cancelled and the lane goes on, while whatever step it was in (an FFmpeg pass that
+does not check for cancel) finishes quietly and its result is dropped. Job records survive restarts; running work does not."""
 from __future__ import annotations
 
 import itertools
@@ -29,10 +32,22 @@ BACKGROUND_PRIORITY = 10
 
 RenderTarget = Callable[[Callable[[], bool]], dict[str, Any]]
 
-_queue: 'queue.PriorityQueue[tuple[int, int, str, RenderTarget]]' = queue.PriorityQueue()
+# Exports and renders to watch go in one lane; finding people, 3D pictures, preview copies, effects and the rest in the other.
+EXPORT_KINDS = frozenset({'video_export', 'look', 'preview_render'})
+LANES = ('export', 'work')
+
+
+def lane_of(kind: str) -> str:
+    return 'export' if kind in EXPORT_KINDS else 'work'
+
+
+_queues: dict[str, 'queue.PriorityQueue[tuple[int, int, str, RenderTarget]]'] = {lane: queue.PriorityQueue() for lane in LANES}
 _order = itertools.count()
 _cancel_events: dict[str, threading.Event] = {}
-_worker: threading.Thread | None = None
+_workers: dict[str, threading.Thread | None] = {lane: None for lane in LANES}
+_generation: dict[str, int] = {lane: 0 for lane in LANES}  # A cancelled job's worker is retired by bumping this.
+_running: dict[str, str | None] = {lane: None for lane in LANES}
+_lane_of_job: dict[str, str] = {}
 _worker_lock = threading.Lock()
 
 
@@ -56,22 +71,31 @@ def enqueue_render(kind: str, label: str, target: RenderTarget, priority: int = 
     except sqlite3.Error:
         logger.exception('Could not record render job %s', job_id)
     _cancel_events[job_id] = threading.Event()
+    lane = lane_of(kind)
+    _lane_of_job[job_id] = lane
     if reserve:
         reserve(job_id)
-    _queue.put((priority, next(_order), job_id, target))
-    _ensure_worker()
+    _queues[lane].put((priority, next(_order), job_id, target))
+    _ensure_worker(lane)
     return job_id
 
 
-def _ensure_worker() -> None:
-    global _worker
+def _ensure_worker(lane: str, fresh: bool = False) -> None:
     with _worker_lock:
-        if _worker is None or not _worker.is_alive():
-            _worker = threading.Thread(target=_work, daemon=True, name='render-queue')
-            _worker.start()
+        if fresh:
+            _generation[lane] += 1
+            _running[lane] = None
+        worker = _workers[lane]
+        if fresh or worker is None or not worker.is_alive():
+            _workers[lane] = threading.Thread(target=_work, args=(lane, _generation[lane]), daemon=True, name=f'render-queue-{lane}')
+            _workers[lane].start()
 
 
 def _finish(job_id: str, status: str, *, error: str | None = None, **fields: Any) -> None:
+    job = get_job(job_id)
+    if job and job.get('done'):
+        return  # Already settled: a cancel freed its lane, and this is the old step finishing.
+    _lane_of_job.pop(job_id, None)
     update_job(job_id, done=True, status=status, error=error, **fields)
     _save(job_id, "UPDATE render_jobs SET status = ?, error = ?, output_photo_id = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
           (status, error, fields.get('output_photo_id')))
@@ -79,12 +103,19 @@ def _finish(job_id: str, status: str, *, error: str | None = None, **fields: Any
     prune_finished_jobs()
 
 
-def _work() -> None:
-    while True:
-        _, _, job_id, target = _queue.get()
+def _work(lane: str, generation: int) -> None:
+    while _generation[lane] == generation:
+        try:
+            _, _, job_id, target = _queues[lane].get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if _generation[lane] != generation:  # Retired while waiting: hand the job back to the lane's new worker.
+            _queues[lane].put((0, next(_order), job_id, target))
+            return
         cancel = _cancel_events.get(job_id)
         if cancel is None or cancel.is_set():
             continue
+        _running[lane] = job_id
         update_job(job_id, status='running', phase=None)
         _save(job_id, 'UPDATE render_jobs SET status = ? WHERE id = ?', ('running',))
         try:
@@ -94,6 +125,9 @@ def _work() -> None:
         except Exception as exc:
             logger.exception('Render job %s failed', job_id)
             _finish(job_id, 'failed', error=str(exc))
+        finally:
+            if _running[lane] == job_id:
+                _running[lane] = None
 
 
 def cancel_render(job_id: str) -> bool:
@@ -106,8 +140,11 @@ def cancel_render(job_id: str) -> bool:
     if job.get('status') == 'queued':
         _finish(job_id, 'cancelled', error=CANCELLED_MESSAGE)
     else:
-        update_job(job_id, status='cancelling', phase='Cancelling')
-        _save(job_id, 'UPDATE render_jobs SET status = ? WHERE id = ?', ('cancelling',))
+        # Running: settle it now and give its lane a new worker, so the jobs behind it start at once.
+        lane = _lane_of_job.get(job_id)
+        _finish(job_id, 'cancelled', error=CANCELLED_MESSAGE)
+        if lane and _running[lane] == job_id:
+            _ensure_worker(lane, fresh=True)
     return True
 
 

@@ -44,6 +44,60 @@ class RenderQueueTests(unittest.TestCase):
             item.stop()
         self.folder.cleanup()
 
+    def test_an_export_and_preparation_run_side_by_side(self):
+        started = {}
+        both = threading.Event()
+
+        def job(name):
+            def run(_):
+                started[name] = time.monotonic()
+                if len(started) == 2:
+                    both.set()
+                both.wait(2)
+                return {}
+            return run
+
+        export = render_queue.enqueue_render('video_export', 'export', job('export'))
+        prep = render_queue.enqueue_render('cutout', 'prep', job('prep'))
+        self.assertEqual(wait_until_done(export)['status'], 'done')
+        self.assertEqual(wait_until_done(prep)['status'], 'done')
+        self.assertTrue(both.is_set(), 'the two lanes ran at the same time')
+
+    def test_two_exports_still_take_turns(self):
+        running, overlapped = [0], [False]
+
+        def run(_):
+            running[0] += 1
+            overlapped[0] = overlapped[0] or running[0] > 1
+            time.sleep(0.05)
+            running[0] -= 1
+            return {}
+
+        ids = [render_queue.enqueue_render('video_export', name, run) for name in 'ab']
+        for job_id in ids:
+            wait_until_done(job_id)
+        self.assertFalse(overlapped[0])
+
+    def test_cancelling_a_stuck_job_frees_its_lane_at_once(self):
+        release = threading.Event()
+
+        def stuck(_):
+            release.wait(5)  # A step that never checks for cancel.
+            return {'output_photo_id': 99}
+
+        stuck_id = render_queue.enqueue_render('look', 'stuck', stuck)
+        deadline = time.monotonic() + 2
+        while get_job(stuck_id)['status'] != 'running' and time.monotonic() < deadline:
+            time.sleep(0.01)
+        after = render_queue.enqueue_render('video_export', 'after', lambda _: {})
+        self.assertTrue(render_queue.cancel_render(stuck_id))
+        self.assertEqual(get_job(stuck_id)['status'], 'cancelled')
+        self.assertEqual(wait_until_done(after)['status'], 'done', 'the next export did not wait for the stuck step')
+        release.set()
+        time.sleep(0.1)
+        self.assertEqual(get_job(stuck_id)['status'], 'cancelled', 'the stuck step finishing later changes nothing')
+        self.assertIsNone(get_job(stuck_id).get('output_photo_id'))
+
     def test_jobs_run_one_at_a_time_in_order(self):
         order, running, overlapped = [], [0], [False]
 
