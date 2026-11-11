@@ -1,7 +1,8 @@
 import type { LyricCue } from './lyrics';
 
 export type SlideTiming = 'even' | 'lyrics' | 'beats' | 'storyboard';
-export type ImageAnimation = 'none' | 'zoom-in' | 'pan-left' | 'ken-burns';
+/** '3d': a camera glide through the picture's depth (depth-motion); previewed here as a gentle push in. */
+export type ImageAnimation = 'none' | 'zoom-in' | 'pan-left' | 'ken-burns' | '3d';
 type Motion = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right';
 
 const FPS = 30;
@@ -44,7 +45,7 @@ export function slideIndexAt(starts: number[], position: number): number {
 }
 
 export function slideMotion(animation: ImageAnimation, index: number): Motion {
-  return animation === 'ken-burns' ? KEN_BURNS_MOTIONS[index % KEN_BURNS_MOTIONS.length] : animation;
+  return animation === 'ken-burns' ? KEN_BURNS_MOTIONS[index % KEN_BURNS_MOTIONS.length] : animation === '3d' ? 'zoom-in' : animation;
 }
 
 /** The longest fade every image can give; the export derives the same value. */

@@ -157,3 +157,5 @@ export const newPhonePin = () => requestJson<PhoneAccess>('/api/phone/new-pin', 
 /** How the surface at a spot of a video faces the camera: the pose a title needs to lie on it (surface_service.py). */
 export type SurfacePose = { kind: import('../timeline/model').SurfaceKind; turn: number; tilt_x: number; tilt_y: number; found: boolean; lines: number };
 export const getSurface = (id: number, body: { t: number; x: number; y: number; kind?: import('../timeline/model').SurfaceKind | null }) => requestJson<SurfacePose>(`/api/photos/${id}/surface`, { method: 'POST', body: JSON.stringify(body) });
+/** A picture as a 3D moving video (the camera glides through it). Ready at once when made before, else a job whose result has output_photo_id. */
+export const startDepthMotion = (id: number, seconds: number, move: 'push' | 'drift' | 'rise' = 'push') => requestJson<{ status: 'ready' | 'preparing'; output_photo_id?: number; job_id?: string }>(`/api/photos/${id}/depth-motion`, { method: 'POST', body: JSON.stringify({ seconds, move }) });

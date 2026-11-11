@@ -992,3 +992,40 @@ def make_travel_map(body: dict):
     job_id = enqueue_render('travel-map', f'Map: {name}', run, total=100)
     ready.set()
     return {'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/depth-motion')
+def start_depth_motion(identifier: int, body: dict):
+    """A picture as a 3D moving video (`seconds` long, `move`: push, drift or rise): the camera glides through the scene.
+    The job's result is the new video's `output_photo_id`. Ready at once when it was made before."""
+    from app.services import depth_motion_service
+    item = get_media(identifier)
+    if item['media_type'] != 'image':
+        raise HTTPException(400, '3D motion works on pictures.')
+    if not depth_motion_service.available():
+        raise HTTPException(400, '3D pictures need the depth model, which is not on this Mac.')
+    try:
+        seconds, move = float(body.get('seconds', 5)), str(body.get('move', 'push'))
+        if not (0.5 <= seconds <= 120) or move not in depth_motion_service.MOVES:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose 0.5 to 120 seconds and a push, drift or rise.') from exc
+    picture = Path(item['absolute_path'])
+
+    def find(target: Path):
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+
+    target = depth_motion_service.video_path(picture, seconds, move)
+    if target.is_file() and find(target):
+        return {'status': 'ready', 'output_photo_id': find(target)}
+
+    def run(should_cancel):
+        made = depth_motion_service.make(picture, seconds, move, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        existing = find(made)
+        name = f"{Path(item['filename']).stem} 3D.mp4"
+        return {'progress': 100, 'output_photo_id': existing or index_media(made, name)['id']}
+
+    job_id = enqueue_render('depth_motion', f"Making {item['filename']} 3D", run, total=100)
+    return {'status': 'preparing', 'job_id': job_id}

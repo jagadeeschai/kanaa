@@ -27,7 +27,11 @@ type Handoff = {
   lyricBandColor: string;
   lyricAnimation: LyricAnimation;
   crossfade: boolean;
-  imageAnimation: 'none' | 'zoom-in' | 'pan-left' | 'ken-burns';
+  imageAnimation: 'none' | 'zoom-in' | 'pan-left' | 'ken-burns' | '3d';
+  /** Each picture's 3D moving video (depth-motion), by the picture's id, when the 3D glide is chosen. */
+  depthVideos?: Record<number, number>;
+  /** Lyrics sit inside each 3D scene: what stands up in it (people, trees, pillars) passes in front of them. */
+  inScene?: boolean;
 };
 
 const formatFor = (canvas: Canvas) => canvas === 'portrait' ? { width: 1080, height: 1920, fps: 30 as const } : canvas === 'square' ? { width: 1080, height: 1080, fps: 30 as const } : { width: 1920, height: 1080, fps: 30 as const };
@@ -62,8 +66,9 @@ export function lyricEditorTimeline(input: Handoff): Timeline {
     input.backgrounds.forEach((item, index) => {
       const start = input.slideStarts[index] ?? index * input.duration / input.backgrounds.length;
       const end = input.slideStarts[index + 1] ?? input.duration;
-      const clip = move(baseClip(item.id, `lyric-scene-${index + 1}`, end - start), input.imageAnimation, index);
-      clips.push(index > 0 && input.crossfade ? { ...clip, transition_in: { kind: 'crossfade', duration: Math.min(.8, (end - start) / 2) } } : clip);
+      const depth = input.depthVideos?.[item.id];
+      const clip = depth ? baseClip(depth, `lyric-scene-${index + 1}`, end - start) : move(baseClip(item.id, `lyric-scene-${index + 1}`, end - start), input.imageAnimation === '3d' ? 'none' : input.imageAnimation, index);
+      clips.push(index > 0 && input.crossfade && !input.inScene ? { ...clip, transition_in: { kind: 'crossfade', duration: Math.min(.8, (end - start) / 2) } } : clip);
     });
   } else {
     const sourceLength = Math.max(.1, first.duration ?? input.duration);
@@ -81,5 +86,8 @@ export function lyricEditorTimeline(input: Handoff): Timeline {
     { id: 'main', kind: 'video', name: 'Main', magnetic: true, items: clips },
     { id: 'song', kind: 'audio', name: 'Song', items: [{ id: 'lyric-song', asset_id: input.song.id, start: CREDIT_SECONDS, in: 0, out: input.song.duration, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: input.song.name, source_length: input.song.duration }] },
     { id: 'lyric-titles', kind: 'text', name: 'Lyrics & credits', items: [opening, ...lines, closing] },
+    // Lyrics in the scene: the same 3D scenes again, showing only what stands up in them, above the lyrics (as people in front of a title).
+    ...(input.inScene && input.depthVideos ? [{ id: 'lyric-in-front', kind: 'video' as const, name: 'In front', items: clips.filter((clip) => clip.id.startsWith('lyric-scene-') && Object.values(input.depthVideos!).includes(clip.media_id))
+      .map((clip) => ({ ...clip, id: `${clip.id}-front`, start: CREDIT_SECONDS + (input.slideStarts[Number(clip.id.split('-').pop()) - 1] ?? 0), cutout: 'remove' as const, cutout_pick: null, depth_gap: 1 as const, transition_in: null })) }] : []),
   ] };
 }

@@ -659,6 +659,12 @@ body {
   font-size: 0.65rem;
 }
 
+.lyric-stages button.done span {
+  border-color: rgb(52, 168, 110);
+  background: rgba(52, 168, 110, 0.16);
+  color: rgb(52, 168, 110);
+}
+
 .lyric-stages button:hover,
 .lyric-stages button.active {
   background: rgba(124, 92, 240, 0.16);
