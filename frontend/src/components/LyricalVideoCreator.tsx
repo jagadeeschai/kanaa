@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Music, Sparkles, X } from 'lucide-react';
+import { exportProjectTimeline } from '../api/client';
+import { exportFormat } from '../timeline/model';
 import { cancelRenderJob, createProject, getSongBeats, getJobStatus, getPhoto, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, startLyricSync, startVideoExport, uploadVideoAudio, videoAudioUrl, type Project } from '../api/client';
 import type { JobStatusResponse, Photo } from '../types/photo';
 import { buildLyricTimeline, cuesToLrc, cuesToSrt, hasLyricTimings, plainLyricLines, reconcileLyricCues, validateLyricCues, type LyricCue } from '../utils/lyrics';
@@ -26,7 +28,7 @@ type LyricCanvasChoice = 'auto' | LyricCanvas;
 type LyricStyle = 'outline' | 'shadow' | 'band';
 type LyricFont = 'standard' | 'elegant' | 'modern' | 'playful' | 'handwritten';
 type LyricAlign = 'left' | 'center' | 'right';
-type LyricAnimation = 'none' | 'fade' | 'slide-up' | 'pop';
+type LyricAnimation = 'none' | 'fade' | 'slide-up' | 'pop' | 'cinematic';
 type PlacementMode = 'fixed' | 'alternate' | 'per-line';
 type LyricRecipe = {
   version: 1;
@@ -154,7 +156,7 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const currentPlacement = currentCue ? positionForCue(currentCue, currentCueIndex) : placement;
   const lyricFontFamily = LYRIC_FONTS.find((item) => item.id === lyricFont)?.family ?? LYRIC_FONT_STACK;
   const cueProgress = currentCue ? Math.min(1, Math.max(0, (position - currentCue.start) / Math.min(.25, (currentCue.end - currentCue.start) / 3))) : 1;
-  const cueTransform = `${currentPlacement === 'center' ? 'translateY(-50%) ' : ''}${lyricAnimation === 'pop' ? `scale(${.7 + .3 * cueProgress})` : ''}`.trim() || undefined;
+  const cueTransform = `${currentPlacement === 'center' ? 'translateY(-50%) ' : ''}${lyricAnimation === 'pop' ? `scale(${.7 + .3 * cueProgress})` : lyricAnimation === 'cinematic' ? `perspective(700px) rotateX(10deg) translateZ(${-400 * (1 - cueProgress)}px)` : ''}`.trim() || undefined;
   const songBaseName = song?.name.replace(/\.[^.]+$/, '') || 'lyrics';
   const outputId = job?.kind === 'export' && job.status?.done && !job.status.error ? job.status.output_photo_id : null;
 
@@ -262,9 +264,14 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
     if (kind === 'export' && (!valid || !firstBackground || (!isVideo && !song))) { setError('Check the lyric timeline before exporting.'); return; }
     lockRef.current = true; setStarting(true); setError(null); setNotice(null); pause();
     try {
-      const result = kind === 'sync'
+      // Cinematic lyrics are drawn by the timeline renderer (3D letters, perspective entrances), the same as in the editor.
+      const viaTimeline = kind === 'export' && lyricAnimation === 'cinematic' && song;
+      const result = viaTimeline
+        ? await (() => { const timeline = lyricEditorTimeline({ name: projectName, backgrounds, backgroundType, duration, slideStarts, song: song!, cues: cues.map((cue, index) => ({ ...cue, position: positionForCue(cue, index) })), canvas: resolvedCanvas, color, fontSize, placement, lyricStyle, lyricFont, lyricAlign, lyricBandColor, lyricAnimation, crossfade, imageAnimation });
+          return exportProjectTimeline(projectId, { ...timeline, format: exportFormat(timeline.format, quality === '4k' ? 2160 : quality === '720p' ? 720 : 1080) }); })()
+        : kind === 'sync'
         ? await startLyricSync(song!.id, plainLyricLines(lyrics).join('\n'), language || null)
-        : await startVideoExport(firstBackground.id, { background_photo_ids: isVideo ? [] : backgrounds.map((item) => item.id), image_animation: imageAnimation, slide_starts: isVideo ? [] : slideStarts, transition: crossfade ? 'crossfade' : 'none', quality, lyric_style: lyricStyle, lyric_animation: lyricAnimation, lyric_font: lyricFont, lyric_align: lyricAlign, lyric_band_color: lyricBandColor, trim_start: 0, trim_end: duration, rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1, volume: 1, mute: false, audio_asset_id: song?.id, canvas: resolvedCanvas, lyrics: cues.map(({ start, end, text }, index) => ({ start, end, text, position: positionForCue(cues[index], index) })), lyric_color: color, lyric_size: fontSize, lyric_position: placement });
+        : await startVideoExport(firstBackground.id, { background_photo_ids: isVideo ? [] : backgrounds.map((item) => item.id), image_animation: imageAnimation, slide_starts: isVideo ? [] : slideStarts, transition: crossfade ? 'crossfade' : 'none', quality, lyric_style: lyricStyle, lyric_animation: lyricAnimation === 'cinematic' ? 'fade' : lyricAnimation, lyric_font: lyricFont, lyric_align: lyricAlign, lyric_band_color: lyricBandColor, trim_start: 0, trim_end: duration, rotation: 0, flip_horizontal: false, flip_vertical: false, brightness: 1, contrast: 1, saturation: 1, volume: 1, mute: false, audio_asset_id: song?.id, canvas: resolvedCanvas, lyrics: cues.map(({ start, end, text }, index) => ({ start, end, text, position: positionForCue(cues[index], index) })), lyric_color: color, lyric_size: fontSize, lyric_position: placement });
       setJob({ id: result.job_id, kind, status: null });
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not start the job.'); }
     finally { lockRef.current = false; setStarting(false); }
@@ -391,7 +398,8 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               <label className="block text-xs text-slate-400">Alignment<KanaaSelect aria-label="Lyric alignment" value={lyricAlign} onChange={(event) => setLyricAlign(event.target.value as LyricAlign)} className="mt-1"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></KanaaSelect></label>
               <label className="block text-xs text-slate-400">Font<KanaaSelect aria-label="Lyric font" value={lyricFont} onChange={(event) => setLyricFont(event.target.value as LyricFont)} className="mt-1" style={{ fontFamily: lyricFontFamily }}>{LYRIC_FONTS.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</KanaaSelect></label>
               <div className="flex items-center gap-3"><label className="text-xs text-slate-400">Text color<input aria-label="Lyric color" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="mt-1 block h-9 w-12" /></label><label className="flex-1 text-xs text-slate-400">Text size: {fontSize}<input aria-label="Lyric size" type="range" min={20} max={100} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} className="mt-2 w-full accent-brand-400" /></label></div>
-              <div className="grid grid-cols-2 gap-3"><label className="text-xs text-slate-400">Image animation<KanaaSelect aria-label="Image animation" disabled={backgroundType === 'video'} value={imageAnimation} onChange={(event) => setImageAnimation(event.target.value as typeof imageAnimation)} className="mt-1"><option value="ken-burns">Ken Burns (varied)</option><option value="zoom-in">Slow zoom in</option><option value="pan-left">Pan left</option><option value="none">None</option></KanaaSelect></label><label className="text-xs text-slate-400">Lyric animation<KanaaSelect aria-label="Lyric animation" value={lyricAnimation} onChange={(event) => setLyricAnimation(event.target.value as LyricAnimation)} className="mt-1"><option value="none">None</option><option value="fade">Fade</option><option value="slide-up">Slide up</option><option value="pop">Pop</option></KanaaSelect></label></div>
+              <div className="grid grid-cols-2 gap-3"><label className="text-xs text-slate-400">Image animation<KanaaSelect aria-label="Image animation" disabled={backgroundType === 'video'} value={imageAnimation} onChange={(event) => setImageAnimation(event.target.value as typeof imageAnimation)} className="mt-1"><option value="ken-burns">Ken Burns (varied)</option><option value="zoom-in">Slow zoom in</option><option value="pan-left">Pan left</option><option value="none">None</option></KanaaSelect></label><label className="text-xs text-slate-400">Lyric animation<KanaaSelect aria-label="Lyric animation" value={lyricAnimation} onChange={(event) => setLyricAnimation(event.target.value as LyricAnimation)} className="mt-1"><option value="none">None</option><option value="fade">Fade</option><option value="slide-up">Slide up</option><option value="pop">Pop</option><option value="cinematic">Cinematic 3D</option></KanaaSelect></label></div>
+              {lyricAnimation === 'cinematic' && <p className="text-xs text-slate-400">Each line has solid 3D letters, leans back a little and flies in from the distance. It exports through the Video Editor’s renderer, so it matches there exactly.</p>}
               <label className="text-xs text-slate-400">Text style<KanaaSelect aria-label="Lyric style" value={lyricStyle} onChange={(event) => setLyricStyle(event.target.value as LyricStyle)} className="mt-1"><option value="band">Band (most readable)</option><option value="shadow">Soft shadow</option><option value="outline">Outline</option></KanaaSelect></label>
               {lyricStyle === 'band' && <label className="block text-xs text-slate-400">Band colour<input aria-label="Lyric band color" type="color" value={lyricBandColor} onChange={(event) => setLyricBandColor(event.target.value)} className="mt-1 block h-9 w-12" /></label>}
               <p className="text-xs text-slate-400">Background fills the frame. Video backgrounds loop to the song’s length.</p>

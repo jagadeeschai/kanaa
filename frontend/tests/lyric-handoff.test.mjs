@@ -26,3 +26,14 @@ test('lyric handoff preserves editable timing and typography', () => {
   assert.deepEqual(lines.map((line) => line.position), ['top', 'bottom']);
   assert.equal(timeline.layers[0].items[2].transition_in.kind, 'crossfade');
 });
+
+test('cinematic lyrics: 3D letters leaning back, flying in, sized to each line', async () => {
+  const { cinematicLine, CINEMATIC_LEAN } = await import('../src/editor/lyric-handoff.ts');
+  const line = { id: 'l', start: 3, length: 0.9, text: 'வா', style: 'shadow', position: 'bottom', color: '#fff', size: 44 };
+  const cine = cinematicLine(line);
+  assert.equal(cine.enter.preset, 'push-through');
+  assert.ok(cine.enter.duration <= 0.3 + 1e-9, 'a short line gets a short entrance');
+  assert.equal(cinematicLine({ ...line, length: 6 }).enter.duration, 0.7);
+  assert.ok(cine.depth.amount > 0 && cine.transform.tilt_x === CINEMATIC_LEAN && cine.exit.preset === 'fade');
+  assert.equal(cine.text, 'வா');
+});
