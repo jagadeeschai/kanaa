@@ -452,7 +452,7 @@ def build_server(api: KanaaApi) -> MCPServer:
             item = media(int(entry['media_id']))
             photo = item.get('media_type') != 'video'
             start_in = float(entry.get('in', 0))
-            out = float(entry.get('out', start_in + 4 if photo else float(item.get('duration') or start_in + 4)))
+            out = round(float(entry.get('out', start_in + 4 if photo else float(item.get('duration') or start_in + 4))), 3)
             if not photo and item.get('duration') and out > float(item['duration']) + 1e-3:
                 raise ToolError(f"{item.get('filename')} is only {float(item['duration']):.2f} s long.")
             clip = {'id': f'clip-{uuid.uuid4().hex[:8]}', 'media_id': item['id'], 'start': 0, 'in': start_in, 'out': out, 'speed': 1, 'volume': 1, 'muted': False,

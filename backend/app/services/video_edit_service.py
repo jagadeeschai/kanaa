@@ -58,6 +58,9 @@ BT709_OUTPUT_ARGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-colo
 KEPT_METADATA_TAGS = ('creation_time', 'date', 'title')
 # An encoder silent for this long has hung, not slowed down.
 STALLED_AFTER_SECONDS = 300
+# A windowed render (a "look") cuts on the output side, so ffmpeg silently decodes everything before the window
+# without emitting a single progress line; on a long 4K timeline that can take far longer than STALLED_AFTER_SECONDS.
+NO_OUTPUT_GRACE_SECONDS = 2400
 # About what a busy 1080p export takes at this CRF, plus working room.
 ESTIMATED_BYTES_PER_SECOND = 2_500_000
 # Slideshows also keep every image and a joined copy on disk until the final encode.

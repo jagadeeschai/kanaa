@@ -29,7 +29,7 @@ from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
-    BT709_OUTPUT_ARGS, DEFAULT_LYRIC_FONT, HDR_TO_BT709, LYRIC_FONTS_DIR, ass_timestamp, lyric_font_for, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
+    BT709_OUTPUT_ARGS, DEFAULT_LYRIC_FONT, HDR_TO_BT709, LYRIC_FONTS_DIR, ass_timestamp, lyric_font_for, NO_OUTPUT_GRACE_SECONDS, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -1353,10 +1353,14 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
         with tempfile.TemporaryFile(mode='w+') as errors:
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=errors, text=True, cwd=folder)
             last_output = [time.monotonic()]
+            seen_output = [False]
             stalled = [False]
 
             def should_stop() -> bool:
-                stalled[0] = time.monotonic() - last_output[0] > STALLED_AFTER_SECONDS
+                # Before the first encoded frame ffmpeg can be silently decoding everything ahead of a window (a look):
+                # only once output has started does a silence mean the encoder actually stopped.
+                limit = STALLED_AFTER_SECONDS if seen_output[0] else NO_OUTPUT_GRACE_SECONDS
+                stalled[0] = time.monotonic() - last_output[0] > limit
                 return stalled[0] or should_cancel()
 
             stop_process_when(process, should_stop)
@@ -1366,6 +1370,7 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
                     last_output[0] = time.monotonic()
                     key, _, value = line.strip().partition('=')
                     if key == 'out_time_us' and value.lstrip('-').isdigit():
+                        seen_output[0] = True
                         on_progress(min(99, max(0, int(int(value) / ((end - start) * 1_000_000) * 100))))
                 code = process.wait()
                 if should_cancel():
