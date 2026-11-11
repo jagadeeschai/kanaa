@@ -39,13 +39,15 @@ export type TitleDepth = { amount: number; color: string; light: number; angle?:
 export type SurfaceKind = 'floor' | 'wall' | 'upright' | 'sky';
 export type TitlePin = { clip_id: string; at: number; region?: [number, number] | null; surface?: SurfaceKind | null };
 /** The title moves aside to keep `gap` (frame heights) from people; the move is ordinary x/y keys. Match timeline_schema.py. */
+/** The title stays with moving people: ordinary x, y and size keys do it; this remembers when it was set and what it was before. */
+export type StayWith = { at: number; x: number; y: number; scale: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null; scale_keys?: import('./evaluate.ts').Keyframe[] | null };
 export type KeepClear = { gap: number; direction: 'auto' | 'up' | 'down' | 'left' | 'right' | 'side'; max_move: number; who?: CutoutPick | null; x: number; y: number; x_keys?: import('./evaluate.ts').Keyframe[] | null; y_keys?: import('./evaluate.ts').Keyframe[] | null };
 export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f', light: 0.62, angle: 24.44 };
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
-export type TextItem = { id: string; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null;
+export type TextItem = { id: string; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };

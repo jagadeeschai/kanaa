@@ -308,6 +308,18 @@ class KeepClear(Strict):
     y_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
 
 
+class StayWith(Strict):
+    """The title stays with moving people: it keeps its distance from them and grows as they come nearer. The move is
+    ordinary x, y and size keyframes; this remembers the moment it was set at and the position, size and keys from before."""
+    at: float = Field(ge=0)  # The title's own seconds.
+    x: float = 0.5
+    y: float = 0.5
+    scale: float = Field(default=1, gt=0)
+    x_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
+    y_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
+    scale_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
+
+
 class TitlePin(Strict):
     """Locks the title to the scene in a clip: it keeps its place in the world as that clip's camera moves."""
     clip_id: str = Field(min_length=1, max_length=64)
@@ -333,6 +345,7 @@ class Text(Strict):
     depth: Optional[TitleDepth] = None
     pin: Optional[TitlePin] = None
     keep_clear: Optional[KeepClear] = None
+    stay_with: Optional[StayWith] = None
     # Template looks. A title using none of these is drawn exactly as before.
     subtitle: Optional[str] = Field(default=None, max_length=200)
     subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.

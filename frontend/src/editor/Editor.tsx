@@ -16,6 +16,7 @@ import TransitionPopover from './TransitionPopover';
 import { clipPlacement, invert, pinStretch, pinTrackOptions, sceneMatrix, type SceneTrack } from '../timeline/title3d';
 import { fetchRecorded, getSurface, startPeopleGrid, startSceneTrack } from '../api/client';
 import type { KeepClear } from '../timeline/model';
+import { removeStay, stayWith } from '../timeline/stayWith';
 import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
 import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchTextLetters, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
@@ -329,7 +330,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const pose = await getSurface(clip.media_id, { t: clip.in + (at - clip.start) * clip.speed, x: region[0], y: region[1], kind });
       const transform = { ...(text.transform ?? REST_TRANSFORM), keyframes: undefined, x: place.x, y: place.y, rotation: pose.turn, tilt_x: pose.tilt_x, tilt_y: pose.tilt_y };
       // The words themselves go on the spot: a title drawn at the top or bottom of its picture would land off it.
-      let next = updateText(timelineRef.current ?? current, text.id, { transform, keep_clear: null, position: 'center', pin: null });
+      let next = updateText(timelineRef.current ?? current, text.id, { transform, keep_clear: null, stay_with: null, position: 'center', pin: null });
       // People walk in front of a title on a floor or a wall; on the sky the skyline already keeps the land in front.
       const above = (() => { const found = findText(next, text.id); if (!found) return null; return next.layers[next.layers.indexOf(found.layer) + 1]; })();
       if (pose.kind !== 'sky' && !(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front'].includes(above.name ?? ''))) next = putBehindPerson(next, text.id, [newId(), newId()]);
@@ -394,6 +395,59 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         ? `Mostly clear. Someone still touches the title at ${times}. Try "A little" space, or another way to move.`
         : 'Done. The title moves out of their way and comes back after they pass.' });
     } catch (problem) { setError((problem as Error).message); } finally { setClearProgress(null); }
+  };
+  const [stayProgress, setStayProgress] = useState<number | null>(null);
+  const [stayNote, setStayNote] = useState<{ textId: string; text: string } | null>(null);
+  /**
+   * Stay with people: the title keeps its distance from the people nearest it at the playhead, and grows as they come
+   * nearer and shrinks as they walk away. Locking to the scene and moving aside from people pull other ways, so both come off.
+   */
+  const stayWithPeople = async (text: TextItem) => {
+    const current = timelineRef.current;
+    if (!current) return;
+    const clip = clipUnderTitle(current, text);
+    const media = clip && mediaById.get(clip.media_id);
+    if (!clip || media?.media_type !== 'video') { setError('Put the title over a video with people in it first.'); return; }
+    if (clip.ramp) { setError('This does not work with the speed effect yet. Turn the speed effect off on this clip first.'); return; }
+    const box = engineRef.current?.titleBox(text);
+    if (!box) { setError('Play the video over this title once, then try again.'); return; }
+    engineRef.current?.pause();
+    const playhead = engineRef.current?.currentTime ?? text.start;
+    const at = Math.min(text.length, Math.max(0, playhead - text.start));
+    const from = Math.max(clip.start, text.start), to = Math.min(clip.start + clipLength(clip), text.start + text.length);
+    const sources = [sourceAt(clip, from - clip.start), sourceAt(clip, to - clip.start)];
+    setStayProgress(0); setStayNote(null);
+    try {
+      let made = await startPeopleGrid(clip.media_id, { start: Math.max(0, Math.min(...sources)), end: Math.max(...sources), pick: null, steady: Boolean(clip.stabilise), backwards: Boolean(clip.reverse) });
+      if (made.status !== 'ready' && made.job_id) {
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const status = await getJobStatus(made.job_id) as unknown as { status?: string; progress: number; error?: string | null; grid?: PeopleGrid };
+          if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not find the people in this clip.');
+          if (status.status === 'done' && status.grid) { made = { status: 'ready', grid: status.grid }; break; }
+          setStayProgress(status.progress);
+        }
+      }
+      const latest = timelineRef.current ?? current;
+      const found = findText(latest, text.id)?.text ?? text;
+      // From how the title sits by itself: not locked to the scene and not moved aside.
+      const fresh: TextItem = { ...found, ...(found.keep_clear ? removeKeepClear(found) : {}), pin: null };
+      const source = { width: media.width || latest.format.width, height: media.height || latest.format.height };
+      const result = stayWith({ text: fresh, box, format: latest.format, under: clip, source, grid: made.grid!, at });
+      if (!result) { setStayNote({ textId: text.id, text: 'No people were found near the title at this moment. Move the playhead to where they are clear and not too far away, then try again.' }); return; }
+      let next = updateText(latest, text.id, { transform: result.transform, stay_with: result.stay_with, keep_clear: null, pin: null });
+      // Like a real banner on the far side of them: the people pass in front of it, with a thin steady margin so letters at their edges don't flicker.
+      const placed = findText(next, text.id);
+      const above = placed && next.layers[next.layers.indexOf(placed.layer) + 1];
+      if (!(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front'].includes(above.name ?? ''))) {
+        next = putBehindPerson(next, text.id, [newId(), newId()]);
+        next = setGroundRiseGap(next, text.id, TITLE_SPACE.close);
+      }
+      change(next, `stay-${text.id}`);
+      setSelectedId(text.id);
+      setKeepClearNote(null);
+      setStayNote({ textId: text.id, text: result.lost > 0.5 ? `Done. It stays with them and changes size as they come nearer or go further. For ${result.lost} s they could not be seen (too far, or out of the picture); it holds its place there. Press Play to check.` : 'Done. It stays with them, changes size as they come nearer or go further, and they pass in front of it like a real banner. Press Play to check.' });
+    } catch (problem) { setError((problem as Error).message); } finally { setStayProgress(null); }
   };
   const [followNote, setFollowNote] = useState<{ itemId: string; text: string } | null>(null);
   const [faceJob, setFaceJob] = useState<{ jobId: string; clipId: string; progress: number } | null>(null);
@@ -2152,7 +2206,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
         : selectedBlur ? <BlurInspector blur={selectedBlur} timing={textTiming(selectedBlur)} local={blurLocal} onChange={updateSelectedBlur} onSeekLocal={(t) => seek(selectedBlur.start + t)} onPause={pauseEngine} follow={followPanel}/>
         : selectedText ? <TextInspector text={selectedText} groundGap={groundRiseGap(timeline!, selectedText.id)} onGroundGap={(depth_gap) => change(setGroundRiseGap(timeline!, selectedText.id, depth_gap), `ground-gap-${selectedText.id}`)} onSaveStyle={() => saveStyle(selectedText)} onBehindShape={(reveal, mode) => { engineRef.current?.pause(); setShaping({ textId: selectedText.id, mode, points: [], reveal }); }} cover={(() => { const index = timeline ? timeline.layers.findIndex((layer) => layer.kind === 'text' && (layer.items as TextItem[]).some((item) => item.id === selectedText.id)) : -1; const next = index >= 0 ? timeline!.layers[index + 1] : null; if (next?.kind === 'video') { if (next.name === 'Person') return 'people' as const; if (next.name === 'Object') return 'object' as const; if (next.name === 'Land') return 'land' as const; if (next.name === 'In front') return 'drawn' as const; } return 'front' as const; })()} shapingMode={shaping && shaping.textId === selectedText.id ? shaping.mode : null} onCinemaClear={() => change(removeCinemaReveal(timeline!, selectedText.id), `cinema-clear-${selectedText.id}`)} onCinemaFront={(reveal) => { const next = cinemaRevealFront(timeline!, selectedText.id, reveal); change(next, `cinema-front-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); }} onCinema={(reveal, what) => { const ids: [string, string] = [newId(), newId()]; // People or an object in front, and keeping clear of them, pull opposite ways: the title would dodge every frame.
-            const base = selectedText.keep_clear && what !== 'land' ? updateText(timeline!, selectedText.id, removeKeepClear(selectedText)) : timeline!; if (base !== timeline) setKeepClearNote(null); const next = cinemaReveal(base, selectedText.id, reveal, what, ids); if (next === base) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} placing={placing?.textId === selectedText.id ? (placing.busy ? 'busy' : 'waiting') : null} onPlace={() => setPlacing((now) => now?.textId === selectedText.id ? null : { textId: selectedText.id, busy: false })} onSurface={(kind) => { void placeInScene(selectedText, null, kind); }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} clearing={clearProgress} clearUnder={timeline ? clipUnderTitle(timeline, selectedText) : null} clearNote={keepClearNote?.textId === selectedText.id ? keepClearNote.text : null} onKeepClear={(settings) => { void keepTitleClear(selectedText, settings); }} onRemoveClear={() => { change(updateText(timeline!, selectedText.id, removeKeepClear(selectedText)), `keep-clear-${selectedText.id}`); setKeepClearNote(null); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
+            const base = selectedText.keep_clear && what !== 'land' ? updateText(timeline!, selectedText.id, removeKeepClear(selectedText)) : timeline!; if (base !== timeline) setKeepClearNote(null); const next = cinemaReveal(base, selectedText.id, reveal, what, ids); if (next === base) setError('Put the title over a video clip on the main track first.'); else { change(next, `cinema-${selectedText.id}`); setSelectedId(selectedText.id); showEnter(selectedText.start, reveal === 'push' ? 1.4 : 1.2); } }} placing={placing?.textId === selectedText.id ? (placing.busy ? 'busy' : 'waiting') : null} onPlace={() => setPlacing((now) => now?.textId === selectedText.id ? null : { textId: selectedText.id, busy: false })} onSurface={(kind) => { void placeInScene(selectedText, null, kind); }} pinning={pinProgress} onPin={(on) => { void pinTitle(selectedText, on); }} staying={stayProgress} onStayCover={(banner) => { const next = banner ? setGroundRiseGap(putBehindPerson(timeline!, selectedText.id, [newId(), newId()]), selectedText.id, TITLE_SPACE.close) : cinemaRevealFront(timeline!, selectedText.id, 'pass'); change(next, `stay-cover-${selectedText.id}`); setSelectedId(selectedText.id); }} stayNote={stayNote?.textId === selectedText.id ? stayNote.text : null} onStay={() => { void stayWithPeople(selectedText); }} onStopStay={() => { change(updateText(timeline!, selectedText.id, removeStay(selectedText)), `stay-${selectedText.id}`); setStayNote(null); }} clearing={clearProgress} clearUnder={timeline ? clipUnderTitle(timeline, selectedText) : null} clearNote={keepClearNote?.textId === selectedText.id ? keepClearNote.text : null} onKeepClear={(settings) => { void keepTitleClear(selectedText, settings); }} onRemoveClear={() => { change(updateText(timeline!, selectedText.id, removeKeepClear(selectedText)), `keep-clear-${selectedText.id}`); setKeepClearNote(null); }} timing={textTiming(selectedText)} local={textLocal} onSeekLocal={(t) => seek(selectedText.start + t)} onPause={pauseEngine} follow={followPanel} onChange={updateSelectedText} onEnter={() => showEnter(selectedText.start, selectedText.enter?.duration ?? 0.5)} onExit={() => showExit(selectedText.start + selectedText.length, selectedText.exit?.duration ?? 0.5)}/>
         : selectedSound ? <SoundInspector onLoop={timeline && needsLoop(timeline, selectedSound.sound) && !selectedSound.layer.locked ? () => { void loopSelectedSound(selectedSound.sound.id); } : null} looping={looping} sound={selectedSound.sound} timing={soundTiming(selectedSound.sound)} layer={selectedSound.layer} onChange={updateSelectedSound} onLayer={(changes) => change(updateLayer(timeline!, selectedSound.layer.id, changes))}
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
@@ -2523,7 +2577,7 @@ function KeepClearPanel({ kept, under, busy, note, onRun, onRemove }: { kept: Ke
   </>;
 }
 
-function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, placing, onPlace, onSurface, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: CoverKind) => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; placing: 'waiting' | 'busy' | null; onPlace: () => void; onSurface: (kind: SurfaceKind) => void; clearing: number | null; clearNote: string | null; clearUnder: Clip | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
+function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCover, text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, placing, onPlace, onSurface, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { staying: number | null; stayNote: string | null; onStay: () => void; onStopStay: () => void; onStayCover: (banner: boolean) => void; text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: CoverKind) => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; placing: 'waiting' | 'busy' | null; onPlace: () => void; onSurface: (kind: SurfaceKind) => void; clearing: number | null; clearNote: string | null; clearUnder: Clip | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
@@ -2569,7 +2623,19 @@ function TextInspector({ text, groundGap, onGroundGap, onSaveStyle, onCinema, on
       </More>}
       {text.depth ? null : <ValueSlider label="Depth" value={0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>}
     </Group>
-    <Group title="Place in scene" tab="motion" startOpen changed={Boolean(text.pin?.surface)} keywords="place scene surface wall floor ground sky stick track perspective behind people billboard sign" tip="Put the title on a wall, the ground or the sky in the video, in one click.">
+    <Group title="Stay with people" tab="motion" startOpen changed={Boolean(text.stay_with)} keywords="stay with people follow person moving distance bigger smaller near far perspective stick walk attach" tip="The title travels with the people: same distance from them, bigger as they come near, smaller as they walk away." help="cinema-titles">
+      {text.stay_with ? <>
+        <p className="ed-group-tip">This title stays with the people it was nearest, and changes size with them.</p>
+        <h3 className="ed-sub">The people pass</h3>
+        <Chips label="The people pass" options={[{ id: 'banner' as const, label: 'In front of it, like a banner' }, { id: 'over' as const, label: 'Behind it' }]} value={cover === 'people' || cover === 'object' ? 'banner' : 'over'} onPick={(id) => onStayCover(id === 'banner')}/>
+        <div className="ed-pair"><button className="ed-button" disabled={staying !== null} onClick={onStay} title="Uses where the title is now, at the playhead">{staying !== null ? `Finding them… ${staying}%` : 'Set again from here'}</button><button className="ed-button" disabled={staying !== null} onClick={onStopStay}>Stop</button></div>
+      </> : <>
+        <p className="ed-group-tip">1. Go to a moment where the people are clear. 2. Drag the title to where it should sit, above or beside them. 3. Click the button.</p>
+        <button className="ed-button wide primary" disabled={staying !== null} onClick={onStay}><Users size={14}/>{staying !== null ? `Finding the people… ${staying}%` : 'Stay with the people'}</button>
+      </>}
+      {stayNote && staying === null && <p className="ed-group-tip" role="status">{stayNote}</p>}
+    </Group>
+    <Group title="Place in scene" tab="motion" startOpen={!text.stay_with} changed={Boolean(text.pin?.surface)} keywords="place scene surface wall floor ground sky stick track perspective behind people billboard sign" tip="Put the title on a wall, the ground or the sky in the video, in one click.">
       <div className="ed-place">
         <button className={`ed-button wide ${placing === 'waiting' ? 'on' : 'primary'}`} disabled={placing === 'busy' || pinning !== null} onClick={onPlace} aria-pressed={placing === 'waiting'}>
           <Crosshair size={14}/>{placing === 'waiting' ? 'Click a spot in the video…' : placing === 'busy' ? 'Reading the surface…' : pinning !== null ? `Following the surface… ${pinning}%` : text.pin?.region || text.pin?.surface ? 'Place somewhere else' : 'Place in scene'}</button>

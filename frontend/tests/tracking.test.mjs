@@ -132,3 +132,40 @@ test('the face under a blur box is the one it covers most, at that moment', asyn
   assert.equal(faceUnder([left, right], [0.5, 0.9, 0.1, 0.1], 1), null, 'nothing under the box');
   assert.equal(faceUnder([later], [0.3, 0.4, 0.2, 0.2], 1), null, 'that face is not there yet');
 });
+
+test('a title stays with people: same distance in proportion, bigger as they come near, steady through bad samples', async () => {
+  const { stayWith, removeStay, followPeople, medianOf, smoothBothWays } = await import('../src/timeline/stayWith.ts');
+  const { pack } = { pack: (cells) => Buffer.from(cells.reduce((bytes, on, index) => { if (on) bytes[index >> 3] |= 1 << (7 - (index & 7)); return bytes; }, new Uint8Array(Math.ceil(cells.length / 8)))).toString('base64') };
+  const w = 96, h = 54, fps = 15;
+  // A person walking towards the camera: twice as wide and tall by the end, feet leaving the picture, drifting right.
+  const frame = (i, drop = false) => {
+    const cells = new Uint8Array(w * h);
+    const grow = 1 + i / 60, width = Math.round(6 * grow), top = 20, left = Math.round(30 + i * 0.2 - width / 2);
+    if (!drop) for (let y = top; y < Math.min(h, top + Math.round(18 * grow)); y += 1) for (let x = left; x < left + width; x += 1) cells[y * w + x] = 1;
+    // A passer-by far to the right, who must not be followed.
+    for (let y = 30; y < 44; y += 1) for (let x = 80; x < 84; x += 1) cells[y * w + x] = 1;
+    return pack(cells);
+  };
+  const grid = { fps, start: 0, w, h, frames: Array.from({ length: 61 }, (_, i) => frame(i, i === 20 || i === 21)) };
+  const seen = followPeople(grid, 0, 0.3, 0.5);
+  assert.equal(seen[20], null, 'a dropped sample is not replaced by the passer-by');
+  assert.ok(seen[60].u < 0.6 && seen[60].size > seen[0].size * 1.8, 'the same person, twice as wide');
+  assert.deepEqual(medianOf([1, 1, 9, 1, 1], 1), [1, 1, 1, 1, 1]);
+  assert.deepEqual(smoothBothWays([2, null, null, 5], 0), [2, 3, 4, 5]);
+  const format = { width: 1920, height: 1080, fps: 30 };
+  const under = { ...newClip({ media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 }, 'c'), start: 0, in: 0, out: 4 };
+  const text = { id: 't', start: 0, length: 4, text: 'Hi', style: 'outline', position: 'center', color: '#fff', size: 40, transform: { x: 0.3, y: 0.2, scale: 1, opacity: 1, rotation: 0 } };
+  const result = stayWith({ text, box: [0.4, 0.45, 0.2, 0.1], format, under, source: { width: 1920, height: 1080 }, grid, at: 0 });
+  const keys = result.transform.keyframes;
+  const last = (property) => keys[property][keys[property].length - 1].v, first = (property) => keys[property][0].v;
+  assert.ok(Math.abs(first('x') - 0.3) < 0.01 && Math.abs(first('y') - 0.2) < 0.01 && Math.abs(first('scale') - 1) < 0.03, 'starts where it was put');
+  assert.ok(last('scale') > 1.8 && last('scale') < 2.2, `twice the size when they are twice as near: ${last('scale')}`);
+  // It was 0.17 of the height above the head line (0.37); at twice the size it is twice as far above it.
+  assert.ok(Math.abs(last('y') - (20 / 54 - 2 * (20 / 54 - 0.2))) < 0.03, `keeps its distance in proportion: ${last('y')}`);
+  assert.ok(last('x') > first('x') + 0.06, `moves right with them: ${first('x')} to ${last('x')}, ${JSON.stringify(keys.x)}`);
+  const scales = keys.scale.map((key) => key.v);
+  assert.ok(scales.every((value, index) => index === 0 || value >= scales[index - 1] - 0.02), 'no wobble through the dropped samples');
+  const stopped = removeStay({ ...text, transform: result.transform, stay_with: result.stay_with });
+  assert.deepEqual([stopped.transform.x, stopped.transform.y, stopped.transform.scale, stopped.transform.keyframes.x, stopped.stay_with], [0.3, 0.2, 1, undefined, null]);
+  assert.equal(stayWith({ text, box: [0.4, 0.45, 0.2, 0.1], format, under, source: { width: 1920, height: 1080 }, grid: { ...grid, frames: grid.frames.map(() => pack(new Uint8Array(w * h))) }, at: 0 }), null, 'no one there');
+});
