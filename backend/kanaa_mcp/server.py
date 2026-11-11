@@ -56,6 +56,10 @@ title's own size. tilt_x leans a title back (top away, degrees), tilt_y turns it
 length are timeline seconds; keyframe t is seconds from the item's own start. Kanaa draws in true perspective, so for a
 title on a wall, the ground or the sky prefer place_in_scene over writing tilt keyframes by hand.
 Keep the person's style: change what was asked, leave the rest.
+
+Lyric videos: add_song, read_lrc (the bracketed directions tell you the style and singer), plan_lyric_scenes with a
+brief, rewrite each scene's prompt to fit its words, make_scene_pictures, look_at_media, build_lyric_video, then look.
+Do not export unless asked: the person reviews first.
 """
 
 
@@ -80,6 +84,10 @@ class KanaaApi:
 
     def put(self, path: str, body: Any) -> Any:
         return self._check(self.http.put(path, json=body))
+
+    def upload(self, path: str, file: Path) -> Any:
+        with file.open('rb') as handle:
+            return self._check(self.http.post(path, files={'file': (file.name, handle)}, timeout=600))
 
     def wait(self, job_id: str, timeout: float = 600) -> dict:
         deadline = time.monotonic() + timeout
@@ -541,6 +549,114 @@ def build_server(api: KanaaApi) -> MCPServer:
         api.put(f'/projects/{project_id}/recipe', {'recipe': step['timeline']})
         path.write_text(json.dumps(steps))
         return {'undone': step['what'], 'left': len(steps)}
+
+    # ---- Lyric videos: song, timed lyrics, AI scene pictures, then a finished, dynamic editor project. ----
+
+    def look_up(job: dict, key: str):
+        return job.get(key) if job.get(key) is not None else (job.get('result') or {}).get(key)
+
+    @server.tool(annotations=CHANGES)
+    def add_song(path: str) -> dict:
+        """Adds a song (wav, mp3, m4a...) from this Mac to Kanaa for a lyric video. The file is copied; the original is
+        only read. Returns its asset id and length in seconds."""
+        file = Path(path).expanduser()
+        if not file.is_file():
+            raise ToolError(f'There is no file at {path}.')
+        made = api.upload('/video-audio', file)
+        return {'asset_id': made['asset_id'], 'seconds': made['duration'], 'name': file.stem}
+
+    @server.tool(annotations=READ_ONLY)
+    def read_lrc(path: str) -> list[dict]:
+        """Timed lyric lines from an LRC file on this Mac: [{"start", "end", "text"}] in seconds. Stage directions in
+        brackets ([Chorus], [Soft Rhodes...]) are left out; read them yourself for the song's style and singer."""
+        from kanaa_mcp.lyrics import read_lrc as parse
+        file = Path(path).expanduser()
+        if not file.is_file():
+            raise ToolError(f'There is no file at {path}.')
+        return parse(file.read_text(encoding='utf-8', errors='replace'))
+
+    @server.tool(annotations=CHANGES)
+    def plan_lyric_scenes(name: str, cues: list[dict], count: int = 6, brief: str = '', canvas: Literal['landscape', 'portrait', 'square'] = 'landscape',
+                          lyric_project_id: int | None = None) -> dict:
+        """Splits the song into `count` scenes (1-8) by its lyrics, each with a picture prompt, in a lyric project (made
+        if not given). `brief`: the look of the whole video, in English: style (K-pop MV, moonlit R&B...), colours, who
+        sings (male, female, group) and the recurring people. Returns the lyric project, the plan id and each scene's
+        id, start, end, lyrics and prompt. Rewrite the prompts to fit each scene's words before make_scene_pictures."""
+        if lyric_project_id is None:
+            lyric_project_id = api.post('/projects', {'name': name, 'kind': 'lyric', 'media_ids': []})['id']
+        plan = api.post(f'/projects/{lyric_project_id}/image-scenes/plan', {'lyrics': '\n'.join(cue['text'] for cue in cues), 'cues': cues, 'count': max(1, min(8, count)),
+                                                                          'style': 'cinematic', 'canvas': canvas, 'purpose': 'scenes', 'brief': brief[:1500]})
+        return {'lyric_project_id': lyric_project_id, 'plan_id': plan['id'],
+                'scenes': [{'id': scene['id'], 'start': scene['start'], 'end': scene['end'], 'lyrics': scene['lyric'], 'prompt': scene['prompt']} for scene in plan['scenes']]}
+
+    @server.tool(annotations=CHANGES)
+    def make_scene_pictures(lyric_project_id: int, plan_id: str, scenes: list[dict], quality: Literal['low', 'medium', 'high'] = 'medium') -> list[dict]:
+        """Makes each planned scene's picture with Kanaa's image AI (this costs the AI provider credit, a picture each):
+        scenes [{"id", "prompt"}]. Waits, then returns [{"id", "media_id", "start", "end"}]. look_at_media shows them.
+        To change pictures that are already made, plan again and make the new plan's pictures."""
+        job = api.post(f'/projects/{lyric_project_id}/image-scenes/generate', {'batch_id': plan_id, 'scenes': [{'id': s['id'], 'prompt': s['prompt']} for s in scenes], 'quality': quality})['job_id']
+        api.wait(job, timeout=1800)
+        batch = api.get(f'/projects/{lyric_project_id}/image-scenes')['batch']
+        return [{'id': s['id'], 'media_id': s['media_id'], 'start': s['start'], 'end': s['end'], 'status': s['status'], 'error': s.get('error')} for s in batch['scenes']]
+
+    @server.tool(annotations=CHANGES)
+    def build_lyric_video(name: str, song_asset_id: str, song_seconds: float, cues: list[dict], scenes: list[dict],
+                          look: Literal['energetic', 'romantic', 'calm'] = 'romantic', three_d: bool = True, lyrics_in_scene: bool = True, lights: bool = True,
+                          lyric_font: Literal['standard', 'elegant', 'modern', 'playful', 'handwritten'] = 'elegant', lyric_colour: str = '#ffffff', lyric_size: int = 50,
+                          canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
+                          music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
+                          logo_media_id: int | None = None, project_id: int | None = None) -> dict:
+        """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
+        - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
+        - three_d: each picture becomes a 3D camera glide (push, drift or rise), made once; lyrics_in_scene: what stands up
+          in each picture (people, trees, pillars) passes in front of the lyrics.
+        - look: lyric entrances and light overlays. energetic (blast, prism, chromatic...; sun rays, flares), romantic
+          (lines rising from behind the people, magic form...; fireflies, bokeh, lanterns), calm (soft reveals; dust, fog).
+          Every line keeps solid 3D letters; each scene adds a slow pan or zoom.
+        - Credits, film style: an 8 s opening (`presents`, "A SONG BY" `song_by`, then the title `name` with `footer`) and a
+          closing card (LYRICS `song_by`, MUSIC `music`, PRESENTED BY `presented_by`, `footer`); `accent` colours the roles.
+          Leave out what you do not know rather than guess.
+        - logo_media_id: a picture with transparency, small in the bottom-right corner and large on the closing card.
+        - project_id: update that editor project instead of making a new one (do this when redoing a video).
+        Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
+        from kanaa_mcp import lyrics
+        if not scenes:
+            raise ToolError('Give at least one scene picture.')
+        scenes = sorted(scenes, key=lambda scene: float(scene.get('start', 0)))
+        starts = [0.0] + [round(float(scene['start']), 3) for scene in scenes[1:]]
+        depth: dict[int, int] = {}
+        if three_d:
+            for index, scene in enumerate(scenes):
+                seconds = (starts[index + 1] if index + 1 < len(scenes) else song_seconds) - starts[index]
+                made = api.post(f"/photos/{int(scene['media_id'])}/depth-motion", {'seconds': round(min(120, max(0.5, seconds + 0.2)), 2), 'move': ['push', 'drift', 'rise'][index % 3]})
+                video = made.get('output_photo_id') if made.get('status') == 'ready' else look_up(api.wait(made['job_id'], timeout=1800), 'output_photo_id')
+                depth[int(scene['media_id'])] = int(video)
+        handoff = {'name': name, 'backgrounds': [{'id': int(scene['media_id']), 'media_type': 'image'} for scene in scenes], 'backgroundType': 'image', 'duration': song_seconds,
+                   'slideStarts': starts, 'song': {'id': song_asset_id, 'duration': song_seconds, 'name': name}, 'cues': [{**cue, 'position': 'bottom'} for cue in cues],
+                   'canvas': canvas, 'color': lyric_colour, 'fontSize': lyric_size, 'placement': 'bottom', 'lyricStyle': 'shadow', 'lyricFont': lyric_font, 'lyricAlign': 'center',
+                   'lyricBandColor': '#000000', 'lyricAnimation': 'cinematic', 'crossfade': True, 'imageAnimation': '3d' if three_d else 'ken-burns',
+                   'depthVideos': depth or None, 'inScene': bool(three_d and lyrics_in_scene)}
+        timeline = lyrics.base_timeline(handoff)
+        lyrics.lay_out(timeline)
+        light_media: dict[str, int] = {}
+        if lights:
+            for effect in lyrics.LOOKS[look]['light']:
+                made = api.post(f'/effects/{effect}', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
+                light_media[effect] = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
+        lyrics.dress(timeline, look, light_media)
+        logo = None
+        if logo_media_id is not None:
+            item = media(logo_media_id)
+            logo = {'media_id': logo_media_id, 'width': float(item['width']), 'height': float(item['height'])}
+        lyrics.credits(timeline, name, presents, song_by, music, presented_by, footer, accent, logo)
+        validate(timeline)
+        if project_id is None:
+            project_id = api.post('/projects', {'name': name, 'kind': 'edit', 'media_ids': [int(scenes[0]['media_id'])]})['id']
+            api.put(f'/projects/{project_id}/recipe', {'recipe': timeline})
+        else:
+            save(project_id, timeline_of(project_id), timeline, 'Rebuilt the lyric video')
+        return {'project_id': project_id, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
+                'scenes': len(scenes), 'lines': len(cues), 'three_d': bool(depth), 'note': 'Not exported. Use look to check moments; the person reviews and exports.'}
 
     @server.tool(annotations=CHANGES)
     def export(project_id: int) -> dict:
