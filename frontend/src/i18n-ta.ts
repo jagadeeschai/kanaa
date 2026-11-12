@@ -278,4 +278,7 @@ export const TAMIL: Record<string, string> = {
   'Freeze frame': 'சட்டத்தை உறைய வை',
   'Switch to English': 'ஆங்கிலத்துக்கு மாற்று',
   'Switch to Tamil (தமிழ்)': 'தமிழுக்கு மாற்று',
+  'Colour & finish': 'நிறம், இறுதித் தோற்றம்',
+  'Themes dress the whole video. To colour one clip, select it and open Colour; for a grade over everything, Project settings › Colour & finish.': 'தீம்கள் முழு வீடியோவுக்கு. ஒரு கிளிப்பின் நிறத்துக்கு அதைத் தேர்ந்து நிறம் திறக்கவும்; முழுவதற்கும், திட்ட அமைப்புகள் › நிறம், இறுதித் தோற்றம்.',
+  'Stylise': 'பாணியாக்கம்',
 };

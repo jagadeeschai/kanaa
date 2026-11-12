@@ -12,7 +12,7 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Camera, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { BadgeCheck, Camera, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -90,10 +90,10 @@ const MIN_MUSIC_SECONDS = 1;
 const PREVIEW_SHORT_SIDE = 540;
 const RENDERED_ID = -1;
 const CLIP_EFFECT_PRESETS = [
-  { id: 'colour-splash', group: 'Colour', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
-  { id: 'dreamy-glow', group: 'Colour', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
-  { id: 'split-tone', group: 'Colour', label: 'Split-tone', about: 'Tint shadows and highlights with two colours, keeping the real colours.' },
-  { id: 'duotone', group: 'Colour', label: 'Duotone', about: 'Paint the picture in two colours, dark to light.' },
+  { id: 'colour-splash', group: 'Stylise', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
+  { id: 'dreamy-glow', group: 'Stylise', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
+  { id: 'split-tone', group: 'Stylise', label: 'Split-tone', about: 'Tint shadows and highlights with two colours, keeping the real colours.' },
+  { id: 'duotone', group: 'Stylise', label: 'Duotone', about: 'Paint the picture in two colours, dark to light.' },
   { id: 'zoom-blur', group: 'Motion', label: 'Zoom blur', about: 'Streaks rushing towards a centre, like a fast push in.' },
   { id: 'echo', group: 'Motion', label: 'Echo trail', about: 'Ghosts of the last moments trailing movement, for dance and action.' },
   { id: 'tilt-shift', group: 'Lens', label: 'Tilt-shift', about: 'A sharp band with soft blur above and below: a toy-town miniature.' },
@@ -2248,10 +2248,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             {current && (() => { const music = themeMusic(timeline); return <div className="ed-add-row"><span>{music ? <>Music: <b>{music.name.replace(/^Theme music · /, '')}</b></> : 'No music'}</span>
               <span className="ed-pair-small">{library && library.length > 0 && <button className="ed-button" onClick={() => { void changeThemeMusic(true); }}>{music ? 'Another track' : 'Add music'}</button>}{music && <button className="ed-icon small" aria-label="Remove theme music" title="No music" onClick={() => { void changeThemeMusic(false); }}><X size={13}/></button>}</span></div>; })()}
             {current && <button className="ed-button wide" onClick={() => change(removeTheme(timeline))}><X size={14}/>Remove theme</button>}
-            <h3 className="ed-sub">One clip</h3>
-            <p className="ed-tip">Drag onto a clip, or click to apply to the selected clip.</p>
-            <div className="ed-quick" role="group" aria-label="Looks">{LOOK_NAMES.map((look) => <button key={look.id} className={`ed-quick-tile look-${look.id}`} {...draggableAs({ kind: 'look', look: look.id })} onClick={() => applyToSelected({ kind: 'look', look: look.id })} title={`${look.label} look`}><span className="ed-quick-art"/>{look.label}</button>)}</div>
-            <p className="ed-tip">Cinematic finish and frame rate live in Project settings (the size button, or click empty timeline).</p>
+            <p className="ed-tip">{t('Themes dress the whole video. To colour one clip, select it and open Colour; for a grade over everything, Project settings › Colour & finish.')}</p>
             <p className="ed-tip">Click the opening or ending title on the timeline to edit its words; a new theme keeps them.</p></section>;
         })()}
         {leftTab === 'transitions' && <>
@@ -2271,7 +2268,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         {leftTab === 'effects' && <section className="ed-add ed-clip-effect-browser" aria-label="Clip effects">
           <div className="ed-effect-browser-head"><div><h3>Apply to selected clip</h3><p>Changes the clip itself. Fine-tune it in Settings on the right.</p></div>{selected && <span className="ed-selected-pill">{activeClipEffects.length ? `${activeClipEffects.length} applied` : 'Clip selected'}</span>}</div>
           {!selected && <div className="ed-effect-empty"><b>Select a clip first</b><span>Click a photo or video on the timeline, then apply an effect here.</span></div>}
-          {(['Colour', 'Motion', 'Shape', 'Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
+          {(['Stylise', 'Motion', 'Shape', 'Film', 'Signal', 'Lens'] as const).map((group) => { const matches = matchingClipEffects.filter((preset) => preset.group === group); if (!matches.length) return null; const section = `clip-${group}`; const open = Boolean(effectNeedle) || effectSection === section; return <div key={group} className="ed-effect-category">
             <button className="ed-effect-category-head" aria-expanded={open} onClick={() => { if (!effectNeedle) setEffectSection(open ? null : section); }}><span><b>{group}</b><small>{matches.map((preset) => preset.label).join(' · ')}</small></span>{open ? <Minus size={14}/> : <Plus size={14}/>}</button>
             {open && <div className="ed-clip-effect-grid">{matches.map((preset) => { const applied = clipEffectApplied(preset.id); return <button key={preset.id} className={`ed-clip-effect-card fx-clip-${preset.id} ${applied ? 'on' : ''}`} {...draggableAs({ kind: 'clip_effect', effect: preset.id })} aria-pressed={applied} onClick={() => applyClipEffect(preset.id)} title={selected ? `${applied ? 'Edit' : 'Apply'} ${preset.label} on the selected clip, or drag it onto another clip` : `Drag ${preset.label} onto a timeline clip`}>
               <span className="ed-clip-effect-art">{applied ? <Check size={15}/> : <WandSparkles size={15}/>}</span><span><b>{preset.label}</b><small>{preset.about}</small><em>{applied ? 'Applied · edit on right' : 'Apply to clip'}</em></span></button>; })}</div>
@@ -2613,7 +2610,7 @@ function BrandIntroGroup({ logos, logo, busy, has, onMake }: { logos: Photo[]; l
   const [tamil, setTamil] = useState('வழங்கும்');
   const [english, setEnglish] = useState('PRESENTS');
   const picked = logos.find((item) => item.id === (chosen ?? logo?.id)) ?? null;
-  return <Group title="Brand intro" tab="look" startOpen={has} changed={has} keywords="brand intro logo animation opening presents vazhangum leaf notes channel" tip="Your logo comes to life at the start: a leaf falls among music notes and becomes it, with வழங்கும் and PRESENTS beneath." help="brand-watermark">
+  return <Group title="Brand intro" tab="brand" startOpen={has} changed={has} keywords="brand intro logo animation opening presents vazhangum leaf notes channel" tip="Your logo comes to life at the start: a leaf falls among music notes and becomes it, with வழங்கும் and PRESENTS beneath." help="brand-watermark">
     <label className="ed-lut-field"><span>Logo</span><KanaaSelect aria-label="Logo for the brand intro" value={picked ? String(picked.id) : ''} onChange={(event) => setChosen(Number(event.target.value) || null)}>
       <option value="">Choose a logo…</option>{logos.map((item) => <option key={item.id} value={item.id}>{item.filename}</option>)}
     </KanaaSelect></label>
@@ -2643,7 +2640,7 @@ function ProjectInspector({ introBusy, onBrandIntro, timeline, clipFormat, logos
   const shapes = [...FORMATS.map((item) => ({ id: item.id as string, label: item.label, width: item.width, height: item.height })), ...(clipFormat ? [{ id: 'clip', label: 'Same as my clip', width: Math.min(clipFormat.width, 3840), height: Math.min(clipFormat.height, 3840) }] : [])];
   return <>
     {!useContext(RailContext).folded && <div className="ed-project-head"><h2>Project settings</h2><span>{format.width} × {format.height} · {ratio(format.width, format.height)} · {format.fps} fps</span></div>}
-    <Panel id="project" tabs={[{ id: 'format', label: 'Format', Icon: Monitor }, { id: 'look', label: 'Look', Icon: SlidersHorizontal, changed: Boolean(finish || theme || timeline.lut) }, { id: 'sound', label: 'Sound', Icon: Volume2, changed: Boolean(timeline.normalize_audio) }]}>
+    <Panel id="project" tabs={[{ id: 'format', label: 'Format', Icon: Monitor }, { id: 'look', label: 'Colour & finish', Icon: SlidersHorizontal, changed: Boolean(finish || theme || timeline.lut) }, { id: 'brand', label: 'Brand', Icon: BadgeCheck, changed: Boolean(brand) }, { id: 'sound', label: 'Sound', Icon: Volume2, changed: Boolean(timeline.normalize_audio) }]}>
       <Group title="Shape and size" tab="format" startOpen keywords="canvas aspect ratio resolution size vertical reels youtube square portrait" tip="Where will you post it? Clips refit to the new shape." help="project-settings">
         <div className="ed-shapes">{shapes.map((item) => { const on = item.width === format.width && item.height === format.height; return <button key={item.id} className={on ? 'on' : ''} aria-pressed={on} onClick={() => setFormat({ width: item.width, height: item.height })} title={`${item.width} × ${item.height}`}>
           <i style={{ aspectRatio: `${item.width} / ${item.height}` }}/><span><b>{item.label}</b><small>{ratio(item.width, item.height)} · {item.width} × {item.height}</small></span></button>; })}</div>
@@ -2678,7 +2675,7 @@ function ProjectInspector({ introBusy, onBrandIntro, timeline, clipFormat, logos
         {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape, with or without a look.</small></span></label>
           : <p className="ed-group-tip">Widescreen bars are for landscape and square projects.</p>}
       </Group>
-      <Group title="Brand watermark" tab="look" startOpen changed={Boolean(brand)} keywords="logo watermark brand mark corner badge" tip="Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best." help="brand-watermark">
+      <Group title="Brand watermark" tab="brand" startOpen changed={Boolean(brand)} keywords="logo watermark brand mark corner badge" tip="Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best." help="brand-watermark">
         {!brand ? <>
           <ImportArea compact onImported={onImported}/>
           <label className="ed-lut-field"><span>Logo</span><KanaaSelect aria-label="Choose a logo image" value="" onChange={(event) => { const item = logos.find((entry) => String(entry.id) === event.target.value); if (item) onBrand(item); }}>
