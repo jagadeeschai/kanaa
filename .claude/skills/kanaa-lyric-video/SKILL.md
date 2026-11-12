@@ -62,7 +62,37 @@ Examples that worked:
 - `brand_intro` (default on, needs the logo): the video opens with the animated brand intro made from the logo. A plain golden leaf falls among music notes, strikes them, the note appears in it, the logo forms, and **வழங்கும்** and **PRESENTS** fade in beneath. `make_brand_intro(project_id, logo_media_id)` adds the same intro to any project.
 - `project_id`: the editor project to update when redoing a song. Leave it out only the first time.
 
-The finished video opens with the brand intro (5.5 s), then "A SONG BY" with the lyricist, then the title with the footer line, then the song at 10.5 s. It ends with a separate closing card: the logo, then LYRICS, MUSIC and PRESENTED BY in small spaced gold capitals above their names. Pictures are enlarged to fill the frame (AI pictures are 3:2), so there are no black bars.
+As built (before 3b), the video opens with the brand intro (5.5 s), then "A SONG BY" with the lyricist, then the title with the footer line, then the song at 10.5 s. It ends with a separate closing card: the logo, then LYRICS, MUSIC and PRESENTED BY in small spaced gold capitals above their names. Pictures are enlarged to fill the frame (AI pictures are 3:2), so there are no black bars. For the house style, build with `lyric_motion: plain` (3b gives the lines their own glide) and then follow 3b.
+
+## 3b. Finish in the owner's house style
+
+The owner hand-finished project 46 (எனைத் தொட்டிழுத்தாள்!, a பாவேந்தர் பாரதிதாசன் poem) in the editor. **Treat it as the base for every lyric video**: build with `build_lyric_video`, then make these changes with `update_item`, `set_keyframes`, `set_animation`, `add_title`, `set_transition` and `remove_item`. Read it with `get_project(46)` when in doubt; copy its values, don't guess.
+
+**Opening (no separate credit cards)**
+- The brand intro (5.5 s, a 0.5 s fade in) opens the video; the song starts right after it, at 5.5 s.
+- Remove the built "A SONG BY" and title cards (`opening-1`, `closing-credit` and their backgrounds); the owner replaced them with titles over the first scene:
+  - The poet/lyricist: a soft title at the centre-left, from 5.5 s for about 16 s, colour `#d2e6da`, size 44, Avenir Next with Arima for Tamil, drifting slowly downwards.
+  - The song title: design `overlap`, Futura with Baloo Thambi 2 for Tamil, red `#ef4444`, size 34, at the bottom right (x 0.62, y 0.90), for about 10 s before the first lyric.
+- A lower-third that stays for the whole song after the title: the song title with the poet as its subtitle, design `gradient`, outline style, left-aligned, size 20, Gill Sans with Arima, subtitle `#e5e5e5`, band `#2b2121`, enter `reveal` 0.6 s, exit `fade` 0.4 s. Put it on its own text layer.
+
+**Lyrics: two layers, answering each other**
+- Odd lines on one text layer, even lines on a second, so a line can arrive as the last one leaves.
+- Every line: Arima (Tamil and Latin), size 44, warm white `#fff7e8`, shadow, centred, **split onto two lines** at a natural break (`\n`).
+- Enter `particle-form` 0.5 s, exit `particle-form` 0.4 s.
+- Motion (keyframes on x and y, 0 to 0.53 s, linear): each line starts at the centre of the frame and glides out to its side. Odd lines go up-right (to about x 0.72, y 0.32); even lines go left (to about x 0.29, y 0.58). Resting scale 0.68.
+- Set these as the layer's style (layer settings) rather than on each line, so later fixes reach every line. Instrumental gaps simply have no line.
+
+**Pictures (the Main layer)**
+- Filled to the frame (scale 1.1852 for 3:2 pictures), one per scene, long holds (11-38 s).
+- A different touch per scene, never the same twice in a row: a dreamy glow (intensity 0.45, softness 0.5, warmth 0.2); a beat pulse (strength 0.6, size 0.04, 120 bpm); a blur exit or blur enter (0.5 s); a cross-blur or flash transition (0.6 s); an echo smear (4 trails, decay 0.6) on the last scene.
+- A very short cut (about 0.25 s) at a musical accent is fine.
+- The last scene ends with a 3 s fade out; the song fades out over its last 2.4 s.
+
+**Light overlays (the Effects layer, blend `screen`)**
+- Two 5 s light clips at the start of each scene, opacity 0.85.
+- One light slowed right down (speed 0.35) under the title moment; at most one kaleidoscope mirror (6 segments).
+
+**Logo**: small at the bottom right (x 0.93, y 0.91, scale 0.12, opacity 0.9), from the end of the intro to the end.
 
 ## 4. Check, then hand over
 
