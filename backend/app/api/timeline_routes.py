@@ -1029,3 +1029,43 @@ def start_depth_motion(identifier: int, body: dict):
 
     job_id = enqueue_render('depth_motion', f"Making {item['filename']} 3D", run, total=100)
     return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/brand-intro')
+def start_brand_intro(body: dict):
+    """The brand intro for a logo (a transparent picture in the library): a golden leaf falls among music notes, strikes
+    them, the note appears in it and the logo forms, with `tamil` and `english` lines beneath (வழங்கும் / PRESENTS by
+    default). `width` and `height` are the video's size. Ready at once when made before, else a job whose result has
+    the intro's `media_id`."""
+    from app.services import brand_intro_service
+    try:
+        logo = get_media(int(body['logo_media_id']))
+        width, height = int(body.get('width', 1920)), int(body.get('height', 1080))
+        if not (240 <= min(width, height) and max(width, height) <= 3840):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a logo, and a size between 240 and 3840.') from exc
+    if logo['media_type'] != 'image':
+        raise HTTPException(400, 'The brand intro is made from a logo picture.')
+    tamil = str(body.get('tamil', brand_intro_service.DEFAULT_TAMIL))[:40]
+    english = str(body.get('english', brand_intro_service.DEFAULT_ENGLISH))[:40]
+    path = Path(logo['absolute_path'])
+
+    def find(target: Path):
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+
+    target = brand_intro_service.intro_path(path, width, height, tamil, english)
+    if target.is_file() and find(target):
+        return {'status': 'ready', 'media_id': find(target)}
+
+    def run(should_cancel):
+        try:
+            made = brand_intro_service.make(path, width, height, tamil, english, lambda progress: update_job(job_id, progress=progress), should_cancel)
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
+        return {'progress': 100, 'media_id': find(made) or index_media(made, f"{Path(logo['filename']).stem} intro.mp4")['id']}
+
+    job_id = enqueue_render('brand_intro', f"Brand intro from {logo['filename']}", run, total=100)
+    return {'status': 'preparing', 'job_id': job_id}

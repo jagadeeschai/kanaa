@@ -275,3 +275,34 @@ def into_clear(timeline: dict, scenes: dict[str, dict], still: dict[str, int]) -
     timeline['layers'] = [layer for layer in timeline['layers'] if layer.get('name') != 'In front']
     words_at = next(index for index, layer in enumerate(timeline['layers']) if layer['kind'] == 'text')
     timeline['layers'].insert(words_at + 1, {'id': 'lyric-in-front', 'kind': 'video', 'name': 'Person', 'items': cover})
+
+
+def prepend_intro(timeline: dict, media_id: int, seconds: float = 5.5, cards: float = 5.0) -> None:
+    """Opens the video with the brand intro (it says who presents, so that card goes), then the song credit and the
+    title in `cards` seconds, then the song. Works on a timeline that credits() has dressed."""
+    shift = seconds + cards - OPENING
+    adjust = dict(ADJUST)
+    for layer in timeline['layers']:
+        kept = []
+        for item in layer['items']:
+            if item.get('id') == 'opening-1':
+                continue
+            if item.get('id') == 'credit-opening-bg':
+                item['out'] = item['in'] + cards
+                keys = item.get('transform', {}).get('keyframes', {}).get('scale')
+                if keys:
+                    keys[-1]['t'] = cards
+            elif item.get('id') == 'opening-2':
+                item.update(start=seconds + 0.3, length=round(cards * 0.46, 2))
+            elif item.get('id') == 'opening-3':
+                item.update(start=round(seconds + cards * 0.52, 2), length=round(cards * 0.48, 2))
+            elif item.get('id') == 'opening-foot':
+                item.update(start=round(seconds + cards * 0.62, 2), length=round(cards * 0.38, 2))
+            elif item.get('start', 0) >= OPENING - 1e-6:
+                item['start'] = round(item['start'] + shift, 3)
+            kept.append(item)
+        layer['items'] = kept
+    main = timeline['layers'][0]['items']
+    main.insert(0, {'id': 'brand-intro', 'name': 'Brand intro', 'media_id': media_id, 'start': 0, 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
+                    'fade_in': 0, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}, 'adjust': adjust})
+    lay_out(timeline)

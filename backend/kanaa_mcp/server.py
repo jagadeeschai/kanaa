@@ -599,13 +599,40 @@ def build_server(api: KanaaApi) -> MCPServer:
         batch = api.get(f'/projects/{lyric_project_id}/image-scenes')['batch']
         return [{'id': s['id'], 'media_id': s['media_id'], 'start': s['start'], 'end': s['end'], 'status': s['status'], 'error': s.get('error')} for s in batch['scenes']]
 
+    def intro_for(logo_media_id: int, fmt: dict, tamil: str = 'வழங்கும்', english: str = 'PRESENTS') -> int:
+        made = api.post('/brand-intro', {'logo_media_id': logo_media_id, 'width': fmt['width'], 'height': fmt['height'], 'tamil': tamil, 'english': english})
+        return int(made['media_id'] if made.get('status') == 'ready' else look_up(api.wait(made['job_id']), 'media_id'))
+
+    @server.tool(annotations=CHANGES)
+    def make_brand_intro(project_id: int, logo_media_id: int, tamil: str = 'வழங்கும்', english: str = 'PRESENTS') -> dict:
+        """Puts the animated brand intro at the very start of a project (5.5 s): a leaf falls among music notes and
+        becomes the logo (a transparent picture in the library), with `tamil` and `english` lines beneath. Everything
+        else moves 5.5 s later. An earlier brand intro is replaced. Undoable."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        media_id = intro_for(logo_media_id, after['format'], tamil, english)
+        main = next(layer for layer in after['layers'] if layer['kind'] == 'video')
+        old = next((clip for clip in main['items'] if clip['id'].startswith('brand-intro')), None)
+        gap = 0.0 if old else 5.5
+        if old:
+            main['items'].remove(old)
+        for layer in after['layers']:
+            if layer is not main:
+                for item in layer['items']:
+                    item['start'] = round(item['start'] + gap, 3)
+        main['items'].insert(0, {'id': f'brand-intro-{uuid.uuid4().hex[:6]}', 'name': 'Brand intro', 'media_id': media_id, 'start': 0, 'in': 0, 'out': 5.5, 'speed': 1, 'volume': 0,
+                                 'muted': True, 'fade_in': 0, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}})
+        relay(after)
+        save(project_id, before, after, 'Added the brand intro')
+        return {'media_id': media_id, 'seconds': 5.5, 'replaced': bool(old)}
+
     @server.tool(annotations=CHANGES)
     def build_lyric_video(name: str, song_asset_id: str, song_seconds: float, cues: list[dict], scenes: list[dict],
                           look: Literal['energetic', 'romantic', 'calm'] = 'romantic', lyric_motion: Literal['into_clear', 'plain', 'in_scene'] = 'into_clear', three_d: bool = False, lights: bool = True,
                           lyric_font: Literal['standard', 'elegant', 'modern', 'playful', 'handwritten'] = 'elegant', lyric_colour: str = '#ffffff', lyric_size: int = 50,
                           canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
                           music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
-                          logo_media_id: int | None = None, project_id: int | None = None) -> dict:
+                          logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None) -> dict:
         """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
         - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
         - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -621,6 +648,8 @@ def build_server(api: KanaaApi) -> MCPServer:
           closing card (LYRICS `song_by`, MUSIC `music`, PRESENTED BY `presented_by`, `footer`); `accent` colours the roles.
           Leave out what you do not know rather than guess.
         - logo_media_id: a picture with transparency, small in the bottom-right corner and large on the closing card.
+        - brand_intro: open with the animated brand intro made from that logo (a leaf falls among music notes and
+          becomes it, with வழங்கும் and PRESENTS); it replaces the `presents` card.
         - project_id: update that editor project instead of making a new one (do this when redoing a video).
         Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
         from kanaa_mcp import lyrics
@@ -697,6 +726,8 @@ def build_server(api: KanaaApi) -> MCPServer:
             item = media(logo_media_id)
             logo = {'media_id': logo_media_id, 'width': float(item['width']), 'height': float(item['height'])}
         lyrics.credits(timeline, name, presents, song_by, music, presented_by, footer, accent, logo)
+        if logo and brand_intro:
+            lyrics.prepend_intro(timeline, intro_for(logo_media_id, timeline['format']))
         validate(timeline)
         if project_id is None:
             project_id = api.post('/projects', {'name': name, 'kind': 'edit', 'media_ids': [int(scenes[0]['media_id'])]})['id']

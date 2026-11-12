@@ -18,7 +18,7 @@ import { fetchRecorded, getSurface, startPeopleGrid, startSceneTrack } from '../
 import type { KeepClear } from '../timeline/model';
 import { removeStay, stayWith } from '../timeline/stayWith';
 import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
-import { listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchTextLetters, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
+import { startBrandIntro, listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchTextLetters, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
 import ImportArea from '../components/ImportArea';
 import KanaaSelect from '../components/KanaaSelect';
 import AIImageGenerator from '../components/CoverArtGenerator';
@@ -395,6 +395,31 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         ? `Mostly clear. Someone still touches the title at ${times}. Try "A little" space, or another way to move.`
         : 'Done. The title moves out of their way and comes back after they pass.' });
     } catch (problem) { setError((problem as Error).message); } finally { setClearProgress(null); }
+  };
+  const [introProgress, setIntroProgress] = useState<number | null>(null);
+  /** Makes the brand intro for a logo at this video's size and puts it at the very start (replacing an earlier one). */
+  const addBrandIntro = async (logo: Photo, tamil: string, english: string) => {
+    const current = timelineRef.current;
+    if (!current) return;
+    setIntroProgress(0);
+    try {
+      let made = await startBrandIntro(logo.id, current.format.width, current.format.height, tamil, english);
+      while (made.status !== 'ready' && made.job_id) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        const status = await getJobStatus(made.job_id) as unknown as { status?: string; progress: number; error?: string | null; media_id?: number };
+        if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not make the brand intro.');
+        if (status.status === 'done' && status.media_id) made = { status: 'ready', media_id: status.media_id };
+        else setIntroProgress(status.progress);
+      }
+      const item = await getPhoto(made.media_id!);
+      setMedia((list) => (list.some((entry) => entry.id === item.id) ? list : [item, ...list]));
+      const latest = timelineRef.current ?? current;
+      const old = mainLayer(latest).items.find((clip) => clip.id.startsWith('brand-intro'));
+      const without = old ? removeClip(latest, old.id) : latest;
+      const clip = { ...newClip({ media_id: item.id, media_type: 'video', duration: item.duration ?? 5.5, width: item.width, height: item.height }, `brand-intro-${newId()}`), muted: true, name: 'Brand intro' };
+      change(insertClip(without, clip, 0), 'brand-intro');
+      setNote('Brand intro added at the start. Play from the beginning to see it.');
+    } catch (problem) { setError((problem as Error).message); } finally { setIntroProgress(null); }
   };
   const [stayProgress, setStayProgress] = useState<number | null>(null);
   const [stayNote, setStayNote] = useState<{ textId: string; text: string } | null>(null);
@@ -2211,7 +2236,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         stems={stems} job={stemJob?.soundId === selectedSound.sound.id ? stemJob : null} busy={Boolean(stemJob)} onSeparate={(choice) => { void separate(choice); }} onCancelStems={() => { if (stemJob) void cancelRenderJob(stemJob.jobId); }}/>
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected, timeline!.format.fps) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected, timeline!.format.fps)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
-          onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}/> : timeline ? <ProjectInspector timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} logos={media.filter((item) => item.media_type === 'image')} logo={(() => { const item = brandClip(timeline); return item ? media.find((entry) => entry.id === item.media_id) ?? null : null; })()} onBrand={(item) => change(applyBrand(timeline, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onImported={(items) => { setMedia((current) => [...items, ...current]); }} onRemoveBrand={() => change(removeBrand(timeline), 'brand')} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); setPanelOpen(true); }} onGuide={() => setShowingHelp(true)}/>
+          onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}/> : timeline ? <ProjectInspector introBusy={introProgress} onBrandIntro={(item, tamil, english) => { void addBrandIntro(item, tamil, english); }} timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} logos={media.filter((item) => item.media_type === 'image')} logo={(() => { const item = brandClip(timeline); return item ? media.find((entry) => entry.id === item.media_id) ?? null : null; })()} onBrand={(item) => change(applyBrand(timeline, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onImported={(items) => { setMedia((current) => [...items, ...current]); }} onRemoveBrand={() => change(removeBrand(timeline), 'brand')} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); setPanelOpen(true); }} onGuide={() => setShowingHelp(true)}/>
           : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
       </RailContext.Provider>
       </HelpContext.Provider>
@@ -2328,7 +2353,24 @@ function ActiveEffects({ clip, onChange }: { clip: Clip; onChange: (changes: Par
 /** Settings for the whole film: its shape and frame rate, its look, and its sound. Shown when nothing is selected. */
 const FRAME_RATES = [24, 25, 30, 50, 60] as const;
 const RATE_TIPS: Record<number, string> = { 24: 'the film look', 25: 'TV in India and Europe', 30: 'most phones; a safe choice', 50: 'smooth motion, PAL', 60: 'smoothest; sport and action' };
-function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onChange, onPause, onThemes, onGuide }: { timeline: Timeline; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
+/** The animated brand intro: a leaf falls among music notes and becomes the logo, with Tamil and English lines beneath. */
+function BrandIntroGroup({ logos, logo, busy, has, onMake }: { logos: Photo[]; logo: Photo | null; busy: number | null; has: boolean; onMake: (logo: Photo, tamil: string, english: string) => void }) {
+  const [chosen, setChosen] = useState<number | null>(logo?.id ?? null);
+  const [tamil, setTamil] = useState('வழங்கும்');
+  const [english, setEnglish] = useState('PRESENTS');
+  const picked = logos.find((item) => item.id === (chosen ?? logo?.id)) ?? null;
+  return <Group title="Brand intro" tab="look" startOpen={has} changed={has} keywords="brand intro logo animation opening presents vazhangum leaf notes channel" tip="Your logo comes to life at the start: a leaf falls among music notes and becomes it, with வழங்கும் and PRESENTS beneath." help="brand-watermark">
+    <label className="ed-lut-field"><span>Logo</span><KanaaSelect aria-label="Logo for the brand intro" value={picked ? String(picked.id) : ''} onChange={(event) => setChosen(Number(event.target.value) || null)}>
+      <option value="">Choose a logo…</option>{logos.map((item) => <option key={item.id} value={item.id}>{item.filename}</option>)}
+    </KanaaSelect></label>
+    <label className="ed-lut-field"><span>Tamil line</span><input className="ed-text" lang="ta" value={tamil} maxLength={40} onChange={(event) => setTamil(event.target.value)} aria-label="Tamil line under the logo"/></label>
+    <label className="ed-lut-field"><span>English line</span><input className="ed-text" value={english} maxLength={40} onChange={(event) => setEnglish(event.target.value)} aria-label="English line under the logo"/></label>
+    <button className="ed-button wide primary" disabled={!picked || busy !== null} onClick={() => picked && onMake(picked, tamil.trim(), english.trim())}>{busy !== null ? `Making the intro… ${busy}%` : has ? 'Replace the brand intro' : 'Add brand intro at the start'}</button>
+    <p className="ed-group-tip">A logo with a transparent background (PNG) works best: its largest shape falls as the leaf, and anything cut out of it appears when it strikes the notes. 5.5 seconds, made once.</p>
+  </Group>;
+}
+
+function ProjectInspector({ introBusy, onBrandIntro, timeline, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onChange, onPause, onThemes, onGuide }: { introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; timeline: Timeline; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
   const format = timeline.format;
   const finish = timeline.finish ?? null;
   const brand = brandClip(timeline);
@@ -2398,6 +2440,7 @@ function ProjectInspector({ timeline, clipFormat, logos, logo, onBrand, onImport
           </>}
         </>}
       </Group>
+      <BrandIntroGroup logos={logos} logo={logo} busy={introBusy} has={mainLayer(timeline).items.some((clip) => clip.id.startsWith('brand-intro'))} onMake={onBrandIntro}/>
       <Group pro title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
         <label className="ed-lut-field"><span>LUT</span><KanaaSelect searchable searchPlaceholder={`Search ${luts.length || ''} LUTs…`} aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>
           <option value="">None</option>{luts.map((lut) => <option key={lut.id} value={lut.id}>{lut.name}</option>)}

@@ -103,3 +103,20 @@ class IntoTheClear(unittest.TestCase):
         self.assertEqual(len(cover), len(lines))
         self.assertTrue(all(c['out'] - c['in'] <= lyrics.COVER_SECONDS + 1e-6 for c in cover), 'people cover a line only while it moves clear')
         self.assertTrue(all(c['transform'] == scene['transform'] for c in cover), 'the cut-out lines up with its scene')
+
+
+@unittest.skipUnless(shutil.which('node'), 'node builds the lyric screen timeline')
+class WithBrandIntro(unittest.TestCase):
+    def test_the_intro_opens_then_the_song_credit_and_title_then_the_song(self):
+        t = Build().timeline(three_d=False)
+        lyrics.lay_out(t)
+        lyrics.credits(t, 'Song', 'KAVIN TAMIL ORIGINALS', 'பட்டுக்கோட்டை கல்யாணசுந்தரம்', 'Made with Suno', None, 'Lyric video with Kanaa', '#e8b04a', None)
+        lyrics.prepend_intro(t, 99)
+        Timeline.model_validate(t)
+        main = t['layers'][0]['items']
+        self.assertEqual((main[0]['id'], main[0]['start'], main[1]['start']), ('brand-intro', 0.0, 5.5))
+        texts = {i['id']: i for l in t['layers'] if l['kind'] == 'text' for i in l['items']}
+        self.assertNotIn('opening-1', texts, 'the intro says who presents')
+        song = [i for l in t['layers'] if l['kind'] == 'audio' for i in l['items']][0]
+        self.assertEqual(song['start'], 10.5)
+        self.assertTrue(texts['opening-2']['start'] < texts['opening-3']['start'] < song['start'])
