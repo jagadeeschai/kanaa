@@ -66,7 +66,7 @@ As built (before 3b), the video opens with the brand intro (5.5 s), then "A SONG
 
 ## 3b. Finish in the owner's house style
 
-The owner hand-finished project 46 (எனைத் தொட்டிழுத்தாள்!, a பாவேந்தர் பாரதிதாசன் poem) in the editor. **Treat it as the base for every lyric video**: build with `build_lyric_video`, then make these changes with `update_item`, `set_keyframes`, `set_animation`, `add_title`, `set_transition` and `remove_item`. Read it with `get_project(46)` when in doubt; copy its values, don't guess.
+The owner hand-finished the project named **"AI scene 6 still.mp4"** (the song எனைத் தொட்டிழுத்தாள்!, a பாவேந்தர் பாரதிதாசன் poem; its id is 46, but the owner never sees ids) in the editor. **Treat it as the base for every lyric video**: build with `build_lyric_video`, then make these changes with `update_item`, `set_keyframes`, `set_animation`, `add_title`, `set_transition` and `remove_item`. Find it with `list_projects` by that name and read it with `get_project` when in doubt; copy its values, don't guess.
 
 **Opening (no separate credit cards)**
 - The brand intro (5.5 s, a 0.5 s fade in) opens the video; the song starts right after it, at 5.5 s.
@@ -108,7 +108,7 @@ The owner hand-finished project 46 (எனைத் தொட்டிழுத�
    - No line ends hidden behind a person.
    - No black bars at the sides.
    - The logo sits in the corner.
-4. Tell the owner the project's name and number, what you checked, and anything you could not check. Leave the export to them.
+4. Tell the owner the project's name (as Kanaa shows it; never just its id number), what you checked, and anything you could not check. Leave the export to them.
 
 ## Words to use with the owner
 
