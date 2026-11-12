@@ -41,8 +41,8 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | E1 | "Theme" is both the video's look and light/dark mode (both கருப்பொருள் in Tamil) | Light/dark becomes **Appearance**, in Settings | ✅ |
 | E2 | Back, save state, undo, export spread over two rails; the project name shown nowhere | One header: Back · name · Saved · Undo · Redo · ? · ⚙ · Export | ⬜ |
 | E3 | Colour and looks set in five places | ✅ Themes panel is whole-video only (one-clip looks live in the clip's Colour); Effects' "Colour" category is now Stylise; Cinematic finish and LUT together under Colour & finish | M | ✅ |
-| E4 | Effects tab holds four unrelated tools | Effects + overlays; Travel map to Media; blur/pixelate as **Privacy** | ⬜ |
-| E5 | Caption language lives in Words, which Lite hides | A language choice inside Captions | ✅ |
+| E4 | Effects tab holds four unrelated tools | ✅ Travel map moved to Media; blur/pixelate/faces is the Privacy section; Effects holds clip effects, overlays and Privacy | M | ✅ |
+| E5 | Caption language lives in Words, which Lite hides | ✅ Captions have their own language choice (in Text, so Lite has it); a merged Captions & words tab was dropped because it would hide captions from Lite | S | ✅ |
 | E6 | The Transitions tab changes with the selection | Tab: gallery, Every cut, Remove all; per-clip length in the clip | ⬜ |
 | E7 | "Templates" holds only stories | Rename to **Stories**; put Brand intro there as an opening | ✅ |
 | E8 | Project settings mix format, look, brand and sound | ✅ Tabs Format · Colour & finish · Brand (watermark, brand intro) · Sound. Still to do: loudness set once (it is also in Export) | M | 🚧 |

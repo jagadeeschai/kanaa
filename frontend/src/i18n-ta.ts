@@ -328,4 +328,5 @@ export const TAMIL: Record<string, string> = {
   'Switch to Pro for transitions, effects, words and Ask AI': 'மாற்றங்கள், விளைவுகள், சொற்கள், AI-க்கு Pro-வுக்கு மாறுங்கள்',
   'Smart tools': 'அறிவார்ந்த கருவிகள்',
   'Search folders': 'கோப்புறைகளைத் தேடு',
+  'Privacy': 'தனியுரிமை',
 };
