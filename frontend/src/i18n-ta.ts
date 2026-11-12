@@ -208,4 +208,9 @@ export const TAMIL: Record<string, string> = {
   'Changes here override every clip': 'இங்கு செய்யும் மாற்றம் எல்லாக் கிளிப்பையும் மீறும்',
   "Every item drops its own settings and takes the layer's": 'ஒவ்வொன்றும் தன் அமைப்பை விட்டு அடுக்கின் அமைப்பை எடுக்கும்',
   'Override all ({count} set their own)': 'அனைத்தையும் மீறு ({count} தனி அமைப்பு)',
+  'Layer settings': 'அடுக்கு அமைப்புகள்',
+  "Follows the layer's settings. Turn off to keep this one as it is": 'அடுக்கின் அமைப்பைப் பின்பற்றுகிறது. இதை அப்படியே வைக்க அணைக்கவும்',
+  "Layer settings don't apply here. Turn on to follow the layer": 'அடுக்கின் அமைப்பு இங்கு பொருந்தாது. பின்பற்ற இயக்கவும்',
+  'Follows layer settings': 'அடுக்கைப் பின்பற்றுகிறது',
+  'Layer settings off': 'அடுக்கு அமைப்பு அணைவு',
 };

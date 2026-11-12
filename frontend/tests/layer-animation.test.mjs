@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, applyLayerStyles, overrideLayerItems, overriddenCount, emptyTimeline, findText, insertClip, mainLayer, markOwn, newClip, ownOverLayer, setLayerStyle, updateText, useLayerStyle } from '../src/timeline/model.ts';
+import { addText, applyLayerStyles, setFollowLayer, overrideLayerItems, overriddenCount, emptyTimeline, findText, insertClip, mainLayer, markOwn, newClip, ownOverLayer, setLayerStyle, updateText, useLayerStyle } from '../src/timeline/model.ts';
 
 const line = (id, start) => ({ id, start, length: 3, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
 const three = () => ['a', 'b', 'c'].reduce((t, id, i) => addText(t, line(id, i * 4), 'L'), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
@@ -52,4 +52,15 @@ test('override all: the layer wins over every title that set its own', () => {
   t = overrideLayerItems(t, layer);
   assert.equal(findText(t, 'b').text.size, 1.4);
   assert.equal(overriddenCount(t, layer), 0);
+});
+
+test('a title switched off from its layer keeps its settings, even through override all', () => {
+  let t = setFollowLayer(updateText(three(), 'b', { size: 2 }), 'b', false);
+  t = setLayerStyle(t, 'a', { size: 1.4 });
+  const layer = t.layers.find((l) => l.kind === 'text').id;
+  t = overrideLayerItems(t, layer);
+  assert.equal(findText(t, 'b').text.size, 2);
+  assert.equal(findText(t, 'c').text.size, 1.4);
+  t = setFollowLayer(t, 'b', true);
+  assert.equal(findText(t, 'b').text.size, 1.4);
 });

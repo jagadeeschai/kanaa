@@ -390,3 +390,4 @@
 @media (max-width:900px){.tl-hbar{margin-left:106px}}
 
 .ed-scope{padding:8px 10px;border-bottom:1px solid var(--hairline)}.ed-scope .ed-tip{margin:6px 0 0}
+.ed-follow{display:flex;align-items:center;gap:8px;font-size:12px}

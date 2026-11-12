@@ -31,7 +31,7 @@ import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFr
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { onSkyline, snapshotFrame, TITLE_DESIGNS, type TitleDesign } from '../timeline/model';
 import { applyTitleMove, stillTitle, TITLE_MOVES } from '../timeline/titleMoves';
-import { applyLayerStyles, overrideLayerItems, overriddenCount, groundRiseBehind, groundRiseGap, markOwn, ownOverLayer, setGroundRiseGap, setLayerStyle, sharedKeys, styledLayerOf, useLayerStyle } from '../timeline/model';
+import { applyLayerStyles, followsLayer, setFollowLayer, overrideLayerItems, overriddenCount, groundRiseBehind, groundRiseGap, markOwn, ownOverLayer, setGroundRiseGap, setLayerStyle, sharedKeys, styledLayerOf, useLayerStyle } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import type { CoverKind } from '../timeline/model';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline, type TitlePin, type SurfaceKind } from '../timeline/model';
@@ -934,8 +934,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       </div>;
     }
     const own = ownOverLayer(timeline, id);
-    return own.length > 0 && <div className="ed-scope">
-      {<p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
+    const item = (layer.items as (Clip | TextItem)[]).find((entry) => entry.id === id);
+    const following = !item || followsLayer(item);
+    if (layer.items.length < 2 && !layer.style) return null;
+    return <div className="ed-scope">
+      <div className="ed-follow"><button className="ed-effect-switch" role="switch" aria-checked={following} aria-label={t('Layer settings')} title={t(following ? "Follows the layer's settings. Turn off to keep this one as it is" : "Layer settings don't apply here. Turn on to follow the layer")} onClick={() => change(setFollowLayer(timeline, id, !following))}>{following ? <Eye size={13}/> : <EyeOff size={13}/>}</button><span>{t(following ? 'Follows layer settings' : 'Layer settings off')}</span></div>
+      {following && own.length > 0 && <p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
     </div>;
   };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) scopedUpdate(selectedText.id, changes, (t) => updateText(t, selectedText.id, changes), group); };

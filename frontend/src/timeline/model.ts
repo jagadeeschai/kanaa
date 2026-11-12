@@ -1024,6 +1024,20 @@ const NOT_SHARED = new Set(['id', 'own', 'name', 'start', 'length', 'text', 'sub
   'enabled', 'transition_in', 'cutout', 'cutout_pick', 'shape_mask', 'focus_pull', 'depth', 'depth_gap', 'pin', 'keep_clear', 'stay_with', 'stabilise']);
 export const sharedKeys = (changes: object): string[] => Object.keys(changes).filter((key) => !NOT_SHARED.has(key));
 type Styled = TextLayer | VideoLayer;
+/** In an item's `own`: the item is switched off from its layer's style altogether. */
+export const NOT_FOLLOWING = '*';
+
+/** Whether this item takes its layer's style at all. */
+export const followsLayer = (item: { own?: string[] }) => !item.own?.includes(NOT_FOLLOWING);
+
+/** Switches an item to follow its layer's style, or off from it (it keeps its current settings). */
+export function setFollowLayer(timeline: Timeline, id: string, on: boolean): Timeline {
+  const layer = styledLayerOf(timeline, id);
+  if (!layer) return timeline;
+  const next = { ...timeline, layers: timeline.layers.map((l) => l.id !== layer.id ? l : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.id !== id ? item
+    : { ...item, own: on ? (item.own ?? []).filter((key) => key !== NOT_FOLLOWING) : [...new Set([...(item.own ?? []), NOT_FOLLOWING])] }) } as TrackLayer) };
+  return on ? applyLayerStyles(next) : next;
+}
 
 /** The text or video layer holding this item. */
 export function styledLayerOf(timeline: Timeline, id: string): Styled | null {
@@ -1041,6 +1055,7 @@ export function applyLayerStyles(timeline: Timeline): Timeline {
     const style = layer.style;
     let layerChanged = false;
     const items = (layer.items as (Clip | TextItem)[]).map((item) => {
+      if (item.own?.includes(NOT_FOLLOWING)) return item;
       const fixes: Record<string, unknown> = {};
       for (const key of Object.keys(style)) if (!item.own?.includes(key) && !same((item as Record<string, unknown>)[key], style[key])) fixes[key] = structuredClone(style[key]);
       if (!Object.keys(fixes).length) return item;
@@ -1083,18 +1098,18 @@ export function useLayerStyle(timeline: Timeline, id: string, keys?: string[]): 
 export function ownOverLayer(timeline: Timeline, id: string): string[] {
   const layer = styledLayerOf(timeline, id);
   const item = layer && (layer.items as (Clip | TextItem)[]).find((i) => i.id === id);
-  return item?.own?.filter((key) => layer!.style && key in layer!.style) ?? [];
+  return item?.own?.filter((key) => key !== NOT_FOLLOWING && layer!.style && key in layer!.style) ?? [];
 }
 
 /** The layer's style wins on every item: items drop their own settings (all, or just these) and take the layer's. */
 export function overrideLayerItems(timeline: Timeline, layerId: string, keys?: string[]): Timeline {
   return applyLayerStyles({ ...timeline, layers: timeline.layers.map((l) => l.id !== layerId || (l.kind !== 'text' && l.kind !== 'video') ? l
-    : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.own?.length ? { ...item, own: keys ? item.own.filter((key) => !keys.includes(key)) : [] } : item) } as TrackLayer) });
+    : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.own?.length && !item.own.includes(NOT_FOLLOWING) ? { ...item, own: keys ? item.own.filter((key) => !keys.includes(key)) : [] } : item) } as TrackLayer) });
 }
 
 /** How many items on the layer set their own value for a setting the layer styles. */
 export function overriddenCount(timeline: Timeline, layerId: string): number {
   const layer = timeline.layers.find((l) => l.id === layerId) as Styled | undefined;
   if (!layer || !layer.style) return 0;
-  return (layer.items as (Clip | TextItem)[]).filter((item) => item.own?.some((key) => key in layer.style!)).length;
+  return (layer.items as (Clip | TextItem)[]).filter((item) => !item.own?.includes(NOT_FOLLOWING) && item.own?.some((key) => key in layer.style!)).length;
 }
