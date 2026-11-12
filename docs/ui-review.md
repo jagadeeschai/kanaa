@@ -111,3 +111,23 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | ⌘K labels translated twice; names in labels left to the page translator | Real (harmless, but untidy) | ✅ fixed: labels translated once with `{name}`; English kept for search |
 | A failed job with no message showed nothing | Real | ✅ fixed: "Could not finish" |
 | "Find in settings" fills the settings search through the page after a delay | Real | ⬜ give the settings panel a shared search value instead |
+
+## Menu-architecture review (validated against the code)
+
+| Proposal | Verdict | Action |
+|---|---|---|
+| Top header with project name, save state, Jobs, ⌘K, ?, ⚙, Export | Valid in part. The project name is shown nowhere and save state only in Back's tooltip. But the owner asked for Back at the top of the left rail, so it stays there. | ⬜ A slim header with **project name + save state** only; keep Back on the rail; Jobs/?/⚙/Export stay on the right rail unless the owner wants them moved |
+| Left rail in groups with dividers (Media·Audio │ Text·Captions │ Effects·Transitions·Stories │ Ask AI) | Valid: nine flat icons today | ⬜ Dividers between groups |
+| Rename Words to Captions | Partly: captions are made in Text today; Words is the transcript and pause tidy-up | ⬜ "Captions & words" as one tab (with E5) |
+| Travel map to Media; blur/pixelate as Privacy | Valid (already E4) | ⬜ |
+| Themes + Stories as one "Styles" tab | Valid (already E7's second option) | ⬜ owner to choose |
+| Lite hint "Switch to Pro for…" | Valid (already E10) | ⬜ |
+| One Effects tab for clips, applied effects on top | Valid (already C2) | ⬜ |
+| Clip "Colour" tab holding the 3D LUT | Wrong: the LUT is a whole-video grade in Project settings › Colour & finish (by design, E3) | — |
+| Brand watermark per clip next to the project's | Valid (already C3) | ⬜ |
+| Title: Typography / Motion / Look tabs | Rejected: splitting look from the words again is what the owner asked to undo (T1); the Motion grouping is T10 | ⬜ T10 only |
+| Timeline right-click is a flat 15+ list | Overstated: it already has dividers and an Effects submenu. Fair that the AI tools could sit in a submenu. "Fix lyric sync" doesn't belong on a clip; "F" is full screen, not freeze | ⬜ "Smart tools ▸" submenu (Follow the person, Split at scene changes) |
+| Media panel: Move to folder | Already there (right-click a media item › Move to folder…) | — |
+| Media panel: New folder button | Valid, small | ⬜ |
+| ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything; headings and recent actions would help | ⬜ |
+| Export ▾ quick choices (1080p, 4K) | Nice to have; the Export window already chooses quality | — |
