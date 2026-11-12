@@ -31,3 +31,20 @@ test('clips in a layer share the enter and exit', () => {
   t = animateWholeLayer(t, 'x');
   assert.deepEqual(mainLayer(t).items.map((c) => c.enter?.preset), ['fade', 'fade']);
 });
+
+test('no animation on the chosen title removes them from every title, cinematic ones too', () => {
+  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
+  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L'); t = addText(t, line('c', 10, 4), 'L');
+  t = updateText(t, 'b', { enter: { preset: 'fade', duration: 0.5 }, exit: { preset: 'fade', duration: 0.5 } });
+  t = updateText(t, 'c', { enter: { preset: 'rise-behind', duration: 1.2 } });
+  t = animateWholeLayer(t, 'a');
+  for (const id of ['b', 'c']) { assert.equal(findText(t, id).text.enter, null); assert.equal(findText(t, id).text.exit, null); }
+});
+
+test('no animation on the chosen clip removes them from every clip', () => {
+  const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
+  let t = ['x', 'y'].reduce((acc, id) => insertClip(acc, newClip(source, id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
+  t = updateClip(t, 'y', { enter: { preset: 'fade', duration: 1 }, exit: { preset: 'fade', duration: 1 } });
+  t = animateWholeLayer(t, 'x');
+  assert.deepEqual(mainLayer(t).items.map((c) => [c.enter, c.exit]), [[null, null], [null, null]]);
+});

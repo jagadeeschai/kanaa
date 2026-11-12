@@ -980,7 +980,15 @@ function fitted(animation: Animation | null | undefined, length: number): Animat
 
 /** The same enter and exit as this title or clip on every title or clip in its layer. A title's scene-depth reveal stays its own. */
 export function animateWholeLayer(timeline: Timeline, id: string): Timeline {
-  const found = findText(timeline, id);
+  let found = findText(timeline, id);
+  if (found && !found.text.enter) {
+    // No entrance on this one: none on any, scene-depth reveals included (taken down with their cover layers).
+    for (const item of found.layer.items) if (item.enter && CINEMA_PRESETS.includes(item.enter.preset)) timeline = removeCinemaReveal(timeline, item.id);
+    timeline = updateText(timeline, id, { enter: null });
+    found = findText(timeline, id);
+    if (found) timeline = withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item, enter: null })));
+    found = findText(timeline, id);
+  }
   if (found) {
     const simple = (animation: Animation | null | undefined) => animation && CINEMA_PRESETS.includes(animation.preset) ? undefined : animation ?? null;
     const enter = simple(found.text.enter), exit = simple(found.text.exit);
