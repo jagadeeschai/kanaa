@@ -2536,7 +2536,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         before={picture(before, before.reverse ? before.in : before.out - 0.05)} after={picture(after, after.reverse ? after.out - 0.05 : after.in)}
         onPick={(kind) => { setTransitionPick(kind); set({ kind, duration: transition?.duration ?? Math.min(0.6, longest), direction: transition?.direction ?? null }); }}
         onLength={(duration, group) => transition && set({ ...transition, duration: Math.min(duration, longest) }, group ?? 'transition-length')}
-        onDirection={(direction) => transition && set({ ...transition, direction: direction === 'left' ? null : direction })}
+        onDirection={(direction) => transition && set({ ...transition, direction: direction === 'left' ? null : direction })} onColour={(color) => transition && set({ ...transition, color })}
         onRemove={() => { set(null); setCutOpen(null); }}
         onEveryCut={() => transition && change(transitionEverywhere(timeline, transition.kind, transition.duration), 'transition-all')}
         onPreview={() => { const half = (transition?.duration ?? 0) / 2; engineRef.current?.playRange(Math.max(0, after.start - half - 0.8), after.start + half + 0.8); }}

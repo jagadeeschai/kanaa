@@ -450,3 +450,4 @@
 .ed-first-run li .ed-link{flex:1;text-align:left}.ed-first-run li.done .ed-link{text-decoration:line-through;opacity:.6;cursor:default}
 .ed-first-run-tick{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--hairline)}.ed-first-run li.done .ed-first-run-tick{background:var(--accent,#7c6cff);border-color:transparent;color:#fff}
 .ed-first-run p{margin:8px 0 0;color:var(--muted);font-size:11px}
+.tp-swatch{width:22px;height:22px;border:1px solid var(--hairline)}.tp-swatch.on{outline:2px solid var(--accent,#7c6cff);outline-offset:1px}.tp-colour input{width:26px;height:22px;padding:0;border:0;background:none;cursor:pointer}

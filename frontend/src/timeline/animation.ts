@@ -40,7 +40,13 @@ export function cardCorners(kind: 'cube' | 'swap', which: 'a' | 'b', q: number, 
 }
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 /** direction: which way a wipe's edge or a slide's pictures travel; none is left (xfade_name in animation.py). */
-export type Transition = { kind: TransitionKind; duration: number; direction?: TransitionDirection | null };
+/** `color`: what a dip or flash passes through (#rrggbb); none is black for a dip and white for a flash. */
+export type Transition = { kind: TransitionKind; duration: number; direction?: TransitionDirection | null; color?: string | null };
+/** The colour a dip or flash passes through, as 0..1 red, green, blue. */
+export function dipColour(transition: Pick<Transition, 'kind' | 'color'>): [number, number, number] {
+  const hex = transition.color ?? (transition.kind === 'flash' ? '#ffffff' : '#000000');
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255) as [number, number, number];
+}
 /** Peak blur of a cross blur, as a share of the frame height, halfway through. Matches CROSS_BLUR in animation.py. */
 export const CROSS_BLUR = 0.025;
 /** A circle transition's weight for the old clip at a point `distance` from the middle (a share of the half diagonal),

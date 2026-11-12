@@ -25,7 +25,21 @@ CROSS_BLUR = 0.025  # Peak blur of a cross blur, as a share of the frame height,
 
 
 def xfade_name(transition) -> str:
-    """ffmpeg's xfade transition for a timeline transition: a wipe or slide goes the chosen way (left when none)."""
+    """ffmpeg's xfade transition for a timeline transition: a wipe or slide goes the chosen way (left when none).
+    A dip or flash through a chosen colour is a custom blend with the same weights as fadeblack/fadewhite and the
+    preview's dipWeights, on RGB planes (G, B, R, A as ffmpeg's gbrap orders them)."""
+    colour = getattr(transition, 'color', None)
+    if transition.kind in ('dip', 'flash') and colour and colour.lower() not in ('#000000', '#ffffff'):
+        r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+        smooth = 'st({n},clip((P-{lo})/(1-{lo}),0,1));ld({n})*ld({n})*(3-2*ld({n}))'
+        before, after = smooth.format(n=0, lo=0.8), smooth.format(n=1, lo=0.2)
+        fill = f'if(eq(PLANE,0),{g},if(eq(PLANE,1),{b},if(eq(PLANE,2),{r},255)))'
+        expr = f"st(2,{before});st(3,{after});A*P*ld(2)+B*(1-P)*(1-ld(3))+({fill})*(P*(1-ld(2))+(1-P)*ld(3))"
+        return f"custom:expr='{expr}'"
+    if transition.kind == 'dip' and colour and colour.lower() == '#ffffff':
+        return 'fadewhite'
+    if transition.kind == 'flash' and colour and colour.lower() == '#000000':
+        return 'fadeblack'
     if transition.kind in ('wipe', 'slide') and transition.direction:
         return f'{transition.kind}{transition.direction}'
     return XFADE_NAMES[transition.kind]

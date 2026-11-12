@@ -1,4 +1,4 @@
-import { animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
+import { dipColour, animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
 import { AudioMixer } from './audio';
@@ -1040,7 +1040,7 @@ export class PlaybackEngine {
       gl.blendFunc(gl.ONE, gl.ONE);
       this.drawClip(layer, before, { opacity: old });
       this.drawClip(layer, after, { opacity: fresh });
-      if (kind === 'flash') this.drawFill([1, 1, 1], colour);
+      this.drawFill(dipColour(after.transition_in!), colour);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       return;
     }

@@ -19,6 +19,8 @@ type Props = {
   onPick: (kind: TransitionKind) => void;
   onLength: (seconds: number, group?: string) => void;
   onDirection: (direction: TransitionDirection) => void;
+  /** The colour a dip or flash passes through. */
+  onColour?: (color: string | null) => void;
   onRemove: () => void;
   onEveryCut: () => void;
   onPreview: () => void;
@@ -35,7 +37,7 @@ const WIDTH = 452; const GAP = 10; const MARGIN = 8;
  * Hangs from a transition badge on the timeline: the two pictures either side of the cut, every transition in groups,
  * its length and direction, and preview, every cut and remove. Escape or a click outside closes it.
  */
-export default function TransitionPopover({ transition, anchor: start, before, after, longest, locked, onPick, onLength, onDirection, onRemove, onEveryCut, onPreview, onGestureStart, onClose }: Props) {
+export default function TransitionPopover({ transition, anchor: start, before, after, longest, locked, onPick, onLength, onDirection, onColour, onRemove, onEveryCut, onPreview, onGestureStart, onClose }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number; below: boolean } | null>(null);
   // Where the badge is now: it moves when the timeline scrolls (by hand, or following the playhead in Preview).
@@ -88,6 +90,10 @@ export default function TransitionPopover({ transition, anchor: start, before, a
         onGestureStart={onGestureStart} onChange={onLength}/>
       <div className="tp-quick" role="group" aria-label="Quick lengths">{QUICK_LENGTHS.filter((seconds) => seconds <= longest + 1e-6).map((seconds) =>
         <button key={seconds} className={Math.abs(transition.duration - seconds) < 0.01 ? 'on' : ''} disabled={locked} onClick={() => { onGestureStart(); onLength(seconds); }}>{seconds} s</button>)}</div>
+      {(kind === 'dip' || kind === 'flash') && onColour && <div className="tp-direction" role="group" aria-label="Fade colour"><span>Through</span>
+        {([['#000000', 'Black'], ['#ffffff', 'White']] as const).map(([hex, label]) => <button key={hex} className={`ed-icon small tp-swatch ${(transition!.color ?? (kind === 'flash' ? '#ffffff' : '#000000')).toLowerCase() === hex ? 'on' : ''}`} aria-label={label} title={label} disabled={locked} style={{ background: hex }} onClick={() => onColour(hex)}/>)}
+        <label className="tp-colour" title="Any colour"><input type="color" aria-label="Fade colour" disabled={locked} value={transition!.color ?? (kind === 'flash' ? '#ffffff' : '#000000')} onChange={(event) => onColour(event.target.value)}/></label>
+      </div>}
       {directional && <div className="tp-direction" role="group" aria-label="Direction"><span>Direction</span>
         {DIRECTIONS.map(({ id, label, Icon }) => <button key={id} className={`ed-icon small ${(transition.direction ?? 'left') === id ? 'on' : ''}`} aria-label={label} aria-pressed={(transition.direction ?? 'left') === id} title={label} disabled={locked} onClick={() => onDirection(id)}><Icon size={14}/></button>)}</div>}
     </div>}
