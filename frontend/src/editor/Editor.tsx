@@ -905,7 +905,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // The settings panel can show a whole text or video layer (its icon on the timeline): edits then go to the layer's style.
   const styleScope: 'item' | 'layer' = layerSettings ? 'layer' : 'item';
   const [layerWins, setLayerWins] = useState(false);
-  const openLayerSettings = (layerId: string) => {
+  const [syncOpen, setSyncOpen] = useState(false);  // The layer panel's Fix lyric timing, unfolded.
+  const openLayerSettings = (layerId: string, open?: 'sync') => {
+    setSyncOpen(open === 'sync');
     const layer = timeline?.layers.find((l) => l.id === layerId);
     if (!layer || (layer.kind !== 'text' && layer.kind !== 'video') || !layer.items.length) return;
     // The panel shows an item that follows the layer, so it reads the layer's own settings.
@@ -935,8 +937,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         <p className="ed-tip">{t('Every item on this layer follows, except settings an item sets itself.')} ({layer.items.length})</p>
         <label className="ed-check"><input type="checkbox" checked={layerWins} onChange={(event) => setLayerWins(event.target.checked)}/>{t('Changes here override every clip')}</label>
         {overridden > 0 && <button type="button" className="ed-button wide" title={t("Every item drops its own settings and takes the layer's")} onClick={() => change(overrideLayerItems(timeline, layerSettings))}>{t('Override all ({count} set their own)', { count: overridden })}</button>}
-        {layer.kind === 'text' && layer.items.length > 1 && <LyricSyncFix cues={layerLines(timeline, layer.id)} duration={Math.max(duration(timeline), ...layerLines(timeline, layer.id).map((line) => line.end))} position={now}
-          onSeek={seek} onChange={(lines) => change(retimeLayerLines(timeline, layer.id, lines))}/>}
+        {layer.kind === 'text' && layer.items.length > 1 && <details className="ed-sync-fold" open={syncOpen} onToggle={(event) => setSyncOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>{t('Fix lyric timing')}</summary><LyricSyncFix cues={layerLines(timeline, layer.id)} duration={Math.max(duration(timeline), ...layerLines(timeline, layer.id).map((line) => line.end))} position={now}
+          onSeek={seek} onChange={(lines) => change(retimeLayerLines(timeline, layer.id, lines))}/></details>}
       </div>;
     }
     const own = ownOverLayer(timeline, id);

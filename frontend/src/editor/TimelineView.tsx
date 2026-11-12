@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Power, SlidersHorizontal, Link2, Link2Off, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, MoreHorizontal, Power, SlidersHorizontal, Link2, Link2Off, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
 import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
+import { t } from '../i18n';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
@@ -9,7 +11,7 @@ export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number
 type Props = {
   timeline: Timeline; selectedId: string | null; zoom: number; theme: string;
   /** Opens the settings for a whole text or video layer; the layer shown there is marked. */
-  onLayerSettings?: (layerId: string) => void; layerSettingsId?: string | null;
+  onLayerSettings?: (layerId: string, open?: 'sync') => void; layerSettingsId?: string | null;
   visuals: (mediaId: number) => ClipVisuals; soundPeaks: (sound: Sound) => ClipVisuals['peaks']; source: (mediaId: number) => SourceFacts | undefined;
   playhead: { current: number };
   onSelect: (id: string | null) => void; onSeek: (t: number) => void;
@@ -613,12 +615,15 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     change(removeLayer(timeline, layer.id));
     if ((layer.items as TrackItem[]).some((item) => item.id === selectedId)) onSelect(null);
   };
+  const [layerMenu, setLayerMenu] = useState<MenuState | null>(null);
   const head = (layer: VideoLayer | TrackLayer, top: number, height: number) => <LayerHead key={layer.id} layer={layer} top={top} height={height} isMain={layer === main}
     position={layer.kind === 'video' && layer !== main ? overlayLayers(timeline).findIndex((entry) => entry.id === layer.id) : -1} overlays={overlayLayers(timeline).length}
     collapsed={collapsedLayers.has(layer.id)} onCollapse={() => setCollapsedLayers((current) => { const next = new Set(current); if (next.has(layer.id)) next.delete(layer.id); else next.add(layer.id); return next; })}
     onToggle={(changes) => change(updateLayer(timeline, layer.id, changes))} onMove={(direction) => change(reorderLayer(timeline, layer.id, direction))} onRename={(name) => change(updateLayer(timeline, layer.id, { name }))} onDelete={() => deleteTrack(layer)}
-    onSettings={onLayerSettings && (layer.kind === 'text' || layer.kind === 'video') && layer.items.length ? () => onLayerSettings(layer.id) : undefined} settingsOpen={layerSettingsId === layer.id}/>;
+    onSettings={onLayerSettings && (layer.kind === 'text' || layer.kind === 'video') && layer.items.length ? () => onLayerSettings(layer.id) : undefined} settingsOpen={layerSettingsId === layer.id}
+    onFixSync={onLayerSettings && layer.kind === 'text' && layer.items.length > 1 ? () => onLayerSettings(layer.id, 'sync') : undefined} onMenu={setLayerMenu}/>;
   return <div className="tl-host">
+    {layerMenu && <ContextMenu menu={layerMenu} onClose={() => setLayerMenu(null)}/>}
     <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer, collapsedLayers) + SOUND_GAP, 0) }}>
       <div className="tl-heads">
         <button className="tl-add-layer" aria-label="Add a layer" title="Add a layer" aria-expanded={addingLayer} onClick={() => setAddingLayer((open) => !open)}>{addingLayer ? <X size={14}/> : <Plus size={14}/>}<span>Layer</span></button>
@@ -681,10 +686,11 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   </div>;
 }
 
-function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, onCollapse, onToggle, onMove, onRename, onDelete, onSettings, settingsOpen }: { onSettings?: () => void; settingsOpen: boolean; layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; collapsed: boolean; onCollapse: () => void; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number; ripple?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void; onDelete: () => void }) {
+function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, onCollapse, onToggle, onMove, onRename, onDelete, onSettings, settingsOpen, onFixSync, onMenu }: { onSettings?: () => void; settingsOpen: boolean; onFixSync?: () => void; onMenu: (menu: MenuState) => void; layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; collapsed: boolean; onCollapse: () => void; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number; ripple?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void; onDelete: () => void }) {
   const fallback = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
   const name = layer.name || fallback;
   const [editing, setEditing] = useState(false);
+  const renaming = useRef(false);
   const [draft, setDraft] = useState('');
   const commit = () => { setEditing(false); const trimmed = draft.trim(); if (trimmed !== (layer.name ?? '')) onRename(trimmed); };
   return <div className={`tl-head ${height <= SOUND_HEIGHT ? 'tl-head-compact' : ''} ${collapsed ? 'tl-head-collapsed' : ''}`} style={{ top, height }} role="group" aria-label={`${name} layer`}>
@@ -692,19 +698,25 @@ function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, 
       {!isMain && <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${name} layer`} title={collapsed ? 'Expand layer' : 'Collapse layer'} onClick={onCollapse}>{collapsed ? <ChevronDown size={13}/> : <ChevronUp size={13}/>}</button>}
       {editing
         ? <input className="tl-rename" autoFocus value={draft} maxLength={80} aria-label="Layer name" onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setEditing(false); }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}/>
-        : <span title="Double-click to rename this layer" onDoubleClick={(event) => { event.stopPropagation(); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
+        : <span className={onSettings ? 'tl-layer-name-link' : ''} title={onSettings ? t('Click for this layer\'s settings; double-click to rename') : t('Double-click to rename this layer')} onClick={(event) => { if (onSettings && event.detail === 1) { const open = onSettings; window.setTimeout(() => { if (!renaming.current) open(); }, 220); } }} onDoubleClick={(event) => { event.stopPropagation(); renaming.current = true; window.setTimeout(() => { renaming.current = false; }, 300); setDraft(layer.name ?? ''); setEditing(true); }}>{name}</span>}
     </div>
     <div className="tl-layer-actions">
-      {onSettings && <button className={settingsOpen ? 'on' : ''} aria-pressed={settingsOpen} aria-label={`${name} layer settings`} title="Settings for every item on this layer" onClick={onSettings}><SlidersHorizontal size={13}/></button>}
-      {position >= 0 && <>
-        <button aria-label={`Bring ${name} forward`} title="Bring forward (above the layers under it)" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ArrowUp size={13}/></button>
-        <button aria-label={`Send ${name} back`} title="Send back (under the layers above it)" disabled={position === 0} onClick={() => onMove('back')}><ArrowDown size={13}/></button>
-      </>}
-      {!isMain && <button className={layer.ripple === false ? 'on' : ''} aria-pressed={layer.ripple === false} aria-label={`${layer.ripple === false ? 'Link' : 'Unlink'} ${name}`} title={layer.ripple === false ? 'Stays put when main clips are added or removed. Click to move with them' : 'Moves with the main track when clips are added, removed or trimmed. Click to keep it in place'} onClick={() => onToggle({ ripple: layer.ripple === false })}>{layer.ripple === false ? <Link2Off size={13}/> : <Link2 size={13}/>}</button>}
       {layer.kind !== 'audio' && <button className={layer.hidden ? 'on' : ''} aria-pressed={Boolean(layer.hidden)} aria-label={`Hide ${name}`} title={layer.hidden ? 'Show this layer' : 'Hide this layer'} onClick={() => onToggle({ hidden: !layer.hidden })}>{layer.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</button>}
       {(layer.kind === 'video' || layer.kind === 'audio') && <button className={layer.muted ? 'on' : ''} aria-pressed={Boolean(layer.muted)} aria-label={`Mute ${name}`} title={layer.muted ? 'Turn sound on' : 'Mute this layer'} onClick={() => onToggle({ muted: !layer.muted })}>{layer.muted ? <VolumeX size={13}/> : <Volume2 size={13}/>}</button>}
       <button className={layer.locked ? 'on' : ''} aria-pressed={Boolean(layer.locked)} aria-label={`Lock ${name}`} title={layer.locked ? 'Unlock this layer' : 'Lock this layer'} onClick={() => onToggle({ locked: !layer.locked })}>{layer.locked ? <Lock size={13}/> : <LockOpen size={13}/>}</button>
-      {!isMain && <button className="tl-delete-layer" aria-label={`Delete ${name} layer`} title="Delete this entire layer" onClick={onDelete}><Trash2 size={13}/></button>}
+      {layer.ripple === false && <span className="tl-layer-flag" title={t('Stays put when main clips are added or removed. Click to move with them')}><Link2Off size={12}/></span>}
+      <button className={settingsOpen ? 'on' : ''} aria-label={`${name} layer menu`} aria-haspopup="menu" title={t('More for this layer')} onClick={(event) => {
+        const box = event.currentTarget.getBoundingClientRect();
+        const items: MenuItem[] = [];
+        if (onSettings) items.push({ label: t('Layer settings'), onSelect: onSettings });
+        if (onFixSync) items.push({ label: t('Fix lyric timing'), onSelect: onFixSync });
+        if (items.length) items.push('divider');
+        items.push({ label: t('Rename'), onSelect: () => { setDraft(layer.name ?? ''); setEditing(true); } });
+        if (position >= 0) items.push({ label: t('Bring forward'), disabled: position === overlays - 1, onSelect: () => onMove('forward') }, { label: t('Send back'), disabled: position === 0, onSelect: () => onMove('back') });
+        if (!isMain) items.push({ label: t('Move with main clips'), checked: layer.ripple !== false, onSelect: () => onToggle({ ripple: layer.ripple === false }) });
+        if (!isMain) items.push('divider', { label: t('Delete layer'), danger: true, onSelect: onDelete });
+        onMenu({ x: box.left, y: box.bottom + 4, items });
+      }}><MoreHorizontal size={13}/></button>
     </div>
     {layer.kind === 'audio' && <input className="tl-layer-volume" type="range" min={0} max={1} step={0.05} value={layer.volume ?? 1} aria-label={`${name} volume`} title="This track's volume" onChange={(event) => onToggle({ volume: Number(event.target.value) })} onPointerDown={(event) => event.stopPropagation()}/>}
   </div>;

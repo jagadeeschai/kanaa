@@ -233,4 +233,10 @@ export const TAMIL: Record<string, string> = {
   'Switch between same as this Mac, light and dark': 'Mac போல, வெளிர், இருள் — மாற்று',
   'Dark': 'இருள்',
   'Spoken language': 'பேசும் மொழி',
+  "Click for this layer's settings; double-click to rename": 'அடுக்கு அமைப்புகளுக்கு அழுத்தவும்; பெயர் மாற்ற இருமுறை',
+  'More for this layer': 'இந்த அடுக்குக்கு மேலும்',
+  'Fix lyric timing': 'வரி நேரத்தைச் சரிசெய்',
+  'Rename': 'பெயர் மாற்று',
+  'Move with main clips': 'முதன்மைக் கிளிப்களுடன் நகர்',
+  'Delete layer': 'அடுக்கை நீக்கு',
 };

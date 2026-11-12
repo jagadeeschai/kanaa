@@ -30,8 +30,8 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Status |
 |---|---|---|---|
-| L1 | Up to nine icons on a 126px layer header | Keep hide, lock, mute; the rest in a ⋯ menu; click the layer name for its settings | ⬜ |
-| L2 | Fix sync crowds the layer panel | A "Fix lyric timing" action in the layer's ⋯ menu | ⬜ |
+| L1 | Up to nine icons on a 126px layer header | Keep hide, lock, mute; the rest in a ⋯ menu; click the layer name for its settings | ✅ |
+| L2 | Fix sync crowds the layer panel | A "Fix lyric timing" action in the layer's ⋯ menu | ✅ |
 | L3 | Snapshot uses the face icon; "Render preview" has two names; "More" is vague | Camera icon; one name, "Render smooth preview"; More becomes **View** | ✅ |
 
 ## Whole editor

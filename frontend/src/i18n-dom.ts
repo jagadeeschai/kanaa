@@ -15,7 +15,7 @@ const PATTERNS: [RegExp, string][] = [
   [/^Hide (.+)$/, '$1 மறை'], [/^Show (.+)$/, '$1 காட்டு'], [/^Mute (.+)$/, '$1 ஒலியடக்கு'], [/^Unmute (.+)$/, '$1 ஒலி இயக்கு'],
   [/^Lock (.+)$/, '$1 பூட்டு'], [/^Unlock (.+)$/, '$1 திற'], [/^Delete (.+) layer$/, '$1 அடுக்கை நீக்கு'],
   [/^Collapse (.+) layer$/, '$1 அடுக்கைச் சுருக்கு'], [/^Expand (.+) layer$/, '$1 அடுக்கை விரி'],
-  [/^Link (.+)$/, '$1 இணை'], [/^Unlink (.+)$/, '$1 பிரி'], [/^(.+) layer settings$/, '$1 அடுக்கு அமைப்புகள்'], [/^Bring (.+) forward$/, '$1 முன்னே'], [/^Send (.+) back$/, '$1 பின்னே'],
+  [/^Link (.+)$/, '$1 இணை'], [/^Unlink (.+)$/, '$1 பிரி'], [/^(.+) layer menu$/, '$1 அடுக்கு மெனு'], [/^(.+) layer settings$/, '$1 அடுக்கு அமைப்புகள்'], [/^Bring (.+) forward$/, '$1 முன்னே'], [/^Send (.+) back$/, '$1 பின்னே'],
 ];
 
 function pattern(text: string): string | undefined {
