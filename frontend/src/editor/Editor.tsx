@@ -2445,8 +2445,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
-            <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} data-tip={`${t('Undo')} (⌘Z)`}><Undo2 size={17}/></button>
-            <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} data-tip={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={17}/></button>
             <JobTray/>
             <button onClick={() => setShowingHelp(true)} aria-label={t('Guide and shortcuts')} data-tip={`${t('Guide and shortcuts')} (?)`}><CircleHelp size={17}/></button>
             <TopSettings appearance={themeChoice} onAppearance={(choice) => { if (setTheme) setTheme(choice); else nextTheme(); }} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
@@ -2480,6 +2478,9 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
     <div className="ed-lower"><div className="ed-tools">
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
+        <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} title={`${t('Undo')} (⌘Z)`}><Undo2 size={15}/></button>
+        <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} title={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={15}/></button>
+        <span className="ed-tool-sep" aria-hidden="true"/>
         <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
         <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
         <button className="ed-button" onClick={() => { void snapshot(); }} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Flash, shutter sound and a two-second printed-photo freeze"><Camera size={15}/>Snapshot</button>

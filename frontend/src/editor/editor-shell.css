@@ -439,3 +439,4 @@
 .ed-palette ul{list-style:none;margin:0;padding:6px;overflow:auto}.ed-palette li{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
 .ed-palette li span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-palette li small{color:var(--muted);font-size:11px}
 .ed-palette li.on{background:var(--selected-bg);color:var(--selected-text)}.ed-palette-empty{color:var(--muted);cursor:default}
+.ed-icon-button{padding-left:8px;padding-right:8px}.ed-tool-sep{display:inline-block;width:1px;height:18px;margin:0 4px;background:var(--hairline);vertical-align:middle}
