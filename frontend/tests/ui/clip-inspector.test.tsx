@@ -16,11 +16,11 @@ async function panel(language: 'en' | 'ta', overrides: Partial<Clip> = {}) {
   const { Inspector } = await inLanguage(language, () => import('../../src/editor/inspectors/ClipInspector'));
   const { EditorContext } = await import('../../src/editor/state/EditorContext');
   const { emptyTimeline } = await import('../../src/timeline/model');
-  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: noop, pause: noop, openGuide: noop };
+  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: noop, pause: noop, openGuide: noop, now: 0, seek: noop, selectedId: null, select: noop };
   const onChange = vi.fn();
   render(<EditorContext.Provider value={shared}><Inspector onReframe={null} reframing={false} onMove={noop} backgrounds={[]} onBackground={noop} logos={[]} clipBrandMarks={[]} onClipBrand={noop} onRemoveClipBrand={noop}
     clip={{ ...clip, ...overrides }} source={{ url: '', kind: 'video', width: 1920, height: 1080, duration: 10 }} onChange={onChange}
-    canDetach={false} onDetach={noop} local={0} onSeekLocal={noop} follow={null} isMain copyReady={false} onLayout={noop} picking={false} onPick={noop}
+    canDetach={false} onDetach={noop} follow={null} isMain copyReady={false} onLayout={noop} picking={false} onPick={noop}
     timing={[{ label: 'Start', value: 0, fps: 30 }, { label: 'Duration', value: 10, fps: 30 }]} overlay={null} onLayer={noop} closesWithTransition={false} onShowEnter={noop} onShowExit={noop}/></EditorContext.Provider>);
   return onChange;
 }

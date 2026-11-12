@@ -11,7 +11,7 @@ async function panel(language: 'en' | 'ta') {
   const { ProjectInspector } = await inLanguage(language, () => import('../../src/editor/inspectors/ProjectInspector'));
   const { EditorContext } = await import('../../src/editor/state/EditorContext');
   const onChange = vi.fn();
-  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: onChange, pause: noop, openGuide: noop };
+  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: onChange, pause: noop, openGuide: noop, now: 0, seek: noop, selectedId: null, select: noop };
   render(<EditorContext.Provider value={shared}><ProjectInspector introBusy={null} onBrandIntro={noop} clipFormat={null}
     logos={[logo as never]} logo={null} onBrand={noop} onImported={noop} onRemoveBrand={noop} onThemes={noop}/></EditorContext.Provider>);
   return onChange;

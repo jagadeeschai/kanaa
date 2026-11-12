@@ -90,11 +90,11 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
 | B1 | Editor.tsx: 3,370 lines, 109 pieces of state | 🚧 Editor.tsx down to 2,757 lines. Own files: preview/TitleEditing, ErrorBanner, Timing, inspectors/TextInspector + parts, ClipInspector + clip-parts, ProjectInspector + project-parts (brand intro, frame rates). Next: a shared store (B2) so panels stop taking 30+ inputs | L (many S) | 🚧 |
-| B2 | Inspectors take 30+ props each | 🚧 Started: state/EditorContext shares the timeline, change, pause and the guide; the project, title and clip panels read them with useEditor() instead of props. Next: selection and jobs into the context, then each panel's own actions | M | 🚧 |
+| B2 | Inspectors take 30+ props each | 🚧 state/EditorContext shares the timeline, change, pause, the guide, the playhead and seeking, and the selection; panels work out their own place in time with useItemTime(). Next: jobs into the context, then each panel's own actions | M | 🚧 |
 | B3 | The same controls rebuilt (13 raw colour inputs, local Chips) | One `ui/` set: Slider, ColorField, Segmented, Select, Toggle, Section, Callout, ProgressRing | M | ⬜ |
 | B4 | Two styling systems (Tailwind lyric/studio, hand CSS editor) | One `tokens.css`; Tailwind mapped to it; lyric screen moved last | M | ⬜ |
 | B5 | The DOM translator can fight React and translate user text | `t()` everywhere, a missing-translation check, then remove the translator | M | ⬜ |
-| B6 | No UI tests | 🚧 `npm run test:ui`: 37 tests, now including project settings (four tabs, shape, Brand with brand logos, Colour & finish, Tamil) | M | 🚧 |
+| B6 | No UI tests | 🚧 `npm run test:ui`: 41 tests (panels, ⌘K, Jobs, Fix sync, preview title editing, the editor context) in English and Tamil | M | 🚧 |
 
 ### Roadmap
 
