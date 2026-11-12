@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import TravelMapPanel from './TravelMapPanel';
 import { LANGUAGE, setLanguage, t } from '../i18n';
 import LyricSyncFix from '../components/LyricSyncFix';
@@ -2430,7 +2431,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
-    {showingHelp && <Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/>}
+    {showingHelp && createPortal(<div className="ed-guide-layer" data-ed-theme={theme}><Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/></div>, rootRef.current ?? document.body)}
     {choosingFormat && timeline && <FormatDialog clipFormat={firstClipFormat} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
     {creatingAIImage && timeline && <AIImageGenerator
