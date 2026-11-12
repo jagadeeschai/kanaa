@@ -65,7 +65,7 @@ import { ProjectSaveQueue, type SaveState } from './project-save';
 import { exportSpec } from './export-spec';
 import { nextTabIndex } from './tab-navigation';
 
-type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void };
+type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
@@ -185,7 +185,7 @@ const draggableAs = (payload: DragPayload) => ({
 
 const RESTART_MESSAGE = 'Kanaa was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
-export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme }: Props) {
+export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme, setTheme }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
   const timeline = history.present;
   const [choosingFormat, setChoosingFormat] = useState(false);
@@ -2352,7 +2352,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} data-tip={`${t('Undo')} (⌘Z)`}><Undo2 size={17}/></button>
             <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} data-tip={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={17}/></button>
             <button onClick={() => setShowingHelp(true)} aria-label={t('Guide and shortcuts')} data-tip={`${t('Guide and shortcuts')} (?)`}><CircleHelp size={17}/></button>
-            <TopSettings appearance={themeChoice} onAppearance={nextTheme} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
+            <TopSettings appearance={themeChoice} onAppearance={(choice) => { if (setTheme) setTheme(choice); else nextTheme(); }} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
             <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
           </div> }}>
@@ -2447,7 +2447,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
 }
 
 /** The editor's less-used top-bar controls behind one gear: theme, Lite or Pro, and the project's format. */
-function TopSettings({ appearance, onAppearance, simple, onSimple, format, onProject }: { appearance: ThemeChoice; onAppearance: () => void; simple: boolean; onSimple: (simple: boolean) => void; format: string; onProject: () => void }) {
+function TopSettings({ appearance, onAppearance, simple, onSimple, format, onProject }: { appearance: ThemeChoice; onAppearance: (choice: ThemeChoice) => void; simple: boolean; onSimple: (simple: boolean) => void; format: string; onProject: () => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2468,7 +2468,10 @@ function TopSettings({ appearance, onAppearance, simple, onSimple, format, onPro
         <button aria-pressed={LANGUAGE === 'en'} className={LANGUAGE === 'en' ? 'on' : ''} onClick={() => { if (LANGUAGE !== 'en') setLanguage('en'); }}>English</button>
         <button aria-pressed={LANGUAGE === 'ta'} className={LANGUAGE === 'ta' ? 'on' : ''} lang="ta" onClick={() => { if (LANGUAGE !== 'ta') setLanguage('ta'); }}>தமிழ்</button>
       </div></div>
-      <div className="ed-top-row"><span>{t('Appearance')}</span><button className="ed-button" onClick={onAppearance} title={t('Switch between same as this Mac, light and dark')}>{appearance === 'system' ? <Monitor size={14}/> : appearance === 'light' ? <Sun size={14}/> : <Moon size={14}/>}{t(appearance === 'system' ? 'Same as this Mac' : appearance === 'light' ? 'Light' : 'Dark')}</button></div>
+      <div className="ed-top-row"><span>{t('Appearance')}</span><div className="ed-mode" role="group" aria-label={t('Appearance')}>
+        {([['system', <Monitor key="m" size={15}/>, 'Same as this Mac'], ['light', <Sun key="s" size={15}/>, 'Light'], ['dark', <Moon key="d" size={15}/>, 'Dark']] as const).map(([choice, icon, label]) =>
+          <button key={choice} aria-pressed={appearance === choice} className={appearance === choice ? 'on' : ''} onClick={() => onAppearance(choice)} title={t(label)} aria-label={t(label)}>{icon}</button>)}
+      </div></div>
       <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>{t('Project settings')}</span><em>{format}</em></button>
     </div>}
   </div>;

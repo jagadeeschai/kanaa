@@ -25,7 +25,8 @@ export function useAppTheme() {
   const next = () => { const value = choice === 'system' ? 'light' : choice === 'light' ? 'dark' : 'system'; setChoice(value); write(THEME_KEY, value); };
   const theme = choice === 'system' ? (dark ? 'dark' : 'light') : choice;
   useLayoutEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  return { choice, next, theme };
+  const set = (value: ThemeChoice) => { setChoice(value); write(THEME_KEY, value); };
+  return { choice, next, set, theme };
 }
 
 /** `simple` hides rarely used controls (keyframes, More sections, Pro-only groups) for an easier editor. */

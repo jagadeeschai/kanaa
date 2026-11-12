@@ -36,7 +36,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [aiSettingsOpen, setAISettingsOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const { choice: themeChoice, next: nextTheme, theme } = useAppTheme();
+  const { choice: themeChoice, next: nextTheme, set: setTheme, theme } = useAppTheme();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [folderIndex, setFolderIndex] = useState<MediaFolderIndex>({ total: 0, unfiled: 0, folders: [] });
@@ -133,5 +133,5 @@ export default function App() {
     {bulkFiling && <BulkFolderDialog ids={[...selectedMedia]} folders={folders} onClose={() => setBulkFiling(false)} onSaved={(saved) => { setMedia((current) => current.map((item) => selectedMedia.has(item.id) ? { ...item, folder: saved } : item).filter((item) => folder === null || (folder === UNFILED ? !item.folder : item.folder === folder))); setSelectedMedia(new Set()); void listMediaFolders().then(setFolderIndex); setMessage(saved ? `Moved items to ${saved}` : 'Moved items to Unfiled'); }}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setMessage('Deleted from Kanaa'); void refresh(); }}/>}
     {message && <div role="status" className="studio-toast"><CheckCircle2 size={17}/>{message}</div>}
-  </div>{active && (active.project.kind === 'edit' ? <Editor key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }} theme={theme} themeChoice={themeChoice} nextTheme={nextTheme}/> : <LyricalVideoCreator key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }} onContinueInEditor={(project) => { void refresh(); void open(project); }}/>)}</>;
+  </div>{active && (active.project.kind === 'edit' ? <Editor key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }} theme={theme} themeChoice={themeChoice} nextTheme={nextTheme} setTheme={setTheme}/> : <LyricalVideoCreator key={active.project.id} projectId={active.project.id} projectName={active.project.name} photo={active.photo} onClose={() => { setActive(null); void refresh(); }} onOpenOutput={(id) => { void openOutput(id); }} onContinueInEditor={(project) => { void refresh(); void open(project); }}/>)}</>;
 }
