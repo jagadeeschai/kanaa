@@ -2,7 +2,7 @@
  * ⌘K: find any action, panel, title style, guide page or setting by typing, in English or Tamil. Arrows move, Enter
  * runs, Esc closes. When nothing fits, the last line searches the settings panel for the words typed.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { searchText, t } from '../i18n';
 
@@ -21,7 +21,10 @@ export default function CommandPalette({ commands, onSettings, onClose }: { comm
       if (!words.every((word) => hay.includes(word))) return null;
       return { command, score: words.length && command.label.toLowerCase().startsWith(words[0]) ? 0 : 1 };
     }).filter((entry): entry is { command: Command; score: number } => entry !== null);
-    return scored.sort((a, b) => a.score - b.score).slice(0, 60).map((entry) => entry.command);
+    // Best matches first, then kept together by group, so each group gets one heading.
+    const order = new Map<string, number>();
+    for (const entry of [...scored].sort((a, b) => a.score - b.score)) if (!order.has(entry.command.group)) order.set(entry.command.group, order.size);
+    return scored.sort((a, b) => (order.get(a.command.group)! - order.get(b.command.group)!) || a.score - b.score).slice(0, 60).map((entry) => entry.command);
   }, [commands, query]);
   const rows: Command[] = query.trim() ? [...found, { id: 'settings', label: `${t('Find in settings')}: “${query.trim()}”`, group: t('Settings'), run: () => onSettings(query.trim()) }] : found;
   useEffect(() => { setAt(0); }, [query]);
@@ -39,9 +42,9 @@ export default function CommandPalette({ commands, onSettings, onClose }: { comm
           else if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); run(rows[at]); }
         }}/><kbd>Esc</kbd></label>
       <ul id="ed-palette-list" ref={list} role="listbox">
-        {rows.map((command, index) => <li key={command.id} role="option" aria-selected={index === at} className={index === at ? 'on' : ''} onPointerMove={(event) => { const last = pointer.current; pointer.current = { x: event.clientX, y: event.clientY }; if (last && (last.x !== event.clientX || last.y !== event.clientY)) setAt(index); }} onClick={() => run(command)}>
-          <span>{command.label}</span><small>{command.group}</small>{command.hint && <kbd>{command.hint}</kbd>}
-        </li>)}
+        {rows.map((command, index) => <Fragment key={command.id}>{(index === 0 || rows[index - 1].group !== command.group) && <li className="ed-palette-group" role="presentation">{command.group}</li>}<li role="option" aria-selected={index === at} className={index === at ? 'on' : ''} onPointerMove={(event) => { const last = pointer.current; pointer.current = { x: event.clientX, y: event.clientY }; if (last && (last.x !== event.clientX || last.y !== event.clientY)) setAt(index); }} onClick={() => run(command)}>
+          <span>{command.label}</span>{command.hint && <kbd>{command.hint}</kbd>}
+        </li></Fragment>)}
         {!rows.length && <li className="ed-palette-empty">{t('Type to search actions, panels, title styles, guide pages and settings.')}</li>}
       </ul>
     </div>

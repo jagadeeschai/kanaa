@@ -11,7 +11,7 @@ import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/ref
 import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
-import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { BadgeCheck, Camera, Magnet, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
@@ -74,7 +74,9 @@ type Props = { projectId: number; projectName: string; photo: Photo; onClose: ()
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
-const LEFT_TABS = ['media', 'audio', 'text', 'transitions', 'effects', 'templates', 'themes', 'ask', 'words'] as const;
+const LEFT_TABS = ['media', 'audio', 'text', 'words', 'transitions', 'effects', 'templates', 'themes', 'ask'] as const;
+/** Where a thin line separates the rail into groups: add · words · style · ask. */
+const RAIL_BREAK_BEFORE = new Set<string>(['text', 'transitions', 'ask']);
 const LITE_TABS = new Set<string>(['media', 'audio', 'text', 'templates', 'themes']);
 const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Stories', themes: 'Themes', transitions: 'Transitions', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
 const TAB_ICONS: Record<(typeof LEFT_TABS)[number], React.ReactNode> = { media: <ImageIcon size={17}/>, ask: <Sparkles size={17}/>, templates: <Bookmark size={17}/>, themes: <Palette size={17}/>, transitions: <Shuffle size={17}/>, effects: <WandSparkles size={17}/>, text: <Type size={17}/>, audio: <Music size={17}/>, words: <MessageSquareText size={17}/> };
@@ -2071,8 +2073,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const clipItem = clip ? mediaById.get(clip.media_id) : undefined;
     if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
     if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
-    if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) items.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
-    if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) items.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
+    // The tools that study the picture (and take a while) sit together under Smart tools.
+    const smart: MenuItem[] = [];
+    if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
+    if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
+    if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
     items.push({ label: 'Duplicate', onSelect: () => { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } });
     if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) }, { label: 'Snapshot freeze here', onSelect: () => { void snapshot(t); } });
     if (clip) {
@@ -2195,7 +2200,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
-        <div className="ed-rail-tabs" role="group" aria-label="Add to your video"><button className={`ed-rail-back ${saved === 'failed' ? 'failed' : ''}`} onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={`${t('Back to projects')} · ${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}><ArrowLeft size={17}/></button><span className="ed-rail-divider" role="separator"/>{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
+        <div className="ed-rail-tabs" role="group" aria-label="Add to your video"><button className={`ed-rail-back ${saved === 'failed' ? 'failed' : ''}`} onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={`${t('Back to projects')} · ${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}><ArrowLeft size={17}/></button><span className="ed-rail-divider" role="separator"/>{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab, index) => { const on = panelOpen && leftTab === tab; return <Fragment key={tab}>{index > 0 && RAIL_BREAK_BEFORE.has(tab) && <span className="ed-rail-divider" role="separator"/>}<button className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button></Fragment>; })}{layout.simple && <button className="ed-rail-pro" onClick={() => updateLayout({ simple: false })} aria-label={t('More tools in Pro')} data-tip={t('Switch to Pro for transitions, effects, words and Ask AI')}><Sparkles size={15}/></button>}
 </div>
         {panelOpen && <div className="ed-panel-content">
         {leftTab === 'media' && <>
@@ -2206,7 +2211,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             const own = projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim();
             const count = (name: string) => media.filter((item) => item.folder === name).length;
             const ordered = [...folders].sort((x, y) => (x === own ? -1 : y === own ? 1 : x.localeCompare(y)));
-            return <label className="ed-folder-pick" data-keep-panel><span>{t('Folder')}</span><KanaaSelect aria-label={t('Folder')} value={folder ?? ''} onChange={(event) => setFolder(event.target.value || null)}>
+            return <label className="ed-folder-pick" data-keep-panel><span>{t('Folder')}</span><KanaaSelect aria-label={t('Folder')} searchable searchPlaceholder={t('Search folders')} value={folder ?? ''} onChange={(event) => setFolder(event.target.value || null)}>
               <option value="">{t('All media')} ({media.length})</option>
               {ordered.map((name) => <option key={name} value={name}>{name === own ? `★ ${name}` : name} ({count(name)})</option>)}
             </KanaaSelect></label>;
@@ -2387,6 +2392,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       </aside>
       {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
       <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
+      {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !fullScreen && (() => {
       const steps = [
         { done: total > 0, label: 'Add your clips or photos', go: () => { setLeftTab('media'); setPanelOpen(true); }, guide: 'getting-started' },
@@ -3147,7 +3153,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
   const effectFadeMax = Math.min(2, clipLength(clip) / 2);
   return <>
     <ActiveEffects clip={clip} onChange={onChange}/>
-    <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
+    <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Clip visibility" tab="frame" startOpen changed={clip.enabled === false} keywords="active inactive disable hide camera angle multicam" tip="Deactivate an angle without deleting or moving it.">
@@ -3201,7 +3207,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
     <p className="ed-group-tip">Above 100% warms, below cools. Tint leans green or magenta. Fade lifts blacks into a soft matte.</p>
     </More>
     </Group>
-    <Group title="Colour splash" tab="look" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
+    <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>
       <ValueSlider label="Black and white strength" value={clip.colour_splash.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_COLOUR_SPLASH.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ colour_splash: { ...clip.colour_splash!, intensity } }, group)}/>
@@ -3212,7 +3218,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ colour_splash: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ colour_splash: { ...DEFAULT_COLOUR_SPLASH } })}>Add colour splash</button>}
     </Group>
-    <Group title="Dreamy glow" tab="look" startOpen={Boolean(clip.dreamy_glow)} changed={Boolean(clip.dreamy_glow)} keywords="dreamy glow soft focus bloom portrait skin wedding romantic" tip="Add a gentle warm bloom to highlights while keeping faces readable.">
+    <Group title="Dreamy glow" tab="effects" startOpen={Boolean(clip.dreamy_glow)} changed={Boolean(clip.dreamy_glow)} keywords="dreamy glow soft focus bloom portrait skin wedding romantic" tip="Add a gentle warm bloom to highlights while keeping faces readable.">
     {clip.dreamy_glow ? <>
       <ValueSlider label="Glow" value={clip.dreamy_glow.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, intensity } }, group)}/>
       <ValueSlider label="Softness" value={clip.dreamy_glow.softness} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.softness} unit="%" factor={100} onChange={(softness, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, softness } }, group)}/>
@@ -3220,7 +3226,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}>Add dreamy glow</button>}
     </Group>
-    <Group pro title="Duotone and split-tone" tab="look" startOpen={Boolean(clip.tone_grade)} changed={Boolean(clip.tone_grade)} keywords="duotone split tone grade teal orange gold sepia colour two colours" tip="Split-tone tints shadows and highlights; duotone paints the whole picture in two colours.">
+    <Group pro title="Duotone and split-tone" tab="effects" startOpen={Boolean(clip.tone_grade)} changed={Boolean(clip.tone_grade)} keywords="duotone split tone grade teal orange gold sepia colour two colours" tip="Split-tone tints shadows and highlights; duotone paints the whole picture in two colours.">
     {clip.tone_grade ? <>
       <Chips label="Style" options={[{ id: 'split' as const, label: 'Split-tone' }, { id: 'duotone' as const, label: 'Duotone' }]} value={clip.tone_grade.mode} onPick={(mode) => onChange({ tone_grade: { ...clip.tone_grade!, mode } })}/>
       <Chips label="Colours" options={TONE_PRESETS.map((preset) => ({ id: preset.id as string, label: preset.label }))} value={TONE_PRESETS.find((preset) => preset.shadow === clip.tone_grade!.shadow && preset.highlight === clip.tone_grade!.highlight)?.id ?? null} onPick={(id) => { const preset = TONE_PRESETS.find((each) => each.id === id)!; onChange({ tone_grade: { ...clip.tone_grade!, shadow: preset.shadow, highlight: preset.highlight } }); }}/>
@@ -3233,7 +3239,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ tone_grade: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ tone_grade: { ...DEFAULT_TONE_GRADE } })}>Add a two-colour grade</button>}
     </Group>
-    <Group pro title="Tilt-shift" tab="look" startOpen={Boolean(clip.tilt_shift)} changed={Boolean(clip.tilt_shift)} keywords="tilt shift miniature toy model blur band city" tip="Works best on scenes filmed from high up: city streets, markets, trains.">
+    <Group pro title="Tilt-shift" tab="effects" startOpen={Boolean(clip.tilt_shift)} changed={Boolean(clip.tilt_shift)} keywords="tilt shift miniature toy model blur band city" tip="Works best on scenes filmed from high up: city streets, markets, trains.">
     {clip.tilt_shift ? <>
       <ValueSlider label="Sharp at" value={clip.tilt_shift.focus_y} min={0} max={1} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.focus_y} unit="%" factor={100} onChange={(focus_y, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, focus_y } }, group)}/>
       <ValueSlider label="Sharp band" value={clip.tilt_shift.band} min={0.02} max={0.8} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.band} unit="%" factor={100} onChange={(band, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, band } }, group)}/>
@@ -3242,7 +3248,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ tilt_shift: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ tilt_shift: { ...DEFAULT_TILT_SHIFT } })}>Add tilt-shift</button>}
     </Group>
-    <Group pro title="Mirror and kaleidoscope" tab="frame" startOpen={Boolean(clip.mirror)} changed={Boolean(clip.mirror)} keywords="mirror reflect symmetry kaleidoscope pattern wedges" tip="Mirror reflects one half onto the other; kaleidoscope turns the picture into mirrored wedges.">
+    <Group pro title="Mirror and kaleidoscope" tab="effects" startOpen={Boolean(clip.mirror)} changed={Boolean(clip.mirror)} keywords="mirror reflect symmetry kaleidoscope pattern wedges" tip="Mirror reflects one half onto the other; kaleidoscope turns the picture into mirrored wedges.">
     {clip.mirror ? <>
       <Chips label="Kind" options={[{ id: 'left' as const, label: 'Left' }, { id: 'top' as const, label: 'Top' }, { id: 'quad' as const, label: 'Four ways' }, { id: 'kaleido' as const, label: 'Kaleidoscope' }]} value={clip.mirror.mode} onPick={(mode) => onChange({ mirror: { ...clip.mirror!, mode } })}/>
       {clip.mirror.mode === 'kaleido' && <>
@@ -3252,7 +3258,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ mirror: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ mirror: { ...DEFAULT_MIRROR } })}>Add mirror</button>}
     </Group>
-    <Group pro title="Zoom blur" tab="motion" startOpen={Boolean(clip.zoom_blur)} changed={Boolean(clip.zoom_blur)} keywords="zoom blur radial rush speed punch" tip="Streaks towards a centre. Short clips and quick cuts suit it best.">
+    <Group pro title="Zoom blur" tab="effects" startOpen={Boolean(clip.zoom_blur)} changed={Boolean(clip.zoom_blur)} keywords="zoom blur radial rush speed punch" tip="Streaks towards a centre. Short clips and quick cuts suit it best.">
     {clip.zoom_blur ? <>
       <ValueSlider label="Strength" value={clip.zoom_blur.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_ZOOM_BLUR.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ zoom_blur: { ...clip.zoom_blur!, intensity } }, group)}/>
       <More>
@@ -3262,7 +3268,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ zoom_blur: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ zoom_blur: { ...DEFAULT_ZOOM_BLUR } })}>Add zoom blur</button>}
     </Group>
-    <Group pro title="Echo trail" tab="motion" startOpen={Boolean(clip.echo)} changed={Boolean(clip.echo)} keywords="echo ghost trail smear dance motion blur light trails" tip="Ghosts of the last moments follow movement. The preview shows it once its copy is made in the background.">
+    <Group pro title="Echo trail" tab="effects" startOpen={Boolean(clip.echo)} changed={Boolean(clip.echo)} keywords="echo ghost trail smear dance motion blur light trails" tip="Ghosts of the last moments follow movement. The preview shows it once its copy is made in the background.">
     {clip.echo ? <>
       <Chips label="Kind" options={[{ id: 'echo' as const, label: 'Echo' }, { id: 'smear' as const, label: 'Light smear' }]} value={clip.echo.mode} onPick={(mode) => onChange({ echo: { ...clip.echo!, mode } })}/>
       {clip.echo.mode === 'echo' && <ValueSlider label="Trails" value={clip.echo.trails} min={2} max={8} step={1} defaultValue={DEFAULT_ECHO.trails} onChange={(trails, group) => onChange({ echo: { ...clip.echo!, trails: Math.round(trails) } }, group)}/>}
@@ -3272,7 +3278,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ echo: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ echo: { ...DEFAULT_ECHO } })}>Add echo trail</button>}
     </Group>
-    <Group pro title="Beat pulse" tab="motion" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
+    <Group pro title="Beat pulse" tab="effects" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
     {clip.beat_pulse ? <>
       <ValueSlider label="Strength" value={clip.beat_pulse.strength} min={0} max={1} step={0.01} defaultValue={DEFAULT_BEAT_PULSE.strength} unit="%" factor={100} onChange={(strength, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, strength } }, group)}/>
       <ValueSlider label="Tempo" value={clip.beat_pulse.bpm} min={30} max={300} step={1} defaultValue={DEFAULT_BEAT_PULSE.bpm} unit=" BPM" onChange={(bpm, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, bpm } }, group)}/>
@@ -3283,7 +3289,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ beat_pulse: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ beat_pulse: { ...DEFAULT_BEAT_PULSE } })}>Add beat pulse</button>}
     </Group>
-    <Group title="Old film" tab="look" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
+    <Group title="Old film" tab="effects" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>
       <ValueSlider label="Intensity" value={clip.old_film.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ old_film: { ...clip.old_film!, intensity } }, group)}/>
       <ValueSlider label="Grain" value={clip.old_film.grain} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.grain} unit="%" factor={100} onChange={(grain, group) => onChange({ old_film: { ...clip.old_film!, grain } }, group)}/>
@@ -3295,7 +3301,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ old_film: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ old_film: DEFAULT_OLD_FILM })}>Add old film</button>}
     </Group>
-    <Group title="Signal damage" tab="look" startOpen={Boolean(clip.signal_damage)} changed={Boolean(clip.signal_damage)} keywords="glitch rgb split vhs tape scanlines jitter noise retro" tip="Break up the clip like a digital signal or worn VHS tape.">
+    <Group title="Signal damage" tab="effects" startOpen={Boolean(clip.signal_damage)} changed={Boolean(clip.signal_damage)} keywords="glitch rgb split vhs tape scanlines jitter noise retro" tip="Break up the clip like a digital signal or worn VHS tape.">
     {clip.signal_damage ? <>
       <Chips label="Style" options={[{ id: 'glitch' as const, label: 'Glitch' }, { id: 'vhs' as const, label: 'VHS' }]} value={clip.signal_damage.mode} onPick={(mode) => onChange({ signal_damage: { ...clip.signal_damage!, mode } })}/>
       <ValueSlider label="Intensity" value={clip.signal_damage.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ signal_damage: { ...clip.signal_damage!, intensity } }, group)}/>
@@ -3308,7 +3314,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
       <button className="ed-button wide" onClick={() => onChange({ signal_damage: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ signal_damage: DEFAULT_SIGNAL_DAMAGE })}>Add signal damage</button>}
     </Group>
-    <Group title="Lens surface" tab="look" startOpen={Boolean(clip.lens_surface)} changed={Boolean(clip.lens_surface)} keywords="lens dirt raindrops water glass refraction droplets" tip="Put dirt or refracting water drops on the camera lens.">
+    <Group title="Lens surface" tab="effects" startOpen={Boolean(clip.lens_surface)} changed={Boolean(clip.lens_surface)} keywords="lens dirt raindrops water glass refraction droplets" tip="Put dirt or refracting water drops on the camera lens.">
     {clip.lens_surface ? <>
       <Chips label="Surface" options={[{ id: 'raindrops' as const, label: 'Raindrops' }, { id: 'dirt' as const, label: 'Lens dirt' }]} value={clip.lens_surface.mode} onPick={(mode) => onChange({ lens_surface: { ...clip.lens_surface!, mode } })}/>
       <ValueSlider label="Intensity" value={clip.lens_surface.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ lens_surface: { ...clip.lens_surface!, intensity } }, group)}/>

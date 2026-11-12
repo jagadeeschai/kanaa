@@ -23,7 +23,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | # | Problem | Change | Status |
 |---|---|---|---|
 | C1 | The effects list squeezed the settings | Effects fold to one line | ✅ |
-| C2 | Effects on three tabs (Mirror on Frame; Echo, Zoom blur, Beat pulse on Motion) | One Effects tab, applied effects on top | ⬜ |
+| C2 | Effects on three tabs (Mirror on Frame; Echo, Zoom blur, Beat pulse on Motion) | ✅ Clip tabs Frame · Colour · Effects · Backdrop · Motion · Sound; all eleven effects in Effects | ✅ |
 | C3 | The per-clip brand mark sits under Backdrop | Move it next to the brand watermark | ⬜ |
 
 ## Layers and timeline
@@ -47,7 +47,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | E7 | "Templates" holds only stories | Rename to **Stories**; put Brand intro there as an opening | ✅ |
 | E8 | Project settings mix format, look, brand and sound | ✅ Tabs Format · Colour & finish · Brand (watermark, brand intro) · Sound. Still to do: loudness set once (it is also in Export) | M | 🚧 |
 | E9 | The guide is reachable five ways but has no visible button | A **?** in the header; fewer duplicate entries | ✅ |
-| E10 | Lite hides things silently | "More in Pro" hint | ⬜ |
+| E10 | Lite hides things silently | "More in Pro" hint | ✅ |
 | E11 | Much text not translated; the lyric screen is English only; language only in the editor | `t()` on toolbar, panels and lyric steps; language on the home screen too | ⬜ |
 | E12 | Empty Templates, Themes and Ask panels | "Add a clip first" | ⬜ |
 
@@ -116,8 +116,8 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | Proposal | Verdict | Action |
 |---|---|---|
-| Top header with project name, save state, Jobs, ⌘K, ?, ⚙, Export | Valid in part. The project name is shown nowhere and save state only in Back's tooltip. But the owner asked for Back at the top of the left rail, so it stays there. | ⬜ A slim header with **project name + save state** only; keep Back on the rail; Jobs/?/⚙/Export stay on the right rail unless the owner wants them moved |
-| Left rail in groups with dividers (Media·Audio │ Text·Captions │ Effects·Transitions·Stories │ Ask AI) | Valid: nine flat icons today | ⬜ Dividers between groups |
+| Top header with project name, save state, Jobs, ⌘K, ?, ⚙, Export | Valid in part. The project name is shown nowhere and save state only in Back's tooltip. But the owner asked for Back at the top of the left rail, so it stays there. | ✅ Project name and save state above the preview; Back stays on the rail |
+| Left rail in groups with dividers (Media·Audio │ Text·Captions │ Effects·Transitions·Stories │ Ask AI) | Valid: nine flat icons today | ✅ Dividers: Media·Audio │ Text·Words │ Transitions·Effects·Stories·Themes │ Ask AI; a Pro hint in Lite (E10) |
 | Rename Words to Captions | Partly: captions are made in Text today; Words is the transcript and pause tidy-up | ⬜ "Captions & words" as one tab (with E5) |
 | Travel map to Media; blur/pixelate as Privacy | Valid (already E4) | ⬜ |
 | Themes + Stories as one "Styles" tab | Valid (already E7's second option) | ⬜ owner to choose |
@@ -126,8 +126,8 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | Clip "Colour" tab holding the 3D LUT | Wrong: the LUT is a whole-video grade in Project settings › Colour & finish (by design, E3) | — |
 | Brand watermark per clip next to the project's | Valid (already C3) | ⬜ |
 | Title: Typography / Motion / Look tabs | Rejected: splitting look from the words again is what the owner asked to undo (T1); the Motion grouping is T10 | ⬜ T10 only |
-| Timeline right-click is a flat 15+ list | Overstated: it already has dividers and an Effects submenu. Fair that the AI tools could sit in a submenu. "Fix lyric sync" doesn't belong on a clip; "F" is full screen, not freeze | ⬜ "Smart tools ▸" submenu (Follow the person, Split at scene changes) |
+| Timeline right-click is a flat 15+ list | Overstated: it already has dividers and an Effects submenu. Fair that the AI tools could sit in a submenu. "Fix lyric sync" doesn't belong on a clip; "F" is full screen, not freeze | ✅ "Smart tools ▸" submenu (Follow the person, Split at scene changes) |
 | Media panel: Move to folder | Already there (right-click a media item › Move to folder…) | — |
-| Media panel: New folder button | Valid, small | ⬜ |
-| ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything; headings and recent actions would help | ⬜ |
+| Media panel: New folder button | Already there: Move to folder… › Create a new folder. The editor's folder picker is now searchable instead | ✅ |
+| ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything | ✅ Group headings; recent actions still to do |
 | Export ▾ quick choices (1080p, 4K) | Nice to have; the Export window already chooses quality | — |

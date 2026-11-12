@@ -89,8 +89,8 @@ export const RailContext = createContext<{ folded: boolean; setOpen: (open: bool
  */
 /** Set while the settings panel shows a whole layer: only groups a layer can style are shown. */
 export const LayerModeContext = createContext(false);
-const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'sound']);
-const LAYER_GROUPS = new Set(['Text', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Animation', 'Moves', 'Speed and sound']);
+const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'effects', 'sound']);
+const LAYER_GROUPS = new Set(['Text', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Mirror and kaleidoscope', 'Duotone and split-tone', 'Tilt-shift', 'Beat pulse', 'Echo trail', 'Zoom blur', 'Animation', 'Moves', 'Speed and sound']);
 
 export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
   // A whole layer shows only the tabs a layer can style.

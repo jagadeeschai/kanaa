@@ -451,3 +451,7 @@
 .ed-first-run-tick{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--hairline)}.ed-first-run li.done .ed-first-run-tick{background:var(--accent,#7c6cff);border-color:transparent;color:#fff}
 .ed-first-run p{margin:8px 0 0;color:var(--muted);font-size:11px}
 .tp-swatch{width:22px;height:22px;border:1px solid var(--hairline)}.tp-swatch.on{outline:2px solid var(--accent,#7c6cff);outline-offset:1px}.tp-colour input{width:26px;height:22px;padding:0;border:0;background:none;cursor:pointer}
+.ed-rail-pro{margin-top:auto;color:var(--accent,#7c6cff)!important}
+.ed-stage-title{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:baseline;gap:8px;max-width:50%;padding:3px 10px;border-radius:8px;background:color-mix(in srgb,var(--panel,#1d1a26) 80%,transparent);font-size:12px;pointer-events:none}
+.ed-stage-title b{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}.ed-stage-title span{flex:none;color:var(--muted);font-size:11px}.ed-stage-title.failed span{color:#f87171}
+.ed-palette li.ed-palette-group{padding:8px 10px 2px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:default;background:none}

@@ -324,4 +324,8 @@ export const TAMIL: Record<string, string> = {
   'Export your video': 'வீடியோவை ஏற்றுமதி செய்யுங்கள்',
   'How': 'எப்படி',
   'Press ⌘K any time to find an action.': 'எந்தச் செயலையும் தேட எப்போதும் ⌘K அழுத்துங்கள்.',
+  'More tools in Pro': 'Pro-வில் மேலும் கருவிகள்',
+  'Switch to Pro for transitions, effects, words and Ask AI': 'மாற்றங்கள், விளைவுகள், சொற்கள், AI-க்கு Pro-வுக்கு மாறுங்கள்',
+  'Smart tools': 'அறிவார்ந்த கருவிகள்',
+  'Search folders': 'கோப்புறைகளைத் தேடு',
 };
