@@ -1,4 +1,6 @@
 import { createPortal } from 'react-dom';
+import { TextInspector } from './inspectors/TextInspector';
+import { ASSET_POLL_MS, AnimationPicker, Chips, useFoundInClip } from './inspectors/parts';
 import TravelMapPanel from './TravelMapPanel';
 import { LANGUAGE, setLanguage, t } from '../i18n';
 import LyricSyncFix from '../components/LyricSyncFix';
@@ -76,7 +78,6 @@ import { nextTabIndex } from './tab-navigation';
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
-const ASSET_POLL_MS = 2000;
 const LEFT_TABS = ['media', 'audio', 'text', 'words', 'transitions', 'effects', 'templates', 'themes', 'ask'] as const;
 /** Where a thin line separates the rail into groups: add · words · style · ask. */
 const RAIL_BREAK_BEFORE = new Set<string>(['text', 'transitions', 'ask']);
@@ -119,20 +120,6 @@ const FIT_MARGIN = 48;
 const TEXT_SECONDS = 3;
 const TEXT_TYPE_DELAY_MS = 250;
 const CAPTION_FETCHES = 3;
-const PRESETS: { id: Preset; label: string }[] = [{ id: 'fade', label: 'Fade' }, { id: 'slide-up', label: 'Slide up' }, { id: 'slide-down', label: 'Slide down' }, { id: 'slide-left', label: 'Slide left' }, { id: 'slide-right', label: 'Slide right' }, { id: 'zoom', label: 'Zoom' }, { id: 'pop', label: 'Pop' }, { id: 'blur', label: 'Blur' }, { id: 'bounce', label: 'Bounce' }, { id: 'ground-rise', label: 'Ground rise' }, { id: 'blast', label: 'Blast' }, { id: 'magic-form', label: 'Magic form' }, { id: 'magic-vanish', label: 'Magic vanish' }, { id: 'particle-form', label: 'Particle form' }];
-// Picture tricks, for titles only: drawn in the title's own picture (PictureLook in animation.ts).
-const DESIGN_TIPS: Record<TitleDesign, string> = {
-  gradient: 'A bar behind the words, fading out to the right. Backing colour (under More) sets it.',
-  formal: 'A light bar across the frame with fine rules; the subtitle colour sets the rules.',
-  overlap: 'The subtitle overlaps the end of the title, in the subtitle colour.',
-  corners: 'The title in the top left corner, the subtitle in the bottom right.',
-  clouds: 'A puffy cloud behind the words. Backing colour (under More) sets it.',
-  paper: 'A torn strip of paper behind the words. Backing colour (under More) sets it.',
-  torn: 'A band with a torn top edge across the frame. Backing colour: black, tan or your own.',
-  organic: 'Curling vines either side of the words and a fine line beneath, in the subtitle colour.',
-};
-const BACKED_DESIGNS = new Set<TitleDesign>(['gradient', 'formal', 'clouds', 'paper', 'torn']);
-const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 /** How an item's own settings read, in the note that it sets them over its layer's style. */
 const STYLE_NAMES: Record<string, string> = { size: 'Size', color: 'Colour', font: 'Font', tamil_font: 'Tamil font', style: 'Style', position: 'Position', enter: 'Enter', exit: 'Exit',
   transform: 'Place and motion', align: 'Alignment', band_color: 'Band colour', design: 'Design', spacing: 'Letter spacing', subtitle_size: 'Subtitle size', subtitle_color: 'Subtitle colour',
@@ -140,7 +127,6 @@ const STYLE_NAMES: Record<string, string> = { size: 'Size', color: 'Colour', fon
 /** Logos and other brand pictures: images in a Media folder named Brand (or with "brand" in its name), or named as a logo. */
 const BRAND_FOLDER = 'Brand';
 const isBrandImage = (item: Photo) => item.media_type === 'image' && (/brand/i.test(item.folder ?? '') || /logo/i.test(item.filename));
-const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
 const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 const FREEZE_SECONDS = 2;
@@ -2758,29 +2744,6 @@ function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | 
     </div></div></div>;
 }
 
-/** Who stays: everyone, or the people or objects chosen from a numbered picture of the clip. */
-/** Each person (or object) found in a clip, numbered, found once in the background. */
-function useFoundInClip(clip: Clip | null, kind: 'people' | 'objects') {
-  const steady = Boolean(clip?.stabilise); const backwards = Boolean(clip?.reverse) && clip?.freeze == null;
-  const [found, setFound] = useState<{ key: string; tracks: FoundOne[] | null; progress: number; problem?: string }>({ key: '', tracks: null, progress: 0 });
-  const key = clip ? `${clip.media_id}:${kind}:${steady}:${backwards}` : '';
-  useEffect(() => {
-    if (!clip) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const check = async () => {
-      try {
-        const status = await requestInstances(clip.media_id, kind, steady, backwards);
-        if (stopped) return;
-        setFound({ key, tracks: status.status === 'ready' ? status.tracks ?? [] : null, progress: status.progress ?? 0 });
-        if (status.status !== 'ready') timer = setTimeout(check, ASSET_POLL_MS);
-      } catch (problem) { if (!stopped) setFound({ key, tracks: null, progress: 0, problem: (problem as Error).message }); }
-    };
-    void check();
-    return () => { stopped = true; clearTimeout(timer); };
-  }, [key, clip?.media_id, kind, steady, backwards]);
-  return { found, key, steady, backwards, tracks: found.key === key ? found.tracks : null };
-}
 
 function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onChange: (changes: Partial<Clip>) => void; local: number; sourceDuration?: number | null }) {
   const kind = clip.cutout_pick?.kind === 'objects' ? 'objects' : 'people';  // Never land: that cover has nothing to number.
@@ -2834,208 +2797,12 @@ function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onCha
   </div>;
 }
 
-function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
-  return <div className="ed-chips" role="group" aria-label={t(label)}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{t(option.label)}</button>)}</div>;
-}
 
-function AnimationPicker({ label, value, onChange, onShow, presets = PRESETS }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void; presets?: { id: Preset; label: string }[] }) {
-  const pick = (id: Preset | 'none') => {
-    onChange(id === 'none' ? null : { preset: id, duration: value?.duration ?? 0.5 });
-    if (id !== 'none') setTimeout(onShow, 60);
-  };
-  return <>
-    <h3 className="ed-sub">{label}</h3>
-    <Chips label={label} options={[{ id: 'none' as const, label: 'None' }, ...presets]} value={value?.preset ?? 'none'} onPick={pick}/>
-    {value && <ValueSlider label="Length" value={value.duration} min={0.1} max={3} step={0.1} defaultValue={0.5} unit="s" decimals={1} onChange={(duration, group) => onChange({ ...value, duration }, group)}/>}
-  </>;
-}
 
-/** Bundled Tamil fonts load from Kanaa itself, so each button shows its font. English ones are already on the Mac. */
-let fontsLoaded = false;
-function loadBundledFonts() {
-  if (fontsLoaded) return;
-  fontsLoaded = true;
-  const rules = TAMIL_FONTS.filter((font) => font.file).map((font) => `@font-face{font-family:"${font.family}";src:url("/api/fonts/${font.file}") format("truetype");font-display:swap}`).join('');
-  const style = document.createElement('style'); style.textContent = rules; document.head.appendChild(style);
-}
 
-function FontPicker({ label, fonts, value, sample, onPick }: { label: string; fonts: FontChoice[]; value: string; sample: string; onPick: (family: string) => void }) {
-  useEffect(loadBundledFonts, []);
-  return <><h3 className="ed-sub">{label}</h3><div className="ed-fonts" role="group" aria-label={label}>{fonts.map((font) => <button key={font.family} className={value === font.family ? 'on' : ''} aria-pressed={value === font.family} title={font.label} onClick={() => onPick(font.family)}>
-    <b style={{ fontFamily: `"${font.family}"` }}>{sample}</b><span>{font.label}</span></button>)}</div></>;
-}
 
-/** One tick box: people never cover the title. Then who (everyone, or numbered people), how much room and which way. Each pick applies at once. */
-function KeepClearPanel({ kept, under, busy, note, onRun, onRemove }: { kept: KeepClear | null; under: Clip | null; busy: number | null; note: string | null; onRun: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemove: () => void }) {
-  const room = roomOf(kept);
-  const way = kept?.direction === 'left' || kept?.direction === 'right' ? 'side' : kept?.direction ?? 'auto';
-  const who = kept?.who ?? null;
-  const ids = who?.ids ?? null;
-  const run = (nextRoom: Room, nextWay: KeepClear['direction'], nextWho: CutoutPick | null) => onRun({ gap: KEEP_CLEAR_ROOM[nextRoom].gap, max_move: KEEP_CLEAR_ROOM[nextRoom].max_move, direction: nextWay, who: nextWho });
-  const on = Boolean(kept) || busy !== null;
-  const { tracks, found, key, steady, backwards } = useFoundInClip(on ? under : null, 'people');
-  const toggle = (id: number) => {
-    const next = (ids ?? []).includes(id) ? (ids ?? []).filter((other) => other !== id) : [...(ids ?? []), id];
-    run(room, kept?.direction ?? 'auto', next.length && next.length < (tracks?.length ?? 0) ? { kind: 'people', ids: next.sort((p, q) => p - q) } : null);
-  };
-  return <>
-    <label className="ed-check"><input type="checkbox" checked={on} disabled={busy !== null} onChange={(event) => (event.target.checked ? run('comfortable', 'auto', null) : onRemove())}/>Don't let people cover the title</label>
-    {busy !== null && <p className="ed-group-tip">Finding the people in this clip … {busy}%</p>}
-    {kept && busy === null && <>
-      <div className="ed-who">
-        <span className="ed-who-title">Keep clear of</span>
-        {found.key === key && found.problem ? <p className="ed-tip">{found.problem}</p>
-          : !tracks ? <p className="ed-tip">Numbering the people… {found.progress ? `${found.progress}%` : ''}</p>
-          : tracks.length > 1 ? <>
-            <img className="ed-who-picture" src={`${instancesPictureUrl(under!.media_id, 'people', steady, backwards)}&v=${tracks.map((track) => track.id).join('-')}`} alt="The clip with each person numbered"/>
-            <div className="ed-chips" role="group" aria-label="Keep clear of">
-              <button className={ids ? '' : 'on'} aria-pressed={!ids} onClick={() => run(room, kept.direction, null)}>Everyone</button>
-              {tracks.map((track) => <button key={track.id} className={ids?.includes(track.id) ? 'on' : ''} aria-pressed={Boolean(ids?.includes(track.id))} onClick={() => toggle(track.id)}><i className="ed-who-dot" style={{ background: track.colour }}/>{track.label}</button>)}
-            </div>
-          </> : <p className="ed-tip">{tracks.length ? 'One person in this clip.' : 'No people were found in this clip.'}</p>}
-      </div>
-      <p className="ed-sub">Space around them</p><Chips label="Space around them" options={(Object.keys(KEEP_CLEAR_ROOM) as Room[]).map((id) => ({ id, label: KEEP_CLEAR_ROOM[id].label }))} value={room} onPick={(id) => run(id, kept.direction, who)}/>
-      <p className="ed-sub">Title moves</p><Chips label="Title moves" options={[{ id: 'auto', label: 'Best way' }, { id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }, { id: 'side', label: 'Aside' }]} value={way} onPick={(id) => run(room, id as KeepClear['direction'], who)}/>
-    </>}
-    {note && busy === null && <p className="ed-group-tip">{note}</p>}
-  </>;
-}
 
-function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCover, text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, placing, onPlace, onSurface, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, local, onSeekLocal, onPause, follow, onChange, onEnter, onExit }: { staying: number | null; stayNote: string | null; onStay: () => void; onStopStay: () => void; onStayCover: (banner: boolean) => void; text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: CoverKind) => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; placing: 'waiting' | 'busy' | null; onPlace: () => void; onSurface: (kind: SurfaceKind) => void; clearing: number | null; clearNote: string | null; clearUnder: Clip | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; local: number; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
-  // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
-  // saved, and leaving the box empty puts the last words back.
-  const [draft, setDraft] = useState(text.text);
-  useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
-  const forLayer = useContext(LayerModeContext);
-  const fontsAndSize = <>
-    <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
-    <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
-    <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
-    <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
-    <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
-    <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
-    <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
-    <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
-  </>;
-  // One Text tab: the words with everything about how they look; and a Motion tab.
-  return <Panel id="title" tabs={[{ id: 'style', label: 'Text', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
-    <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming">
-      <Timing fields={timing}/>
-    </Group>
-    <Group title="Text" tab="style" startOpen keywords="text title words tamil english type font bigger size colour color band shadow outline style position align spacing" tip="Type in Tamil or English, or double-click the title in the preview. Drag it there to move it." help="titles">
-      {!forLayer && <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>}
-      {fontsAndSize}
-    </Group>
-    <Group title="Subtitle" tab="style" startOpen={Boolean(text.subtitle)} changed={Boolean(text.subtitle)} keywords="subtitle small line spacing">
-      {!forLayer && <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>}
-      {(text.subtitle || forLayer) && <>
-      <ValueSlider label="Size" value={text.subtitle_size ?? Math.round(Math.max(20, text.size) * 0.55)} min={10} max={100} step={1} defaultValue={Math.round(Math.max(20, text.size) * 0.55)} onChange={(subtitle_size, group) => onChange({ subtitle_size: Math.round(subtitle_size) }, group)}/>
-      <ValueSlider label="Subtitle letter spacing" value={text.subtitle_spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ subtitle_spacing: Math.round(spacing) }, group)}/>
-      <label className="ed-color"><span>Colour</span><input type="color" aria-label="Subtitle colour" value={text.subtitle_color ?? text.color} onChange={(event) => onChange({ subtitle_color: event.target.value }, `subcolor-${text.id}`)}/></label>
-      <Chips label="Subtitle place" options={[{ id: 'below' as const, label: 'Below the title' }, { id: 'above' as const, label: 'Above it' }]} value={text.subtitle_above ? 'above' : 'below'} onPick={(place) => onChange({ subtitle_above: place === 'above' })}/>
-      </>}
-    </Group>
-    <Group title="Layout and look" tab="style" changed={Boolean(text.design)} keywords="layout design band backing save my style look" help="title-styles">
-      <Chips label="Layout" options={[{ id: 'none' as const, label: 'Plain' }, ...TITLE_DESIGNS]} value={text.design ?? 'none'} onPick={(design) => onChange({ design: design === 'none' ? null : design })}/>
-      {text.design && <p className="ed-group-tip">{DESIGN_TIPS[text.design]}</p>}
-      {(text.style === 'band' || (text.design && BACKED_DESIGNS.has(text.design))) && <label className="ed-color"><span>{text.design ? 'Backing colour' : 'Band colour'}</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
-      {!forLayer && <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>}
-    </Group>
-    <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
-      <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
-      <ValueSlider label="Turn" value={text.transform?.tilt_y ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_y, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_y } }, group)}/>
-      {text.depth && <More>
-        <ValueSlider label="Distance" value={text.depth.amount} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: { ...text.depth!, amount } }, group)}/>
-        <label className="ed-color"><span>Sides</span><input type="color" aria-label="Colour of the letters' sides" value={text.depth.color} onChange={(event) => onChange({ depth: { ...text.depth!, color: event.target.value } }, `depth-colour-${text.id}`)}/></label>
-        <ValueSlider label="Light on the sides" value={text.depth.light} min={0} max={1} step={0.01} defaultValue={DEFAULT_TITLE_DEPTH.light} unit="%" factor={100} onChange={(light, group) => onChange({ depth: { ...text.depth!, light } }, group)}/>
-        <Chips label="Direction" options={[{ id: '0', label: '↓ Down' }, { id: '24', label: '↘ Soft' }, { id: '45', label: '↘' }, { id: '90', label: '→ Right' }, { id: '135', label: '↗' }, { id: '180', label: '↑ Up' }, { id: '-135', label: '↖' }, { id: '-90', label: '← Left' }, { id: '-45', label: '↙' }]} value={String(Math.round(text.depth.angle ?? DEFAULT_TITLE_DEPTH.angle ?? 24))} onPick={(id) => onChange({ depth: { ...text.depth!, angle: Number(id) } }, `depth-angle-${text.id}`)}/>
-      </More>}
-      {text.depth ? null : <ValueSlider label="Depth" value={0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>}
-    </Group>
-    <Group title="Stay with people" tab="motion" startOpen changed={Boolean(text.stay_with)} keywords="stay with people follow person moving distance bigger smaller near far perspective stick walk attach" tip="The title travels with the people: same distance from them, bigger as they come near, smaller as they walk away." help="cinema-titles">
-      {text.stay_with ? <>
-        <p className="ed-group-tip">This title stays with the people it was nearest, and changes size with them.</p>
-        <h3 className="ed-sub">The people pass</h3>
-        <Chips label="The people pass" options={[{ id: 'banner' as const, label: 'In front of it, like a banner' }, { id: 'over' as const, label: 'Behind it' }]} value={cover === 'people' || cover === 'object' ? 'banner' : 'over'} onPick={(id) => onStayCover(id === 'banner')}/>
-        <div className="ed-pair"><button className="ed-button" disabled={staying !== null} onClick={onStay} title="Uses where the title is now, at the playhead">{staying !== null ? `Finding them… ${staying}%` : 'Set again from here'}</button><button className="ed-button" disabled={staying !== null} onClick={onStopStay}>Stop</button></div>
-      </> : <>
-        <p className="ed-group-tip">1. Go to a moment where the people are clear. 2. Drag the title to where it should sit, above or beside them. 3. Click the button.</p>
-        <button className="ed-button wide primary" disabled={staying !== null} onClick={onStay}><Users size={14}/>{staying !== null ? `Finding the people… ${staying}%` : 'Stay with the people'}</button>
-      </>}
-      {stayNote && staying === null && <p className="ed-group-tip" role="status">{stayNote}</p>}
-    </Group>
-    <Group title="Place in scene" tab="motion" startOpen={!text.stay_with} changed={Boolean(text.pin?.surface)} keywords="place scene surface wall floor ground sky stick track perspective behind people billboard sign" tip="Put the title on a wall, the ground or the sky in the video, in one click.">
-      <div className="ed-place">
-        <button className={`ed-button wide ${placing === 'waiting' ? 'on' : 'primary'}`} disabled={placing === 'busy' || pinning !== null} onClick={onPlace} aria-pressed={placing === 'waiting'}>
-          <Crosshair size={14}/>{placing === 'waiting' ? 'Click a spot in the video…' : placing === 'busy' ? 'Reading the surface…' : pinning !== null ? `Following the surface… ${pinning}%` : text.pin?.region || text.pin?.surface ? 'Place somewhere else' : 'Place in scene'}</button>
-        <p className="ed-group-tip">{placing === 'waiting' ? 'Click where the title should go: a wall, the ground, the sky. Esc cancels.' : text.pin?.surface ? 'It lies on that surface, stays there as the camera moves, and people pass in front.' : 'Click a wall, the ground or the sky in the video: the title lies on it, stays there as the camera moves, and people pass in front. No keyframes.'}</p>
-        {text.pin?.surface && <Chips label="Surface" options={[{ id: 'floor' as const, label: 'Floor' }, { id: 'wall' as const, label: 'Wall' }, { id: 'upright' as const, label: 'Upright' }, { id: 'sky' as const, label: 'Sky' }]} value={text.pin.surface} onPick={onSurface}/>}
-      </div>
-    </Group>
-    <Group title="Simple animation" tab="motion" changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="A quick entrance or exit without scene depth." help="animations-and-moves">
-      <AnimationPicker label="Enter" presets={SIMPLE_TITLE_PRESETS} value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
-      <AnimationPicker label="Exit" presets={SIMPLE_TITLE_PRESETS} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
-    </Group>
-    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline people front space flicker" tip="How the title appears, and what passes in front of it." help="cinema-titles">
-      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
-      {(cover === 'people' || cover === 'object') && <>
-        <h3 className="ed-sub">3 · Space around them</h3>
-        <Chips label="Space around them" options={[{ id: 'none' as const, label: 'None' }, { id: 'close' as const, label: 'Close' }, { id: 'comfortable' as const, label: 'Comfortable' }, { id: 'wide' as const, label: 'Wide' }]} value={titleSpaceOf(groundGap)} onPick={(space) => onGroundGap(TITLE_SPACE[space])}/>
-        <p className="ed-group-tip">{groundGap ? 'The title keeps a little room around them that moves smoothly with them, so letters at their edges don\'t flicker.' : 'Letters touching their outline can flicker as they move. A little space fixes it.'}</p>
-      </>}
-      {(text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through') && <ValueSlider label="How long it takes" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/>}
-    </Group>
-    <Group title="Keep the title clear of people" tab="motion" startOpen={Boolean(text.keep_clear)} changed={Boolean(text.keep_clear)} keywords="keep clear avoid people faces move aside overlap cover" tip="The title moves aside when someone comes near, instead of going behind them." help="cinema-titles">
-      {cover === 'people' || cover === 'object' ? <>
-        <p className="ed-group-tip">{text.keep_clear ? 'This title also moves aside from people, while they pass in front of it. The two fight, so the title jumps about. Stop moving it aside to keep it still behind them.' : 'People pass in front of this title now. To keep it clear of them instead, choose Nothing in front above.'}</p>
-        {text.keep_clear && <button className="ed-button wide primary" onClick={onRemoveClear}>Stop moving it aside</button>}
-      </>
-        : <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} under={clearUnder} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>}
-    </Group>
-    <Group title="Move with the scene" tab="motion" startOpen={Boolean(text.pin || text.transform?.keyframes?.x?.length)} changed={Boolean(text.pin)} keywords="lock scene camera pin follow track subject person moving stick" tip="Keep the title fixed to a spot in the scene, or moving with a person." help="follow-movement">
-      <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
-      {follow}
-    </Group>
-    <Group title="Moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
-      <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
-      <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
-    </Group>
-    <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
-      <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
-    </Group>
-  </Panel>;
-}
 
-/** The three cinema reveals, then who stays in front: one click makes the whole reveal. */
-type TitleCover = 'front' | 'people' | 'object' | 'land' | 'drawn' | null;
-function CinemaPicker({ initial, cover, shapingMode, onClear, onFront, onPick, onShape }: { initial: CinemaReveal | 'none'; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; onClear: () => void; onFront: (reveal: CinemaReveal) => void; onPick: (reveal: CinemaReveal, what: CoverKind) => void; onShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void }) {
-  const [reveal, setReveal] = useState<CinemaReveal | 'none'>(initial);
-  useEffect(() => { setReveal(initial); }, [initial]);
-  const choose = (next: CinemaReveal | 'none') => { setReveal(next); if (next === 'none') onClear(); };
-  const chosen = CINEMA_REVEALS.find((item) => item.id === reveal);
-  const [drawing, setDrawing] = useState(cover === 'drawn');
-  useEffect(() => { if (cover && cover !== 'drawn') setDrawing(false); }, [cover]);
-  const front = drawing || cover === 'drawn' ? 'still' : cover === 'front' ? 'nothing' : cover ?? '';
-  return <>
-    <h3 className="ed-sub">1 · How it appears</h3>
-    <Chips label="How it appears" options={[{ id: 'none' as const, label: 'Plain' }, ...CINEMA_REVEALS.map((item) => ({ id: item.id, label: item.label }))]} value={reveal} onPick={choose}/>
-    {reveal === 'none' ? <p className="ed-group-tip">The title stays flat. Pick one above for a cinematic entrance.</p> : <>
-      <p className="ed-group-tip">{chosen!.about} <span lang="ta">{chosen!.tamil}</span></p>
-      <h3 className="ed-sub">2 · In front of the title</h3>
-      <Chips label="In front of the title" options={[{ id: 'nothing', label: 'Nothing' }, { id: 'people', label: 'People' }, { id: 'object', label: 'An object' }, { id: 'land', label: 'Sky only' }, { id: 'still', label: 'Something still' }]} value={front}
-        onPick={(id) => { setDrawing(id === 'still'); if (id === 'nothing') onFront(reveal); else if (id !== 'still') onPick(reveal, id === 'people' ? 'person' : id === 'land' ? 'land' : 'object'); }}/>
-      {cover === 'land' && <p className="ed-group-tip">The title shows only in the sky. Land, buildings, trees and people stay in front, and it follows the horizon as the camera moves. <span lang="ta">வானத்தில் மட்டும்</span></p>}
-      {(cover === 'people' || cover === 'object') && <p className="ed-group-tip">Found for you in every frame, as they move.</p>}
-      {front === 'still' && <>
-        <div className="ed-pair">
-          <button className={`ed-button ${shapingMode === 'ground' ? 'on' : ''}`} onClick={() => onShape(reveal, 'ground')} title="Click the top edge of the ground, a mountain or a skyline"><Mountain size={14}/>Draw skyline</button>
-          <button className={`ed-button ${shapingMode === 'outline' ? 'on' : ''}`} onClick={() => onShape(reveal, 'outline')} title="Click around anything still that stays in front"><PenTool size={14}/>Draw shape</button>
-        </div>
-        <p className="ed-group-tip">For things that don't move: a hill, a wall, a parked car.</p>
-      </>}
-    </>}
-  </>;
-}
 
 function SoundControls({ item, length, onChange }: { item: { volume: number; fade_in: number; fade_out: number }; length: number; onChange: (changes: { volume?: number; fade_in?: number; fade_out?: number }, group?: string) => void }) {
   const longest = Math.min(MAX_FADE_SECONDS, length);
