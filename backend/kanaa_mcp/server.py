@@ -728,6 +728,14 @@ def build_server(api: KanaaApi) -> MCPServer:
         lyrics.credits(timeline, name, presents, song_by, music, presented_by, footer, accent, logo)
         if logo and brand_intro:
             lyrics.prepend_intro(timeline, intro_for(logo_media_id, timeline['format']))
+        # Last, so the credit cards' own moves are kept: every picture covers the frame (into_clear filled its scenes already).
+        sizes = {}
+        for clip in timeline['layers'][0]['items']:
+            if clip['media_id'] not in sizes and not clip['id'].startswith('brand-intro'):
+                item = media(int(clip['media_id']))
+                if item.get('width') and item.get('height'):
+                    sizes[clip['media_id']] = (float(item['width']), float(item['height']))
+        lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
         validate(timeline)
         if project_id is None:
             project_id = api.post('/projects', {'name': name, 'kind': 'edit', 'media_ids': [int(scenes[0]['media_id'])]})['id']

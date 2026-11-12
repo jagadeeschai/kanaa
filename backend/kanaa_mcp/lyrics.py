@@ -306,3 +306,22 @@ def prepend_intro(timeline: dict, media_id: int, seconds: float = 5.5, cards: fl
     main.insert(0, {'id': 'brand-intro', 'name': 'Brand intro', 'media_id': media_id, 'start': 0, 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
                     'fade_in': 0, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}, 'adjust': adjust})
     lay_out(timeline)
+
+
+def fill_frame(timeline: dict, sizes: dict[int, tuple[float, float]], only: set[str] | None = None) -> None:
+    """Pictures of another shape than the video (AI pictures are often 3:2) would show bars at the sides: every
+    picture clip on the main track is enlarged just enough to cover the frame, its pan or zoom kept. sizes: media id ->
+    (width, height); only: just these clip ids (already-filled clips must not be enlarged twice)."""
+    fw, fh = timeline['format']['width'], timeline['format']['height']
+    for clip in timeline['layers'][0]['items']:
+        if clip['id'].startswith('brand-intro') or clip['media_id'] not in sizes or (only is not None and clip['id'] not in only):
+            continue
+        w, h = sizes[clip['media_id']]
+        fit = min(fw / w, fh / h)
+        fill = max(fw / (w * fit), fh / (h * fit))
+        if fill <= 1.001:
+            continue
+        transform = clip.setdefault('transform', {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0})
+        transform['scale'] = round(transform.get('scale', 1) * fill, 4)
+        for key in (transform.get('keyframes') or {}).get('scale', []):
+            key['v'] = round(key['v'] * fill, 4)

@@ -120,3 +120,16 @@ class WithBrandIntro(unittest.TestCase):
         song = [i for l in t['layers'] if l['kind'] == 'audio' for i in l['items']][0]
         self.assertEqual(song['start'], 10.5)
         self.assertTrue(texts['opening-2']['start'] < texts['opening-3']['start'] < song['start'])
+
+
+class FillFrame(unittest.TestCase):
+    def test_a_3_2_picture_covers_a_16_9_frame_and_keeps_its_zoom(self):
+        t = {'format': {'width': 1920, 'height': 1080, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [
+            {'id': 'lyric-scene-1', 'media_id': 5, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1.07, 'keyframes': {'scale': [{'t': 0, 'v': 1.0}, {'t': 9, 'v': 1.1}]}}},
+            {'id': 'brand-intro', 'media_id': 6, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1}}]}]}
+        lyrics.fill_frame(t, {5: (1536, 1024), 6: (1280, 720)})
+        scene, intro = t['layers'][0]['items']
+        fill = (1920 / 1080) / (1536 / 1024)
+        self.assertAlmostEqual(scene['transform']['keyframes']['scale'][0]['v'], fill, places=3)
+        self.assertAlmostEqual(scene['transform']['keyframes']['scale'][1]['v'], 1.1 * fill, places=3)
+        self.assertEqual(intro['transform']['scale'], 1, 'the brand intro is left as made')

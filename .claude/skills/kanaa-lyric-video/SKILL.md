@@ -1,34 +1,85 @@
 ---
 name: kanaa-lyric-video
-description: Make a professional Tamil or English lyric video in Kanaa from a song file and its LRC lyrics, with AI scene pictures, 3D camera glides, lyrics inside the scene, varied title effects, light overlays, film-style credits and the owner's logo. Use when asked to create, redo or restyle a lyric video, lyrical video or பாடல் வரி video.
+description: Make a professional Tamil or English lyric video in Kanaa through its MCP tools, from a song file and its LRC lyrics, with AI scene pictures that fit the song's style and singers, lyrics that move from behind the people into clear space, light overlays, the owner's animated brand intro, film-style credits and a logo. Use when asked to create, redo or restyle a lyric video, lyrical video or பாடல் வரி video.
 ---
 
 # Make a lyric video in Kanaa
 
-Kanaa must be running (`open -a Kanaa`; its API is `http://127.0.0.1:8010/api`). Use the `kanaa` MCP tools. The owner reviews every video in Kanaa first: **never export unless they ask**.
+Everything here was learned making real videos for the owner (கவின்தமிழ் Originals). Follow it closely: each rule exists because breaking it went wrong once.
 
-## 1. Know the song before making anything
+## 0. Before anything
 
-- Find the song and its LRC (usually `~/Downloads`). The song and the LRC must be the same song: compare their names and check the LRC's last line falls inside the song's length. If they differ, ask.
-- `read_lrc`, then read the LRC file itself: its bracketed directions (`[Chorus – male Lead, Warm and Flowing]`, `[soft Rhodes]`) tell you the **genre, mood and who sings**. A cover picture or an earlier video of the song (a `.mp4` of the same name) shows the intended look; look at a frame.
-- Ask the owner what you cannot tell: the style (K-pop, folk, moonlit R&B...), and **who sings: male, female, a group**. The people in the pictures must match the singers.
+- **Kanaa must be running**: `open -a Kanaa`, then check `http://127.0.0.1:8010/api/render-jobs` answers. The `kanaa` MCP server talks to it (registered in the project's `.mcp.json`; run with `cd backend && .venv/bin/python -m kanaa_mcp`).
+- **Never export unless the owner asks.** They review in Kanaa first. `export` is a separate tool; do not call it.
+- **One editor project per song.** When redoing, always pass `project_id` to update it. Never create a second copy; if duplicates exist, ask before deleting any.
+- **The owner's files are read-only.** `add_song` copies the song into Kanaa; never move, rename or edit their files.
+- **AI pictures cost the owner's AI credit**, one per picture. Get the brief right before making them.
+- **Kanaa runs heavy work in two lanes, one job at a time each** (exports and looks in one; finding people, 3D, preview copies, effects and AI pictures in the other). People-finding and pictures queue behind earlier preparation and can take many minutes. Wait and tell the owner what is happening; never cancel jobs you did not start.
+
+## 1. Know the song
+
+1. **Find the song and its LRC** (usually `~/Downloads`; names like `வா வா வெண்ணிலவே.wav` and `வா வா வெண்ணிலவே by kavintamiloriginals.lrc`).
+2. **Check they are the same song.** The names must match, and the LRC's last line must fall inside the song's length (`add_song` returns `seconds`). Different songs with similar names exist (வா வா சூரியனே and வா வா வெண்ணிலவே). If anything differs, ask.
+3. `read_lrc` gives the timed lines. Then **read the LRC file itself**: its bracketed directions (`[Chorus – male Lead, Warm and Flowing]`, `[Gentle R&B groove]`, `[soft Rhodes]`) tell you the genre, mood, tempo and who sings. `read_lrc` leaves those out of the lyrics.
+4. **Look at the song's own cover**: a `.mp4` of the same name in Downloads usually shows the cover art (`ffmpeg -ss 20 -i song.mp4 -frames:v 1 cover.jpg`, then look). It shows the intended look, and often the lyricist (e.g. "பட்டுக்கோட்டை கல்யாணசுந்தரம்").
+5. **Ask the owner what you cannot tell**, before making pictures: the visual style they want (K-pop music video, folk, moonlit R&B, devotional...) and **who sings: a male lead, a female lead, a duet, a male group**. The people in the pictures must match the singers. A male group song needs a group of men, not a solo woman.
 
 ## 2. Pictures that fit the song
 
-- `add_song`, then `plan_lyric_scenes`: about one scene per 20-30 s of song (6 for 2.5 min, 8 for 4 min). The `brief` sets the look of the whole video: genre, colour palette, era and place, and the recurring people (same faces and clothes in every scene; the lead singer(s) as the focus).
-- Rewrite each scene's prompt so it shows what **its own lines** say (read the Tamil), in the shared look. Wide frames with a near foreground (people, trees, pillars) and a far background, so the 3D glide and lyrics-inside-the-scene work. Keep the lower fifth calm for the lyrics.
-- `make_scene_pictures` costs AI credit per picture: get the brief right first. `look_at_media` to check them; if a picture is wrong, plan again and remake.
+1. `add_song(path)` → `asset_id`, `seconds`.
+2. `plan_lyric_scenes(name, cues, count, brief, canvas)`: about one scene per 20-30 s of song (6 for 2.5 min, 8 for 4 min, at most 8). It makes a lyric project and returns `lyric_project_id`, `plan_id` and each scene's `id`, `start`, `end`, `lyrics` and `prompt`.
+   - The `brief` (English, under 1500 characters) is the look of the whole video: genre and music-video style, colour palette, era and place, and **the recurring cast** (same faces, hair and clothes in every scene; the singer or singers as the focus; say male/female/group).
+   - Without a text model in Kanaa's AI settings, the scene prompts come back generic. **Always rewrite each scene's prompt**: keep the planner's prompt (it carries the continuity rules) and add the shared look plus a "Scene:" line that shows what **that scene's own lines** say (read the Tamil and translate the meaning into a picture).
+   - Ask for wide frames with a near foreground (people, trees, pillars) and a far background, and a calm lower fifth for the lyrics.
+3. `make_scene_pictures(lyric_project_id, plan_id, scenes)` makes them (a few minutes) and returns each scene's `media_id`, `start` and `end`.
+4. **Look at every picture** (`look_at_media`). Check the cast matches the singers, the style matches the song, and faces stay consistent. To change pictures that are already made, plan again (a new `plan_id`) and make that plan's pictures; a plan's pictures cannot be made twice.
+
+Examples that worked:
+- வா வா சூரியனே (upbeat, philosophical, male group vocals): K-pop boy-group music video, five young Tamil men in black and gold, sunrise orange against teal and violet, one scene per idea of the lyrics (rooftop sunrise, a neon street with a cracked statue of justice, a rushing grey crowd, a storm field, people sharing food on temple steps, a mountain-top finale).
+- வா வா வெண்ணிலவே (romantic R&B ballad, male lead): a moonlit night in deep blue and silver, the male singer in a cream kurta and his beloved in a lavender saree, as on the song's cover (a jetty under a full moon).
 
 ## 3. Build it
 
-`build_lyric_video` with `three_d`, `lyrics_in_scene` and `lights` on. Choose the `look` from the music: `energetic` (K-pop, dance, upbeat), `romantic` (ballads, R&B: lines rise from behind the people), `calm` (devotional, slow). Pick `accent` from the pictures (gold `#e8b04a` for warm scenes, silver-lavender `#cfc8ff` for night).
+`build_lyric_video` builds the whole video as an editor project and does not export. Pass:
 
-Credits, film style, only what is true; ask rather than guess names:
-- `presents`: e.g. `KAVIN TAMIL ORIGINALS`; `song_by`: the lyricist; `music`: e.g. `Made with Suno` when the owner says so; `presented_by`: the channel; `footer`: e.g. `@kavintamiloriginals  ·  Lyric video with Kanaa`.
-- `logo_media_id`: the owner's logo (a transparent PNG in Kanaa media; ask which one). It sits small at the bottom right, and large on the closing card.
+- `name`, `song_asset_id`, `song_seconds`, `cues` (from `read_lrc`), `scenes` (`[{"media_id", "start"}]` in order, the first from 0).
+- `look`: lyric entrances and light overlays. `energetic` for K-pop, dance, upbeat; `romantic` for ballads and R&B; `calm` for devotional or slow songs.
+- `lyric_motion`:
+  - **`into_clear` (default; use it)**: each line starts behind the person nearest the clear space and glides into that space within 1.6 s, then nothing covers it; long lines split onto two. People are found with Apple Vision in each picture. This is what the owner asked for.
+  - `plain`: lines just fade in and out over the pictures. Use when the owner asks for simple.
+  - `in_scene`: people cover the lyrics the whole time. **The owner rejected this as unreadable**; do not use it unless asked.
+- `three_d`: a 3D camera glide on each picture. Off by default, and not with `into_clear`. The owner asked for simple; ask before using it.
+- `lights`: light overlays over the opening seconds of each scene. On.
+- `lyric_font` (`elegant` reads well for Tamil), `lyric_colour` (`#ffffff`, or a soft lavender `#f4f1ff` for night scenes), `lyric_size` (44-52), `canvas` (`landscape` for YouTube).
+- Credits, film style. **Only what is true; ask rather than guess names** (singers' and composers' names are often unknown; leave them out):
+  - `presents`: `KAVIN TAMIL ORIGINALS` (used only without the brand intro).
+  - `song_by`: the lyricist, from the cover or the owner (e.g. `பட்டுக்கோட்டை கல்யாணசுந்தரம்`).
+  - `music`: e.g. `Made with Suno`, when the owner says the music was made with Suno.
+  - `presented_by`: `கவின்தமிழ் Originals`.
+  - `footer`: `@kavintamiloriginals  ·  Lyric video with Kanaa`.
+  - `accent`: the colour of the small role labels: gold `#e8b04a` for warm, sunny pictures; silver-lavender `#cfc8ff` for night.
+- `logo_media_id`: the owner's logo, a transparent PNG in Kanaa's media. Ask which. The all-gold கவின்தமிழ் Originals logo was chosen before ("Hollow gold leaf musical note logo.png"). It sits small in the bottom-right corner during the song and large on the closing card.
+- `brand_intro` (default on, needs the logo): the video opens with the animated brand intro made from the logo. A plain golden leaf falls among music notes, strikes them, the note appears in it, the logo forms, and **வழங்கும்** and **PRESENTS** fade in beneath. `make_brand_intro(project_id, logo_media_id)` adds the same intro to any project.
+- `project_id`: the editor project to update when redoing a song. Leave it out only the first time.
 
-When redoing a video, pass `project_id` so the same project is updated; never leave duplicates.
+The finished video opens with the brand intro (5.5 s), then "A SONG BY" with the lyricist, then the title with the footer line, then the song at 10.5 s. It ends with a separate closing card: the logo, then LYRICS, MUSIC and PRESENTED BY in small spaced gold capitals above their names. Pictures are enlarged to fill the frame (AI pictures are 3:2), so there are no black bars.
 
 ## 4. Check, then hand over
 
-`look` at a few moments: the opening cards (0-8 s), a line that rises from behind people, a scene change, and the closing card. Tamil must never be letter-spaced (it splits the letters); labels must not overlap names. Then tell the owner the project's name and what to check, and leave the export to them.
+1. `get_project(project_id)` and confirm **the song is the right one**. Compare the audio item's asset with this song's `asset_id`; a mismatch happened once, when one song's audio was put into another's project. Also confirm the first lyric line and the title are this song's.
+2. `look` at these moments (each up to 10 s):
+   - 0-11 s: the brand intro, the song credit and the title.
+   - One lyric line that starts behind a person: it must end fully readable in clear space.
+   - A scene change.
+   - The closing card.
+3. What to look for:
+   - **Tamil is never letter-spaced**: spacing splits Tamil letters into pieces with dotted circles.
+   - Labels never overlap names.
+   - No line ends hidden behind a person.
+   - No black bars at the sides.
+   - The logo sits in the corner.
+4. Tell the owner the project's name and number, what you checked, and anything you could not check. Leave the export to them.
+
+## Words to use with the owner
+
+Plain English, short. Say "Kanaa is finding the people in each picture" rather than job names. Quote Tamil lyrics as they are. Never claim something works without having looked at it.
