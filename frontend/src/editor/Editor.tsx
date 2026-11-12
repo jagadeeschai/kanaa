@@ -11,7 +11,7 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ChevronRight, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -942,9 +942,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const own = ownOverLayer(timeline, id);
     const item = (layer.items as (Clip | TextItem)[]).find((entry) => entry.id === id);
     const following = !item || followsLayer(item);
-    if (layer.items.length < 2 && !layer.style) return null;
+    if (!Object.keys(layer.style ?? {}).length && following) return null;
     return <div className="ed-scope">
-      <div className="ed-follow"><button className="ed-effect-switch" role="switch" aria-checked={following} aria-label={t('Layer settings')} title={t(following ? "Follows the layer's settings. Turn off to keep this one as it is" : "Layer settings don't apply here. Turn on to follow the layer")} onClick={() => change(setFollowLayer(timeline, id, !following))}>{following ? <Eye size={13}/> : <EyeOff size={13}/>}</button><span>{t(following ? 'Follows layer settings' : 'Layer settings off')}</span></div>
+      {(following ? Object.keys(layer.style ?? {}).length > 0 : true) && <label className="ed-check ed-follow" title={t(following ? "Follows the layer's settings. Turn off to keep this one as it is" : "Layer settings don't apply here. Turn on to follow the layer")}><input type="checkbox" checked={following} onChange={() => change(setFollowLayer(timeline, id, !following))}/><Link2 size={13}/>{t('Use layer style')}</label>}
       {following && own.length > 0 && <p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
     </div>;
   };
@@ -1522,6 +1522,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     setChoosingFormat(false);
   };
 
+  // What Alt+arrows nudge: set below, once the selection's transform is known.
+  const movingRef = useRef<{ transform: Clip['transform']; update: (transform: Clip['transform'], group?: string) => void } | null>(null);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
@@ -1546,24 +1548,45 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         case 'k': engine?.pause(); fastRate.current = 0; break;
         case 'l': fastRate.current = Math.min(FAST_RATES.length - 1, engine?.playing ? fastRate.current + 1 : 0); engine?.play(FAST_RATES[fastRate.current]); break;
         case 'j': engine?.pause(); seek(playhead.current - 1); break;
-        case 'ArrowLeft': event.preventDefault(); engine?.pause(); seek(playhead.current - frame * (event.shiftKey ? 10 : 1)); break;
-        case 'ArrowRight': event.preventDefault(); engine?.pause(); seek(playhead.current + frame * (event.shiftKey ? 10 : 1)); break;
+        case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight': {
+          if (!event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) break;
+          event.preventDefault();
+          if (event.altKey) {
+            // Alt+arrows nudge the selected title, clip or blur in the frame (Shift: further).
+            const moving = movingRef.current;
+            if (!moving) break;
+            const step = event.shiftKey ? 0.05 : 0.01;
+            const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+            const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+            moving.update({ ...moving.transform, x: Math.round((moving.transform.x + dx) * 1000) / 1000, y: Math.round((moving.transform.y + dy) * 1000) / 1000 }, `nudge-${selectedId}`);
+            break;
+          }
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') break;
+          engine?.pause(); seek(playhead.current + (event.key === 'ArrowLeft' ? -1 : 1) * frame * (event.shiftKey ? 10 : 1)); break;
+        }
         case 's': split(); break;
         case 'f': toggleFullScreen(); break;
         case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
-        case 'Escape': setWordSelection(new Set()); break;
+        case 'Escape': setWordSelection(new Set()); setSelectedId(null); break;
+        case 'Enter': case 'F2': {
+          // Type into the selected title.
+          const box = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Title"]');
+          if (selectedText && box) { event.preventDefault(); box.focus(); box.select(); }
+          break;
+        }
         default: break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts]);
+  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
     : selectedBlur ? { transform: selectedBlur.transform, local: blurLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedBlur({ transform }, group) }
     : selectedText ? { transform: selectedText.transform ?? REST_TRANSFORM, local: textLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedText({ transform }, group) } : null;
+  movingRef.current = moving;
   /** The selected overlay takes one half of the frame and the main clip under it the other. */
   const splitScreen = (layout: 'side' | 'stack') => {
     if (!timeline || !selected) return;
@@ -1580,6 +1603,25 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(next);
   };
   const startPicking = () => { if (selected) { engineRef.current?.pause(); engineRef.current?.showUnkeyed(selected.id); setPickingKey(true); } };
+  // Titles in the preview: where each visible title's letters sit in the frame (shares), for picking and editing it there.
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const titleRect = (text: TextItem): { left: number; top: number; right: number; bottom: number } | null => {
+    const box = engineRef.current?.titleBox(text);
+    if (!box) return null;
+    const transform = text.transform ?? REST_TRANSFORM, at = Math.max(0, Math.min(text.length, now - text.start));
+    const x = valueAt(transform, 'x', at), y = valueAt(transform, 'y', at), size = valueAt(transform, 'scale', at);
+    return { left: x + (box[0] - 0.5) * size, top: y + (box[1] - 0.5) * size, right: x + (box[2] - 0.5) * size, bottom: y + (box[3] - 0.5) * size };
+  };
+  const titleAt = (fx: number, fy: number): TextItem | null => {
+    if (!timeline) return null;
+    const layers = timeline.layers.filter((layer): layer is Extract<typeof layer, { kind: 'text' }> => layer.kind === 'text' && !layer.hidden).reverse();  // Topmost first.
+    for (const layer of layers) for (const text of layer.items) {
+      if (now < text.start || now >= text.start + text.length) continue;
+      const rect = titleRect(text);
+      if (rect && fx >= rect.left - 0.01 && fx <= rect.right + 0.01 && fy >= rect.top - 0.01 && fy <= rect.bottom + 0.01) return text;
+    }
+    return null;
+  };
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (placing && !placing.busy && timeline) {
       const rect = event.currentTarget.getBoundingClientRect();
@@ -1593,6 +1635,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (color) updateSelected({ chroma: { ...(selected.chroma ?? DEFAULT_CHROMA), color } });
       stopPicking();
       return;
+    }
+    // A click on a title in the preview picks it, as a click on the timeline does.
+    if (event.button === 0 && !event.ctrlKey && !drawing && !shaping) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+      if (hit && hit.id !== selectedId) { setLayerSettings(null); setSelectedId(hit.id); return; }
     }
     if (!moving || selectedLayer?.locked || selected?.enabled === false || selected?.frame_locked || event.button !== 0 || event.ctrlKey) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -2227,10 +2275,21 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
       <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
-          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
+          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setSelectedId(hit.id); setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
           {selectedText && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
+          {selectedText && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && (() => {
+            const rect = titleRect(selectedText);
+            if (!rect) return null;
+            const box = { left: `${rect.left * 100}%`, top: `${rect.top * 100}%`, width: `${(rect.right - rect.left) * 100}%`, height: `${(rect.bottom - rect.top) * 100}%` };
+            return <>
+              {editingTitle === selectedText.id
+                ? <TitleEditBox key={selectedText.id} text={selectedText} style={box} onDone={(words) => { setEditingTitle(null); if (words !== null && words.trim() && words !== selectedText.text) updateSelectedText({ text: words }, `text-${selectedText.id}`); }}/>
+                : <div className="ed-title-box" style={box} onDoubleClick={() => { engineRef.current?.pause(); setEditingTitle(selectedText.id); }} title={t('Double-click to type')}/>}
+              <TitleToolbar text={selectedText} top={rect.top} left={(rect.left + rect.right) / 2} onChange={(changes, group) => updateSelectedText(changes, group)} onEdit={() => { engineRef.current?.pause(); setEditingTitle(selectedText.id); }}/>
+            </>;
+          })()}
           {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
           {followTarget && !selectedLayer?.locked && !selected?.frame_locked && !followJob && !drawing && !shaping && !pickingKey && now >= followTarget.start - ON_ITEM && now < followTarget.start + followTarget.length && !isFollowed(followTarget.transform) && (() => {
             const box = ownBox();
@@ -2551,6 +2610,60 @@ function FormatDialog({ clipFormat, current, onChoose }: { clipFormat: Format | 
     </div></div></div>;
 }
 
+/**
+ * Typing into a title where it sits in the preview. Tamil typing is safe: Enter only finishes once the keyboard has
+ * finished composing a letter. Enter keeps the words (Shift+Enter starts a new line), Esc puts them back, leaving keeps them.
+ */
+function TitleEditBox({ text, style, onDone }: { text: TextItem; style: React.CSSProperties; onDone: (words: string | null) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const composing = useRef(false);
+  const done = useRef(false);
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    box.innerText = text.text;
+    box.focus();
+    const range = document.createRange(); range.selectNodeContents(box);
+    const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  const finish = (words: string | null) => { if (done.current) return; done.current = true; onDone(words); };
+  const lines = Math.max(1, text.text.split('\n').length);
+  return <div ref={ref} className="ed-title-edit" style={{ ...style, fontFamily: `"${text.tamil_font ?? 'Noto Sans Tamil'}", "${text.font ?? 'Noto Sans'}", sans-serif`, textAlign: text.align ?? 'center', '--lines': lines } as React.CSSProperties}
+    contentEditable="plaintext-only" suppressContentEditableWarning lang="ta" role="textbox" aria-label="Title words" aria-multiline="true"
+    onPointerDown={(event) => event.stopPropagation()}
+    onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.key === 'Escape') { event.preventDefault(); finish(null); return; }
+      if (event.key === 'Enter' && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); finish(ref.current?.innerText.replace(/\n+$/, '') ?? null); }
+    }}
+    onBlur={() => finish(ref.current?.innerText.replace(/\n+$/, '') ?? null)}/>;
+}
+
+/** The selected title's most-used settings, right above it in the preview. */
+function TitleToolbar({ text, top, left, onChange, onEdit }: { text: TextItem; top: number; left: number; onChange: (changes: Partial<TextItem>, group?: string) => void; onEdit: () => void }) {
+  return <div className="ed-title-toolbar" style={{ left: `clamp(150px, ${left * 100}%, calc(100% - 150px))`, top: `max(4px, calc(${top * 100}% - 40px))` }} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+    <button onClick={onEdit} title={t('Type')} aria-label={t('Type')}><Type size={14}/></button>
+    <span className="ed-tt-sep"/>
+    <button onClick={() => onChange({ size: Math.max(20, text.size - 2) }, `size-${text.id}`)} title={t('Smaller')} aria-label={t('Smaller')}>A−</button>
+    <b className="ed-tt-size">{Math.round(text.size)}</b>
+    <button onClick={() => onChange({ size: Math.min(100, text.size + 2) }, `size-${text.id}`)} title={t('Bigger')} aria-label={t('Bigger')}>A+</button>
+    <label className="ed-tt-colour" title={t('Colour')}><input type="color" aria-label={t('Text colour')} value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/><i style={{ background: text.color }}/></label>
+    <select aria-label={t('Tamil font')} title={t('Tamil font')} value={text.tamil_font ?? 'Noto Sans Tamil'} onChange={(event) => onChange({ tamil_font: event.target.value === 'Noto Sans Tamil' ? null : event.target.value })}>{TAMIL_FONTS.map((font) => <option key={font.family} value={font.family}>{font.label}</option>)}</select>
+    <span className="ed-tt-sep"/>
+    {(['band', 'shadow', 'outline'] as const).map((style) => <button key={style} className={text.style === style ? 'on' : ''} aria-pressed={text.style === style} onClick={() => onChange({ style })} title={t(style === 'band' ? 'Band' : style === 'shadow' ? 'Shadow' : 'Outline')}>{style === 'band' ? '▬' : style === 'shadow' ? 'S' : 'O'}</button>)}
+  </div>;
+}
+
+/** "0:04 → 0:09 · 5s": where the item sits, for the folded Timing heading. */
+function timingSummary(fields: TimeFieldProps[]): string {
+  const find = (label: string) => fields.find((field) => field.label === label);
+  const start = find('Start'), length = find('Duration') ?? find('Length');
+  if (!start || !length) return '';
+  const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+  return `${clock(start.value)} → ${clock(start.value + length.value)} · ${length.value < 10 ? length.value.toFixed(1) : Math.round(length.value)}s`;
+}
+
 function Timing({ fields }: { fields: TimeFieldProps[] }) {
   return <div className="ed-timing">{fields.map((field) => <TimeField key={field.label} {...field}/>)}</div>;
 }
@@ -2703,35 +2816,40 @@ function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCover, tex
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
-  return <Panel id="title" tabs={[{ id: 'words', label: 'Words', Icon: Quote }, { id: 'style', label: 'Style', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
-    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
+  const forLayer = useContext(LayerModeContext);
+  const fontsAndSize = <>
+    <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
+    <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
+    <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
+    <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
+    <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
+    <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
+    <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
+    <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
+  </>;
+  // One Text tab: the words with everything about how they look; and a Motion tab.
+  return <Panel id="title" tabs={[{ id: 'style', label: 'Text', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
+    <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
-    <Group title="Words" tab="words" startOpen keywords="text title words tamil english subtitle type" tip="Type in Tamil or English; a subtitle adds a small line." help="titles">
-      <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
-      <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>
+    <Group title="Text" tab="style" startOpen keywords="text title words tamil english type font bigger size colour color band shadow outline style position align spacing" tip="Type in Tamil or English, or double-click the title in the preview. Drag it there to move it." help="titles">
+      {!forLayer && <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>}
+      {fontsAndSize}
     </Group>
-    {text.subtitle && <Group title="Subtitle" tab="words" keywords="subtitle small line spacing">
+    <Group title="Subtitle" tab="style" startOpen={Boolean(text.subtitle)} changed={Boolean(text.subtitle)} keywords="subtitle small line spacing">
+      {!forLayer && <textarea className="ed-text" aria-label="Subtitle" lang="ta" placeholder="Subtitle (optional)" value={text.subtitle ?? ''} maxLength={200} rows={1} onChange={(event) => onChange({ subtitle: event.target.value || null }, `subtitle-${text.id}`)}/>}
+      {(text.subtitle || forLayer) && <>
       <ValueSlider label="Size" value={text.subtitle_size ?? Math.round(Math.max(20, text.size) * 0.55)} min={10} max={100} step={1} defaultValue={Math.round(Math.max(20, text.size) * 0.55)} onChange={(subtitle_size, group) => onChange({ subtitle_size: Math.round(subtitle_size) }, group)}/>
-      <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
       <ValueSlider label="Subtitle letter spacing" value={text.subtitle_spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ subtitle_spacing: Math.round(spacing) }, group)}/>
       <label className="ed-color"><span>Colour</span><input type="color" aria-label="Subtitle colour" value={text.subtitle_color ?? text.color} onChange={(event) => onChange({ subtitle_color: event.target.value }, `subcolor-${text.id}`)}/></label>
       <Chips label="Subtitle place" options={[{ id: 'below' as const, label: 'Below the title' }, { id: 'above' as const, label: 'Above it' }]} value={text.subtitle_above ? 'above' : 'below'} onPick={(place) => onChange({ subtitle_above: place === 'above' })}/>
-    </Group>}
-    <Group title="Style" tab="style" startOpen keywords="font bigger size colour color band shadow outline style look" tip="Choose a style, size and colour. Drag the title in the preview to move it." help="title-styles">
-      <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }]} value={text.style} onPick={(style) => onChange({ style })}/>
-      <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
+      </>}
+    </Group>
+    <Group title="Layout and look" tab="style" changed={Boolean(text.design)} keywords="layout design band backing save my style look" help="title-styles">
       <Chips label="Layout" options={[{ id: 'none' as const, label: 'Plain' }, ...TITLE_DESIGNS]} value={text.design ?? 'none'} onPick={(design) => onChange({ design: design === 'none' ? null : design })}/>
       {text.design && <p className="ed-group-tip">{DESIGN_TIPS[text.design]}</p>}
-      <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
-      <More>
-      <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
-      <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
-      <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
-      <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
       {(text.style === 'band' || (text.design && BACKED_DESIGNS.has(text.design))) && <label className="ed-color"><span>{text.design ? 'Backing colour' : 'Band colour'}</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
-    <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>
-      </More>
+      {!forLayer && <button className="ed-button wide" onClick={onSaveStyle} title="Keep this look in Text, under My styles, for any video"><Bookmark size={14}/>Save as my style</button>}
     </Group>
     <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
       <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
@@ -2788,11 +2906,11 @@ function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCover, tex
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
       {follow}
     </Group>
-    <Group title="Title moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
+    <Group title="Moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
       <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
       <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
     </Group>
-    <Group title="Advanced motion" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
+    <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
   </Panel>;
@@ -2842,7 +2960,7 @@ function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLay
   stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void }) {
   return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
     <p className="ed-name" title={sound.name}>{sound.name}</p>
-    <Group title="Timing" startOpen keywords="when start length duration trim loop repeat" help="timing-and-trimming">
+    <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration trim loop repeat" help="timing-and-trimming">
     <Timing fields={timing}/>
     {onLoop && <><button className="ed-button wide" disabled={looping} onClick={onLoop} title="Repeats the song by whole bars, on the beat, until the video ends, then fades out">{looping ? <LoaderCircle className="spin" size={14}/> : <Music size={14}/>}{looping ? 'Finding the beat…' : 'Loop to the end of the video'}</button>
       <p className="ed-tip">The song ends early. Looping repeats it on the beat and fades at the end.</p></>}
@@ -2884,7 +3002,7 @@ function Inspector({ onReframe, reframing, onMove, backgrounds, onBackground, lo
     <ActiveEffects clip={clip} onChange={onChange}/>
     <Panel id="clip" tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Look', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
-    <Group title="Timing" startOpen keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Clip visibility" tab="frame" startOpen changed={clip.enabled === false} keywords="active inactive disable hide camera angle multicam" tip="Deactivate an angle without deleting or moving it.">
       <label className="ed-check"><input type="checkbox" checked={clip.enabled !== false} onChange={(event) => onChange({ enabled: event.target.checked })}/><span>Active clip<small>{clip.enabled === false ? 'Kept on the timeline, but absent from preview, sound and export.' : 'This clip contributes picture and sound.'}</small></span></label>
     </Group>
@@ -3147,7 +3265,7 @@ function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll 
   const [draft, setDraft] = useState(captionText(caption));
   useEffect(() => setDraft(captionText(caption)), [caption.id]);
   return <Panel id="caption" tabs={[{ id: 'words', label: 'Words', Icon: Captions }, { id: 'style', label: 'Style', Icon: ALargeSmall }]}>
-    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming">
+    <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
     <Group title="This caption" tab="words" startOpen keywords="subtitles captions words fix spelling text" tip="Fix a word by typing. Keep the same number of words to keep its timing." help="captions">
@@ -3169,7 +3287,7 @@ function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll 
 
 function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, follow }: { blur: BlurBox; timing: TimeFieldProps[]; local: number; onChange: (changes: Partial<BlurBox>, group?: string) => void; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode }) {
   return <Panel id="blur" tabs={[{ id: 'hide', label: 'Hide', Icon: EyeOff }, { id: 'motion', label: 'Motion', Icon: Move, changed: Object.keys(blur.transform.keyframes ?? {}).length > 0 }]}>
-    <Group title="Timing" startOpen keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Hide" tab="hide" startOpen keywords="hide face number plate pixelate censor blur strength oval box" tip="Hide a face or number plate. Drag the box in the preview to move it." help="hide-faces-plates">
       <Chips label="Style" options={[{ id: 'blur' as const, label: 'Blur' }, { id: 'pixelate' as const, label: 'Pixelate' }]} value={blur.style} onPick={(style) => onChange({ style })}/>
       <Chips label="Shape" options={[{ id: 'oval' as const, label: 'Oval' }, { id: 'box' as const, label: 'Box' }]} value={blur.shape} onPick={(shape) => onChange({ shape })}/>

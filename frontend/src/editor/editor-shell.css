@@ -398,3 +398,15 @@
 .ed-effects-toggle svg{flex:none;transition:transform .15s}.ed-effects.open .ed-effects-toggle svg{transform:rotate(90deg)}
 .ed-effects-toggle span{flex:none}.ed-effects-toggle small{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:400;color:var(--muted)}
 .ed-scope{padding:4px 10px}.ed-follow{font-size:11.5px;gap:6px}.ed-follow .ed-effect-switch{width:22px;height:22px}.ed-scope .ed-tip{font-size:11px;margin:4px 0 0}
+.ed-group-summary{margin-left:auto;padding-left:8px;font-size:11px;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-group.open .ed-group-summary{display:none}
+.ed-follow svg{color:var(--muted)}
+
+/* Titles in the preview: a box round the selected one, typing in place, and its small toolbar. */
+.ed-title-box{position:absolute;border:1.5px dashed rgba(255,255,255,.85);border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.35);pointer-events:none;background:transparent}
+.ed-title-edit{position:absolute;z-index:5;display:flex;flex-direction:column;justify-content:center;min-width:120px;min-height:2em;padding:4px 8px;border:1.5px solid var(--accent,#8b7cff);border-radius:6px;background:rgba(10,8,20,.82);color:#fff;
+  font-size:clamp(14px,calc(var(--frame-h,360px) * 0.05),48px);line-height:1.25;white-space:pre-wrap;outline:none;overflow:auto;transform:translateY(0)}
+.ed-title-toolbar{position:absolute;z-index:6;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--panel,#1d1a26);border:1px solid var(--hairline);box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:nowrap}
+.ed-title-toolbar button{min-width:26px;height:26px;padding:0 6px;border:0;border-radius:6px;background:none;color:var(--text);font:600 12px/1 inherit;cursor:pointer}.ed-title-toolbar button:hover,.ed-title-toolbar button.on{background:var(--selected-bg);color:var(--selected-text)}
+.ed-title-toolbar select{height:26px;max-width:110px;border:0;border-radius:6px;background:var(--well);color:var(--text);font-size:12px}
+.ed-tt-size{min-width:22px;text-align:center;font-size:12px;color:var(--text-2)}.ed-tt-sep{width:1px;height:18px;margin:0 3px;background:var(--hairline)}
+.ed-tt-colour{position:relative;display:grid;place-items:center;width:26px;height:26px;cursor:pointer}.ed-tt-colour input{position:absolute;inset:0;opacity:0;cursor:pointer}.ed-tt-colour i{width:16px;height:16px;border-radius:50%;border:1px solid rgba(255,255,255,.5)}

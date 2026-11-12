@@ -89,7 +89,7 @@ export const RailContext = createContext<{ folded: boolean; setOpen: (open: bool
 /** Set while the settings panel shows a whole layer: only groups a layer can style are shown. */
 export const LayerModeContext = createContext(false);
 const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'sound']);
-const LAYER_GROUPS = new Set(['Style', 'Subtitle', 'Simple animation', 'Title moves', 'Advanced motion', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Animation', 'Moves', 'Speed and sound']);
+const LAYER_GROUPS = new Set(['Text', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Animation', 'Moves', 'Speed and sound']);
 
 export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
   // A whole layer shows only the tabs a layer can style.
@@ -124,7 +124,7 @@ export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: Panel
  * A section of settings. In a Panel it shows on its own tab, or when its title or keywords match the search (then open).
  * `tip` is one plain sentence under the title; `help` opens the guide's article on it.
  */
-export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; children: ReactNode }) {
+export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, summary, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; /** A one-line look at the values, shown in the heading. */ summary?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
   const panel = useContext(PanelContext);
   const openHelp = useContext(HelpContext);
@@ -137,7 +137,7 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
   const showing = open || Boolean(matches);
   return <section className={`ed-group ${showing ? 'open' : ''}`}>
     <div className="ed-group-top">
-      <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{t(title)}</span>{changed && <i title="Changed from the default"/>}</button>
+      <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{t(title)}</span>{summary && <small className="ed-group-summary">{summary}</small>}{changed && <i title="Changed from the default"/>}</button>
       {help && <button className="ed-icon small ed-help-button" aria-label={`${t('Learn more')}: ${t(title)}`} title={t('Learn more')} onClick={() => openHelp(help)}><Info size={13}/></button>}
     </div>
     {showing && <div className="ed-group-body">{tip && <p className="ed-group-tip">{t(tip)}</p>}{children}</div>}
