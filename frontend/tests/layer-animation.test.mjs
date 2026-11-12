@@ -1,62 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, animateWholeLayer, moveWholeLayer, emptyTimeline, findText, insertClip, layerCount, mainLayer, newClip, updateClip, updateText } from '../src/timeline/model.ts';
+import { addText, applyLayerStyles, emptyTimeline, findText, insertClip, mainLayer, markOwn, newClip, ownOverLayer, setLayerStyle, updateText, useLayerStyle } from '../src/timeline/model.ts';
 
-const line = (id, start, length) => ({ id, start, length, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
+const line = (id, start) => ({ id, start, length: 3, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
+const three = () => ['a', 'b', 'c'].reduce((t, id, i) => addText(t, line(id, i * 4), 'L'), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
 
-test('every title in the layer gets the same enter and exit, fitted to short lines', () => {
-  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
-  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L'); t = addText(t, line('c', 10, 1), 'L');
-  t = updateText(t, 'a', { enter: { preset: 'fade', duration: 0.8 }, exit: { preset: 'slide-up', duration: 0.6 } });
-  assert.equal(layerCount(t, 'a'), 3);
-  t = animateWholeLayer(t, 'a');
-  assert.deepEqual(findText(t, 'b').text.enter, { preset: 'fade', duration: 0.8 });
-  assert.deepEqual(findText(t, 'b').text.exit, { preset: 'slide-up', duration: 0.6 });
-  assert.deepEqual(findText(t, 'c').text.enter, { preset: 'fade', duration: 0.5 });
+test('a layer style reaches every title that does not set its own', () => {
+  let t = markOwn(updateText(three(), 'b', { size: 2 }), 'b', { size: 2 });
+  t = setLayerStyle(t, 'a', { size: 1.4, color: '#ffcc00', enter: { preset: 'fade', duration: 0.5 } });
+  assert.deepEqual(['a', 'b', 'c'].map((id) => findText(t, id).text.size), [1.4, 2, 1.4]);
+  assert.equal(findText(t, 'b').text.color, '#ffcc00');
+  assert.deepEqual(ownOverLayer(t, 'b'), ['size']);
+  t = useLayerStyle(t, 'b');
+  assert.equal(findText(t, 'b').text.size, 1.4);
 });
 
-test('a scene-depth reveal on another title is kept', () => {
-  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
-  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L');
-  t = updateText(t, 'b', { enter: { preset: 'rise-behind', duration: 1.2 } });
-  t = updateText(t, 'a', { enter: { preset: 'fade', duration: 0.5 } });
-  t = animateWholeLayer(t, 'a');
-  assert.equal(findText(t, 'b').text.enter.preset, 'rise-behind');
+test('timing and words never come from the layer', () => {
+  const t = setLayerStyle(three(), 'a', { start: 9, text: 'x', length: 1 });
+  assert.equal(findText(t, 'b').text.start, 4);
+  assert.equal(findText(t, 'b').text.text, 'b');
 });
 
-test('clips in a layer share the enter and exit', () => {
+test('a new title on a styled layer takes its style', () => {
+  let t = setLayerStyle(three(), 'a', { size: 1.7 });
+  t = applyLayerStyles(addText(t, line('d', 12), 'L'));
+  assert.equal(findText(t, 'd').text.size, 1.7);
+});
+
+test('no style, no change: the same timeline comes back', () => {
+  const t = three();
+  assert.equal(applyLayerStyles(t), t);
+});
+
+test('a layer style with no animation removes it from every clip but those setting their own', () => {
   const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
   let t = ['x', 'y'].reduce((acc, id) => insertClip(acc, newClip(source, id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
-  t = updateClip(t, 'x', { enter: { preset: 'fade', duration: 1 } });
-  t = animateWholeLayer(t, 'x');
+  t = setLayerStyle(t, 'x', { enter: { preset: 'fade', duration: 1 } });
   assert.deepEqual(mainLayer(t).items.map((c) => c.enter?.preset), ['fade', 'fade']);
-});
-
-test('no animation on the chosen title removes them from every title, cinematic ones too', () => {
-  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
-  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L'); t = addText(t, line('c', 10, 4), 'L');
-  t = updateText(t, 'b', { enter: { preset: 'fade', duration: 0.5 }, exit: { preset: 'fade', duration: 0.5 } });
-  t = updateText(t, 'c', { enter: { preset: 'rise-behind', duration: 1.2 } });
-  t = animateWholeLayer(t, 'a');
-  for (const id of ['b', 'c']) { assert.equal(findText(t, id).text.enter, null); assert.equal(findText(t, id).text.exit, null); }
-});
-
-test('no animation on the chosen clip removes them from every clip', () => {
-  const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
-  let t = ['x', 'y'].reduce((acc, id) => insertClip(acc, newClip(source, id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
-  t = updateClip(t, 'y', { enter: { preset: 'fade', duration: 1 }, exit: { preset: 'fade', duration: 1 } });
-  t = animateWholeLayer(t, 'x');
-  assert.deepEqual(mainLayer(t).items.map((c) => [c.enter, c.exit]), [[null, null], [null, null]]);
-});
-
-test('no keyframed motion on the chosen title removes it from every title; a motion is copied to all', () => {
-  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
-  const slide = { x: 0.5, y: 0.8, scale: 1, opacity: 1, rotation: 0, keyframes: { x: [{ t: 0, v: 0.1, ease: 'easeInOut' }, { t: 1.6, v: 0.5, ease: 'easeInOut' }] } };
-  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, { ...line('b', 5, 4), transform: slide }, 'L');
-  t = moveWholeLayer(t, 'a');
-  assert.deepEqual(findText(t, 'b').text.transform.keyframes, {});
-  assert.equal(findText(t, 'b').text.transform.x, 0.5);
-  t = updateText(t, 'b', { transform: slide });
-  t = moveWholeLayer(t, 'b');
-  assert.deepEqual(findText(t, 'a').text.transform.keyframes, slide.keyframes);
+  t = setLayerStyle(t, 'x', { enter: null });
+  assert.deepEqual(mainLayer(t).items.map((c) => c.enter), [null, null]);
 });

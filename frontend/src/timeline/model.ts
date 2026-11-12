@@ -25,11 +25,11 @@ export type BlurAmount = 'subtle' | 'medium' | 'strong';
 export type FocusPull = { to: number[] | null; at: number; length: number };
 /** land: everything but the sky (always all of it), for a title that shows only in the sky. */
 export type CutoutPick = { kind: 'people' | 'objects' | 'land'; ids: number[] | null };
-export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; /** Settings it sets itself, over its layer's style. */ own?: string[]; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
-export type VideoLayer = { id: string; kind: 'video'; name?: string; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
+export type VideoLayer = { id: string; kind: 'video'; name?: string; style?: Record<string, unknown>; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number; clean_voice?: boolean };
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
@@ -47,10 +47,10 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
-export type TextItem = { id: string; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
+export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
-export type TextLayer = { id: string; kind: 'text'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
+export type TextLayer = { id: string; kind: 'text'; name?: string; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
 export type BlurBox = { id: string; start: number; length: number; style: 'blur' | 'pixelate'; shape: 'oval' | 'box'; amount: number; width: number; height: number; transform: Transform };
 export type BlurLayer = { id: string; kind: 'blur'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
@@ -972,52 +972,72 @@ export function clipToMain(timeline: Timeline, id: string, index: number): Timel
   return insertClip(without, { ...clip, transform: { ...REST_TRANSFORM } }, index);
 }
 
-const CINEMA_PRESETS = ['ground-rise', 'rise-behind', 'push-through'];
-/** Each animation no longer than half the item, so enter and exit never run into each other on a short one. */
-function fitted(animation: Animation | null | undefined, length: number): Animation | null {
-  return animation ? { ...animation, duration: Math.min(animation.duration, Math.round(length / 2 * 100) / 100) } : null;
+
+// Layer style: a text or video layer can hold settings every item on it takes, unless the item sets its own (`own`).
+// Items always hold the result, so playback and export read items as before; only editing knows about the style.
+/** What a layer can style: everything but an item's identity, timing, words, and settings tied to its own picture. */
+const NOT_SHARED = new Set(['id', 'own', 'name', 'start', 'length', 'text', 'subtitle', 'media_id', 'in', 'out', 'speed', 'freeze', 'reverse', 'ramp',
+  'enabled', 'transition_in', 'cutout', 'cutout_pick', 'shape_mask', 'focus_pull', 'depth', 'depth_gap', 'pin', 'keep_clear', 'stay_with', 'stabilise']);
+export const sharedKeys = (changes: object): string[] => Object.keys(changes).filter((key) => !NOT_SHARED.has(key));
+type Styled = TextLayer | VideoLayer;
+
+/** The text or video layer holding this item. */
+export function styledLayerOf(timeline: Timeline, id: string): Styled | null {
+  const layer = timeline.layers.find((l) => (l.kind === 'text' || l.kind === 'video') && (l.items as { id: string }[]).some((item) => item.id === id));
+  return (layer as Styled | undefined) ?? null;
 }
 
-/** The same enter and exit as this title or clip on every title or clip in its layer. A title's scene-depth reveal stays its own. */
-export function animateWholeLayer(timeline: Timeline, id: string): Timeline {
-  let found = findText(timeline, id);
-  if (found && !found.text.enter) {
-    // No entrance on this one: none on any, scene-depth reveals included (taken down with their cover layers).
-    for (const item of found.layer.items) if (item.enter && CINEMA_PRESETS.includes(item.enter.preset)) timeline = removeCinemaReveal(timeline, item.id);
-    timeline = updateText(timeline, id, { enter: null });
-    found = findText(timeline, id);
-    if (found) timeline = withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item, enter: null })));
-    found = findText(timeline, id);
-  }
-  if (found) {
-    const simple = (animation: Animation | null | undefined) => animation && CINEMA_PRESETS.includes(animation.preset) ? undefined : animation ?? null;
-    const enter = simple(found.text.enter), exit = simple(found.text.exit);
-    return withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item,
-      ...(enter !== undefined && !(item.enter && CINEMA_PRESETS.includes(item.enter.preset)) ? { enter: fitted(enter, item.length) } : {}),
-      ...(exit !== undefined ? { exit: fitted(exit, item.length) } : {}) })));
-  }
-  const layer = overlayHolding(timeline, id) ?? mainLayer(timeline);
-  const source = layer.items.find((clip) => clip.id === id);
-  if (!source) return timeline;
-  const items = layer.items.map((clip) => { const length = (clip.out - clip.in) / (clip.speed || 1); return { ...clip, enter: fitted(source.enter, length), exit: fitted(source.exit, length) }; });
-  return layer === mainLayer(timeline) ? withClips(timeline, items) : withItems(timeline, layer, items);
+const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/** Every item takes its layer's style for each setting it doesn't set itself. The same timeline back when nothing changes. */
+export function applyLayerStyles(timeline: Timeline): Timeline {
+  let changed = false;
+  const layers = timeline.layers.map((layer) => {
+    if ((layer.kind !== 'text' && layer.kind !== 'video') || !layer.style || !Object.keys(layer.style).length) return layer;
+    const style = layer.style;
+    let layerChanged = false;
+    const items = (layer.items as (Clip | TextItem)[]).map((item) => {
+      const fixes: Record<string, unknown> = {};
+      for (const key of Object.keys(style)) if (!item.own?.includes(key) && !same((item as Record<string, unknown>)[key], style[key])) fixes[key] = structuredClone(style[key]);
+      if (!Object.keys(fixes).length) return item;
+      layerChanged = true;
+      return { ...item, ...fixes };
+    });
+    if (!layerChanged) return layer;
+    changed = true;
+    return { ...layer, items } as TrackLayer;
+  });
+  return changed ? { ...timeline, layers } : timeline;
 }
 
-/** How many titles or clips share this one's layer, itself included. */
-export function layerCount(timeline: Timeline, id: string): number {
-  return findText(timeline, id)?.layer.items.length ?? (overlayHolding(timeline, id) ?? mainLayer(timeline)).items.length;
+/** These settings for the whole layer of this item: every item that doesn't set its own takes them. */
+export function setLayerStyle(timeline: Timeline, id: string, changes: Record<string, unknown>): Timeline {
+  const layer = styledLayerOf(timeline, id);
+  const keys = sharedKeys(changes);
+  if (!layer || !keys.length) return timeline;
+  const style = { ...(layer.style ?? {}) };
+  for (const key of keys) style[key] = changes[key];
+  return applyLayerStyles({ ...timeline, layers: timeline.layers.map((l) => l.id === layer.id ? { ...l, style } as TrackLayer : l) });
 }
 
-/** The same keyframed motion as this title or clip on every title or clip in its layer; none on it removes them from all. */
-export function moveWholeLayer(timeline: Timeline, id: string): Timeline {
-  const found = findText(timeline, id);
-  if (found) {
-    const keys = found.text.transform?.keyframes ?? {};
-    return withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item, transform: { ...(item.transform ?? REST_TRANSFORM), keyframes: structuredClone(keys) } })));
-  }
-  const layer = overlayHolding(timeline, id) ?? mainLayer(timeline);
-  const source = layer.items.find((clip) => clip.id === id);
-  if (!source) return timeline;
-  const items = layer.items.map((clip) => ({ ...clip, transform: { ...clip.transform, keyframes: structuredClone(source.transform.keyframes ?? {}) } }));
-  return layer === mainLayer(timeline) ? withClips(timeline, items) : withItems(timeline, layer, items);
+/** Marks these settings as the item's own, so the layer's style no longer changes them. */
+export function markOwn(timeline: Timeline, id: string, changes: object): Timeline {
+  const layer = styledLayerOf(timeline, id);
+  const keys = sharedKeys(changes);
+  if (!layer || !keys.length) return timeline;
+  return { ...timeline, layers: timeline.layers.map((l) => l.id !== layer.id ? l : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.id !== id ? item : { ...item, own: [...new Set([...(item.own ?? []), ...keys])] }) } as TrackLayer) };
+}
+
+/** The item goes back to its layer's style for everything (or these settings). */
+export function useLayerStyle(timeline: Timeline, id: string, keys?: string[]): Timeline {
+  const layer = styledLayerOf(timeline, id);
+  if (!layer) return timeline;
+  return applyLayerStyles({ ...timeline, layers: timeline.layers.map((l) => l.id !== layer.id ? l : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.id !== id ? item : { ...item, own: keys ? (item.own ?? []).filter((key) => !keys.includes(key)) : [] }) } as TrackLayer) });
+}
+
+/** The settings this item sets over a style its layer actually has. */
+export function ownOverLayer(timeline: Timeline, id: string): string[] {
+  const layer = styledLayerOf(timeline, id);
+  const item = layer && (layer.items as (Clip | TextItem)[]).find((i) => i.id === id);
+  return item?.own?.filter((key) => layer!.style && key in layer!.style) ?? [];
 }

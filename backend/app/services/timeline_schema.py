@@ -228,6 +228,8 @@ class Clip(Strict):
     id: str = Field(min_length=1, max_length=64)
     # What the clip is for, shown on it in the timeline; none shows the file's name. The export ignores it.
     name: Optional[str] = Field(default=None, max_length=80)
+    # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
+    own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     media_id: int
     start: float = Field(ge=0)
     in_: float = Field(default=0, ge=0, alias='in')
@@ -332,6 +334,8 @@ class TitlePin(Strict):
 
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
+    # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
+    own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     start: float = Field(ge=0)
     length_: float = Field(gt=0, alias='length')
     text: str = Field(min_length=1, max_length=500)
@@ -459,11 +463,17 @@ class VideoLayer(LayerBase):
     kind: Literal['video'] = 'video'
     magnetic: bool = False
     blend: Literal['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] = 'normal'
+    # The layer's style: settings every item takes unless it sets its own (its `own`). Each item already holds the
+    # result, so the export needs nothing from here; the editor keeps it to restyle the layer.
+    style: Dict[Annotated[str, Field(max_length=40)], object] = Field(default_factory=dict, max_length=80)
     items: List[Clip] = Field(default_factory=list)
 
 
 class TextLayer(LayerBase):
     kind: Literal['text']
+    # The layer's style: settings every item takes unless it sets its own (its `own`). Each item already holds the
+    # result, so the export needs nothing from here; the editor keeps it to restyle the layer.
+    style: Dict[Annotated[str, Field(max_length=40)], object] = Field(default_factory=dict, max_length=80)
     items: List[Text] = Field(default_factory=list)
 
 
