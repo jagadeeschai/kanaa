@@ -1,5 +1,6 @@
 import TravelMapPanel from './TravelMapPanel';
 import { LANGUAGE, setLanguage, t } from '../i18n';
+import LyricSyncFix from '../components/LyricSyncFix';
 import { loopSound, needsLoop } from '../timeline/loop';
 import { placeEffects, removeEffects, titleTimes, transitionTimes } from '../timeline/sfx';
 import AskPanel from './AskPanel';
@@ -31,7 +32,7 @@ import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFr
 import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
 import { onSkyline, snapshotFrame, TITLE_DESIGNS, type TitleDesign } from '../timeline/model';
 import { applyTitleMove, stillTitle, TITLE_MOVES } from '../timeline/titleMoves';
-import { applyLayerStyles, followsLayer, setFollowLayer, overrideLayerItems, overriddenCount, groundRiseBehind, groundRiseGap, markOwn, ownOverLayer, setGroundRiseGap, setLayerStyle, sharedKeys, styledLayerOf, useLayerStyle } from '../timeline/model';
+import { applyLayerStyles, layerLines, retimeLayerLines, followsLayer, setFollowLayer, overrideLayerItems, overriddenCount, groundRiseBehind, groundRiseGap, markOwn, ownOverLayer, setGroundRiseGap, setLayerStyle, sharedKeys, styledLayerOf, useLayerStyle } from '../timeline/model';
 import { commit, redo, startHistory, undo, type History } from '../timeline/history';
 import type { CoverKind } from '../timeline/model';
 import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline, type TitlePin, type SurfaceKind } from '../timeline/model';
@@ -931,6 +932,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         <p className="ed-tip">{t('Every item on this layer follows, except settings an item sets itself.')} ({layer.items.length})</p>
         <label className="ed-check"><input type="checkbox" checked={layerWins} onChange={(event) => setLayerWins(event.target.checked)}/>{t('Changes here override every clip')}</label>
         {overridden > 0 && <button type="button" className="ed-button wide" title={t("Every item drops its own settings and takes the layer's")} onClick={() => change(overrideLayerItems(timeline, layerSettings))}>{t('Override all ({count} set their own)', { count: overridden })}</button>}
+        {layer.kind === 'text' && layer.items.length > 1 && <LyricSyncFix cues={layerLines(timeline, layer.id)} duration={Math.max(duration(timeline), ...layerLines(timeline, layer.id).map((line) => line.end))} position={now}
+          onSeek={seek} onChange={(lines) => change(retimeLayerLines(timeline, layer.id, lines))}/>}
       </div>;
     }
     const own = ownOverLayer(timeline, id);

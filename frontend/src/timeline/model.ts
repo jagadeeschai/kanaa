@@ -1113,3 +1113,24 @@ export function overriddenCount(timeline: Timeline, layerId: string): number {
   if (!layer || !layer.style) return 0;
   return (layer.items as (Clip | TextItem)[]).filter((item) => !item.own?.includes(NOT_FOLLOWING) && item.own?.some((key) => key in layer.style!)).length;
 }
+
+/** The titles of a text layer in time order, as lyric lines (start, end, words), for fixing their sync together. */
+export function layerLines(timeline: Timeline, layerId: string): { start: number; end: number; text: string }[] {
+  const layer = timeline.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== 'text') return [];
+  return [...layer.items].sort((a, b) => a.start - b.start).map((item) => ({ start: item.start, end: round(item.start + item.length), text: item.text }));
+}
+
+/** New times for a text layer's titles, in time order. A title running into the next one ends where that one starts. */
+export function retimeLayerLines(timeline: Timeline, layerId: string, lines: { start: number; end: number }[]): Timeline {
+  const layer = timeline.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== 'text') return timeline;
+  const sorted = [...layer.items].sort((a, b) => a.start - b.start);
+  const timed = sorted.map((item, index) => lines[index] ? { ...item, start: round(lines[index].start), length: round(Math.max(0.05, lines[index].end - lines[index].start)) } : item)
+    .sort((a, b) => a.start - b.start);
+  const items = timed.map((item, index) => {
+    const next = timed[index + 1];
+    return next && item.start + item.length > next.start ? { ...item, length: round(Math.max(0.05, next.start - item.start)) } : item;
+  });
+  return { ...timeline, layers: timeline.layers.map((l) => l.id === layerId ? { ...l, items } as TrackLayer : l) };
+}
