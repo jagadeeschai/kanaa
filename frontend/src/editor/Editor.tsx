@@ -11,7 +11,7 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { ChevronRight, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -2404,19 +2404,27 @@ const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full s
 
 
 /** What is active on this clip, each with a switch to compare with and without it, and Remove. */
+let effectsOpen = false;  // Whether the list of a clip's effects is unfolded; kept while moving between clips.
 function ActiveEffects({ clip, onChange }: { clip: Clip; onChange: (changes: Partial<Clip>) => void }) {
   const effects = clipEffects(clip);
+  const [open, setOpen] = useState(effectsOpen);
   // A folded panel is only its tab rail: there is no room for the list.
   const folded = useContext(RailContext).folded;
   if (!effects.length || folded) return null;
   const allOff = effects.every((effect) => !effect.on);
-  return <section className="ed-effects" aria-label="Active on this clip">
-    <div className="ed-effects-head"><span>Active on this clip</span>{effects.length > 1 && <button className="ed-link" onClick={() => onChange(toggleAllEffects(clip))}>{allOff ? 'All back on' : 'All off'}</button>}</div>
-    <ul>{effects.map((effect) => <li key={effect.id} className={effect.on ? '' : 'off'}>
+  const on = effects.filter((effect) => effect.on).length;
+  // One line until unfolded, so the settings below keep their room.
+  return <section className={`ed-effects ${open ? 'open' : ''}`} aria-label="Active on this clip">
+    <div className="ed-effects-head">
+      <button className="ed-effects-toggle" aria-expanded={open} onClick={() => { effectsOpen = !open; setOpen(!open); }}><ChevronRight size={13}/>
+        <span>{t('Effects')} ({on}/{effects.length})</span>{!open && <small>{effects.map((effect) => t(effect.label)).join(' · ')}</small>}</button>
+      {open && effects.length > 1 && <button className="ed-link" onClick={() => onChange(toggleAllEffects(clip))}>{allOff ? t('All back on') : t('All off')}</button>}
+    </div>
+    {open && <ul>{effects.map((effect) => <li key={effect.id} className={effect.on ? '' : 'off'}>
       <button className="ed-effect-switch" role="switch" aria-checked={effect.on} aria-label={`${effect.label}: ${effect.on ? 'on' : 'off'}`} title={effect.on ? 'Turn off to compare; its settings are kept' : 'Turn back on'} onClick={() => onChange(toggleEffect(clip, effect.id))}>{effect.on ? <Eye size={13}/> : <EyeOff size={13}/>}</button>
       <span className="ed-effect-name"><b>{effect.label}</b><small>{effect.on ? effect.detail : `off · ${effect.detail}`}</small></span>
       <button className="ed-icon small" aria-label={`Remove ${effect.label}`} title="Remove it (undo brings it back)" onClick={() => onChange(removeEffect(clip, effect.id))}><X size={12}/></button>
-    </li>)}</ul>
+    </li>)}</ul>}
   </section>;
 }
 
