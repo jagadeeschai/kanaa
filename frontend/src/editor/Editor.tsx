@@ -2088,12 +2088,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
-        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
-          <div className="ed-rail-tools" role="group" aria-label="Project">
-            {/* Light or dark is in Settings, as Appearance; Themes is the video's look. */}
-            <span className={`ed-rail-save ${saved}`} role="status" aria-label={t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')} data-tip={`${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}/>
-            <button onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={t('Back to projects')}><ArrowLeft size={17}/></button>
-          </div></div>
+        <div className="ed-rail-tabs" role="group" aria-label="Add to your video"><button className={`ed-rail-back ${saved === 'failed' ? 'failed' : ''}`} onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={`${t('Back to projects')} · ${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}><ArrowLeft size={17}/></button><span className="ed-rail-divider" role="separator"/>{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
+</div>
         {panelOpen && <div className="ed-panel-content">
         {leftTab === 'media' && <>
           <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
