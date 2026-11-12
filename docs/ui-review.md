@@ -66,3 +66,37 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | H1 | Studio and Projects are nearly the same page | One Home: create cards above all projects | ⬜ |
 | H2 | Folder actions only on the home screen | Also in the editor's media right-click menu | ⬜ |
 | H3 | One chip per folder fills the media panel as songs grow | One folder picker with counts; this video's own folder first (★) | ✅ |
+
+## Architect review (third pass)
+
+### Experience
+
+| # | Problem | Change | Effort | Status |
+|---|---|---|---|---|
+| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | Multi-select: Shift-click range, ⌘-click, drag a box; the panel edits what they share ("Mixed" where they differ) | L | ⬜ |
+| A2 | Snapping and zoom give no visible cue | A snap line with its reason (Beat, Playhead, Clip edge); N toggles snapping; zoom slider and Fit (⇧Z) | M | ⬜ |
+| A3 | Six long jobs, six progress styles, most can't be cancelled | One job tray: progress, Cancel, Retry; export, AI and brand intro included; a toast when done | M | ⬜ |
+| A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ⬜ |
+| A5 | Hints are written into code and not translated | A hints table through `t()`, shown under the control they explain | S | ⬜ |
+| A6 | Powerful features are buried (cinema reveal, keep clear, brand intro) | ⌘K command palette searching every action, English and Tamil; a "✦ Smart" row per inspector | M | ⬜ |
+| A7 | Some focus rings removed; timeline not reachable by keyboard | Focus and contrast pass; arrow keys move between timeline items | M | ⬜ |
+| A8 | Tamil interface font only in bold; Tamil labels cut off | Load Noto Sans Tamil 400/500; Tamil-aware sizes; labels never truncated | S | ⬜ |
+| A9 | A new project opens to an empty editor | A three-step first-run checklist (media → title → export) linked to the guide | S | ⬜ |
+| A10 | Loading looks frozen in big projects | Shimmer placeholders; "Preparing preview…" on the stage | S | ⬜ |
+| A11 | Keys mean different things in different places | One keymap with scopes, feeding the shortcuts sheet and ⌘K | M | ⬜ |
+
+### Code health (what makes UI work slow or risky)
+
+| # | Problem | Change | Effort | Status |
+|---|---|---|---|---|
+| B1 | Editor.tsx: 3,370 lines, 109 pieces of state | Split into `state/`, `inspectors/`, `preview/`, `dialogs/`, `keyboard/`, one small move at a time | L (many S) | ⬜ |
+| B2 | Inspectors take 30+ props each | A small store; inspectors read what they need by id | M | ⬜ |
+| B3 | The same controls rebuilt (13 raw colour inputs, local Chips) | One `ui/` set: Slider, ColorField, Segmented, Select, Toggle, Section, Callout, ProgressRing | M | ⬜ |
+| B4 | Two styling systems (Tailwind lyric/studio, hand CSS editor) | One `tokens.css`; Tailwind mapped to it; lyric screen moved last | M | ⬜ |
+| B5 | The DOM translator can fight React and translate user text | `t()` everywhere, a missing-translation check, then remove the translator | M | ⬜ |
+| B6 | No UI tests | Smoke flows (import, title, edit in preview, undo, export) and English/Tamil screenshots | M | ⬜ |
+
+### Roadmap
+
+- **Next 2 weeks:** B6 smoke tests; B1 first moves (helpers, leaf components, dialogs, preview overlays); A8 Tamil fonts; A4 plain errors; A9 first-run checklist; A7 focus fixes.
+- **Next month:** B2 store; A3 job tray; B3/B4 shared controls and tokens; A1 multi-select; A2 snap and zoom cues; A6 command palette; B5 translation cleanup.
