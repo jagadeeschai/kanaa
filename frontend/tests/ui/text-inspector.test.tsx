@@ -11,14 +11,17 @@ const noop = () => {};
 async function panel(language: 'en' | 'ta', options: { layer?: boolean; text?: TextItem } = {}) {
   const { TextInspector } = await inLanguage(language, () => import('../../src/editor/inspectors/TextInspector'));
   const { LayerModeContext } = await import('../../src/editor/layout');
+  const { EditorContext } = await import('../../src/editor/state/EditorContext');
+  const { emptyTimeline } = await import('../../src/timeline/model');
   const onChange = vi.fn();
   const props = {
     staying: null, stayNote: null, onStay: noop, onStopStay: noop, onStayCover: noop, text: options.text ?? title, groundGap: 0 as const, onGroundGap: noop,
     onSaveStyle: noop, onCinema: noop, onCinemaFront: noop, onCinemaClear: noop, pinning: null, onPin: noop, placing: null, onPlace: noop, onSurface: noop,
     clearing: null, clearNote: null, clearUnder: null, onKeepClear: noop, onRemoveClear: noop, onBehindShape: noop, cover: 'front' as const, shapingMode: null,
-    timing: [{ label: 'Start', value: 1, fps: 30 }, { label: 'Duration', value: 4, fps: 30 }], local: 0, onSeekLocal: noop, onPause: noop, follow: null, onChange, onEnter: noop, onExit: noop,
+    timing: [{ label: 'Start', value: 1, fps: 30 }, { label: 'Duration', value: 4, fps: 30 }], local: 0, onSeekLocal: noop, follow: null, onChange, onEnter: noop, onExit: noop,
   };
-  render(<LayerModeContext.Provider value={Boolean(options.layer)}><TextInspector {...props}/></LayerModeContext.Provider>);
+  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: noop, pause: noop, openGuide: noop };
+  render(<EditorContext.Provider value={shared}><LayerModeContext.Provider value={Boolean(options.layer)}><TextInspector {...props}/></LayerModeContext.Provider></EditorContext.Provider>);
   return onChange;
 }
 

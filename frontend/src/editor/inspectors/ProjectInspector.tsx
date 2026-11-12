@@ -1,3 +1,4 @@
+import { useEditor } from '../state/EditorContext';
 import { type LutInfo, listLuts } from '../../api/client';
 import ImportArea from '../../components/ImportArea';
 import KanaaSelect from '../../components/KanaaSelect';
@@ -15,7 +16,9 @@ import { BadgeCheck, Captions, Monitor, Music, Search, SlidersHorizontal, Volume
 import { useContext, useEffect, useState } from 'react';
 import { BrandIntroGroup, FRAME_RATES, RATE_TIPS } from './project-parts';
 
-export function ProjectInspector({ introBusy, onBrandIntro, timeline, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onChange, onPause, onThemes, onGuide }: { introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; timeline: Timeline; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onChange: (next: Timeline, group?: string) => void; onPause: () => void; onThemes: () => void; onGuide: () => void }) {
+export function ProjectInspector({ introBusy, onBrandIntro, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onThemes }: {  introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onThemes: () => void }) {
+  const { timeline, change: onChange, pause: onPause, openGuide } = useEditor();
+  const onGuide = () => openGuide();
   const format = timeline.format;
   const finish = timeline.finish ?? null;
   const brand = brandClip(timeline);

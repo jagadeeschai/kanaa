@@ -9,9 +9,11 @@ const noop = () => {};
 
 async function panel(language: 'en' | 'ta') {
   const { ProjectInspector } = await inLanguage(language, () => import('../../src/editor/inspectors/ProjectInspector'));
+  const { EditorContext } = await import('../../src/editor/state/EditorContext');
   const onChange = vi.fn();
-  render(<ProjectInspector introBusy={null} onBrandIntro={noop} timeline={emptyTimeline({ width: 1920, height: 1080, fps: 30 })} clipFormat={null}
-    logos={[logo as never]} logo={null} onBrand={noop} onImported={noop} onRemoveBrand={noop} onChange={onChange} onPause={noop} onThemes={noop} onGuide={noop}/>);
+  const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: onChange, pause: noop, openGuide: noop };
+  render(<EditorContext.Provider value={shared}><ProjectInspector introBusy={null} onBrandIntro={noop} clipFormat={null}
+    logos={[logo as never]} logo={null} onBrand={noop} onImported={noop} onRemoveBrand={noop} onThemes={noop}/></EditorContext.Provider>);
   return onChange;
 }
 const tab = (name: string) => userEvent.click(screen.getAllByRole('button', { name })[0]);
