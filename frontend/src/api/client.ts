@@ -24,6 +24,7 @@ export const uploadVideoAudio = (file: File) => upload<{ asset_id: string; durat
 export const getSongBeats = (id: string) => requestJson<{ beats: number[]; bpm: number }>(`/api/video-audio/${id}/beats`);
 export const getJobStatus = (id: string) => requestJson<JobStatusResponse>(`/api/jobs/${id}/status`);
 export const cancelRenderJob = (id: string) => requestJson(`/api/jobs/${id}/cancel`, { method: 'POST' });
+export const retryRenderJob = (id: string) => requestJson(`/api/jobs/${id}/retry`, { method: 'POST' });
 export const getRenderJobs = () => requestJson<RenderJob[]>('/api/render-jobs');
 export const startVideoExport = (id: number, edit: VideoEditSettings) => requestJson<{ job_id: string }>(`/api/photos/${id}/video-export`, { method: 'POST', body: JSON.stringify(edit) });
 export const startLyricSync = (id: string, lyrics: string, language: string | null) => requestJson<{ job_id: string }>('/api/lyric-sync', { method: 'POST', body: JSON.stringify({ audio_asset_id: id, lyrics, language }) });

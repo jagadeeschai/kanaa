@@ -329,4 +329,8 @@ export const TAMIL: Record<string, string> = {
   'Smart tools': 'அறிவார்ந்த கருவிகள்',
   'Search folders': 'கோப்புறைகளைத் தேடு',
   'Privacy': 'தனியுரிமை',
+  'Try again': 'மீண்டும் முயல்',
+  'In and out': 'நுழைவும் வெளியேற்றமும்',
+  'While on screen': 'திரையில் இருக்கும்போது',
+  'Follow the scene': 'காட்சியைப் பின்தொடர',
 };

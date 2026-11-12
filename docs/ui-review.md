@@ -16,7 +16,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | T7 | A title can't be picked in the preview | Click a title in the preview to select it, with a box around it | ✅ |
 | T8 | Can't type into a title in the preview | Double-click to type in place, safe for Tamil typing; Enter keeps, Esc cancels | ✅ |
 | T9 | Size, colour, font only in the side panel | A small toolbar over the selected title: type, size, colour, Tamil font, style | ✅ |
-| T10 | Title animation in three groups | Motion tab: In and out · While on screen · Follow the scene | ⬜ |
+| T10 | Title animation in three groups | ✅ Motion tab under three headings: In and out (simple, cinematic) · While on screen (moves, keyframes) · Follow the scene (stay with people, place in scene, move with the scene, keep clear) | ✅ |
 
 ## Clips
 
@@ -73,9 +73,9 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
-| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click picks a range on a layer, ⌘-click adds or removes, ⌘A picks the whole layer; a change applies to all picked (not words or timing); Delete removes all. Still to do: drag a box, "Mixed" values | L | 🚧 |
+| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click range, ⌘-click, ⌘A, and dragging a box over empty track; changes apply to all picked; Delete removes all. Still to do: "Mixed" values | L | 🚧 |
 | A2 | Snapping and zoom give no visible cue | ✅ A dashed line where a dragged edge snaps; magnet button and N toggle snapping; a zoom slider between − and + | M | ✅ |
-| A3 | Six long jobs, six progress styles, most can't be cancelled | ✅ One Jobs tray (right rail): running count, progress, what each is doing, Cancel, plain words for failures, a note when one finishes. Still to do: Retry, jump to the changed item | M | 🚧 |
+| A3 | Six long jobs, six progress styles, most can't be cancelled | ✅ One Jobs tray: progress, Cancel, plain failure words, a note when one finishes, and Try again for a failed or cancelled job (same job, while Kanaa runs) | M | ✅ |
 | A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |
 | A5 | Hints are written into code and not translated | A hints table through `t()`, shown under the control they explain | S | ⬜ |
 | A6 | Powerful features are buried (cinema reveal, keep clear, brand intro) | ⌘K command palette searching every action, English and Tamil; a "✦ Smart" row per inspector | M | ✅ |

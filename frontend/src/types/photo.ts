@@ -254,6 +254,8 @@ export type RenderJob = {
   phase: string | null;
   error: string | null;
   output_photo_id: number | null;
+  /** A failed or cancelled job Kanaa can run again. */
+  can_retry?: boolean;
 };
 
 export type JobStatusResponse = {

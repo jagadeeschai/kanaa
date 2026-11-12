@@ -4,8 +4,8 @@
  * appears when a job finishes while the editor is open.
  */
 import { useEffect, useRef, useState } from 'react';
-import { ListChecks, X } from 'lucide-react';
-import { cancelRenderJob, getRenderJobs } from '../api/client';
+import { ListChecks, RotateCcw, X } from 'lucide-react';
+import { cancelRenderJob, getRenderJobs, retryRenderJob } from '../api/client';
 import type { RenderJob } from '../types/photo';
 import { t } from '../i18n';
 import { explainError } from './errors';
@@ -66,7 +66,8 @@ export default function JobTray() {
         const failed = job.status === 'failed';
         return <li key={job.job_id} className={failed ? 'failed' : running ? 'running' : ''}>
           <div className="ed-jobs-row"><b title={job.label}>{job.label}</b>
-            {running && job.status !== 'cancelling' && <button className="ed-icon small" aria-label={`${t('Cancel')}: ${job.label}`} title={t('Cancel')} onClick={() => { void cancelRenderJob(job.job_id).catch(() => {}); }}><X size={12}/></button>}</div>
+            {running && job.status !== 'cancelling' && <button className="ed-icon small" aria-label={`${t('Cancel')}: ${job.label}`} title={t('Cancel')} onClick={() => { void cancelRenderJob(job.job_id).catch(() => {}); }}><X size={12}/></button>}
+            {!running && job.can_retry && <button className="ed-icon small" aria-label={`${t('Try again')}: ${job.label}`} title={t('Try again')} onClick={() => { seen.current.set(job.job_id, 'queued'); void retryRenderJob(job.job_id).then(() => getRenderJobs()).then(setJobs).catch(() => {}); }}><RotateCcw size={12}/></button>}</div>
           {running ? <><div className="ed-jobs-bar"><span style={{ width: `${Math.max(3, Math.min(100, job.progress))}%` }}/></div>
               <small>{job.status === 'queued' ? t('Waiting its turn') : job.status === 'cancelling' ? t('Stopping…') : job.phase ? t(job.phase) : `${Math.round(job.progress)}%`}</small></>
             : <small>{failed ? (explainError(job.error ?? '').text || t('Could not finish')) : job.status === 'cancelled' ? t('Cancelled') : t('Done')}</small>}

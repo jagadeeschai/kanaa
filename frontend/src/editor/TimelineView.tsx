@@ -19,7 +19,9 @@ type Props = {
   visuals: (mediaId: number) => ClipVisuals; soundPeaks: (sound: Sound) => ClipVisuals['peaks']; source: (mediaId: number) => SourceFacts | undefined;
   playhead: { current: number };
   /** `how`: 'add' (⌘-click) toggles an item in the selection, 'range' (Shift-click) picks everything between. */
-  onSelect: (id: string | null, how?: 'add' | 'range') => void; onSeek: (t: number) => void;
+  onSelect: (id: string | null, how?: 'add' | 'range') => void;
+  /** Dragging a box over empty track picks every item it touches. */
+  onSelectMany?: (ids: string[]) => void; onSeek: (t: number) => void;
   onChange: (next: Timeline, group: string) => void; onScrubStart: () => void;
   onItemMenu: (id: string | null, t: number, x: number, y: number) => void;
   /** Something from the side panel was dropped on the timeline. */
@@ -41,7 +43,7 @@ type Props = {
 /** A held item: a picture of it follows the pointer, and where it would land. */
 type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
   target: { kind: 'main'; index: number } | { kind: 'layer'; layerId: string; start: number } | null };
-type Drag = { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
+type Drag = { kind: 'box'; x0: number; y0: number; x1: number; y1: number } | { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
 
 /** 0.6 → "0.6", 1.25 → "1.25", 1 → "1". */
 const seconds = (value: number) => String(Number(value.toFixed(2)));
@@ -58,7 +60,7 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true, onSelectMany }: Props) {
   // Where the item being dragged has just snapped to, drawn as a line so the snap is visible.
   const snapLine = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -341,6 +343,13 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.beginPath(); context.roundRect(lx, RULER + 2, w, 20, 6); context.fill();
         context.fillStyle = colors.current.rulerBg; context.fillText(label, lx + 7, RULER + 12);
       }
+      const box = dragRef.current?.kind === 'box' ? dragRef.current : null;
+      if (box && (Math.abs(box.x1 - box.x0) >= 5 || Math.abs(box.y1 - box.y0) >= 5)) {
+        context.save(); context.fillStyle = colors.current.selected; context.globalAlpha = 0.12;
+        const bx = Math.min(box.x0, box.x1), by = Math.min(box.y0, box.y1), bw = Math.abs(box.x1 - box.x0), bh = Math.abs(box.y1 - box.y0);
+        context.fillRect(bx, by, bw, bh); context.globalAlpha = 0.9; context.strokeStyle = colors.current.selected; context.lineWidth = 1;
+        context.strokeRect(bx + 0.5, by + 0.5, bw, bh); context.restore();
+      }
       if (snapLine.current !== null) {
         // The snap: a dashed line where the dragged edge has locked on.
         const at = xOf(snapLine.current);
@@ -421,7 +430,11 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     }
     if (!found) {
       // The ruler only moves the playhead, so a clip stays selected while setting keyframes.
-      if (y >= TRACK_TOP) onSelect(null);
+      if (y >= TRACK_TOP) {
+        // Empty track: a click moves the playhead; a drag draws a box that picks what it touches.
+        onSelect(null);
+        dragRef.current = { kind: 'box', x0: x, y0: y, x1: x, y1: y }; onSeek(timeOf(x)); return;
+      }
       dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return;
     }
     onSelect(found.clip.id, how);
@@ -468,6 +481,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       lift.target = null;
     }
+    if (drag.kind === 'box') { drag.x1 = x; drag.y1 = y; return; }
     if (drag.kind === 'seek') onSeek(snapTo(timeOf(x), snapPoints(props.current.timeline, -1), reach));
     else if (drag.kind === 'soundMove') {
       const shift = (x - drag.startX) / props.current.zoom;
@@ -520,6 +534,20 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     snapLine.current = null;
     const drag = dragRef.current; const lift = liftRef.current;
     dragRef.current = null; liftRef.current = null;
+    if (drag?.kind === 'box') {
+      if (Math.abs(drag.x1 - drag.x0) < 5 && Math.abs(drag.y1 - drag.y0) < 5) return;  // A click, not a box.
+      const [t0, t1] = [timeOf(Math.min(drag.x0, drag.x1)), timeOf(Math.max(drag.x0, drag.x1))];
+      const [y0, y1] = [Math.min(drag.y0, drag.y1), Math.max(drag.y0, drag.y1)];
+      const layers = trackLayers(props.current.timeline);
+      const ids: string[] = [];
+      layers.forEach((layer, row) => {
+        const top = topOf(row), bottom = top + rowHeight(layer, collapsedLayers);
+        if (bottom < y0 || top > y1 || layer.locked) return;
+        for (const item of layer.items as TrackItem[]) if (item.start < t1 && item.start + itemLength(item) > t0) ids.push(item.id);
+      });
+      onSelectMany?.(ids);
+      return;
+    }
     if (!drag || !lift?.target || (drag.kind !== 'move' && drag.kind !== 'soundMove')) return;
     const next = lift.target.kind === 'layer' ? clipToLayer(drag.base, drag.id, lift.target.layerId, lift.target.start) : clipToMain(drag.base, drag.id, lift.target.index);
     if (next !== drag.base) onChange(next, drag.group);

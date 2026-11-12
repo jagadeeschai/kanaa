@@ -19,7 +19,7 @@ from app.db.database import get_connection
 from app.services.video_service import _run_ffprobe, generate_video_poster, serve_file_with_ranges
 from app.services.video_edit_service import inspect_editable_video, render_video_copy, resolve_audio_asset, media_duration, check_disk_space, LYRIC_FONTS_DIR
 from app.services.job_service import get_job, update_job
-from app.services.render_queue_service import enqueue_render, cancel_render, list_render_jobs, get_stored_render_job
+from app.services.render_queue_service import enqueue_render, cancel_render, can_retry, list_render_jobs, get_stored_render_job, retry as retry_render
 
 router = APIRouter()
 
@@ -431,7 +431,15 @@ def lyric_font(filename: str):
 
 @router.get('/render-jobs')
 def jobs():
-    return list_render_jobs()
+    # can_retry: a failed or cancelled job Kanaa still knows how to run again (since it last started).
+    return [{**job, 'can_retry': job.get('status') in ('failed', 'cancelled') and can_retry(job['job_id'])} for job in list_render_jobs()]
+
+
+@router.post('/jobs/{identifier}/retry')
+def retry_job(identifier: str):
+    if not retry_render(identifier):
+        raise HTTPException(409, 'This job can no longer be run again. Start it again from where you made it.')
+    return {'success': True}
 
 
 @router.get('/jobs/{identifier}/status')

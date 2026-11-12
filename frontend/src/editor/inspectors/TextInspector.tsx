@@ -5,7 +5,7 @@ import { TITLE_MOVES, applyTitleMove, stillTitle } from '../../timeline/titleMov
 import { MotionPanel } from '../Keyframes';
 import { Timing, timingSummary } from '../Timing';
 import { type TimeFieldProps, ValueSlider } from '../controls';
-import { Group, LayerModeContext, More, Panel } from '../layout';
+import { Group, LayerModeContext, More, Panel, TabHeading } from '../layout';
 import { ALargeSmall, Bookmark, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
@@ -61,6 +61,29 @@ export function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCov
       </More>}
       {text.depth ? null : <ValueSlider label="Depth" value={0} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: amount > 0 ? { ...(text.depth ?? DEFAULT_TITLE_DEPTH), amount } : null }, group)}/>}
     </Group>
+    <TabHeading tab="motion">{t('In and out')}</TabHeading>
+    <Group title="Simple animation" tab="motion" changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="A quick entrance or exit without scene depth." help="animations-and-moves">
+      <AnimationPicker label="Enter" presets={SIMPLE_TITLE_PRESETS} value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
+      <AnimationPicker label="Exit" presets={SIMPLE_TITLE_PRESETS} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
+    </Group>
+    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline people front space flicker" tip="How the title appears, and what passes in front of it." help="cinema-titles">
+      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
+      {(cover === 'people' || cover === 'object') && <>
+        <h3 className="ed-sub">3 · Space around them</h3>
+        <Chips label="Space around them" options={[{ id: 'none' as const, label: 'None' }, { id: 'close' as const, label: 'Close' }, { id: 'comfortable' as const, label: 'Comfortable' }, { id: 'wide' as const, label: 'Wide' }]} value={titleSpaceOf(groundGap)} onPick={(space) => onGroundGap(TITLE_SPACE[space])}/>
+        <p className="ed-group-tip">{groundGap ? 'The title keeps a little room around them that moves smoothly with them, so letters at their edges don\'t flicker.' : 'Letters touching their outline can flicker as they move. A little space fixes it.'}</p>
+      </>}
+      {(text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through') && <ValueSlider label="How long it takes" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/>}
+    </Group>
+    <TabHeading tab="motion">{t('While on screen')}</TabHeading>
+    <Group title="Moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
+      <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
+      <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
+    </Group>
+    <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
+      <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
+    </Group>
+    <TabHeading tab="motion">{t('Follow the scene')}</TabHeading>
     <Group title="Stay with people" tab="motion" startOpen changed={Boolean(text.stay_with)} keywords="stay with people follow person moving distance bigger smaller near far perspective stick walk attach" tip="The title travels with the people: same distance from them, bigger as they come near, smaller as they walk away." help="cinema-titles">
       {text.stay_with ? <>
         <p className="ed-group-tip">This title stays with the people it was nearest, and changes size with them.</p>
@@ -81,18 +104,9 @@ export function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCov
         {text.pin?.surface && <Chips label="Surface" options={[{ id: 'floor' as const, label: 'Floor' }, { id: 'wall' as const, label: 'Wall' }, { id: 'upright' as const, label: 'Upright' }, { id: 'sky' as const, label: 'Sky' }]} value={text.pin.surface} onPick={onSurface}/>}
       </div>
     </Group>
-    <Group title="Simple animation" tab="motion" changed={Boolean(text.enter || text.exit)} keywords="animation entrance exit fade slide pop" tip="A quick entrance or exit without scene depth." help="animations-and-moves">
-      <AnimationPicker label="Enter" presets={SIMPLE_TITLE_PRESETS} value={text.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onEnter}/>
-      <AnimationPicker label="Exit" presets={SIMPLE_TITLE_PRESETS} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
-    </Group>
-    <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline people front space flicker" tip="How the title appears, and what passes in front of it." help="cinema-titles">
-      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
-      {(cover === 'people' || cover === 'object') && <>
-        <h3 className="ed-sub">3 · Space around them</h3>
-        <Chips label="Space around them" options={[{ id: 'none' as const, label: 'None' }, { id: 'close' as const, label: 'Close' }, { id: 'comfortable' as const, label: 'Comfortable' }, { id: 'wide' as const, label: 'Wide' }]} value={titleSpaceOf(groundGap)} onPick={(space) => onGroundGap(TITLE_SPACE[space])}/>
-        <p className="ed-group-tip">{groundGap ? 'The title keeps a little room around them that moves smoothly with them, so letters at their edges don\'t flicker.' : 'Letters touching their outline can flicker as they move. A little space fixes it.'}</p>
-      </>}
-      {(text.enter?.preset === 'ground-rise' || text.enter?.preset === 'rise-behind' || text.enter?.preset === 'push-through') && <ValueSlider label="How long it takes" value={text.enter.duration} min={0.2} max={3} step={0.1} defaultValue={1.2} unit="s" decimals={1} onChange={(duration, group) => onChange({ enter: { ...text.enter!, duration } }, group ?? `cinema-enter-${text.id}`)}/>}
+    <Group title="Move with the scene" tab="motion" startOpen={Boolean(text.pin || text.transform?.keyframes?.x?.length)} changed={Boolean(text.pin)} keywords="lock scene camera pin follow track subject person moving stick" tip="Keep the title fixed to a spot in the scene, or moving with a person." help="follow-movement">
+      <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
+      {follow}
     </Group>
     <Group title="Keep the title clear of people" tab="motion" startOpen={Boolean(text.keep_clear)} changed={Boolean(text.keep_clear)} keywords="keep clear avoid people faces move aside overlap cover" tip="The title moves aside when someone comes near, instead of going behind them." help="cinema-titles">
       {cover === 'people' || cover === 'object' ? <>
@@ -100,17 +114,6 @@ export function TextInspector({ staying, stayNote, onStay, onStopStay, onStayCov
         {text.keep_clear && <button className="ed-button wide primary" onClick={onRemoveClear}>Stop moving it aside</button>}
       </>
         : <KeepClearPanel key={text.id} kept={text.keep_clear ?? null} under={clearUnder} busy={clearing} note={clearNote} onRun={onKeepClear} onRemove={onRemoveClear}/>}
-    </Group>
-    <Group title="Move with the scene" tab="motion" startOpen={Boolean(text.pin || text.transform?.keyframes?.x?.length)} changed={Boolean(text.pin)} keywords="lock scene camera pin follow track subject person moving stick" tip="Keep the title fixed to a spot in the scene, or moving with a person." help="follow-movement">
-      <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
-      {follow}
-    </Group>
-    <Group title="Moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
-      <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
-      <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
-    </Group>
-    <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
-      <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
   </Panel>;
 }

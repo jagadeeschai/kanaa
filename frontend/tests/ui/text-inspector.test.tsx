@@ -55,6 +55,18 @@ describe('Title panel', () => {
     expect(screen.getAllByText('Size').length).toBeGreaterThan(0);
   });
 
+  it('Motion reads in three steps: in and out, while on screen, following the scene', async () => {
+    await panel('en');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Motion' })[0]);
+    const order = [...document.querySelectorAll('.ed-tab-heading, .ed-group-head span')].map((el) => el.textContent);
+    const at = (name: string) => order.indexOf(name);
+    expect(at('In and out')).toBeLessThan(at('Simple animation'));
+    expect(at('Cinematic reveal')).toBeLessThan(at('While on screen'));
+    expect(at('While on screen')).toBeLessThan(at('Moves'));
+    expect(at('Keyframes')).toBeLessThan(at('Follow the scene'));
+    expect(at('Follow the scene')).toBeLessThan(at('Stay with people'));
+  });
+
   it('is in Tamil when the interface is', async () => {
     await panel('ta');
     expect(screen.getByRole('group', { name: 'தமிழ் எழுத்துரு' })).toBeTruthy();  // Tamil font

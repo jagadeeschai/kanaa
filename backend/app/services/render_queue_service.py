@@ -75,9 +75,37 @@ def enqueue_render(kind: str, label: str, target: RenderTarget, priority: int = 
     _lane_of_job[job_id] = lane
     if reserve:
         reserve(job_id)
+    _work_of[job_id] = (kind, priority, target)
     _queues[lane].put((priority, next(_order), job_id, target))
     _ensure_worker(lane)
     return job_id
+
+
+# What each job does, kept while Kanaa runs so a job that failed can be tried again (under the same id, so its
+# progress and result land where the person is looking). Finished jobs drop theirs; at most RETRY_KEEP are kept.
+_work_of: dict[str, tuple[str, int, RenderTarget]] = {}
+RETRY_KEEP = 50
+
+
+def retry(job_id: str) -> bool:
+    """Runs a failed or cancelled job again. False when it can't be (unknown, still running, or from before a restart)."""
+    job = get_job(job_id)
+    work = _work_of.get(job_id)
+    if not job or not work or job.get('status') not in ('failed', 'cancelled'):
+        return False
+    kind, priority, target = work
+    update_job(job_id, done=False, status='queued', error=None, progress=0, phase='Waiting in the queue')
+    _save(job_id, "UPDATE render_jobs SET status = ?, error = NULL, finished_at = NULL WHERE id = ?", ('queued',))
+    _cancel_events[job_id] = threading.Event()
+    lane = lane_of(kind)
+    _lane_of_job[job_id] = lane
+    _queues[lane].put((priority, next(_order), job_id, target))
+    _ensure_worker(lane)
+    return True
+
+
+def can_retry(job_id: str) -> bool:
+    return job_id in _work_of
 
 
 def _ensure_worker(lane: str, fresh: bool = False) -> None:
@@ -100,6 +128,10 @@ def _finish(job_id: str, status: str, *, error: str | None = None, **fields: Any
     _save(job_id, "UPDATE render_jobs SET status = ?, error = ?, output_photo_id = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
           (status, error, fields.get('output_photo_id')))
     _cancel_events.pop(job_id, None)
+    if status == 'done':
+        _work_of.pop(job_id, None)
+    while len(_work_of) > RETRY_KEEP:
+        _work_of.pop(next(iter(_work_of)))
     prune_finished_jobs()
 
 

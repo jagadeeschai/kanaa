@@ -125,6 +125,13 @@ export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: Panel
  * A section of settings. In a Panel it shows on its own tab, or when its title or keywords match the search (then open).
  * `tip` is one plain sentence under the title; `help` opens the guide's article on it.
  */
+/** A small heading between groups on one tab, hidden on other tabs and while searching. */
+export function TabHeading({ tab, children }: { tab: string; children: ReactNode }) {
+  const panel = useContext(PanelContext);
+  if (panel && (panel.query || panel.tab !== tab)) return null;
+  return <h4 className="ed-tab-heading">{children}</h4>;
+}
+
 export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, summary, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; /** A one-line look at the values, shown in the heading. */ summary?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
   const panel = useContext(PanelContext);
