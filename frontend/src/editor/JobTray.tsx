@@ -69,7 +69,7 @@ export default function JobTray() {
             {running && job.status !== 'cancelling' && <button className="ed-icon small" aria-label={`${t('Cancel')}: ${job.label}`} title={t('Cancel')} onClick={() => { void cancelRenderJob(job.job_id).catch(() => {}); }}><X size={12}/></button>}</div>
           {running ? <><div className="ed-jobs-bar"><span style={{ width: `${Math.max(3, Math.min(100, job.progress))}%` }}/></div>
               <small>{job.status === 'queued' ? t('Waiting its turn') : job.status === 'cancelling' ? t('Stopping…') : job.phase ? t(job.phase) : `${Math.round(job.progress)}%`}</small></>
-            : <small>{failed ? explainError(job.error ?? '').text : job.status === 'cancelled' ? t('Cancelled') : t('Done')}</small>}
+            : <small>{failed ? (explainError(job.error ?? '').text || t('Could not finish')) : job.status === 'cancelled' ? t('Cancelled') : t('Done')}</small>}
         </li>;
       })}</ul>
     </div>}

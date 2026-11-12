@@ -979,7 +979,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // Everything ⌘K can find: actions, panels, title styles, layers and guide pages.
   const paletteCommands = (): Command[] => {
     const list: Command[] = [];
-    const add = (id: string, label: string, group: string, run: () => void, hint?: string, keywords?: string) => list.push({ id, label, group, run, hint, keywords });
+    // Labels and groups are translated here, with the English kept as keywords so English search still finds them.
+    const add = (id: string, label: string, group: string, run: () => void, hint?: string, keywords?: string) => list.push({ id, label: t(label), group: t(group), run, hint, keywords: `${label} ${group} ${keywords ?? ''}` });
+    const named = (id: string, english: string, name: string, group: string, run: () => void, keywords?: string) => list.push({ id, label: t(english, { name }), group: t(group), run, keywords: `${english.replace('{name}', name)} ${group} ${keywords ?? ''}` });
     const busy = !timeline || !total;
     if (!busy) {
       add('play', 'Play or pause', 'Playback', () => togglePlay(), 'Space');
@@ -996,13 +998,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     add('project', 'Project settings', 'Settings', () => { setLayerSettings(null); setSelectedId(null); updateLayout({ inspectorOpen: true }); }, undefined, 'format shape frame rate loudness brand');
     add('lite', layout.simple ? 'Switch to Pro (every control)' : 'Switch to Lite (main choices only)', 'Settings', () => updateLayout({ simple: !layout.simple }));
     add('language', LANGUAGE === 'ta' ? 'Switch to English' : 'Switch to Tamil (தமிழ்)', 'Settings', () => setLanguage(LANGUAGE === 'ta' ? 'en' : 'ta'), undefined, 'language tamil english');
-    for (const tab of LEFT_TABS) add(`tab-${tab}`, `Open ${LEFT_TAB_LABELS[tab]}`, 'Panels', () => { setLeftTab(tab); setPanelOpen(true); }, undefined, TAB_TIPS[tab]);
+    for (const tab of LEFT_TABS) named(`tab-${tab}`, 'Open {name}', t(LEFT_TAB_LABELS[tab]), 'Panels', () => { setLeftTab(tab); setPanelOpen(true); }, `${LEFT_TAB_LABELS[tab]} ${TAB_TIPS[tab]}`);
     if (timeline) for (const layer of timeline.layers) if ((layer.kind === 'text' || layer.kind === 'video') && layer.items.length) {
-      add(`layer-${layer.id}`, `Layer settings: ${layer.name || layer.kind}`, 'Layers', () => openLayerSettings(layer.id), undefined, 'whole layer style');
-      if (layer.kind === 'text' && layer.items.length > 1) add(`sync-${layer.id}`, `Fix lyric timing: ${layer.name || 'Text'}`, 'Layers', () => openLayerSettings(layer.id, 'sync'), undefined, 'sync shift stretch lyrics offset');
+      named(`layer-${layer.id}`, 'Layer settings: {name}', layer.name || layer.kind, 'Layers', () => openLayerSettings(layer.id), 'whole layer style');
+      if (layer.kind === 'text' && layer.items.length > 1) named(`sync-${layer.id}`, 'Fix lyric timing: {name}', layer.name || 'Text', 'Layers', () => openLayerSettings(layer.id, 'sync'), 'sync shift stretch lyrics offset');
     }
-    if (timeline) for (const title of TEMPLATES) add(`title-${title.id}`, `Add title: ${title.label}`, 'Titles', () => { void addTitle(title); }, undefined, 'text heading');
-    for (const article of ARTICLES) add(`guide-${article.id}`, `Guide: ${article.title}`, 'Help', () => openGuide(article.id), undefined, `${article.tamil ?? ''} ${article.summary}`);
+    if (timeline) for (const title of TEMPLATES) named(`title-${title.id}`, 'Add title: {name}', t(title.label), 'Titles', () => { void addTitle(title); }, 'text heading');
+    for (const article of ARTICLES) named(`guide-${article.id}`, 'Guide: {name}', LANGUAGE === 'ta' && article.tamil ? article.tamil : article.title, 'Help', () => openGuide(article.id), `${article.title} ${article.tamil ?? ''} ${article.summary}`);
     return list;
   };
   // "Find in settings": the settings panel searches for the words, as its own search box does.
@@ -1398,7 +1400,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       let next = timeline;
       for (const id of [selectedId, ...moreIds]) {
         if (isLocked(next, id)) continue;
-        next = findSound(next, id) ? removeSound(next, id) : findText(next, id) ? removeText(next, id) : findBlur(next, id) ? removeBlur(next, id) : findClip(next, id) ? removeClip(next, id) : next;
+        next = findSound(next, id) ? removeSound(next, id) : findText(next, id) ? removeText(next, id) : findBlur(next, id) ? removeBlur(next, id) : findCaption(next, id) ? removeCaption(next, id) : findClip(next, id) ? removeClip(next, id) : next;
       }
       change(next); setSelectedId(null); return;
     }

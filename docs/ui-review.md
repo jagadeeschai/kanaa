@@ -100,3 +100,14 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 - **Next 2 weeks:** B6 smoke tests; B1 first moves (helpers, leaf components, dialogs, preview overlays); A8 Tamil fonts; A4 plain errors; A9 first-run checklist; A7 focus fixes.
 - **Next month:** B2 store; A3 job tray; B3/B4 shared controls and tokens; A1 multi-select; A2 snap and zoom cues; A6 command palette; B5 translation cleanup.
+
+## Code review of the multi-select, Jobs and ⌘K work (validated)
+
+| Finding | Verdict | Status |
+|---|---|---|
+| Multi-delete skipped captions | Real: a Shift-click range on the Captions layer left them behind | ✅ fixed |
+| Ctrl-click to add on Windows/Linux | Not applicable: Kanaa is a Mac app, and the timeline treats Control-click as right-click (it opens the menu) | — |
+| ⌘K highlight jumps when arrow keys scroll the list under the pointer; −1 index on an empty list | Real | ✅ fixed: only real pointer movement moves the highlight |
+| ⌘K labels translated twice; names in labels left to the page translator | Real (harmless, but untidy) | ✅ fixed: labels translated once with `{name}`; English kept for search |
+| A failed job with no message showed nothing | Real | ✅ fixed: "Could not finish" |
+| "Find in settings" fills the settings search through the page after a delay | Real | ⬜ give the settings panel a shared search value instead |

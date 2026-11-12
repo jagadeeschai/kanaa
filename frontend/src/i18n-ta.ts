@@ -281,4 +281,9 @@ export const TAMIL: Record<string, string> = {
   'Colour & finish': 'நிறம், இறுதித் தோற்றம்',
   'Themes dress the whole video. To colour one clip, select it and open Colour; for a grade over everything, Project settings › Colour & finish.': 'தீம்கள் முழு வீடியோவுக்கு. ஒரு கிளிப்பின் நிறத்துக்கு அதைத் தேர்ந்து நிறம் திறக்கவும்; முழுவதற்கும், திட்ட அமைப்புகள் › நிறம், இறுதித் தோற்றம்.',
   'Stylise': 'பாணியாக்கம்',
+  'Open {name}': '{name} திற',
+  'Layer settings: {name}': 'அடுக்கு அமைப்புகள்: {name}',
+  'Fix lyric timing: {name}': 'வரி நேரம் சரிசெய்: {name}',
+  'Add title: {name}': 'தலைப்பு சேர்: {name}',
+  'Guide: {name}': 'வழிகாட்டி: {name}',
 };
