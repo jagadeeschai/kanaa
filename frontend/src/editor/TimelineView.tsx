@@ -59,6 +59,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const dragRef = useRef<Drag | null>(null);
   const liftRef = useRef<Lift | null>(null);
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
+  const lastHead = useRef(Number.NaN);
   const zoomAnchor = useRef<{ time: number; offset: number } | null>(null);
   const colors = useRef(TOKENS);
   useLayoutEffect(() => { colors.current = readColors(hostRef.current!); }, [theme]);
@@ -329,9 +330,12 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
-      // Keep the playhead in view while the film plays: scroll only when it leaves the visible range.
+      // Keep the playhead in view while it moves (playing or a jump): scroll only when it has just moved out of the
+      // visible range. Never while it stands still, or scrolling the timeline away from it would snap straight back.
       const hostEl = hostRef.current!;
-      if (head < hostEl.scrollLeft + 8 || head > hostEl.scrollLeft + hostEl.clientWidth - 8) hostEl.scrollLeft = Math.max(0, head - hostEl.clientWidth * 0.1);
+      const moved = Math.abs(playhead.current - lastHead.current) > 1e-4;
+      lastHead.current = playhead.current;
+      if (moved && (head < hostEl.scrollLeft + 8 || head > hostEl.scrollLeft + hostEl.clientWidth - 8)) hostEl.scrollLeft = Math.max(0, head - hostEl.clientWidth * 0.1);
     };
     draw();
     return () => cancelAnimationFrame(frame);
