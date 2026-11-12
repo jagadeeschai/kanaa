@@ -11,7 +11,7 @@ const SKIP = 'input, textarea, select, [contenteditable="true"], [data-keep-lang
 
 // Labels made from a name, such as "Hide Text": the name stays, the words around it change.
 const PATTERNS: [RegExp, string][] = [
-  [/^Open (.+)$/, '$1 திற'], [/^More actions for (.+)$/, '$1: மேலும்'], [/^Add (.+) as an overlay$/, '$1 மேலடுக்காகச் சேர்'],
+  [/^Open (.+)$/, '$1 திற'], [/^Add title: (.+)$/, 'தலைப்பு சேர்: $1'], [/^Guide: (.+)$/, 'வழிகாட்டி: $1'], [/^Layer settings: (.+)$/, 'அடுக்கு அமைப்புகள்: $1'], [/^Fix lyric timing: (.+)$/, 'வரி நேரம் சரிசெய்: $1'], [/^More actions for (.+)$/, '$1: மேலும்'], [/^Add (.+) as an overlay$/, '$1 மேலடுக்காகச் சேர்'],
   [/^Hide (.+)$/, '$1 மறை'], [/^Show (.+)$/, '$1 காட்டு'], [/^Mute (.+)$/, '$1 ஒலியடக்கு'], [/^Unmute (.+)$/, '$1 ஒலி இயக்கு'],
   [/^Lock (.+)$/, '$1 பூட்டு'], [/^Unlock (.+)$/, '$1 திற'], [/^Delete (.+) layer$/, '$1 அடுக்கை நீக்கு'],
   [/^Collapse (.+) layer$/, '$1 அடுக்கைச் சுருக்கு'], [/^Expand (.+) layer$/, '$1 அடுக்கை விரி'],

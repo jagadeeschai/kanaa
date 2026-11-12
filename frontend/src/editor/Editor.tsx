@@ -44,6 +44,8 @@ import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { LANGUAGES, WordsPanel } from './Words';
 import { explainError } from './errors';
 import JobTray from './JobTray';
+import CommandPalette, { type Command } from './CommandPalette';
+import { ARTICLES } from './guide-articles';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
@@ -261,6 +263,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [showingHelp, setShowingHelp] = useState(false);
   // The guide's article to open at: an ⓘ in a settings panel picks one.
   const [guideArticle, setGuideArticle] = useState<string | null>(null);
+  const [palette, setPalette] = useState(false);
   const openGuide = useCallback((article: string) => { setGuideArticle(article); setShowingHelp(true); }, []);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pickingKey, setPickingKey] = useState(false);
@@ -973,6 +976,46 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (from < 0 || to < 0) { setMoreIds(new Set()); setSelectedId(id); return; }
     setMoreIds(new Set(items.slice(Math.min(from, to), Math.max(from, to) + 1).map((item) => item.id).filter((other) => other !== selectedId)));
   };
+  // Everything ⌘K can find: actions, panels, title styles, layers and guide pages.
+  const paletteCommands = (): Command[] => {
+    const list: Command[] = [];
+    const add = (id: string, label: string, group: string, run: () => void, hint?: string, keywords?: string) => list.push({ id, label, group, run, hint, keywords });
+    const busy = !timeline || !total;
+    if (!busy) {
+      add('play', 'Play or pause', 'Playback', () => togglePlay(), 'Space');
+      add('split', 'Split at the playhead', 'Edit', () => split(), 'S', 'cut');
+      add('freeze', 'Freeze frame', 'Edit', () => freeze(), undefined, 'hold still');
+      add('snapshot', 'Snapshot', 'Edit', () => { void snapshot(); }, undefined, 'photo capture');
+      add('render', 'Render smooth preview', 'View', () => { void renderPreview(); });
+      add('export', 'Export', 'Video', () => { engineRef.current?.pause(); setExporting(true); }, undefined, 'save mp4 share download');
+    }
+    add('undo', 'Undo', 'Edit', () => dispatch({ type: 'undo' }), '⌘Z');
+    add('redo', 'Redo', 'Edit', () => dispatch({ type: 'redo' }), '⇧⌘Z');
+    add('full', 'Full screen preview', 'View', () => toggleFullScreen(), 'F');
+    add('guide', 'Guide and shortcuts', 'Help', () => setShowingHelp(true), '?');
+    add('project', 'Project settings', 'Settings', () => { setLayerSettings(null); setSelectedId(null); updateLayout({ inspectorOpen: true }); }, undefined, 'format shape frame rate loudness brand');
+    add('lite', layout.simple ? 'Switch to Pro (every control)' : 'Switch to Lite (main choices only)', 'Settings', () => updateLayout({ simple: !layout.simple }));
+    add('language', LANGUAGE === 'ta' ? 'Switch to English' : 'Switch to Tamil (தமிழ்)', 'Settings', () => setLanguage(LANGUAGE === 'ta' ? 'en' : 'ta'), undefined, 'language tamil english');
+    for (const tab of LEFT_TABS) add(`tab-${tab}`, `Open ${LEFT_TAB_LABELS[tab]}`, 'Panels', () => { setLeftTab(tab); setPanelOpen(true); }, undefined, TAB_TIPS[tab]);
+    if (timeline) for (const layer of timeline.layers) if ((layer.kind === 'text' || layer.kind === 'video') && layer.items.length) {
+      add(`layer-${layer.id}`, `Layer settings: ${layer.name || layer.kind}`, 'Layers', () => openLayerSettings(layer.id), undefined, 'whole layer style');
+      if (layer.kind === 'text' && layer.items.length > 1) add(`sync-${layer.id}`, `Fix lyric timing: ${layer.name || 'Text'}`, 'Layers', () => openLayerSettings(layer.id, 'sync'), undefined, 'sync shift stretch lyrics offset');
+    }
+    if (timeline) for (const title of TEMPLATES) add(`title-${title.id}`, `Add title: ${title.label}`, 'Titles', () => { void addTitle(title); }, undefined, 'text heading');
+    for (const article of ARTICLES) add(`guide-${article.id}`, `Guide: ${article.title}`, 'Help', () => openGuide(article.id), undefined, `${article.tamil ?? ''} ${article.summary}`);
+    return list;
+  };
+  // "Find in settings": the settings panel searches for the words, as its own search box does.
+  const findSetting = (query: string) => {
+    updateLayout({ inspectorOpen: true });
+    window.setTimeout(() => {
+      const box = document.querySelector<HTMLInputElement>('.ed-inspector input[aria-label="Find a setting"], .ed-inspector .ed-find input');
+      if (!box) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, query);
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.focus();
+    }, 60);
+  };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => {
     if (timeline && selectedText && moreIds.size && styleScope === 'item') {
       // Several titles picked: the change goes to each of them (never their words or timing).
@@ -1578,6 +1621,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const movingRef = useRef<{ transform: Clip['transform']; update: (transform: Clip['transform'], group?: string) => void } | null>(null);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette((value) => !value); return; }
       if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
       if (event.key === 'Escape' && fullScreen) { toggleFullScreen(); return; }
       if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
@@ -2487,6 +2531,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {menu && <ContextMenu menu={menu} onClose={closeMenu}/>}
     {filing && <FolderDialog item={filing} folders={folders} onClose={() => setFiling(null)} onSaved={(saved) => setMedia((current) => current.map((item) => (item.id === filing.id ? { ...item, folder: saved } : item)))}/>}
     {deleting && <DeleteMediaDialog item={deleting} onClose={() => setDeleting(null)} onDeleted={() => setMedia((current) => current.filter((item) => item.id !== deleting.id))}/>}
+    {palette && createPortal(<div data-ed-theme={theme}><CommandPalette commands={paletteCommands()} onClose={() => setPalette(false)} onSettings={findSetting}/></div>, rootRef.current ?? document.body)}
     {showingHelp && createPortal(<div className="ed-guide-layer" data-ed-theme={theme}><Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/></div>, rootRef.current ?? document.body)}
     {choosingFormat && timeline && <FormatDialog clipFormat={firstClipFormat} current={timeline.format} onChoose={chooseFormat}/>}
     {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
@@ -2530,7 +2575,7 @@ function TopSettings({ appearance, onAppearance, simple, onSimple, format, onPro
   </div>;
 }
 
-const SHORTCUTS: [string, string][] = [['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
+const SHORTCUTS: [string, string][] = [['⌘K', 'Find any action or setting'], ['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
 
 /** What is active on this clip, each with a switch to compare with and without it, and Remove. */
