@@ -251,4 +251,7 @@ export const TAMIL: Record<string, string> = {
   'Kanaa is not allowed to do that here. Check AI settings or permissions.': 'இதைச் செய்ய கனாவுக்கு அனுமதி இல்லை. AI அமைப்புகள் அல்லது அனுமதிகளைப் பாருங்கள்.',
   'The AI service is busy or out of credit. Wait a little, or check AI settings.': 'AI சேவை பிஸியாக உள்ளது அல்லது கடன் தீர்ந்தது. சற்று பொறுங்கள், அல்லது AI அமைப்புகளைப் பாருங்கள்.',
   'Kanaa got an answer it did not understand. Try again; your project is saved.': 'கனாவுக்குப் புரியாத பதில் வந்தது. மீண்டும் முயலுங்கள்; உங்கள் திட்டம் சேமிக்கப்பட்டுள்ளது.',
+  '{count} items picked': '{count} உருப்படிகள் தேர்வு',
+  'Changes apply to all of them (not their words or timing).': 'மாற்றம் அனைத்துக்கும் பொருந்தும் (சொற்கள், நேரம் தவிர).',
+  'Just this one': 'இது மட்டும்',
 };

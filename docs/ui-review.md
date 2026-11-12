@@ -73,7 +73,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
-| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | Multi-select: Shift-click range, ⌘-click, drag a box; the panel edits what they share ("Mixed" where they differ) | L | ⬜ |
+| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click picks a range on a layer, ⌘-click adds or removes, ⌘A picks the whole layer; a change applies to all picked (not words or timing); Delete removes all. Still to do: drag a box, "Mixed" values | L | 🚧 |
 | A2 | Snapping and zoom give no visible cue | A snap line with its reason (Beat, Playhead, Clip edge); N toggles snapping; zoom slider and Fit (⇧Z) | M | ⬜ |
 | A3 | Six long jobs, six progress styles, most can't be cancelled | One job tray: progress, Cancel, Retry; export, AI and brand intro included; a toast when done | M | ⬜ |
 | A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |

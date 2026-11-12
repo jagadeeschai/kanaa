@@ -193,6 +193,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [choosingFormat, setChoosingFormat] = useState(false);
   const [media, setMedia] = useState<Photo[]>([photo]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Multi-select: items picked along with the selected one (⌘-click adds, Shift-click picks a range on its layer).
+  const [moreIds, setMoreIds] = useState<ReadonlySet<string>>(new Set());
   const [zoom, setZoom] = useState(40);
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState<SaveState>('saved');
@@ -870,7 +872,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: applyLayerStyles(next), group }), []);
   const [layerSettings, setLayerSettings] = useState<string | null>(null);
-  useEffect(() => { if (!selectedId) setLayerSettings(null); }, [selectedId]);
+  useEffect(() => { if (!selectedId) { setLayerSettings(null); setMoreIds(new Set()); } }, [selectedId]);
   const selected = timeline ? findClip(timeline, selectedId) : null;
   const local = selected ? Math.max(0, Math.min(now - selected.start, clipLength(selected))) : 0;
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
@@ -952,7 +954,35 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       {following && own.length > 0 && <p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
     </div>;
   };
-  const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) scopedUpdate(selectedText.id, changes, (t) => updateText(t, selectedText.id, changes), group); };
+  const pick = (id: string | null, how?: 'add' | 'range') => {
+    if (!how || !id || !selectedId || !timeline) { setMoreIds(new Set()); setSelectedId(id); return; }
+    if (how === 'add') {
+      if (id === selectedId) {  // ⌘-click on the main one passes the lead to another picked item.
+        const [next, ...rest] = [...moreIds];
+        if (next) { setSelectedId(next); setMoreIds(new Set(rest)); } else setSelectedId(null);
+        return;
+      }
+      const next = new Set(moreIds); if (next.has(id)) next.delete(id); else next.add(id);
+      setMoreIds(next); return;
+    }
+    // A range: every item on the same layer from the selected one to this one, by time.
+    const layer = timeline.layers.find((l) => (l.items as { id: string }[]).some((item) => item.id === id));
+    const items = layer ? [...(layer.items as { id: string; start: number }[])].sort((a, b) => a.start - b.start) : [];
+    const from = items.findIndex((item) => item.id === selectedId), to = items.findIndex((item) => item.id === id);
+    if (from < 0 || to < 0) { setMoreIds(new Set()); setSelectedId(id); return; }
+    setMoreIds(new Set(items.slice(Math.min(from, to), Math.max(from, to) + 1).map((item) => item.id).filter((other) => other !== selectedId)));
+  };
+  const updateSelectedText = (changes: Partial<TextItem>, group?: string) => {
+    if (timeline && selectedText && moreIds.size && styleScope === 'item') {
+      // Several titles picked: the change goes to each of them (never their words or timing).
+      const shared = Object.fromEntries(Object.entries(changes).filter(([key]) => sharedKeys({ [key]: 0 }).length)) as Partial<TextItem>;
+      let next = updateText(timeline, selectedText.id, changes);
+      for (const id of moreIds) if (findText(next, id) && Object.keys(shared).length) next = markOwn(updateText(next, id, shared), id, shared);
+      change(markOwn(next, selectedText.id, changes), group);
+      return;
+    }
+    if (timeline && selectedText) scopedUpdate(selectedText.id, changes, (t) => updateText(t, selectedText.id, changes), group);
+  };
   const [myStyles, setMyStyles] = useState<Template[]>(savedStyles);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   // Each template's picture, drawn by the server like any title, small.
@@ -1135,7 +1165,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setSelectedId(sound.id);
     } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
   };
-  const updateSelected = (changes: Partial<Clip>, group?: string) => { if (timeline && selected) scopedUpdate(selected.id, changes, (t) => changes.speed !== undefined ? setSpeed(t, selected.id, changes.speed) : updateClip(t, selected.id, changes), group); };
+  const updateSelected = (changes: Partial<Clip>, group?: string) => {
+    if (timeline && selected && moreIds.size && styleScope === 'item' && changes.speed === undefined) {
+      const shared = Object.fromEntries(Object.entries(changes).filter(([key]) => sharedKeys({ [key]: 0 }).length)) as Partial<Clip>;
+      let next = updateClip(timeline, selected.id, changes);
+      for (const id of moreIds) if (findClip(next, id) && Object.keys(shared).length) next = markOwn(updateClip(next, id, shared), id, shared);
+      change(markOwn(next, selected.id, changes), group);
+      return;
+    }
+    if (timeline && selected) scopedUpdate(selected.id, changes, (t) => changes.speed !== undefined ? setSpeed(t, selected.id, changes.speed) : updateClip(t, selected.id, changes), group); };
   const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
     id === 'colour-splash' ? selected.colour_splash
       : id === 'dreamy-glow' ? selected.dreamy_glow
@@ -1311,9 +1349,18 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline, tidy, tidyTokens, transcripts, language, captionWords, change]);
   const removeSelected = useCallback(() => {
     if (!timeline || !selectedId || isLocked(timeline, selectedId)) return;
+    if (moreIds.size) {
+      // Every picked item goes, in one step for undo.
+      let next = timeline;
+      for (const id of [selectedId, ...moreIds]) {
+        if (isLocked(next, id)) continue;
+        next = findSound(next, id) ? removeSound(next, id) : findText(next, id) ? removeText(next, id) : findBlur(next, id) ? removeBlur(next, id) : findClip(next, id) ? removeClip(next, id) : next;
+      }
+      change(next); setSelectedId(null); return;
+    }
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
-  }, [timeline, selectedId, change]);
+  }, [timeline, selectedId, moreIds, change]);
   const addMedia = (item: Photo) => {
     if (!timeline) return;
     const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
@@ -1546,6 +1593,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const frame = 1 / timeline.format.fps;
       const clip = () => mainLayer(timeline).items.find((item) => playhead.current >= item.start && playhead.current < item.start + clipLength(item));
       if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); dispatch({ type: event.shiftKey ? 'redo' : 'undo' }); return; }
+      if (command && event.key.toLowerCase() === 'a' && selectedId) {
+        // ⌘A: everything on the selected item's layer.
+        const layer = timeline.layers.find((l) => (l.items as { id: string }[]).some((item) => item.id === selectedId));
+        if (layer) { event.preventDefault(); setMoreIds(new Set((layer.items as { id: string }[]).map((item) => item.id).filter((id) => id !== selectedId))); }
+        return;
+      }
       if (command) return;
       switch (event.key) {
         case ' ': event.preventDefault(); togglePlay(); break;
@@ -1584,7 +1637,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText]);
+  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText, removeSelected]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
@@ -2356,7 +2409,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           </div> }}>
       <aside className="ed-inspector" aria-label="Clip settings"><LayerModeContext.Provider value={Boolean(layerSettings)}>{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{t(selectedIdentity.kind)}</span>{selected && !settingsLayer ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
         onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
-        onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}{!selectedLayer?.locked && (selectedText ? scopeBar(selectedText.id, 'title') : selected ? scopeBar(selected.id, 'clip') : null)}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+        onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}{moreIds.size > 0 && !layerSettings && <div className="ed-scope ed-multi"><b>{t('{count} items picked', { count: moreIds.size + 1 })}</b><span>{t('Changes apply to all of them (not their words or timing).')}</span><button className="ed-link" onClick={() => setMoreIds(new Set())}>{t('Just this one')}</button></div>}{!selectedLayer?.locked && (selectedText ? scopeBar(selectedText.id, 'title') : selected ? scopeBar(selected.id, 'clip') : null)}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
@@ -2394,7 +2447,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         <button className="ed-button" aria-label="View" onClick={openViewMenu}><MoreHorizontal size={15}/>{t('View')}</button>
       </span>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={(id) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); setSelectedId(id); }} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
       onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
