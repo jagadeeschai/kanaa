@@ -89,12 +89,12 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
-| B1 | Editor.tsx: 3,370 lines, 109 pieces of state | 🚧 Editor.tsx down to 2,868 lines. Own files: preview/TitleEditing, ErrorBanner, Timing, inspectors/TextInspector + parts (title panel), inspectors/ClipInspector + clip-parts (clip panel: effects list, sound controls, speed ramps, who stays). Next: the project panel, then a shared store (B2) | L (many S) | 🚧 |
+| B1 | Editor.tsx: 3,370 lines, 109 pieces of state | 🚧 Editor.tsx down to 2,757 lines. Own files: preview/TitleEditing, ErrorBanner, Timing, inspectors/TextInspector + parts, ClipInspector + clip-parts, ProjectInspector + project-parts (brand intro, frame rates). Next: a shared store (B2) so panels stop taking 30+ inputs | L (many S) | 🚧 |
 | B2 | Inspectors take 30+ props each | A small store; inspectors read what they need by id | M | ⬜ |
 | B3 | The same controls rebuilt (13 raw colour inputs, local Chips) | One `ui/` set: Slider, ColorField, Segmented, Select, Toggle, Section, Callout, ProgressRing | M | ⬜ |
 | B4 | Two styling systems (Tailwind lyric/studio, hand CSS editor) | One `tokens.css`; Tailwind mapped to it; lyric screen moved last | M | ⬜ |
 | B5 | The DOM translator can fight React and translate user text | `t()` everywhere, a missing-translation check, then remove the translator | M | ⬜ |
-| B6 | No UI tests | 🚧 `npm run test:ui`: 32 tests, now including the clip panel (six tabs, every effect under Effects, looks, motion, the folded effects line, Tamil) | M | 🚧 |
+| B6 | No UI tests | 🚧 `npm run test:ui`: 37 tests, now including project settings (four tabs, shape, Brand with brand logos, Colour & finish, Tamil) | M | 🚧 |
 
 ### Roadmap
 
