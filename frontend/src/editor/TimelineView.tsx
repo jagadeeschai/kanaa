@@ -60,6 +60,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const liftRef = useRef<Lift | null>(null);
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
   const lastHead = useRef(Number.NaN);
+  const barRef = useRef<HTMLDivElement>(null);
+  const barInnerRef = useRef<HTMLDivElement>(null);
   const zoomAnchor = useRef<{ time: number; offset: number } | null>(null);
   const colors = useRef(TOKENS);
   useLayoutEffect(() => { colors.current = readColors(hostRef.current!); }, [theme]);
@@ -333,6 +335,12 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       // Keep the playhead in view while it moves (playing or a jump): scroll only when it has just moved out of the
       // visible range. Never while it stands still, or scrolling the timeline away from it would snap straight back.
       const hostEl = hostRef.current!;
+      const bar = barRef.current, inner = barInnerRef.current;
+      if (bar && inner) {
+        const wide = `${hostEl.scrollWidth}px`;
+        if (inner.style.width !== wide) inner.style.width = wide;
+        if (Math.abs(bar.scrollLeft - hostEl.scrollLeft) > 0.5) bar.scrollLeft = hostEl.scrollLeft;
+      }
       const moved = Math.abs(playhead.current - lastHead.current) > 1e-4;
       lastHead.current = playhead.current;
       if (moved && (head < hostEl.scrollLeft + 8 || head > hostEl.scrollLeft + hostEl.clientWidth - 8)) hostEl.scrollLeft = Math.max(0, head - hostEl.clientWidth * 0.1);
@@ -512,17 +520,32 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   useEffect(() => {
     const host = hostRef.current!;
     const anchorAt = (clientX: number) => { const offset = clientX - host.getBoundingClientRect().left; zoomAnchor.current = { time: timeOf(host.scrollLeft + offset), offset }; };
+    const outer = host.closest('.tl-host') as HTMLElement | null;
     const wheel = (event: WheelEvent) => {
-      if (!onZoom || !(event.ctrlKey || event.metaKey)) return;
-      event.preventDefault(); anchorAt(event.clientX);
-      onZoom(Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)));
+      if (event.ctrlKey || event.metaKey) {
+        if (!onZoom) return;
+        event.preventDefault(); anchorAt(event.clientX);
+        onZoom(Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)));
+        return;
+      }
+      // Scroll it ourselves: sideways from a trackpad swipe or Shift + wheel, and from the plain wheel when every layer
+      // already fits; otherwise up and down through the layers.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? host.clientWidth : 1;
+      const tall = outer ? outer.scrollHeight > outer.clientHeight + 1 : false;
+      let dx = event.deltaX * unit, dy = event.deltaY * unit;
+      if (event.shiftKey && !dx) { dx = dy; dy = 0; }
+      if (!tall && Math.abs(dy) > Math.abs(dx)) { dx = dy; dy = 0; }
+      if (!dx && !dy) return;
+      event.preventDefault();
+      if (dx) host.scrollLeft += dx;
+      if (dy && outer) outer.scrollTop += dy;
     };
     let last = 1;
     const gestureStart = (event: Event) => { event.preventDefault(); last = 1; anchorAt((event as unknown as { clientX: number }).clientX); };
     const gestureChange = (event: Event) => { const scale = (event as unknown as { scale: number }).scale; event.preventDefault(); if (onZoom && scale > 0) onZoom(scale / last); last = scale; };
-    host.addEventListener('wheel', wheel, { passive: false });
+    (outer ?? host).addEventListener('wheel', wheel, { passive: false });
     host.addEventListener('gesturestart', gestureStart); host.addEventListener('gesturechange', gestureChange);
-    return () => { host.removeEventListener('wheel', wheel); host.removeEventListener('gesturestart', gestureStart); host.removeEventListener('gesturechange', gestureChange); };
+    return () => { (outer ?? host).removeEventListener('wheel', wheel); host.removeEventListener('gesturestart', gestureStart); host.removeEventListener('gesturechange', gestureChange); };
   }, [onZoom]);
   useLayoutEffect(() => {
     const anchor = zoomAnchor.current; if (!anchor) return;
@@ -602,7 +625,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
           <button role="menuitem" onClick={() => addTrack('audio')}><Music size={14}/>Sound</button>
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
-      <div className="tl-scroll" ref={hostRef}>
+      <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
         <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         <div className="tl-clip-layer">{(() => {
@@ -651,6 +674,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         })}</div>}
       </div>
     </div>
+    <div className="tl-hbar" ref={barRef} onScroll={(event) => { const host = hostRef.current; if (host && Math.abs(host.scrollLeft - event.currentTarget.scrollLeft) > 0.5) host.scrollLeft = event.currentTarget.scrollLeft; }} aria-hidden="true"><div ref={barInnerRef}/></div>
   </div>;
 }
 
