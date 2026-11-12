@@ -65,3 +65,4 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 |---|---|---|---|
 | H1 | Studio and Projects are nearly the same page | One Home: create cards above all projects | ⬜ |
 | H2 | Folder actions only on the home screen | Also in the editor's media right-click menu | ⬜ |
+| H3 | One chip per folder fills the media panel as songs grow | One folder picker with counts; this video's own folder first (★) | ✅ |

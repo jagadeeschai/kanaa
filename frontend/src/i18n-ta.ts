@@ -239,4 +239,6 @@ export const TAMIL: Record<string, string> = {
   'Rename': 'பெயர் மாற்று',
   'Move with main clips': 'முதன்மைக் கிளிப்களுடன் நகர்',
   'Delete layer': 'அடுக்கை நீக்கு',
+  'Folder': 'கோப்புறை',
+  'All media': 'அனைத்து மீடியா',
 };
