@@ -72,3 +72,34 @@ class Build(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which('node'), 'node builds the lyric screen timeline')
+class IntoTheClear(unittest.TestCase):
+    def test_each_line_starts_behind_the_person_and_ends_in_the_clear_space(self):
+        import numpy as np
+        mask = np.zeros((1024, 1536), bool)
+        mask[200:1000, 300:740] = True  # A singer on the left; the right is clear.
+        space = lyrics.spaces(mask)
+        self.assertEqual(len(space['people']), 1)
+        self.assertGreater(space['clear'][0], 0.45)
+        cues = lyrics.read_lrc(LRC)
+        t = lyrics.base_timeline({'name': 'Song', 'backgrounds': [{'id': 1, 'media_type': 'image'}], 'backgroundType': 'image', 'duration': 40, 'slideStarts': [0],
+                                  'song': {'id': 'a' * 32, 'duration': 40, 'name': 'song'}, 'cues': cues, 'canvas': 'landscape', 'color': '#ffffff', 'fontSize': 50,
+                                  'placement': 'bottom', 'lyricStyle': 'shadow', 'lyricFont': 'elegant', 'lyricAlign': 'center', 'lyricBandColor': '#000000',
+                                  'lyricAnimation': 'fade', 'crossfade': False, 'imageAnimation': '3d', 'depthVideos': {1: 7}, 'inScene': False})
+        lyrics.lay_out(t)
+        lyrics.into_clear(t, {'lyric-scene-1': {**space, 'size': [1536, 1024]}}, {'lyric-scene-1': 7})
+        Timeline.model_validate(t)
+        scene = next(c for c in t['layers'][0]['items'] if c['id'] == 'lyric-scene-1')
+        self.assertNotIn('keyframes', scene['transform'], 'the scene holds still')
+        lines = [i for l in t['layers'] if l['kind'] == 'text' for i in l['items'] if i['id'].startswith('lyric-line')]
+        long = next(line for line in lines if line['text'].startswith('மறைந்தோட'))
+        keys = long['transform']['keyframes']['x']
+        self.assertLess(keys[0]['v'], 0.5, 'starts behind the singer')
+        self.assertGreater(keys[-1]['v'], 0.6, 'ends in the clear space to the right')
+        self.assertIn('\n', long['text'], 'a long line splits onto two')
+        cover = next(l for l in t['layers'] if l.get('name') == 'Person')['items']
+        self.assertEqual(len(cover), len(lines))
+        self.assertTrue(all(c['out'] - c['in'] <= lyrics.COVER_SECONDS + 1e-6 for c in cover), 'people cover a line only while it moves clear')
+        self.assertTrue(all(c['transform'] == scene['transform'] for c in cover), 'the cut-out lines up with its scene')

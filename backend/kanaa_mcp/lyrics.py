@@ -75,7 +75,7 @@ def lay_out(timeline: dict) -> None:
         at += length_of(clip)
 
 
-def dress(timeline: dict, look: str, lights: dict[str, int]) -> None:
+def dress(timeline: dict, look: str, lights: dict[str, int], camera_moves: bool = True) -> None:
     """A different entrance each line (3D letters kept), a slow pan or zoom per scene on top of its 3D glide (copied to
     the In front layer so it stays lined up), and light overlays (media ids of 5-second effects) over each scene's opening."""
     style = LOOKS[look]
@@ -87,7 +87,7 @@ def dress(timeline: dict, look: str, lights: dict[str, int]) -> None:
     scenes = [clip for clip in timeline['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
     moves = ['pan-left', 'zoom-in', 'pan-right', 'zoom-out']
     camera = {}
-    for index, clip in enumerate(scenes):
+    for index, clip in enumerate(scenes if camera_moves else []):
         length, move = round(length_of(clip), 3), moves[index % len(moves)]
         keys = ({'x': [{'t': 0, 'v': 0.53, 'ease': 'easeInOut'}, {'t': length, 'v': 0.47, 'ease': 'easeInOut'}]} if move == 'pan-left'
                 else {'x': [{'t': 0, 'v': 0.47, 'ease': 'easeInOut'}, {'t': length, 'v': 0.53, 'ease': 'easeInOut'}]} if move == 'pan-right'
@@ -177,3 +177,101 @@ def credits(timeline: dict, title: str, presents: str | None, song_by: str | Non
         timeline['layers'].insert(last_video + 1, {'id': 'brand', 'kind': 'video', 'name': 'Brand', 'items': [
             logo_clip('brand-logo', OPENING, end, round((fmt['width'] - margin - w / 2) / fmt['width'], 4), round((fmt['height'] - margin - h / 2) / fmt['height'], 4), 0.11, 0.85),
             logo_clip('closing-logo', end + 0.2, end + CLOSING, 0.5, 0.2, 0.26, 1)]})
+
+
+# ---- "From behind, into the clear": each line starts behind the nearest person, then glides into the clear space. ----
+
+BAND = (0.62, 0.86)  # Where the lyric lines sit, as shares of the picture's height.
+LINE_Y = 0.74
+GLIDE = (0.4, 1.6)  # Seconds into the line: it waits behind them, then is clear by the second time.
+COVER_SECONDS = 1.9  # People pass in front only until the line has moved clear; after that nothing covers it.
+CHAR_WIDTH = 0.97  # A Tamil or English letter's width, in units of the text size, measured on Kanaa's titles.
+
+
+def spaces(mask, band: tuple[float, float] = BAND, min_share: float = 0.05) -> dict:
+    """Where people are across the lyric band of a picture (a boolean person mask, source size), and its widest clear
+    stretch, all as shares of the picture's width: {"people": [[x0, x1], ...], "clear": [x0, x1]}."""
+    import numpy as np
+    height, width = mask.shape
+    rows = mask[int(height * band[0]):int(height * band[1])]
+    taken = rows.mean(axis=0) > min_share
+    people, clear, run_start = [], (0, 0), None
+    for x, on in enumerate(list(taken) + [False]):
+        if on and run_start is None:
+            run_start = x
+        if not on and run_start is not None:
+            people.append([run_start / width, x / width]); run_start = None
+    edges = [0.0] + [edge for span in people for edge in span] + [1.0]
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2)]
+    clear = max(gaps, key=lambda gap: gap[1] - gap[0]) if gaps else (0.0, 1.0)
+    return {'people': [span for span in people if span[1] - span[0] > 0.02], 'clear': [round(clear[0], 4), round(clear[1], 4)]}
+
+
+def fit_text(text: str, size: int, room: float, frame_width: int) -> tuple[str, int]:
+    """The line, split onto two at the space nearest its middle when it is wider than `room` (share of the frame), and a
+    smaller size when even that does not fit."""
+    width = lambda words, at: len(words) * at * CHAR_WIDTH / 1920  # Title sizes are in 1080p pixels.
+    if width(text, size) <= room or ' ' not in text.strip():
+        lines = [text]
+    else:
+        middle = len(text) / 2
+        cut = min((i for i, ch in enumerate(text) if ch == ' '), key=lambda i: abs(i - middle))
+        lines = [text[:cut].strip(), text[cut + 1:].strip()]
+    longest = max(len(line) for line in lines)
+    while size > 26 and longest * size * CHAR_WIDTH / 1920 > room:
+        size -= 2
+    return '\n'.join(lines), size
+
+
+def into_clear(timeline: dict, scenes: dict[str, dict], still: dict[str, int]) -> None:
+    """Moves each lyric line from behind the person nearest the clear space into that space, per scene.
+    scenes: main-track clip id -> spaces() of its picture (source shares) plus its "size" [width, height]; still: clip id -> its still video's media id
+    (the same picture as a video, so Kanaa can cut the people out of it). The scene clips are set to fill the frame and
+    hold still, so where the people are on the frame is exactly where they are in the picture."""
+    fmt = timeline['format']
+    main = timeline['layers'][0]['items']
+    clips = {clip['id']: clip for clip in main if clip['id'] in scenes}
+    share = {}
+    for clip_id, clip in clips.items():
+        w, h = scenes[clip_id]['size']
+        fit = min(fmt['width'] / w, fmt['height'] / h)
+        fw, fh = w * fit / fmt['width'], h * fit / fmt['height']
+        fill = max(1 / fw, 1 / fh)
+        clip['transform'] = {'x': 0.5, 'y': 0.5, 'scale': round(fill, 4), 'opacity': 1, 'rotation': 0}
+        share[clip_id] = fill * fw  # The picture's width as a share of the frame's.
+    cover = []
+    for layer in timeline['layers']:
+        if layer['kind'] != 'text':
+            continue
+        for line in layer['items']:
+            if not line['id'].startswith('lyric-line'):
+                continue
+            clip = next((c for c in clips.values() if c['start'] <= line['start'] < c['start'] + length_of(c)), None)
+            if clip is None:
+                continue
+            space = scenes[clip['id']]
+            scale_x = share[clip['id']]
+            to_frame = lambda sx: 0.5 + (sx - 0.5) * scale_x
+            left, right = to_frame(space['clear'][0]), to_frame(space['clear'][1])
+            left, right = max(left, 0.04), min(right, 0.96)
+            text, size = fit_text(line['text'], line['size'], (right - left) * 0.92, fmt['width'])
+            end_x = round((left + right) / 2, 4)
+            line.update(text=text, size=size, enter={'preset': 'fade', 'duration': 0.3}, exit={'preset': 'fade', 'duration': round(min(0.4, line['length'] / 5), 2)})
+            line.pop('depth', None)
+            people = [[to_frame(a), to_frame(b)] for a, b in space['people']]
+            if not people:
+                line['transform'] = {'x': end_x, 'y': LINE_Y, 'scale': 1, 'opacity': 1, 'rotation': 0}
+                continue
+            # Start behind the person nearest the clear space, then glide there.
+            near = min(people, key=lambda span: abs((span[0] + span[1]) / 2 - end_x))
+            start_x = round((near[0] + near[1]) / 2, 4)
+            line['transform'] = {'x': start_x, 'y': LINE_Y, 'scale': 1, 'opacity': 1, 'rotation': 0,
+                                 'keyframes': {'x': [{'t': 0, 'v': start_x, 'ease': 'linear'}, {'t': GLIDE[0], 'v': start_x, 'ease': 'easeInOut'}, {'t': GLIDE[1], 'v': end_x, 'ease': 'linear'}]}}
+            into = round(line['start'] - clip['start'], 3)
+            cover.append({'id': f"{line['id']}-front", 'media_id': still[clip['id']], 'start': line['start'], 'in': into, 'out': round(into + min(COVER_SECONDS, line['length']), 3),
+                          'speed': 1, 'volume': 0, 'muted': True, 'fade_in': 0, 'fade_out': 0, 'transform': dict(clip['transform']), 'adjust': dict(ADJUST),
+                          'cutout': 'remove', 'cutout_pick': None, 'depth_gap': 1})
+        break
+    timeline['layers'] = [layer for layer in timeline['layers'] if layer.get('name') != 'In front']
+    words_at = next(index for index, layer in enumerate(timeline['layers']) if layer['kind'] == 'text')
+    timeline['layers'].insert(words_at + 1, {'id': 'lyric-in-front', 'kind': 'video', 'name': 'Person', 'items': cover})
