@@ -226,4 +226,11 @@ export const TAMIL: Record<string, string> = {
   'Smaller': 'சிறிதாக்கு',
   'Bigger': 'பெரிதாக்கு',
   'Text colour': 'எழுத்து நிறம்',
+  'Stories': 'கதைகள்',
+  'Stories — ready-made stories with music and titles': 'கதைகள் — இசை, தலைப்புகளுடன் தயாரான கதைகள்',
+  'View': 'பார்வை',
+  'Appearance': 'திரை வண்ணம்',
+  'Switch between same as this Mac, light and dark': 'Mac போல, வெளிர், இருள் — மாற்று',
+  'Dark': 'இருள்',
+  'Spoken language': 'பேசும் மொழி',
 };

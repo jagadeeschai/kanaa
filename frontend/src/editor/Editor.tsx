@@ -11,7 +11,7 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { Camera, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -40,7 +40,7 @@ import { PlaybackEngine, type PlaybackSource } from './playback';
 import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
-import { WordsPanel } from './Words';
+import { LANGUAGES, WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
@@ -71,9 +71,9 @@ const EMPTY = startHistory<Timeline | null>(null);
 const ASSET_POLL_MS = 2000;
 const LEFT_TABS = ['media', 'audio', 'text', 'transitions', 'effects', 'templates', 'themes', 'ask', 'words'] as const;
 const LITE_TABS = new Set<string>(['media', 'audio', 'text', 'templates', 'themes']);
-const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Templates', themes: 'Themes', transitions: 'Transitions', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
+const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Stories', themes: 'Themes', transitions: 'Transitions', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
 const TAB_ICONS: Record<(typeof LEFT_TABS)[number], React.ReactNode> = { media: <ImageIcon size={17}/>, ask: <Sparkles size={17}/>, templates: <Bookmark size={17}/>, themes: <Palette size={17}/>, transitions: <Shuffle size={17}/>, effects: <WandSparkles size={17}/>, text: <Type size={17}/>, audio: <Music size={17}/>, words: <MessageSquareText size={17}/> };
-const TAB_TIPS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media — your clips, photos and folders', ask: 'Ask AI — describe an edit in words', templates: 'Templates — ready-made stories and title styles', themes: 'Themes — dress the whole video in one click', transitions: 'Transitions — how clips join each other', effects: 'Effects — weather, light and celebration overlays', text: 'Text — titles and captions', audio: 'Audio — music library, songs and whooshes', words: 'Words — transcript, pauses and caption cuts' };
+const TAB_TIPS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media — your clips, photos and folders', ask: 'Ask AI — describe an edit in words', templates: 'Stories — ready-made stories with music and titles', themes: 'Themes — dress the whole video in one click', transitions: 'Transitions — how clips join each other', effects: 'Effects — weather, light and celebration overlays', text: 'Text — titles and captions', audio: 'Audio — music library, songs and whooshes', words: 'Words — transcript, pauses and caption cuts' };
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 /** The hardware encoder's bitrate at a given short side, in megabits — mirrors the export's encoder table. */
@@ -1909,7 +1909,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const generalItems = (): MenuItem[] => [
     { label: 'Undo', hint: '⌘Z', disabled: !history.past.length, onSelect: () => dispatch({ type: 'undo' }) },
     { label: 'Redo', hint: '⇧⌘Z', disabled: !history.future.length, onSelect: () => dispatch({ type: 'redo' }) },
-    'divider', { label: 'Guide and shortcuts', hint: '?', onSelect: () => setShowingHelp(true) },
   ];
   const openGeneralMenu = (event: React.MouseEvent) => {
     if (isEditable(event.target)) return;
@@ -1929,7 +1928,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const openPreviewMenu = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
-    const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
+    const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
@@ -2080,14 +2079,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
   const activeClipEffects = selected ? clipEffects(selected) : [];
   return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''} `} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
     {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
-    {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
+    {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render smooth preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
     {note && <div className="ed-note" role="status">{note}<button className="ed-icon small" aria-label="Dismiss" onClick={() => setNote('')}><X size={13}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
         <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
           <div className="ed-rail-tools" role="group" aria-label="Project">
-            <button onClick={nextTheme} aria-label={t('Theme')} data-tip={`${t('Theme')}: ${t(themeChoice === 'system' ? 'Same as this Mac' : themeChoice === 'light' ? 'Light theme' : 'Dark theme')}`}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
+            {/* Light or dark is in Settings, as Appearance; Themes is the video's look. */}
             <span className={`ed-rail-save ${saved}`} role="status" aria-label={t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')} data-tip={`${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}/>
             <button onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={t('Back to projects')}><ArrowLeft size={17}/></button>
           </div></div>
@@ -2231,7 +2230,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
               {captionsWaiting && wordJob ? <p className="ed-tip" role="status">Listening to your video… {wordJob.progress}%</p>
                 : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
             </> : <>
-            <p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : ', in the language chosen in Words.'}</p>
+            <p className="ed-tip">Turns the speech in your main track into captions{timeline && captionLayers(timeline).length ? '. Making them again replaces the old ones.' : '.'}</p>
+            <label className="ed-words-language"><span>{t('Spoken language')}</span><KanaaSelect aria-label={t('Spoken language')} value={language} onChange={(event) => { setLanguage(event.target.value); try { localStorage.setItem('wa.wordsLanguage', event.target.value); } catch { /* the choice just isn't remembered */ } }}>{LANGUAGES.map((option) => <option key={option.id} value={option.id}>{t(option.label)}</option>)}</KanaaSelect></label>
             <div className="ed-add-row"><span>Words per caption</span><div className="ed-chips ed-even" role="group" aria-label="Words per caption">{[1, 2, 3, 4].map((count) => <button key={count} className={captionWords === count ? 'on' : ''} aria-pressed={captionWords === count} onClick={() => setCaptionWords(count)}>{count}</button>)}</div></div>
             {captionsWaiting && wordJob ? <><div className="ed-progress"><i style={{ width: `${wordJob.progress}%` }}/></div><p className="ed-tip">Listening to your video… {wordJob.progress}%. The captions follow.</p></>
               : <button className="ed-button wide" disabled={!total} onClick={() => makeCaptions()}><Captions size={14}/>{timeline && captionLayers(timeline).length ? 'Make captions again' : 'Add captions'}</button>}
@@ -2338,7 +2338,8 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
             <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} data-tip={`${t('Undo')} (⌘Z)`}><Undo2 size={17}/></button>
             <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} data-tip={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={17}/></button>
-            <TopSettings simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
+            <button onClick={() => setShowingHelp(true)} aria-label={t('Guide and shortcuts')} data-tip={`${t('Guide and shortcuts')} (?)`}><CircleHelp size={17}/></button>
+            <TopSettings appearance={themeChoice} onAppearance={nextTheme} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
             <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
           </div> }}>
@@ -2371,7 +2372,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
         <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
         <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
-        <button className="ed-button" onClick={() => { void snapshot(); }} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Flash, shutter sound and a two-second printed-photo freeze"><ScanFace size={15}/>Snapshot</button>
+        <button className="ed-button" onClick={() => { void snapshot(); }} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Flash, shutter sound and a two-second printed-photo freeze"><Camera size={15}/>Snapshot</button>
         <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
       </span>
       <div className="ed-spacer"/>
@@ -2379,7 +2380,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
         <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
         <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
-        <button className="ed-button" aria-label="More view and help actions" onClick={openViewMenu}><MoreHorizontal size={15}/>More</button>
+        <button className="ed-button" aria-label="View" onClick={openViewMenu}><MoreHorizontal size={15}/>{t('View')}</button>
       </span>
     </div>
     {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={(id) => { setLayerSettings(null); setSelectedId(id); }} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
@@ -2433,7 +2434,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
 }
 
 /** The editor's less-used top-bar controls behind one gear: theme, Lite or Pro, and the project's format. */
-function TopSettings({ simple, onSimple, format, onProject }: { simple: boolean; onSimple: (simple: boolean) => void; format: string; onProject: () => void }) {
+function TopSettings({ appearance, onAppearance, simple, onSimple, format, onProject }: { appearance: ThemeChoice; onAppearance: () => void; simple: boolean; onSimple: (simple: boolean) => void; format: string; onProject: () => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2454,6 +2455,7 @@ function TopSettings({ simple, onSimple, format, onProject }: { simple: boolean;
         <button aria-pressed={LANGUAGE === 'en'} className={LANGUAGE === 'en' ? 'on' : ''} onClick={() => { if (LANGUAGE !== 'en') setLanguage('en'); }}>English</button>
         <button aria-pressed={LANGUAGE === 'ta'} className={LANGUAGE === 'ta' ? 'on' : ''} lang="ta" onClick={() => { if (LANGUAGE !== 'ta') setLanguage('ta'); }}>தமிழ்</button>
       </div></div>
+      <div className="ed-top-row"><span>{t('Appearance')}</span><button className="ed-button" onClick={onAppearance} title={t('Switch between same as this Mac, light and dark')}>{appearance === 'system' ? <Monitor size={14}/> : appearance === 'light' ? <Sun size={14}/> : <Moon size={14}/>}{t(appearance === 'system' ? 'Same as this Mac' : appearance === 'light' ? 'Light' : 'Dark')}</button></div>
       <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>{t('Project settings')}</span><em>{format}</em></button>
     </div>}
   </div>;
@@ -2597,7 +2599,7 @@ function ProjectInspector({ introBusy, onBrandIntro, timeline, clipFormat, logos
         <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onChange({ ...timeline, normalize_audio: event.target.checked })}/><span>Even out loudness<small>Applied when you export.</small></span></label>
       </Group>
     </Panel>
-    {!useContext(RailContext).folded && <button className="ed-button wide ed-project-guide" onClick={onGuide}><CircleHelp size={14}/>Guide: how everything works</button>}
+    {void onGuide}
   </>;
 }
 

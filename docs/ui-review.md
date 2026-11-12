@@ -32,21 +32,21 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 |---|---|---|---|
 | L1 | Up to nine icons on a 126px layer header | Keep hide, lock, mute; the rest in a ⋯ menu; click the layer name for its settings | ⬜ |
 | L2 | Fix sync crowds the layer panel | A "Fix lyric timing" action in the layer's ⋯ menu | ⬜ |
-| L3 | Snapshot uses the face icon; "Render preview" has two names; "More" is vague | Camera icon; one name, "Render smooth preview"; More becomes **View** | ⬜ |
+| L3 | Snapshot uses the face icon; "Render preview" has two names; "More" is vague | Camera icon; one name, "Render smooth preview"; More becomes **View** | ✅ |
 
 ## Whole editor
 
 | # | Problem | Change | Status |
 |---|---|---|---|
-| E1 | "Theme" is both the video's look and light/dark mode (both கருப்பொருள் in Tamil) | Light/dark becomes **Appearance**, in Settings | ⬜ |
+| E1 | "Theme" is both the video's look and light/dark mode (both கருப்பொருள் in Tamil) | Light/dark becomes **Appearance**, in Settings | ✅ |
 | E2 | Back, save state, undo, export spread over two rails; the project name shown nowhere | One header: Back · name · Saved · Undo · Redo · ? · ⚙ · Export | ⬜ |
 | E3 | Colour and looks set in five places | Clip looks in the clip's Colour; Themes for the whole video only; one Project "Colour & finish" | ⬜ |
 | E4 | Effects tab holds four unrelated tools | Effects + overlays; Travel map to Media; blur/pixelate as **Privacy** | ⬜ |
-| E5 | Caption language lives in Words, which Lite hides | A language choice inside Captions | ⬜ |
+| E5 | Caption language lives in Words, which Lite hides | A language choice inside Captions | ✅ |
 | E6 | The Transitions tab changes with the selection | Tab: gallery, Every cut, Remove all; per-clip length in the clip | ⬜ |
-| E7 | "Templates" holds only stories | Rename to **Stories**; put Brand intro there as an opening | ⬜ |
+| E7 | "Templates" holds only stories | Rename to **Stories**; put Brand intro there as an opening | ✅ |
 | E8 | Project settings mix format, look, brand and sound; loudness also in Export | Tabs Format · Colour & finish · Brand · Sound; loudness set once | ⬜ |
-| E9 | The guide is reachable five ways but has no visible button | A **?** in the header; fewer duplicate entries | ⬜ |
+| E9 | The guide is reachable five ways but has no visible button | A **?** in the header; fewer duplicate entries | ✅ |
 | E10 | Lite hides things silently | "More in Pro" hint | ⬜ |
 | E11 | Much text not translated; the lyric screen is English only; language only in the editor | `t()` on toolbar, panels and lyric steps; language on the home screen too | ⬜ |
 | E12 | Empty Templates, Themes and Ask panels | "Add a clip first" | ⬜ |
