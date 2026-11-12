@@ -75,7 +75,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 |---|---|---|---|---|
 | A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click picks a range on a layer, ⌘-click adds or removes, ⌘A picks the whole layer; a change applies to all picked (not words or timing); Delete removes all. Still to do: drag a box, "Mixed" values | L | 🚧 |
 | A2 | Snapping and zoom give no visible cue | A snap line with its reason (Beat, Playhead, Clip edge); N toggles snapping; zoom slider and Fit (⇧Z) | M | ⬜ |
-| A3 | Six long jobs, six progress styles, most can't be cancelled | One job tray: progress, Cancel, Retry; export, AI and brand intro included; a toast when done | M | ⬜ |
+| A3 | Six long jobs, six progress styles, most can't be cancelled | ✅ One Jobs tray (right rail): running count, progress, what each is doing, Cancel, plain words for failures, a note when one finishes. Still to do: Retry, jump to the changed item | M | 🚧 |
 | A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |
 | A5 | Hints are written into code and not translated | A hints table through `t()`, shown under the control they explain | S | ⬜ |
 | A6 | Powerful features are buried (cinema reveal, keep clear, brand intro) | ⌘K command palette searching every action, English and Tamil; a "✦ Smart" row per inspector | M | ⬜ |

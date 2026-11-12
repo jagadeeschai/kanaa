@@ -254,4 +254,12 @@ export const TAMIL: Record<string, string> = {
   '{count} items picked': '{count} உருப்படிகள் தேர்வு',
   'Changes apply to all of them (not their words or timing).': 'மாற்றம் அனைத்துக்கும் பொருந்தும் (சொற்கள், நேரம் தவிர).',
   'Just this one': 'இது மட்டும்',
+  'Jobs': 'பணிகள்',
+  '{count} jobs running': '{count} பணிகள் நடக்கின்றன',
+  'Nothing is running.': 'எதுவும் நடக்கவில்லை.',
+  'Waiting its turn': 'தன் முறைக்குக் காத்திருக்கிறது',
+  'Stopping…': 'நிறுத்துகிறது…',
+  'Cancelled': 'ரத்தானது',
+  'Could not finish': 'முடிக்க இயலவில்லை',
+  'Finished': 'முடிந்தது',
 };

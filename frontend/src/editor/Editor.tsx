@@ -43,6 +43,7 @@ import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { LANGUAGES, WordsPanel } from './Words';
 import { explainError } from './errors';
+import JobTray from './JobTray';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
@@ -2402,6 +2403,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
             <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} data-tip={`${t('Undo')} (⌘Z)`}><Undo2 size={17}/></button>
             <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} data-tip={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={17}/></button>
+            <JobTray/>
             <button onClick={() => setShowingHelp(true)} aria-label={t('Guide and shortcuts')} data-tip={`${t('Guide and shortcuts')} (?)`}><CircleHelp size={17}/></button>
             <TopSettings appearance={themeChoice} onAppearance={(choice) => { if (setTheme) setTheme(choice); else nextTheme(); }} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>

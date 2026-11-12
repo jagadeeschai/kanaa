@@ -420,3 +420,13 @@
 .ed-guide-layer{position:fixed;inset:0;z-index:1000}
 .ed-error-details{display:block;margin-top:4px;font-size:11px;opacity:.75;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow:auto}
 .ed-multi{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12px;background:var(--selected-bg);color:var(--selected-text)}.ed-multi span{flex:1 1 100%;opacity:.85}
+
+/* The jobs tray: a button with the running count, a list with progress and Cancel, and a note when one finishes. */
+.ed-jobs{position:relative}.ed-jobs>button{position:relative}
+.ed-jobs-count{position:absolute;top:2px;right:2px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:var(--accent,#7c6cff);color:#fff;font:600 10px/15px inherit;font-style:normal;text-align:center}
+.ed-jobs-panel{position:absolute;right:calc(100% + 8px);top:0;z-index:50;width:300px;max-height:60vh;overflow:auto;padding:12px;border-radius:12px;background:var(--panel,#1d1a26);border:1px solid var(--hairline);box-shadow:0 12px 30px rgba(0,0,0,.4)}
+.ed-jobs-panel h3{margin:0 0 8px;font-size:13px}.ed-jobs-panel ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ed-jobs-panel li small{display:block;margin-top:3px;font-size:11px;color:var(--muted)}.ed-jobs-panel li.failed small{color:#f87171}
+.ed-jobs-row{display:flex;align-items:center;gap:6px}.ed-jobs-row b{flex:1;min-width:0;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed-jobs-bar{height:4px;margin-top:5px;border-radius:2px;background:var(--well);overflow:hidden}.ed-jobs-bar span{display:block;height:100%;background:var(--accent,#7c6cff);transition:width .4s}
+.ed-jobs-note{position:fixed;right:70px;bottom:24px;z-index:60;max-width:340px;padding:10px 14px;border-radius:10px;background:var(--panel,#1d1a26);border:1px solid var(--hairline);box-shadow:0 10px 26px rgba(0,0,0,.4);font-size:12px}
