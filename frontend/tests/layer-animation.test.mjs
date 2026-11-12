@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, applyLayerStyles, emptyTimeline, findText, insertClip, mainLayer, markOwn, newClip, ownOverLayer, setLayerStyle, updateText, useLayerStyle } from '../src/timeline/model.ts';
+import { addText, applyLayerStyles, overrideLayerItems, overriddenCount, emptyTimeline, findText, insertClip, mainLayer, markOwn, newClip, ownOverLayer, setLayerStyle, updateText, useLayerStyle } from '../src/timeline/model.ts';
 
 const line = (id, start) => ({ id, start, length: 3, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
 const three = () => ['a', 'b', 'c'].reduce((t, id, i) => addText(t, line(id, i * 4), 'L'), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
@@ -39,4 +39,17 @@ test('a layer style with no animation removes it from every clip but those setti
   assert.deepEqual(mainLayer(t).items.map((c) => c.enter?.preset), ['fade', 'fade']);
   t = setLayerStyle(t, 'x', { enter: null });
   assert.deepEqual(mainLayer(t).items.map((c) => c.enter), [null, null]);
+});
+
+test('override all: the layer wins over every title that set its own', () => {
+  let t = markOwn(updateText(three(), 'b', { size: 2, color: '#000000' }), 'b', { size: 2, color: '#000000' });
+  t = setLayerStyle(t, 'a', { size: 1.4 });
+  const layer = t.layers.find((l) => l.kind === 'text').id;
+  assert.equal(overriddenCount(t, layer), 1);
+  const sizeOnly = overrideLayerItems(t, layer, ['size']);
+  assert.equal(findText(sizeOnly, 'b').text.size, 1.4);
+  assert.deepEqual(findText(sizeOnly, 'b').text.own, ['color']);
+  t = overrideLayerItems(t, layer);
+  assert.equal(findText(t, 'b').text.size, 1.4);
+  assert.equal(overriddenCount(t, layer), 0);
 });

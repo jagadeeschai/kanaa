@@ -1085,3 +1085,16 @@ export function ownOverLayer(timeline: Timeline, id: string): string[] {
   const item = layer && (layer.items as (Clip | TextItem)[]).find((i) => i.id === id);
   return item?.own?.filter((key) => layer!.style && key in layer!.style) ?? [];
 }
+
+/** The layer's style wins on every item: items drop their own settings (all, or just these) and take the layer's. */
+export function overrideLayerItems(timeline: Timeline, layerId: string, keys?: string[]): Timeline {
+  return applyLayerStyles({ ...timeline, layers: timeline.layers.map((l) => l.id !== layerId || (l.kind !== 'text' && l.kind !== 'video') ? l
+    : { ...l, items: (l.items as (Clip | TextItem)[]).map((item) => item.own?.length ? { ...item, own: keys ? item.own.filter((key) => !keys.includes(key)) : [] } : item) } as TrackLayer) });
+}
+
+/** How many items on the layer set their own value for a setting the layer styles. */
+export function overriddenCount(timeline: Timeline, layerId: string): number {
+  const layer = timeline.layers.find((l) => l.id === layerId) as Styled | undefined;
+  if (!layer || !layer.style) return 0;
+  return (layer.items as (Clip | TextItem)[]).filter((item) => item.own?.some((key) => key in layer.style!)).length;
+}
