@@ -213,4 +213,7 @@ export const TAMIL: Record<string, string> = {
   "Layer settings don't apply here. Turn on to follow the layer": 'அடுக்கின் அமைப்பு இங்கு பொருந்தாது. பின்பற்ற இயக்கவும்',
   'Follows layer settings': 'அடுக்கைப் பின்பற்றுகிறது',
   'Layer settings off': 'அடுக்கு அமைப்பு அணைவு',
+  'Choose a logo…': 'லோகோவைத் தேர்க…',
+  'No logos yet': 'இன்னும் லோகோ இல்லை',
+  'Import your logo above, or pick one from the Brand folder in Media.': 'மேலே லோகோவை இறக்குங்கள், அல்லது மீடியாவின் Brand கோப்புறையிலிருந்து தேர்க.',
 };
