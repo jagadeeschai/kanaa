@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from fastapi import HTTPException
 from PIL import Image, ImageOps
@@ -17,7 +18,13 @@ def describe(row):
             'edit_settings': None, 'photo_type': row['media_type'], 'file_mtime_ns': None}
 
 
-def index_media(path: Path, name: str, exported=False):
+def song_folder(project_name: str) -> str | None:
+    """The library folder for a song's media: the project's name without a trailing ' – Lyric video' and the like."""
+    name = re.sub(r'\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$', '', project_name or '', flags=re.IGNORECASE).strip()
+    return name[:60] or None
+
+
+def index_media(path: Path, name: str, exported=False, folder: str | None = None):
     image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.bmp'}
     if path.suffix.lower() in image_extensions:
         with Image.open(path) as image:
@@ -34,7 +41,11 @@ def index_media(path: Path, name: str, exported=False):
     with get_connection() as conn:
         cursor = conn.execute('INSERT INTO photos(filename,absolute_path,media_type,width,height,duration,file_size,is_export,fps,rotation,has_audio) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                               (name, str(path.resolve()), kind, width, height, duration, path.stat().st_size, int(exported), fps, rotation, int(has_audio)))
-        conn.commit()
         identifier = cursor.lastrowid
+        if folder and not exported:
+            # New media can go straight into a library folder (a song's folder for lyric media).
+            conn.execute('INSERT OR IGNORE INTO media_folders(name) VALUES(?)', (folder,))
+            conn.execute('UPDATE photos SET folder=? WHERE id=?', (folder, identifier))
+        conn.commit()
     return describe(get_media(identifier))
 

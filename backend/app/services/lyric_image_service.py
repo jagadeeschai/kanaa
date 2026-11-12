@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.db.database import get_connection
 from app.services.ai_settings_service import read_settings
 from app.services.job_service import JobCancelled, update_job
-from app.services.media_service import index_media
+from app.services.media_service import index_media, song_folder
 from app.services.render_queue_service import enqueue_render
 
 STYLES = {
@@ -172,6 +172,9 @@ def start_generation(identifier, request):
 
 def _start_generation(identifier, request):
     require_project(identifier)
+    # The pictures go into the song's library folder, named after the project.
+    with get_connection() as conn:
+        folder = song_folder(conn.execute('SELECT name FROM projects WHERE id=?', (identifier,)).fetchone()['name'])
     config = read_settings()
     if not config['api_key']:
         raise ValueError('Add an API key in AI settings before generating images.')
@@ -210,7 +213,7 @@ def _start_generation(identifier, request):
                     if should_cancel(): raise JobCancelled()
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(image)
-                    media = index_media(path, f'AI scene {available[scene.id]["position"] + 1}.png')
+                    media = index_media(path, f'AI scene {available[scene.id]["position"] + 1}.png', folder=folder)
                     indexed = True
                     with get_connection() as conn:
                         conn.execute("UPDATE image_scenes SET media_id=?,status='done',error=NULL WHERE id=?", (media['id'], scene.id)); conn.commit()

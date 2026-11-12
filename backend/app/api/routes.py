@@ -24,7 +24,7 @@ from app.services.render_queue_service import enqueue_render, cancel_render, lis
 router = APIRouter()
 
 
-from app.services.media_service import get_media, describe, index_media
+from app.services.media_service import get_media, describe, index_media, song_folder
 from app.services.asset_service import request_assets
 
 
@@ -312,7 +312,7 @@ def create_project(data: ProjectCreate):
         directory = settings.data_dir / 'media'; directory.mkdir(parents=True, exist_ok=True)
         path = directory / f'canvas-{uuid.uuid4().hex}.png'
         Image.new('RGB', (720, 1280), '#282334').save(path)
-        media = index_media(path, 'Blank canvas.png')
+        media = index_media(path, 'Blank canvas.png', folder=song_folder(data.name) if data.kind == 'lyric' else None)
         data.media_id = media['id']
     media = get_media(data.media_id)
     if data.kind == 'edit' and media['media_type'] not in {'video', 'image'}:

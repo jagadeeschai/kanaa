@@ -85,6 +85,9 @@ class KanaaApi:
     def put(self, path: str, body: Any) -> Any:
         return self._check(self.http.put(path, json=body))
 
+    def patch(self, path: str, body: Any) -> Any:
+        return self._check(self.http.patch(path, json=body))
+
     def upload(self, path: str, file: Path) -> Any:
         with file.open('rb') as handle:
             return self._check(self.http.post(path, files={'file': (file.name, handle)}, timeout=600))
@@ -742,7 +745,13 @@ def build_server(api: KanaaApi) -> MCPServer:
             api.put(f'/projects/{project_id}/recipe', {'recipe': timeline})
         else:
             save(project_id, timeline_of(project_id), timeline, 'Rebuilt the lyric video')
-        return {'project_id': project_id, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
+        # The song's own media (its pictures and the clips made from them) goes into a library folder named after the song.
+        from app.services.media_service import song_folder
+        own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()))
+        folder = song_folder(name)
+        if folder and own:
+            api.patch('/photos/folder', {'ids': own, 'folder': folder})
+        return {'project_id': project_id, 'folder': folder, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
                 'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.'}
 
     @server.tool(annotations=CHANGES)
