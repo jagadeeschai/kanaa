@@ -325,3 +325,82 @@ def fill_frame(timeline: dict, sizes: dict[int, tuple[float, float]], only: set[
         transform['scale'] = round(transform.get('scale', 1) * fill, 4)
         for key in (transform.get('keyframes') or {}).get('scale', []):
             key['v'] = round(key['v'] * fill, 4)
+
+
+# The owner's house style: the look they finished by hand on "AI scene 6 still.mp4" (எனைத் தொட்டிழுத்தாள்!), so a
+# person (the lyric screen) and an agent (MCP) both start from it. Values are taken from that project.
+HOUSE_LINE = {'font': 'Arima', 'tamil_font': 'Arima', 'size': 44, 'color': '#fff7e8', 'style': 'shadow', 'align': 'center', 'band_color': None,
+              'enter': {'preset': 'particle-form', 'duration': 0.5}, 'exit': {'preset': 'particle-form', 'duration': 0.4}}
+# Odd lines glide from the centre up to the right, even lines to the left, answering each other.
+HOUSE_GLIDE = {1: (0.72, 0.32), 0: (0.29, 0.58)}
+HOUSE_GLIDE_SECONDS = 0.534
+HOUSE_SCENE_TOUCHES = [
+    {'dreamy_glow': {'intensity': 0.45, 'softness': 0.5, 'warmth': 0.2}},
+    {'beat_pulse': {'strength': 0.6, 'size': 0.04, 'bpm': 120, 'offset': 0}},
+    {'enter': {'preset': 'blur', 'duration': 0.5}},
+    {'transition_in': {'kind': 'cross-blur', 'duration': 0.6}},
+    {'transition_in': {'kind': 'flash', 'duration': 0.6}},
+]
+
+
+def _two_lines(text: str) -> str:
+    """A line of more than a few words split near its middle, at a space, as the owner sets lyrics."""
+    if '\n' in text or len(text) < 16 or ' ' not in text:
+        return text
+    middle = len(text) // 2
+    spaces = [i for i, ch in enumerate(text) if ch == ' ']
+    cut = min(spaces, key=lambda i: abs(i - middle))
+    return text[:cut] + '\n' + text[cut + 1:]
+
+
+def house_style(timeline: dict, title: str, poet: str | None) -> None:
+    """Restyles a built lyric video in the owner's house style: lyrics on two answering layers that glide out from the
+    centre with particle entrances; the song's title card and a lower-third with the poet; a different touch on each
+    scene and a long fade on the last; the song fading out."""
+    layers = timeline['layers']
+    lyric_layer = next((layer for layer in layers if layer['kind'] == 'text' and any(item['id'].startswith('lyric-line-') for item in layer['items'])), None)
+    if lyric_layer is None:
+        return
+    lines = sorted((item for item in lyric_layer['items'] if item['id'].startswith('lyric-line-')), key=lambda item: item['start'])
+    answer = {'id': 'lyrics-answer', 'kind': 'text', 'name': 'Lyrics (answer)', 'items': []}
+    for number, line in enumerate(lines, start=1):
+        side = number % 2
+        x, y = HOUSE_GLIDE[side]
+        line.update(HOUSE_LINE, text=_two_lines(line['text']), position='bottom')
+        line['transform'] = {'x': x, 'y': y, 'scale': 0.68, 'opacity': 1, 'rotation': 0,
+                             'keyframes': {'x': [{'t': 0, 'v': 0.5, 'ease': 'linear'}, {'t': HOUSE_GLIDE_SECONDS, 'v': x, 'ease': 'linear'}],
+                                           'y': [{'t': 0, 'v': 0.5, 'ease': 'linear'}, {'t': HOUSE_GLIDE_SECONDS, 'v': y, 'ease': 'linear'}]}}
+        if not side:
+            lyric_layer['items'].remove(line)
+            answer['items'].append(line)
+    # Each lyric layer keeps the look as its style, so a later change on the layer reaches every line.
+    for layer, side in ((lyric_layer, 1), (answer, 0)):
+        layer['style'] = {key: value for key, value in HOUSE_LINE.items() if value is not None}
+    if answer['items']:
+        layers.insert(layers.index(lyric_layer) + 1, answer)
+    song_start = lines[0]['start'] if lines else 0
+    end = max((item['start'] + length_of(item) for layer in layers for item in layer['items'] if 'start' in item), default=song_start)
+    # The title card, red at the bottom right, for the ten seconds before the first line; then a lower-third to the end.
+    card_start = max(0.0, song_start - 10.6)
+    card = {'id': 'house-title', 'start': round(card_start, 3), 'length': round(max(2.0, song_start - card_start - 0.05), 3), 'text': title, 'design': 'overlap',
+            'font': 'Futura', 'tamil_font': 'Baloo Thambi 2', 'style': 'shadow', 'position': 'center', 'color': '#ef4444', 'size': 34,
+            'enter': {'preset': 'particle-form', 'duration': 0.5}, 'exit': {'preset': 'particle-form', 'duration': 0.4},
+            'transform': {'x': 0.62, 'y': 0.9, 'scale': 1, 'opacity': 1, 'rotation': 0}}
+    lower_start = card['start'] + card['length']
+    lower = {'id': 'house-lower-third', 'start': round(lower_start, 3), 'length': round(max(1.0, end - lower_start), 3), 'text': title, 'subtitle': poet or None,
+             'subtitle_color': '#e5e5e5', 'design': 'gradient', 'font': 'Gill Sans', 'tamil_font': 'Arima', 'style': 'outline', 'align': 'left', 'position': 'bottom',
+             'color': '#ffffff', 'size': 20, 'band_color': '#2b2121', 'enter': {'preset': 'reveal', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.4},
+             'transform': {'x': 0.4872, 'y': 0.5767, 'scale': 1, 'opacity': 1, 'rotation': 0}}
+    layers.append({'id': 'house-title-card', 'kind': 'text', 'name': 'Title', 'items': [card]})
+    layers.append({'id': 'house-lower', 'kind': 'text', 'name': 'Lower third', 'items': [lower]})
+    # A different touch on each scene; the last one leaves slowly.
+    main = layers[0]
+    scenes = [clip for clip in main['items'] if clip['id'].startswith('lyric-scene-')]
+    for index, clip in enumerate(scenes[1:-1] if len(scenes) > 2 else []):
+        clip.update(HOUSE_SCENE_TOUCHES[index % len(HOUSE_SCENE_TOUCHES)])
+    if scenes:
+        scenes[-1].update(echo={'mode': 'smear', 'trails': 4, 'decay': 0.6}, exit={'preset': 'fade', 'duration': 3.0})
+    for layer in layers:
+        if layer['kind'] == 'audio':
+            for sound in layer['items']:
+                sound['fade_out'] = max(sound.get('fade_out', 0), 2.4)

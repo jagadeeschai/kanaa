@@ -585,3 +585,30 @@ def export_video(identifier: int, edit: VideoEditRequest):
     job_id = enqueue_render('video_export', f"Export: {row['filename']}", run, total=100)
     ready.set()
     return {'job_id': job_id}
+
+
+@router.post('/lyric-video/build')
+def build_lyric_video_route(body: dict, request: Request):
+    """The lyric screen's Build video: the same builder an agent uses through MCP (kanaa_mcp/lyric_builder.py), run as a
+    job. The result is an editor project, never exported. The job's result has `project_id`."""
+    import httpx
+    from kanaa_mcp import server as mcp
+    from kanaa_mcp.lyric_builder import build_lyric_video
+    allowed = {'name', 'song_asset_id', 'song_seconds', 'cues', 'scenes', 'look', 'lyric_motion', 'three_d', 'lights', 'lyric_font', 'lyric_colour',
+               'lyric_size', 'canvas', 'presents', 'song_by', 'music', 'presented_by', 'footer', 'accent', 'logo_media_id', 'brand_intro', 'project_id', 'house_style'}
+    params = {key: value for key, value in body.items() if key in allowed and value not in (None, '')}
+    for key in ('name', 'song_asset_id', 'song_seconds', 'cues', 'scenes'):
+        if key not in params:
+            raise HTTPException(400, f'Missing {key}.')
+    base = str(request.base_url).rstrip('/') + '/api'
+
+    def run(should_cancel):
+        with httpx.Client(base_url=base, timeout=600) as http:
+            api = mcp.KanaaApi(http)
+            helpers = mcp.build_server(api).lyric_helpers
+            update_job(job_id, phase='Building your lyric video', progress=5)
+            result = build_lyric_video(api, *helpers, **params)
+        return {'progress': 100, 'phase': 'Ready to review', 'project_id': result['project_id'], 'folder': result.get('folder')}
+
+    job_id = enqueue_render('lyric_build', f"Building {params['name']}", run, total=100)
+    return {'job_id': job_id}

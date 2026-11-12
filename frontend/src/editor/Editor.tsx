@@ -662,7 +662,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (!loadedRef.current || !queue || document.visibilityState !== 'visible' || !queue.saved) return;
       let recipe: Timeline | null;
       try { recipe = (await getVideoProject<Timeline>(projectId, 'edit')).recipe; } catch { return; }
-      if (!recipe || canonical(recipe) === canonical(JSON.parse(queue.saved))) return;
+      // Compared in the editor's own form: a project saved by Kanaa's backend (a lyric build, an agent) lacks some
+      // defaults the editor fills in, which is not a change.
+      if (!recipe || canonical(normalizeTimeline(recipe)) === canonical(JSON.parse(queue.saved))) return;
       if (queue.pending) {
         if (remoteNoted.current !== canonical(recipe)) { remoteNoted.current = canonical(recipe); setNote('This project was changed outside this window while you were editing. Your edits are kept; reopen the project to see the other change.'); }
         return;

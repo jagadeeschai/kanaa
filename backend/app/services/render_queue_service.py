@@ -34,11 +34,13 @@ RenderTarget = Callable[[Callable[[], bool]], dict[str, Any]]
 
 # Exports and renders to watch go in one lane; finding people, 3D pictures, preview copies, effects and the rest in the other.
 EXPORT_KINDS = frozenset({'video_export', 'look', 'preview_render'})
-LANES = ('export', 'work')
+LANES = ('export', 'work', 'build')
+# A lyric video build waits on work jobs (finding people, effects, 3D), so it runs in a lane of its own.
+BUILD_KINDS = {'lyric_build'}
 
 
 def lane_of(kind: str) -> str:
-    return 'export' if kind in EXPORT_KINDS else 'work'
+    return 'export' if kind in EXPORT_KINDS else 'build' if kind in BUILD_KINDS else 'work'
 
 
 _queues: dict[str, 'queue.PriorityQueue[tuple[int, int, str, RenderTarget]]'] = {lane: queue.PriorityQueue() for lane in LANES}

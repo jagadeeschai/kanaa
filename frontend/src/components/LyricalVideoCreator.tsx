@@ -13,6 +13,7 @@ import LyricImageGenerator from './LyricImageGenerator';
 import KanaaSelect from './KanaaSelect';
 import { t } from '../i18n';
 import LyricSyncFix from './LyricSyncFix';
+import LyricBuildOptions, { rememberedBuild, type LyricBuildChoices } from './LyricBuildOptions';
 import { isSongFile, startImageAt, computeSlideStarts, crossfadeSeconds, slideIndexAt, slideTransform, type ImageAnimation, type SlideTiming } from '../utils/slides';
 import { nextTabIndex } from '../editor/tab-navigation';
 import { mediaCanvas, type LyricCanvas } from '../editor/lyric-canvas';
@@ -32,7 +33,7 @@ type LyricFont = 'standard' | 'elegant' | 'modern' | 'playful' | 'handwritten';
 type LyricAlign = 'left' | 'center' | 'right';
 type LyricAnimation = 'none' | 'fade' | 'slide-up' | 'pop' | 'cinematic';
 type PlacementMode = 'fixed' | 'alternate' | 'per-line';
-type LyricRecipe = {
+type LyricRecipe = { builtProjectId?: number | null;
   version: 1;
   /** The step the person was on, and the steps they have looked at: reopening goes back there. */
   stage?: LyricStage;
@@ -59,7 +60,7 @@ type LyricRecipe = {
   placementMode?: PlacementMode;
 };
 type LyricStage = 'background' | 'song' | 'timing' | 'style' | 'export';
-const LYRIC_STAGES: { id: LyricStage; label: string }[] = [{ id: 'song', label: 'Song & words' }, { id: 'background', label: 'Backgrounds' }, { id: 'timing', label: 'Timing' }, { id: 'style', label: 'Lyric style' }, { id: 'export', label: 'Open in editor' }];
+const LYRIC_STAGES: { id: LyricStage; label: string }[] = [{ id: 'song', label: 'Song & words' }, { id: 'background', label: 'Backgrounds' }, { id: 'timing', label: 'Timing' }, { id: 'style', label: 'Lyric style' }, { id: 'export', label: 'Build video' }];
 const LYRIC_FONTS: { id: LyricFont; label: string; family: string }[] = [
   { id: 'standard', label: 'Clean', family: LYRIC_FONT_STACK }, { id: 'elegant', label: 'Elegant', family: 'Arima' },
   { id: 'modern', label: 'Modern', family: 'Catamaran' }, { id: 'playful', label: 'Playful', family: 'Baloo Thambi 2' },
@@ -192,12 +193,14 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
   const pause = () => { videoRef.current?.pause(); audioRef.current?.pause(); setPlaying(false); };
   // The project autosaves and jobs continue in the Exports page, so leaving is always safe.
   const close = () => { pause(); onClose(); };
+  // The editor project the full build made for this song: building again updates it, so a song keeps one video.
+  const [builtProjectId, setBuiltProjectId] = useState<number | null>(null);
   const hasWork = true;
   const project = useVideoProject<LyricRecipe>(projectId, 'lyric', hasWork ? {
     version: 1, clips: backgrounds.map((item) => ({ photo_id: item.id })), song: song && { id: song.id, name: song.name, duration: song.duration },
-    lyrics, cues, language, canvas, color, fontSize, placement, placementMode, imageAnimation, lyricAnimation, slideTiming, storyboardStarts, crossfade, quality, lyricStyle, lyricFont, lyricAlign, lyricBandColor, stage, visited,
+    lyrics, cues, language, canvas, color, fontSize, placement, placementMode, imageAnimation, lyricAnimation, slideTiming, storyboardStarts, crossfade, quality, lyricStyle, lyricFont, lyricAlign, lyricBandColor, stage, visited, builtProjectId,
   } : null, async (recipe) => {
-    setLyrics(recipe.lyrics ?? ''); setCues(recipe.cues ?? []); setLanguage(recipe.language ?? ''); setCanvas(recipe.canvas ?? 'auto'); setColor(recipe.color ?? '#ffffff');
+    setBuiltProjectId(recipe.builtProjectId ?? null); setLyrics(recipe.lyrics ?? ''); setCues(recipe.cues ?? []); setLanguage(recipe.language ?? ''); setCanvas(recipe.canvas ?? 'auto'); setColor(recipe.color ?? '#ffffff');
     setFontSize(recipe.fontSize ?? 44); setPlacement(recipe.placement ?? 'bottom'); setPlacementMode(recipe.placementMode ?? 'fixed'); setImageAnimation(recipe.imageAnimation ?? 'none'); setLyricAnimation(recipe.lyricAnimation ?? 'none');
     setSlideTiming(recipe.slideTiming ?? 'even'); setStoryboardStarts(recipe.storyboardStarts ?? []); setCrossfade(recipe.crossfade ?? false); setQuality(recipe.quality ?? '720p'); setLyricStyle(recipe.lyricStyle ?? 'outline');
     if (recipe.stage && LYRIC_STAGES.some((item) => item.id === recipe.stage)) setStageState(recipe.stage);
@@ -263,6 +266,37 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
       setPosition(0); setCues([]); setJob(null); setNotice(fromFile ? 'Found lyrics inside the song file. Check them, then choose Auto-sync lyrics.' : 'Paste the song lyrics and choose Auto-sync lyrics.');
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Song upload failed.'); }
     finally { lockRef.current = false; setUploading(false); }
+  };
+  const [buildChoices, setBuildChoices] = useState<LyricBuildChoices>(rememberedBuild);
+  const [building, setBuilding] = useState<string | null>(null);
+  // The full build: the same builder an agent uses (POST /api/lyric-video/build), then the editor opens on the result.
+  const buildFullVideo = async () => {
+    if (busy || building || !song || !firstBackground || !valid || !cues.length || isVideo) return;
+    setError(null); setNotice(null); pause(); setBuilding(t('Starting…'));
+    try {
+      const { song_by, music, presented_by, footer, logo_media_id, brand_intro, ...rest } = buildChoices;
+      const body = { ...rest, name: projectName, song_asset_id: song.id, song_seconds: duration, canvas: resolvedCanvas,
+        cues: cues.map((cue) => ({ start: cue.start, end: cue.end, text: cue.text })), scenes: backgrounds.map((item, index) => ({ media_id: item.id, start: slideStarts[index] ?? 0 })),
+        lyric_font: lyricFont, lyric_colour: color, lyric_size: fontSize, song_by, music, presented_by, footer,
+        logo_media_id: logo_media_id ?? undefined, brand_intro: Boolean(brand_intro && logo_media_id),
+        project_id: builtProjectId && (await fetch(`/api/projects/${builtProjectId}`)).ok ? builtProjectId : undefined };
+      const response = await fetch('/api/lyric-video/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail ?? 'Could not start the build.');
+      const { job_id } = await response.json();
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const status = await getJobStatus(job_id) as unknown as { status?: string; phase?: string | null; progress?: number; error?: string | null; project_id?: number };
+        if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'The build stopped.');
+        setBuilding(status.phase ? `${t(status.phase)} · ${Math.round(status.progress ?? 0)}%` : t('Building…'));
+        if (status.status === 'done' && status.project_id) {
+          const project = await fetch(`/api/projects/${status.project_id}`).then((r) => r.json());
+          setBuiltProjectId(project.id);
+          onContinueInEditor(project);
+          return;
+        }
+      }
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not build the video.'); }
+    finally { setBuilding(null); }
   };
   const continueInEditor = async () => {
     if (busy || !song || !firstBackground || !valid || !cues.length) return;
@@ -457,11 +491,17 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
               {cues.length > 0 && <LyricSyncFix cues={cues} duration={duration} position={position} onSeek={seek} onChange={(next, note) => { setUndoLyrics({ lyrics, cues }); setCues(next); setNotice(note); }} />}
               {cues.length > 0 && <div><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium text-slate-200">3. Review line timings</h3><div className="flex gap-2 text-xs"><button onClick={() => downloadText(`${songBaseName}.lrc`, cuesToLrc(cues))} className="text-brand-300 hover:underline">Save LRC</button><button onClick={() => downloadText(`${songBaseName}.srt`, cuesToSrt(cues))} className="text-brand-300 hover:underline">Save SRT</button></div></div><div className="space-y-3">{cues.map((cue, index) => <div key={index} className="rounded-xl border border-white/10 p-2"><div className="mb-2 flex items-center justify-between text-xs text-slate-400"><button onClick={() => { seek(cue.start); if (window.innerWidth < 1024) stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }} className="text-brand-300">Line {index + 1} · Preview</button><span>{positionForCue(cue, index)}</span>{cue.review && <span>Check timing</span>}<button aria-label={`Remove lyric line ${index + 1}`} onClick={() => setCues((previous) => previous.filter((_, current) => current !== index))}>Remove</button></div><input aria-label={`Lyric line ${index + 1}`} value={cue.text} maxLength={500} onChange={(event) => editCue(index, { text: event.target.value })} className={inputClass} /><label className="mt-2 block text-xs text-slate-400">Line position<KanaaSelect aria-label={`Line ${index + 1} position`} value={cue.position ?? ''} onChange={(event) => editCue(index, { position: (event.target.value || undefined) as LyricCue['position'] })} className="mt-1"><option value="">Automatic ({positionForCue({ ...cue, position: undefined }, index)})</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></KanaaSelect></label><div className="mt-2 grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Start<input aria-label={`Line ${index + 1} start`} type="number" min={0} max={duration} step={0.05} value={cue.start} onChange={(event) => editCue(index, { start: Number(event.target.value) })} className={`${inputClass} mt-1`} /></label><label className="text-xs text-slate-400">End<input aria-label={`Line ${index + 1} end`} type="number" min={cue.start} max={duration} step={0.05} value={cue.end} onChange={(event) => editCue(index, { end: Number(event.target.value) })} className={`${inputClass} mt-1`} /></label></div></div>)}</div></div>}
               </>}
-              {stage === 'export' && <section className="space-y-4" aria-label="Finish in Video Editor">
-                <h3 className="text-sm font-medium text-slate-200">Finish in Video Editor</h3><p className="text-xs text-slate-400">Kanaa will create an editable final project with a 3-second opening card, every timed lyric line, and a 3-second closing credits card. Edit those cards and export from the Video Editor.</p>
+              {stage === 'export' && <section className="space-y-4" aria-label="Build the video">
+                <h3 className="text-sm font-medium text-slate-200">{t('Build the video')}</h3><p className="text-xs text-slate-400">{t('Kanaa builds the finished video as an editor project, the same way an agent does: scenes, lights, lyrics, brand and credits. Nothing is exported; review it, then export from the editor.')}</p>
                 <div className="space-y-2 rounded-xl border border-white/10 p-3 text-xs text-slate-300"><p>{firstBackground ? '✓ Background ready' : '○ Choose a background'}</p><p>{isVideo || song ? '✓ Audio source ready' : '○ Add a song'}</p><p>{valid && cues.length ? `✓ ${cues.length} timed lyric lines` : '○ Sync and review lyric timing'}</p><p>{resolvedCanvas === 'portrait' ? '9:16 portrait' : resolvedCanvas === 'square' ? '1:1 square' : '16:9 landscape'}{canvas === 'auto' ? ' · matched to media' : ''} · {quality} · MP4</p></div>
                 {(!firstBackground || !song || !valid || !cues.length) && <p className="text-xs text-amber-200">Complete the missing items above before continuing.</p>}
-                <button onClick={() => { void continueInEditor(); }} disabled={busy || !valid || !cues.length || !firstBackground || !song} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40"><Music className="h-4 w-4" />{handingOff ? 'Preparing final edit…' : 'Continue in Video Editor'}</button>
+                
+                <LyricBuildOptions value={buildChoices} onChange={setBuildChoices}/>
+                {isVideo && <p className="text-xs text-amber-200">{t('The full build uses pictures. With a video background, open a simple project instead.')}</p>}
+                {building && <p role="status" className="text-xs text-violet-300">{building}</p>}
+                <button onClick={() => { void buildFullVideo(); }} disabled={busy || Boolean(building) || isVideo || !valid || !cues.length || !firstBackground || !song} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40"><Sparkles size={16}/>{t('Build video')}</button>
+                <details className="text-xs text-slate-400"><summary className="cursor-pointer">{t('Or open a simple project to finish by hand')}</summary><div className="mt-2"><button onClick={() => { void continueInEditor(); }} disabled={busy || !valid || !cues.length || !firstBackground || !song} className="theme-action-brand flex w-full items-center justify-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/15 px-4 py-3 text-sm text-brand-100 disabled:opacity-40"><Music className="h-4 w-4" />{handingOff ? 'Preparing final edit…' : 'Continue in Video Editor'}</button>
+              </div></details>
               </section>}
             </fieldset>
             {(() => {

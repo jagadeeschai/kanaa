@@ -67,6 +67,13 @@ As built (before 3b), the video opens with the brand intro (5.5 s), then "A SONG
 
 ## 3b. Finish in the owner's house style
 
+**Now built in:** pass `house_style: true` (with `lyric_motion: plain`) to `build_lyric_video` and the builder applies
+the look below by itself (`lyrics.house_style`). The lyric screen's Build video step uses the same builder, so what a
+person builds by hand and what you build match. The details below explain what it does; adjust by hand only what the
+owner asks for.
+
+### What house style is
+
 The owner hand-finished the project named **"AI scene 6 still.mp4"** (the song எனைத் தொட்டிழுத்தாள்!, a பாவேந்தர் பாரதிதாசன் poem; its id is 46, but the owner never sees ids) in the editor. **Treat it as the base for every lyric video**: build with `build_lyric_video`, then make these changes with `update_item`, `set_keyframes`, `set_animation`, `add_title`, `set_transition` and `remove_item`. Find it with `list_projects` by that name and read it with `get_project` when in doubt; copy its values, don't guess.
 
 **Opening (no separate credit cards)**

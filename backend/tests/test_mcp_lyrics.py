@@ -61,6 +61,30 @@ class Build(unittest.TestCase):
         tamil_labels = [item for item in texts if item.get('subtitle') and not item['subtitle'].isascii()]
         self.assertTrue(all(item.get('subtitle_spacing', 0) == 0 for item in tamil_labels), 'Tamil is never letter-spaced')
 
+    def test_house_style_keeps_to_kanaas_rules_and_answers_line_by_line(self):
+        t = self.timeline(three_d=False)
+        lyrics.lay_out(t)
+        lyrics.dress(t, 'romantic', {'fireflies': 50, 'bokeh': 51})
+        lyrics.credits(t, 'எனைத் தொட்டிழுத்தாள்!', None, 'பாவேந்தர் பாரதிதாசன்', None, None, None, '#e8b04a', None)
+        lyrics.house_style(t, 'எனைத் தொட்டிழுத்தாள்!', 'பாவேந்தர் பாரதிதாசன்')
+        Timeline.model_validate(t)
+        names = [layer.get('name') for layer in t['layers']]
+        self.assertIn('Lyrics (answer)', names)
+        self.assertIn('Title', names)
+        self.assertIn('Lower third', names)
+        lines = sorted((item for layer in t['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'].startswith('lyric-line-')), key=lambda item: item['start'])
+        answer = next(layer for layer in t['layers'] if layer['id'] == 'lyrics-answer')
+        self.assertEqual({item['id'] for item in answer['items']}, {line['id'] for line in lines[1::2]}, 'even lines answer on their own layer')
+        first = lines[0]
+        self.assertEqual((first['font'], first['size'], first['color'], first['enter']['preset']), ('Arima', 44, '#fff7e8', 'particle-form'))
+        self.assertEqual(first['transform']['keyframes']['x'][0]['v'], 0.5, 'each line starts at the centre')
+        self.assertEqual(first['transform']['x'], 0.72, 'odd lines go right')
+        self.assertEqual(lines[1]['transform']['x'], 0.29, 'even lines go left')
+        lower = next(layer for layer in t['layers'] if layer['id'] == 'house-lower')['items'][0]
+        self.assertEqual(lower['subtitle'], 'பாவேந்தர் பாரதிதாசன்')
+        scenes = [clip for clip in t['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
+        self.assertEqual(scenes[-1]['exit'], {'preset': 'fade', 'duration': 3.0}, 'the last scene leaves slowly')
+
     def test_without_3d_or_credits_it_still_keeps_to_the_rules(self):
         t = self.timeline(three_d=False)
         lyrics.lay_out(t)

@@ -1,0 +1,141 @@
+"""The lyric video builder, shared by the MCP tool (an agent) and Kanaa's lyric screen (a person), so both make the
+same finished video. `api` is a KanaaApi; media, list_media, timeline_of and save are the MCP server's helpers."""
+from __future__ import annotations
+
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+from typing import Literal
+
+from mcp.server.mcpserver.exceptions import ToolError
+
+from kanaa_mcp.server import validate
+
+
+def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_for, *, name: str, song_asset_id: str, song_seconds: float, cues: list[dict], scenes: list[dict],
+                      look: Literal['energetic', 'romantic', 'calm'] = 'romantic', lyric_motion: Literal['into_clear', 'plain', 'in_scene'] = 'into_clear', three_d: bool = False, lights: bool = True,
+                      lyric_font: Literal['standard', 'elegant', 'modern', 'playful', 'handwritten'] = 'elegant', lyric_colour: str = '#ffffff', lyric_size: int = 50,
+                      canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
+                      music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
+                      logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False) -> dict:
+    """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
+    - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
+    - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
+      it within 1.6 s, then nothing covers it; long lines split onto two. People are found with Apple Vision in each
+      picture, and the pictures fill the frame and hold still so the space stays where it was measured.
+      plain: lines simply fade in and out. in_scene: what stands up in a 3D picture covers the lyrics the whole time
+      (the owner found this hides the words; use only if asked).
+    - three_d: each picture becomes a 3D camera glide (push, drift or rise). Not with into_clear.
+    - look: lyric entrances and light overlays. energetic (blast, prism, chromatic...; sun rays, flares), romantic
+      (lines rising from behind the people, magic form...; fireflies, bokeh, lanterns), calm (soft reveals; dust, fog).
+      Every line keeps solid 3D letters; each scene adds a slow pan or zoom.
+    - Credits, film style: an 8 s opening (`presents`, "A SONG BY" `song_by`, then the title `name` with `footer`) and a
+      closing card (LYRICS `song_by`, MUSIC `music`, PRESENTED BY `presented_by`, `footer`); `accent` colours the roles.
+      Leave out what you do not know rather than guess.
+    - logo_media_id: a picture with transparency, small in the bottom-right corner and large on the closing card.
+    - brand_intro: open with the animated brand intro made from that logo (a leaf falls among music notes and
+      becomes it, with வழங்கும் and PRESENTS); it replaces the `presents` card.
+    - project_id: update that editor project instead of making a new one (do this when redoing a video).
+    Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
+    from kanaa_mcp import lyrics
+    if not scenes:
+        raise ToolError('Give at least one scene picture.')
+    scenes = sorted(scenes, key=lambda scene: float(scene.get('start', 0)))
+    starts = [0.0] + [round(float(scene['start']), 3) for scene in scenes[1:]]
+    depth: dict[int, int] = {}
+    clear = lyric_motion == 'into_clear'
+    three_d = three_d and not clear
+    spaces: dict[str, dict] = {}
+    stills: dict[str, int] = {}
+    if clear:
+        import cv2
+        from app.services import cutout_service
+        for index, scene in enumerate(scenes):
+            seconds = (starts[index + 1] if index + 1 < len(scenes) else song_seconds) - starts[index]
+            picture = media(int(scene['media_id']))
+            name = f"{Path(picture['filename']).stem} still.mp4"
+            # A still clip made before for this picture, long enough, is used again rather than made twice.
+            video = next((item for item in list_media(kind='video', query=name, limit=20) if item.get('filename') == name and float(item.get('duration') or 0) >= seconds + 0.3), None)
+            with tempfile.TemporaryDirectory() as folder:
+                clip = Path(folder) / name
+                made = None if video else subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-loop', '1', '-i', picture['absolute_path'], '-t', f'{seconds + 0.5:.2f}', '-r', '30',
+                                       '-vf', 'scale=1920:-2,format=yuv420p', '-c:v', 'libx264', '-crf', '16', str(clip)], capture_output=True, text=True)
+                if made and made.returncode:
+                    raise ToolError(f"Could not make a clip of {picture['filename']}: {made.stderr[-300:]}")
+                video = video or api.upload('/media', clip)
+            video = media(int(video['id']))  # With its file's place, which the media list leaves out.
+            deadline = time.monotonic() + 1800
+            while True:
+                ready = api.post(f"/photos/{video['id']}/prepared?steady=false&backwards=false&cutout=remove&echo=")
+                if ready.get('status') == 'ready':
+                    break
+                if time.monotonic() > deadline:
+                    raise ToolError('Finding the people is taking too long; try again later.')
+                time.sleep(3)
+            mask_file = cutout_service.files(Path(video['absolute_path']))[cutout_service.MASK]
+            frame = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-ss', '0.5', '-i', str(mask_file), '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'], capture_output=True).stdout
+            import numpy as np
+            mask = cv2.imdecode(np.frombuffer(frame, np.uint8), cv2.IMREAD_GRAYSCALE) > 128
+            clip_id = f'lyric-scene-{index + 1}'
+            spaces[clip_id] = {**lyrics.spaces(mask), 'size': [float(picture['width']), float(picture['height'])]}
+            stills[clip_id] = int(video['id'])
+            depth[int(scene['media_id'])] = int(video['id'])  # The scene plays its still clip, the same picture the people were found in.
+    if three_d:
+        for index, scene in enumerate(scenes):
+            seconds = (starts[index + 1] if index + 1 < len(scenes) else song_seconds) - starts[index]
+            made = api.post(f"/photos/{int(scene['media_id'])}/depth-motion", {'seconds': round(min(120, max(0.5, seconds + 0.2)), 2), 'move': ['push', 'drift', 'rise'][index % 3]})
+            video = made.get('output_photo_id') if made.get('status') == 'ready' else look_up(api.wait(made['job_id'], timeout=1800), 'output_photo_id')
+            depth[int(scene['media_id'])] = int(video)
+    handoff = {'name': name, 'backgrounds': [{'id': int(scene['media_id']), 'media_type': 'image'} for scene in scenes], 'backgroundType': 'image', 'duration': song_seconds,
+               'slideStarts': starts, 'song': {'id': song_asset_id, 'duration': song_seconds, 'name': name}, 'cues': [{**cue, 'position': 'bottom'} for cue in cues],
+               'canvas': canvas, 'color': lyric_colour, 'fontSize': lyric_size, 'placement': 'bottom', 'lyricStyle': 'shadow', 'lyricFont': lyric_font, 'lyricAlign': 'center',
+               'lyricBandColor': '#000000', 'lyricAnimation': 'fade' if lyric_motion != 'in_scene' else 'cinematic', 'crossfade': not clear, 'imageAnimation': '3d' if depth else 'ken-burns',
+               'depthVideos': depth or None, 'inScene': bool(three_d and lyric_motion == 'in_scene')}
+    timeline = lyrics.base_timeline(handoff)
+    lyrics.lay_out(timeline)
+    light_media: dict[str, int] = {}
+    if lights:
+        for effect in lyrics.LOOKS[look]['light']:
+            made = api.post(f'/effects/{effect}', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
+            light_media[effect] = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
+    lyrics.dress(timeline, look, light_media, camera_moves=not clear)
+    if clear:
+        lyrics.into_clear(timeline, spaces, stills)
+    elif lyric_motion == 'plain':
+        for layer in timeline['layers']:
+            for item in layer['items'] if layer['kind'] == 'text' else []:
+                if item['id'].startswith('lyric-line'):
+                    item.update(enter={'preset': 'fade', 'duration': 0.4}, exit={'preset': 'fade', 'duration': 0.3}); item.pop('depth', None)
+    logo = None
+    if logo_media_id is not None:
+        item = media(logo_media_id)
+        logo = {'media_id': logo_media_id, 'width': float(item['width']), 'height': float(item['height'])}
+    lyrics.credits(timeline, name, presents, song_by, music, presented_by, footer, accent, logo)
+    if logo and brand_intro:
+        lyrics.prepend_intro(timeline, intro_for(logo_media_id, timeline['format']))
+    # Last, so the credit cards' own moves are kept: every picture covers the frame (into_clear filled its scenes already).
+    sizes = {}
+    for clip in timeline['layers'][0]['items']:
+        if clip['media_id'] not in sizes and not clip['id'].startswith('brand-intro'):
+            item = media(int(clip['media_id']))
+            if item.get('width') and item.get('height'):
+                sizes[clip['media_id']] = (float(item['width']), float(item['height']))
+    if house_style:
+        lyrics.house_style(timeline, name, song_by)
+    lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
+    validate(timeline)
+    if project_id is None:
+        project_id = api.post('/projects', {'name': name, 'kind': 'edit', 'media_ids': [int(scenes[0]['media_id'])]})['id']
+        api.put(f'/projects/{project_id}/recipe', {'recipe': timeline})
+    else:
+        save(project_id, timeline_of(project_id), timeline, 'Rebuilt the lyric video')
+    # The song's own media (its pictures and the clips made from them) goes into a library folder named after the song.
+    from app.services.media_service import song_folder
+    own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()))
+    folder = song_folder(name)
+    if folder and own:
+        api.patch('/photos/folder', {'ids': own, 'folder': folder})
+    return {'project_id': project_id, 'folder': folder, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
+            'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.'}
+
