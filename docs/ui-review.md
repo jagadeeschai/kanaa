@@ -89,12 +89,12 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
-| B1 | Editor.tsx: 3,370 lines, 109 pieces of state | Split into `state/`, `inspectors/`, `preview/`, `dialogs/`, `keyboard/`, one small move at a time | L (many S) | ⬜ |
+| B1 | Editor.tsx: 3,370 lines, 109 pieces of state | 🚧 Started: title editing in the preview (preview/TitleEditing.tsx), the error banner (ErrorBanner.tsx) and the timing line (Timing.tsx) are their own files, each with tests. Next: the inspectors, one at a time | L (many S) | 🚧 |
 | B2 | Inspectors take 30+ props each | A small store; inspectors read what they need by id | M | ⬜ |
 | B3 | The same controls rebuilt (13 raw colour inputs, local Chips) | One `ui/` set: Slider, ColorField, Segmented, Select, Toggle, Section, Callout, ProgressRing | M | ⬜ |
 | B4 | Two styling systems (Tailwind lyric/studio, hand CSS editor) | One `tokens.css`; Tailwind mapped to it; lyric screen moved last | M | ⬜ |
 | B5 | The DOM translator can fight React and translate user text | `t()` everywhere, a missing-translation check, then remove the translator | M | ⬜ |
-| B6 | No UI tests | 🚧 Vitest + Testing Library: `npm run test:ui` (also in ./test.sh). First 9 tests: ⌘K (search, Enter, arrows, Esc, Tamil), Fix sync (shift, stretch), Jobs tray (count, plain errors, cancel), layer panel (only layer-stylable groups). Next: the title and clip panels in English and Tamil | M | 🚧 |
+| B6 | No UI tests | 🚧 `npm run test:ui` (in ./test.sh): 20 tests — ⌘K, Fix sync, Jobs tray, layer panel, typing into a title in the preview (Enter, Esc, Tamil composing, Shift+Enter), the title toolbar, the error banner (English and Tamil), the timing line. Next: the title and clip panels | M | 🚧 |
 
 ### Roadmap
 
