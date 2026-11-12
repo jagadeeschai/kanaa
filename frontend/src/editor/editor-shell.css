@@ -418,3 +418,4 @@
 .ed-folder-pick{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px;color:var(--text-2)}.ed-folder-pick>span{flex:none}.ed-folder-pick>*:last-child{flex:1;min-width:0}
 .ed-rail-divider{display:block;width:22px;height:1px;margin:4px auto 6px;background:var(--hairline);flex:none}.ed-rail-back.failed{color:#f87171}
 .ed-guide-layer{position:fixed;inset:0;z-index:1000}
+.ed-error-details{display:block;margin-top:4px;font-size:11px;opacity:.75;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow:auto}

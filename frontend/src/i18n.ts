@@ -3,7 +3,7 @@
  * label without a Tamil entry simply stays English. The choice is remembered on this Mac; changing it reloads the page.
  * Keep both short: a label is a few words, a tip one plain sentence.
  */
-import { TAMIL } from './i18n-ta';
+import { TAMIL } from './i18n-ta.ts';
 
 export type Language = 'en' | 'ta';
 const KEY = 'kanaa-language';

@@ -42,6 +42,7 @@ import { ContextMenu, isEditable, type MenuItem, type MenuState } from './Contex
 import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { LANGUAGES, WordsPanel } from './Words';
+import { explainError } from './errors';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
 import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
@@ -2083,7 +2084,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
   const matchingOverlayEffects = effects.filter((effect) => !effectNeedle || `${effect.label} ${effect.tamil} ${effect.mood} ${effect.about}`.toLocaleLowerCase().includes(effectNeedle));
   const activeClipEffects = selected ? clipEffects(selected) : [];
   return <SimpleContext.Provider value={layout.simple}><div className={`ed ${layout.simple ? 'ed-simple' : ''} `} ref={rootRef} data-ed-theme={theme} style={shellStyle} onClick={releaseClickedButton} onContextMenu={openGeneralMenu} role="application" aria-label="Video editor">
-    {error && <div className="ed-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={15}/></button></div>}
+    {error && <ErrorBanner message={error} onDismiss={() => setError('')}/>}
     {heavy && !isRendered && <div className="ed-heavy" role="status"><span>This project is too heavy to play smoothly here. Your export isn't affected.</span><button className="ed-button" disabled={Boolean(renderJob)} onClick={() => { void renderPreview(); }}>Render smooth preview</button><button className="ed-icon small" aria-label="Dismiss" onClick={() => setHeavy(false)}><X size={14}/></button></div>}
     {note && <div className="ed-note" role="status">{note}<button className="ed-icon small" aria-label="Dismiss" onClick={() => setNote('')}><X size={13}/></button></div>}
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
@@ -2668,6 +2669,14 @@ function TitleToolbar({ text, top, left, onChange, onEdit }: { text: TextItem; t
     <span className="ed-tt-sep"/>
     {(['band', 'shadow', 'outline'] as const).map((style) => <button key={style} className={text.style === style ? 'on' : ''} aria-pressed={text.style === style} onClick={() => onChange({ style })} title={t(style === 'band' ? 'Band' : style === 'shadow' ? 'Shadow' : 'Outline')}>{style === 'band' ? '▬' : style === 'shadow' ? 'S' : 'O'}</button>)}
   </div>;
+}
+
+/** The editor's one error banner: plain words, the original under Details when it was technical. */
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { text, details } = explainError(message);
+  return <div className="ed-error" role="alert"><span>{text}{details && <>{' '}<button className="ed-link" onClick={() => setOpen(!open)}>{t(open ? 'Hide details' : 'Details')}</button>{open && <small className="ed-error-details">{details}</small>}</>}</span>
+    <button aria-label={t('Dismiss')} onClick={onDismiss}><X size={15}/></button></div>;
 }
 
 /** "0:04 → 0:09 · 5s": where the item sits, for the folded Timing heading. */

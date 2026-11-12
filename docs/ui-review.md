@@ -76,11 +76,11 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | Multi-select: Shift-click range, ⌘-click, drag a box; the panel edits what they share ("Mixed" where they differ) | L | ⬜ |
 | A2 | Snapping and zoom give no visible cue | A snap line with its reason (Beat, Playhead, Clip edge); N toggles snapping; zoom slider and Fit (⇧Z) | M | ⬜ |
 | A3 | Six long jobs, six progress styles, most can't be cancelled | One job tray: progress, Cancel, Retry; export, AI and brand intro included; a toast when done | M | ⬜ |
-| A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ⬜ |
+| A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |
 | A5 | Hints are written into code and not translated | A hints table through `t()`, shown under the control they explain | S | ⬜ |
 | A6 | Powerful features are buried (cinema reveal, keep clear, brand intro) | ⌘K command palette searching every action, English and Tamil; a "✦ Smart" row per inspector | M | ⬜ |
 | A7 | Some focus rings removed; timeline not reachable by keyboard | Focus and contrast pass; arrow keys move between timeline items | M | ⬜ |
-| A8 | Tamil interface font only in bold; Tamil labels cut off | Load Noto Sans Tamil 400/500; Tamil-aware sizes; labels never truncated | S | ⬜ |
+| A8 | Tamil interface font only in bold; Tamil labels cut off | Load Noto Sans Tamil 400/500; Tamil-aware sizes; labels never truncated | S | ✅ |
 | A9 | A new project opens to an empty editor | A three-step first-run checklist (media → title → export) linked to the guide | S | ⬜ |
 | A10 | Loading looks frozen in big projects | Shimmer placeholders; "Preparing preview…" on the stage | S | ⬜ |
 | A11 | Keys mean different things in different places | One keymap with scopes, feeding the shortcuts sheet and ⌘K | M | ⬜ |

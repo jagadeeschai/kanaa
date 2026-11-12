@@ -682,3 +682,14 @@ body {
   background: rgba(104, 85, 220, 0.13);
   color: rgb(63, 43, 176);
 }
+
+/* Tamil interface: the Mac's own Tamil faces (regular and bold, nothing to download) after Inter for Latin, a little
+   more line height for Tamil's tall vowel signs, and labels that wrap or end in "…" instead of being cut. */
+html[lang="ta"] body, html[lang="ta"] body :where(button, input, select, textarea, label, span, p, div, li, h1, h2, h3, h4, small, b, strong, em) {
+  font-family: Inter, 'Tamil Sangam MN', 'Tamil MN', 'Noto Sans Tamil', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html[lang="ta"] :where(.ed-group-tip, .ed-tip, .ed-group-body, .ed-top-menu, .ed-effects, .ed-scope) { line-height: 1.5; }
+html[lang="ta"] .ed-top-menu { min-width: max-content; }
+html[lang="ta"] :where(.ed-chips) { flex-wrap: wrap; }
+html[lang="ta"] :where(.ed-chips) > button { white-space: normal; text-align: center; }
+.tl-layer-title > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
