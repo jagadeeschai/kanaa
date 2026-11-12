@@ -14,8 +14,27 @@ function stampSeconds(minutes: string, seconds: string): number {
   return Number(minutes) * 60 + Number(seconds.replace(':', '.'));
 }
 
+/**
+ * A lyric line without the singing notes a song generator writes into it: section and voice tags in square brackets
+ * ("[Lead Vocal Center]") and English notes in round brackets ("(Backing harmony)", "(Silent 1 second)") go; a note
+ * with lyrics after a colon keeps the lyrics ("(Stereo wide backing: பக்கத்திலே…)"); Tamil words in brackets are sung,
+ * so they stay, without the brackets. Matches without_directions in the MCP lyric reader.
+ */
+export function withoutDirections(line: string): string {
+  const isEnglish = (text: string) => !/[^\x00-\x7F]/.test(text);
+  return line
+    .replace(/\[(?!\d)[^\]]*\]/g, ' ')
+    .replace(/\(([^()]*)\)/g, (_, inside: string) => {
+      const words = inside.trim();
+      if (isEnglish(words)) return ' ';
+      const colon = words.indexOf(':');
+      return ` ${colon >= 0 && isEnglish(words.slice(0, colon)) ? words.slice(colon + 1).trim() : words} `;
+    })
+    .replace(/\s+/g, ' ').trim();
+}
+
 function stripStamps(line: string): string {
-  return line.replace(TIME_STAMP, '').replace(WORD_STAMP, '').trim();
+  return withoutDirections(line.replace(TIME_STAMP, '').replace(WORD_STAMP, ''));
 }
 
 function isSrt(text: string): boolean {
