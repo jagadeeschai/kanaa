@@ -94,7 +94,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | B3 | The same controls rebuilt (13 raw colour inputs, local Chips) | One `ui/` set: Slider, ColorField, Segmented, Select, Toggle, Section, Callout, ProgressRing | M | ⬜ |
 | B4 | Two styling systems (Tailwind lyric/studio, hand CSS editor) | One `tokens.css`; Tailwind mapped to it; lyric screen moved last | M | ⬜ |
 | B5 | The DOM translator can fight React and translate user text | `t()` everywhere, a missing-translation check, then remove the translator | M | ⬜ |
-| B6 | No UI tests | Smoke flows (import, title, edit in preview, undo, export) and English/Tamil screenshots | M | ⬜ |
+| B6 | No UI tests | 🚧 Vitest + Testing Library: `npm run test:ui` (also in ./test.sh). First 9 tests: ⌘K (search, Enter, arrows, Esc, Tamil), Fix sync (shift, stretch), Jobs tray (count, plain errors, cancel), layer panel (only layer-stylable groups). Next: the title and clip panels in English and Tamil | M | 🚧 |
 
 ### Roadmap
 
