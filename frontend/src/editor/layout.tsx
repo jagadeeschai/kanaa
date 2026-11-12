@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { searchText, t } from '../i18n';
 import { ChevronRight, Info, Search, X, type LucideIcon } from 'lucide-react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
@@ -96,13 +97,13 @@ export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; ch
   return <PanelContext.Provider value={{ tab: shown, query: query.trim().toLowerCase() }}>
     <div className="ed-panel-rail-host">
       {!folded && <div className="ed-panel-main">
-        <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a setting… (blur, speed, behind)" aria-label="Find a setting"/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
+        <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Find a setting…')} aria-label={t('Find a setting')}/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
         <div className="ed-panel-body">{children}</div>
-        {query && <p className="ed-tip ed-find-none">Showing settings that match “{query}”. <button className="ed-link" onClick={() => setQuery('')}>Show all</button></p>}
+        {query && <p className="ed-tip ed-find-none">{t('Matching “{query}”.', { query })} <button className="ed-link" onClick={() => setQuery('')}>{t('Show all')}</button></p>}
       </div>}
       <div className="ed-rail-tabs right" role="group" aria-label="Settings sections">{tabs.map(({ id: key, label, Icon, changed }) => {
         const active = !folded && shown === key;
-        return <button key={key} className={active ? 'on' : ''} aria-pressed={active} aria-label={label} data-tip={label}
+        return <button key={key} className={active ? 'on' : ''} aria-pressed={active} aria-label={t(label)} data-tip={t(label)}
           onClick={() => { if (active) rail.setOpen(false); else { if (folded) rail.setOpen(true); pick(key); } }}>
           <Icon size={17}/>{changed && <i className="ed-rail-dot" title="Has changes"/>}
         </button>;
@@ -122,15 +123,15 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
   const simple = useContext(SimpleContext);
   // A Pro group already in use stays visible, so Simple mode never hides a setting that is changing the video.
   if (simple && pro && !changed) return null;
-  const matches = panel?.query ? `${title} ${keywords} ${tip ?? ''}`.toLowerCase().includes(panel.query) : null;
+  const matches = panel?.query ? `${searchText(title)} ${keywords} ${tip ? searchText(tip) : ''}`.toLowerCase().includes(panel.query) : null;
   if (panel && (matches === false || (matches === null && tab && tab !== panel.tab))) return null;
   const showing = open || Boolean(matches);
   return <section className={`ed-group ${showing ? 'open' : ''}`}>
     <div className="ed-group-top">
-      <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{title}</span>{changed && <i title="Changed from the default"/>}</button>
-      {help && <button className="ed-icon small ed-help-button" aria-label={`Learn about ${title}`} title="Learn more" onClick={() => openHelp(help)}><Info size={13}/></button>}
+      <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{t(title)}</span>{changed && <i title="Changed from the default"/>}</button>
+      {help && <button className="ed-icon small ed-help-button" aria-label={`${t('Learn more')}: ${t(title)}`} title={t('Learn more')} onClick={() => openHelp(help)}><Info size={13}/></button>}
     </div>
-    {showing && <div className="ed-group-body">{tip && <p className="ed-group-tip">{tip}</p>}{children}</div>}
+    {showing && <div className="ed-group-body">{tip && <p className="ed-group-tip">{t(tip)}</p>}{children}</div>}
   </section>;
 }
 
@@ -141,7 +142,7 @@ export function More({ label = 'More options', children }: { label?: string; chi
   if (useContext(SimpleContext)) return null;
   const showing = open || Boolean(panel?.query);
   return <div className={`ed-more ${showing ? 'open' : ''}`}>
-    <button className="ed-more-head" aria-expanded={showing} onClick={() => setOpen(!open)}><ChevronRight size={13}/>{label}</button>
+    <button className="ed-more-head" aria-expanded={showing} onClick={() => setOpen(!open)}><ChevronRight size={13}/>{t(label)}</button>
     {showing && <div className="ed-more-body">{children}</div>}
   </div>;
 }

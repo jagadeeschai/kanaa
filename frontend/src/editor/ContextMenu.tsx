@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { t } from '../i18n';
 import { Check, ChevronRight } from 'lucide-react';
 
 /**
@@ -23,7 +24,7 @@ function Items({ items, onClose, openSub, setOpenSub, level }: { items: MenuItem
       const open = openSub === index;
       return <div key={item.label} className="ed-menu-parent" onPointerEnter={() => setOpenSub(index)}>
         <button role="menuitem" aria-haspopup="menu" aria-expanded={open} disabled={item.disabled} data-level={level} data-submenu={index}
-          onClick={() => setOpenSub(open ? null : index)}><span>{item.label}</span><ChevronRight size={13}/></button>
+          onClick={() => setOpenSub(open ? null : index)}><span>{t(item.label)}</span><ChevronRight size={13}/></button>
         {open && <SubMenu items={typeof item.submenu === 'function' ? item.submenu() : item.submenu} onClose={onClose} level={level + 1}/>}
       </div>;
     }
@@ -31,7 +32,7 @@ function Items({ items, onClose, openSub, setOpenSub, level }: { items: MenuItem
     return <button key={item.label} role={checkable ? 'menuitemcheckbox' : 'menuitem'} aria-checked={checkable ? item.checked : undefined} className={`${item.danger ? 'danger' : ''} ${checkable ? 'checkable' : ''}`} disabled={item.disabled} data-level={level}
       onPointerEnter={() => level === 0 && setOpenSub(null)}
       onClick={() => { if (!item.keepOpen) onClose(); item.onSelect(); }}>
-      {checkable && <span className="ed-menu-check" aria-hidden="true">{item.checked ? <Check size={13}/> : null}</span>}<span>{item.label}</span>{item.hint && <kbd>{item.hint}</kbd>}
+      {checkable && <span className="ed-menu-check" aria-hidden="true">{item.checked ? <Check size={13}/> : null}</span>}<span>{t(item.label)}</span>{item.hint && <kbd>{item.hint}</kbd>}
     </button>;
   })}</>;
 }

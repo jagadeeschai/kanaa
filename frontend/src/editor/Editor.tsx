@@ -1,4 +1,5 @@
 import TravelMapPanel from './TravelMapPanel';
+import { LANGUAGE, setLanguage, t } from '../i18n';
 import { loopSound, needsLoop } from '../timeline/loop';
 import { placeEffects, removeEffects, titleTimes, transitionTimes } from '../timeline/sfx';
 import AskPanel from './AskPanel';
@@ -1977,11 +1978,11 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     {isRendered && <div className="ed-note" role="status">Playing a rendered preview. Any edit returns to the live preview.</div>}
     <div className="ed-workspace"><div className="ed-body">
       <aside className="ed-media" aria-label="Add to your video">
-        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={LEFT_TAB_LABELS[tab]} data-tip={TAB_TIPS[tab]} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
+        <div className="ed-rail-tabs" role="group" aria-label="Add to your video">{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab) => { const on = panelOpen && leftTab === tab; return <button key={tab} className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button>; })}
           <div className="ed-rail-tools" role="group" aria-label="Project">
-            <button onClick={nextTheme} aria-label="Theme" data-tip={`Theme: ${themeChoice === 'system' ? 'Same as this Mac' : themeChoice === 'light' ? 'Light' : 'Dark'}`}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
-            <span className={`ed-rail-save ${saved}`} role="status" aria-label={saved === 'saving' ? 'Saving' : saved === 'failed' ? 'Could not save' : 'Saved'} data-tip={`${projectName} · ${saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved'}`}/>
-            <button onClick={() => { void closeEditor(); }} aria-label="Back to projects" data-tip="Back to projects"><ArrowLeft size={17}/></button>
+            <button onClick={nextTheme} aria-label={t('Theme')} data-tip={`${t('Theme')}: ${t(themeChoice === 'system' ? 'Same as this Mac' : themeChoice === 'light' ? 'Light theme' : 'Dark theme')}`}>{themeChoice === 'system' ? <Monitor size={17}/> : themeChoice === 'light' ? <Sun size={17}/> : <Moon size={17}/>}</button>
+            <span className={`ed-rail-save ${saved}`} role="status" aria-label={t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')} data-tip={`${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}/>
+            <button onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={t('Back to projects')}><ArrowLeft size={17}/></button>
           </div></div>
         {panelOpen && <div className="ed-panel-content">
         {leftTab === 'media' && <>
@@ -2217,11 +2218,11 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
-            <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label="Undo" data-tip="Undo (⌘Z)"><Undo2 size={17}/></button>
-            <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label="Redo" data-tip="Redo (⇧⌘Z)"><Redo2 size={17}/></button>
+            <button onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} data-tip={`${t('Undo')} (⌘Z)`}><Undo2 size={17}/></button>
+            <button onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} data-tip={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={17}/></button>
             <TopSettings simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
-            <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label="Export" data-tip="Export"><Download size={17}/></button>
+            <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
           </div> }}>
       <aside className="ed-inspector" aria-label="Clip settings">{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span>{selected ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
         onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
@@ -2319,13 +2320,17 @@ function TopSettings({ simple, onSimple, format, onProject }: { simple: boolean;
     return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', key); };
   }, [open]);
   return <div className="ed-top-settings" ref={box}>
-    <button className={open ? 'on' : ''} aria-label="Editor settings" aria-haspopup="menu" aria-expanded={open} data-tip="Settings" onClick={() => setOpen((value) => !value)}><Settings2 size={17}/></button>
+    <button className={open ? 'on' : ''} aria-label={t('Settings')} aria-haspopup="menu" aria-expanded={open} data-tip={t('Settings')} onClick={() => setOpen((value) => !value)}><Settings2 size={17}/></button>
     {open && <div className="ed-top-menu" role="menu">
-      <div className="ed-top-row"><span>Editor</span><div className="ed-mode" role="group" aria-label="Editor mode">
-        <button aria-pressed={simple} className={simple ? 'on' : ''} onClick={() => onSimple(true)} title="Lite: a guided, template-driven path. The main choices only.">Lite</button>
-        <button aria-pressed={!simple} className={simple ? '' : 'on'} onClick={() => onSimple(false)} title="Pro: every control, including keyframes and More options">Pro</button>
+      <div className="ed-top-row"><span>{t('Editor')}</span><div className="ed-mode" role="group" aria-label={t('Editor')}>
+        <button aria-pressed={simple} className={simple ? 'on' : ''} onClick={() => onSimple(true)} title={t('Main choices only')}>Lite</button>
+        <button aria-pressed={!simple} className={simple ? '' : 'on'} onClick={() => onSimple(false)} title={t('Every control')}>Pro</button>
       </div></div>
-      <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>Project settings</span><em>{format}</em></button>
+      <div className="ed-top-row"><span>{t('Language')}</span><div className="ed-mode" role="group" aria-label={t('Language')}>
+        <button aria-pressed={LANGUAGE === 'en'} className={LANGUAGE === 'en' ? 'on' : ''} onClick={() => { if (LANGUAGE !== 'en') setLanguage('en'); }}>English</button>
+        <button aria-pressed={LANGUAGE === 'ta'} className={LANGUAGE === 'ta' ? 'on' : ''} lang="ta" onClick={() => { if (LANGUAGE !== 'ta') setLanguage('ta'); }}>தமிழ்</button>
+      </div></div>
+      <button className="ed-top-item" role="menuitem" onClick={() => { onProject(); setOpen(false); }}><SlidersHorizontal size={15}/><span>{t('Project settings')}</span><em>{format}</em></button>
     </div>}
   </div>;
 }
@@ -2554,7 +2559,7 @@ function WhoStays({ clip, onChange, local, sourceDuration }: { clip: Clip; onCha
 }
 
 function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
-  return <div className="ed-chips" role="group" aria-label={label}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{option.label}</button>)}</div>;
+  return <div className="ed-chips" role="group" aria-label={t(label)}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{t(option.label)}</button>)}</div>;
 }
 
 function AnimationPicker({ label, value, onChange, onShow, presets = PRESETS }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void; presets?: { id: Preset; label: string }[] }) {

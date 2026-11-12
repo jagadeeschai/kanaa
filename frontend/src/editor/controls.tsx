@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { t } from '../i18n';
 import { RotateCcw } from 'lucide-react';
 import { formatTime, parseTime, parseValue, snapValue } from '../timeline/values';
 
@@ -54,7 +55,7 @@ export function ValueSlider({ label, value, min, max, step, defaultValue, unit =
   const percent = Math.min(100, Math.max(0, ((value - min) / (max - min || 1)) * 100));
   return <div className="ed-slider">
     <div className="ed-value-row">
-      <span className="ed-value-label">{label}</span>
+      <span className="ed-value-label">{t(label)}</span>
       {editing ? <span className="ed-value-edit"><input ref={box.input} type="text" inputMode="decimal" aria-label={`${label} value`} aria-invalid={invalid} value={draft} onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={() => save(false)}
         onKeyDown={(event) => {
           event.stopPropagation();
@@ -67,7 +68,7 @@ export function ValueSlider({ label, value, min, max, step, defaultValue, unit =
         onClick={() => { onGestureStart?.(); onChange(defaultValue); range.current?.focus(); }}><RotateCcw size={13}/></button>
       {actions}
     </div>
-    <input ref={range} type="range" aria-label={label} aria-valuetext={`${shown}${unit}`} style={{ '--fill': `${percent}%` } as React.CSSProperties} min={min} max={max} step={step} value={value}
+    <input ref={range} type="range" aria-label={t(label)} aria-valuetext={`${shown}${unit}`} style={{ '--fill': `${percent}%` } as React.CSSProperties} min={min} max={max} step={step} value={value}
       onPointerDown={startGesture}
       onKeyDown={(event) => {
         if (event.key === 'Enter') { event.preventDefault(); open(); return; }
