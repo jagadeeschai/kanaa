@@ -1007,3 +1007,17 @@ export function animateWholeLayer(timeline: Timeline, id: string): Timeline {
 export function layerCount(timeline: Timeline, id: string): number {
   return findText(timeline, id)?.layer.items.length ?? (overlayHolding(timeline, id) ?? mainLayer(timeline)).items.length;
 }
+
+/** The same keyframed motion as this title or clip on every title or clip in its layer; none on it removes them from all. */
+export function moveWholeLayer(timeline: Timeline, id: string): Timeline {
+  const found = findText(timeline, id);
+  if (found) {
+    const keys = found.text.transform?.keyframes ?? {};
+    return withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item, transform: { ...(item.transform ?? REST_TRANSFORM), keyframes: structuredClone(keys) } })));
+  }
+  const layer = overlayHolding(timeline, id) ?? mainLayer(timeline);
+  const source = layer.items.find((clip) => clip.id === id);
+  if (!source) return timeline;
+  const items = layer.items.map((clip) => ({ ...clip, transform: { ...clip.transform, keyframes: structuredClone(source.transform.keyframes ?? {}) } }));
+  return layer === mainLayer(timeline) ? withClips(timeline, items) : withItems(timeline, layer, items);
+}

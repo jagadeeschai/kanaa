@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, animateWholeLayer, emptyTimeline, findText, insertClip, layerCount, mainLayer, newClip, updateClip, updateText } from '../src/timeline/model.ts';
+import { addText, animateWholeLayer, moveWholeLayer, emptyTimeline, findText, insertClip, layerCount, mainLayer, newClip, updateClip, updateText } from '../src/timeline/model.ts';
 
 const line = (id, start, length) => ({ id, start, length, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
 
@@ -47,4 +47,16 @@ test('no animation on the chosen clip removes them from every clip', () => {
   t = updateClip(t, 'y', { enter: { preset: 'fade', duration: 1 }, exit: { preset: 'fade', duration: 1 } });
   t = animateWholeLayer(t, 'x');
   assert.deepEqual(mainLayer(t).items.map((c) => [c.enter, c.exit]), [[null, null], [null, null]]);
+});
+
+test('no keyframed motion on the chosen title removes it from every title; a motion is copied to all', () => {
+  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
+  const slide = { x: 0.5, y: 0.8, scale: 1, opacity: 1, rotation: 0, keyframes: { x: [{ t: 0, v: 0.1, ease: 'easeInOut' }, { t: 1.6, v: 0.5, ease: 'easeInOut' }] } };
+  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, { ...line('b', 5, 4), transform: slide }, 'L');
+  t = moveWholeLayer(t, 'a');
+  assert.deepEqual(findText(t, 'b').text.transform.keyframes, {});
+  assert.equal(findText(t, 'b').text.transform.x, 0.5);
+  t = updateText(t, 'b', { transform: slide });
+  t = moveWholeLayer(t, 'b');
+  assert.deepEqual(findText(t, 'a').text.transform.keyframes, slide.keyframes);
 });

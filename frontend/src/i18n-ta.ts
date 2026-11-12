@@ -188,4 +188,7 @@ export const TAMIL: Record<string, string> = {
   'Same enter and exit on every item in this layer': 'இந்த அடுக்கின் எல்லாவற்றிலும் அதே நுழைவு, வெளியேற்றம்',
   'Use on all {count} titles in this layer': 'அடுக்கின் {count} தலைப்புகளிலும் இடு',
   'Use on all {count} clips in this layer': 'அடுக்கின் {count} கிளிப்களிலும் இடு',
+  'Same motion on all {count} titles in this layer': 'அடுக்கின் {count} தலைப்புகளிலும் இதே நகர்வு',
+  'Same motion on all {count} clips in this layer': 'அடுக்கின் {count} கிளிப்களிலும் இதே நகர்வு',
+  'This motion, or none, on every item in this layer': 'இந்த நகர்வு (அல்லது இல்லை) அடுக்கின் எல்லாவற்றிலும்',
 };
