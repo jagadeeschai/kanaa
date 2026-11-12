@@ -162,3 +162,26 @@ export function reconcileLyricCues(cues: LyricCue[], text: string): LyricCue[] {
   const after = oldMiddle.length ? cues.slice(cues.length - tail) : cues.slice(head + (borrowed ? 0 : 1));
   return [...before, ...timed, ...after];
 }
+
+const clampCue = (cue: LyricCue, start: number, end: number, duration: number): LyricCue => {
+  const s = Math.min(Math.max(0, start), Math.max(0, duration - 0.05));
+  return { ...cue, start: Math.round(s * 1000) / 1000, end: Math.round(Math.min(duration, Math.max(s + 0.05, end)) * 1000) / 1000 };
+};
+
+/** Lines `from`..`to` (indexes, inclusive) all earlier or later by `seconds`, kept inside the song. */
+export function shiftLyricCues(cues: LyricCue[], from: number, to: number, seconds: number, duration: number): LyricCue[] {
+  return cues.map((cue, index) => index < from || index > to ? cue : clampCue(cue, cue.start + seconds, cue.end + seconds, duration));
+}
+
+/**
+ * Two-point sync: line `from` now starts at `fromStart` and line `to` at `toStart`; every line between is spread in
+ * proportion, which fixes lyrics that drift (made for a slightly different tempo or version of the song).
+ */
+export function stretchLyricCues(cues: LyricCue[], from: number, to: number, fromStart: number, toStart: number, duration: number): LyricCue[] {
+  const oldFrom = cues[from]?.start, oldTo = cues[to]?.start;
+  if (oldFrom === undefined || oldTo === undefined) return cues;
+  if (to <= from || Math.abs(oldTo - oldFrom) < 1e-6) return shiftLyricCues(cues, from, to, fromStart - oldFrom, duration);
+  const scale = (toStart - fromStart) / (oldTo - oldFrom);
+  const map = (t: number) => fromStart + (t - oldFrom) * scale;
+  return cues.map((cue, index) => index < from || index > to ? cue : clampCue(cue, map(cue.start), map(cue.end), duration));
+}
