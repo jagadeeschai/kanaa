@@ -315,4 +315,13 @@ export const TAMIL: Record<string, string> = {
   'Follow lyrics': 'வரிகளைப் பின்பற்று',
   'Song language': 'பாடல் மொழி',
   'Detect automatically': 'தானாகக் கண்டறி',
+  'Snapping on: edges lock to clips, the playhead and beats': 'ஒட்டுதல் இயக்கம்: ஓரங்கள் கிளிப்கள், இயக்கக்கோடு, தாளத்தில் ஒட்டும்',
+  'Snapping off': 'ஒட்டுதல் அணைவு',
+  'Timeline zoom': 'காலவரிசை பெரிதாக்கம்',
+  'First steps': 'முதல் படிகள்',
+  'Add your clips or photos': 'உங்கள் கிளிப்கள் அல்லது படங்களைச் சேருங்கள்',
+  'Add a title': 'ஒரு தலைப்பு சேருங்கள்',
+  'Export your video': 'வீடியோவை ஏற்றுமதி செய்யுங்கள்',
+  'How': 'எப்படி',
+  'Press ⌘K any time to find an action.': 'எந்தச் செயலையும் தேட எப்போதும் ⌘K அழுத்துங்கள்.',
 };

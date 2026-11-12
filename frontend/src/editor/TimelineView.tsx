@@ -12,6 +12,8 @@ type Props = {
   timeline: Timeline; selectedId: string | null; zoom: number; theme: string;
   /** Other items picked with the selected one (multi-select). */
   selectedIds?: ReadonlySet<string>;
+  /** False turns snapping off (N toggles it). */
+  snapping?: boolean;
   /** Opens the settings for a whole text or video layer; the layer shown there is marked. */
   onLayerSettings?: (layerId: string, open?: 'sync') => void; layerSettingsId?: string | null;
   visuals: (mediaId: number) => ClipVisuals; soundPeaks: (sound: Sound) => ClipVisuals['peaks']; source: (mediaId: number) => SourceFacts | undefined;
@@ -56,11 +58,13 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true }: Props) {
+  // Where the item being dragged has just snapped to, drawn as a line so the snap is visible.
+  const snapLine = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
-  const props = useRef({ timeline, selectedId, selectedIds, zoom, visuals, soundPeaks, source, fileName, renaming });
-  props.current = { timeline, selectedId, selectedIds, zoom, visuals, soundPeaks, source, fileName, renaming };
+  const props = useRef({ timeline, selectedId, selectedIds, zoom, visuals, soundPeaks, source, fileName, renaming, snapping });
+  props.current = { timeline, selectedId, selectedIds, zoom, visuals, soundPeaks, source, fileName, renaming, snapping };
   const picked = (id: string) => id === props.current.selectedId || Boolean(props.current.selectedIds?.has(id));
   /** The clip under the pointer, for its hover card and on/off button. */
   const [hover, setHover] = useState<{ id: string; x: number } | null>(null);
@@ -337,6 +341,12 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.beginPath(); context.roundRect(lx, RULER + 2, w, 20, 6); context.fill();
         context.fillStyle = colors.current.rulerBg; context.fillText(label, lx + 7, RULER + 12);
       }
+      if (snapLine.current !== null) {
+        // The snap: a dashed line where the dragged edge has locked on.
+        const at = xOf(snapLine.current);
+        context.save(); context.strokeStyle = colors.current.selected; context.lineWidth = 1; context.setLineDash([4, 3]);
+        context.beginPath(); context.moveTo(at + 0.5, RULER); context.lineTo(at + 0.5, height); context.stroke(); context.restore();
+      }
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
@@ -434,7 +444,9 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       event.currentTarget.style.cursor = zone === 'in' || zone === 'out' ? 'ew-resize' : zone === 'body' ? 'grab' : 'default';
       return;
     }
-    const reach = SNAP_PIXELS / props.current.zoom;
+    const reach = props.current.snapping === false ? 0 : SNAP_PIXELS / props.current.zoom;
+    snapLine.current = null;
+    const snapTo = (t: number, points: number[], within: number): number => { const at = snap(t, points, within); if (within > 0 && Math.abs(at - t) > 1e-9) snapLine.current = at; return at; };
     const y = pointerY(event); const lift = liftRef.current;
     if (lift && (drag.kind === 'move' || drag.kind === 'soundMove')) {
       lift.x = x; lift.y = y;
@@ -444,7 +456,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       if (drag.kind === 'move' && !inMain) {
         // Off the main track: onto a video layer, or nowhere (it goes back).
         if (props.current.timeline !== drag.base) onChange(drag.base, drag.group);
-        lift.target = over?.kind === 'video' && !mainLayer(drag.base).locked && !over.locked ? { kind: 'layer', layerId: over.id, start: snap(Math.max(0, timeOf(x - lift.dx)), snapPoints(drag.base, playhead.current, drag.id), reach) } : null;
+        lift.target = over?.kind === 'video' && !mainLayer(drag.base).locked && !over.locked ? { kind: 'layer', layerId: over.id, start:  snapTo(Math.max(0, timeOf(x - lift.dx)), snapPoints(drag.base, playhead.current, drag.id), reach) } : null;
         return;
       }
       if (drag.kind === 'soundMove' && inMain) {
@@ -456,14 +468,14 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       lift.target = null;
     }
-    if (drag.kind === 'seek') onSeek(snap(timeOf(x), snapPoints(props.current.timeline, -1), reach));
+    if (drag.kind === 'seek') onSeek(snapTo(timeOf(x), snapPoints(props.current.timeline, -1), reach));
     else if (drag.kind === 'soundMove') {
       const shift = (x - drag.startX) / props.current.zoom;
       const layer = trackLayers(drag.base)[rowAt(pointerY(event))];
       const length = itemLength(drag.origin);
       const points = snapPoints(drag.base, playhead.current, drag.id);
-      const fromStart = snap(drag.origin.start + shift, points, reach);
-      const fromEnd = snap(drag.origin.start + shift + length, points, reach) - length;
+      const fromStart =  snapTo(drag.origin.start + shift, points, reach);
+      const fromEnd =  snapTo(drag.origin.start + shift + length, points, reach) - length;
       const start = fromStart !== drag.origin.start + shift ? fromStart : fromEnd;
       const next = moveItem(drag.base, drag.id, start, layer?.id);
       if (next !== props.current.timeline) onChange(next, drag.group);
@@ -471,7 +483,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       const { origin, edge, base, id } = drag;
       const end = origin.start + itemLength(origin);
       const edgeTime = (edge === 'in' ? origin.start : end) + (x - drag.startX) / props.current.zoom;
-      const snapped = snap(edgeTime, snapPoints(base, playhead.current, id), reach);
+      const snapped =  snapTo(edgeTime, snapPoints(base, playhead.current, id), reach);
       if ('length' in origin) onChange(trimText(base, id, edge, snapped), drag.group);
       else {
         const facts = isClip(origin) ? props.current.source(origin.media_id) : undefined;
@@ -484,7 +496,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       // In the magnetic track, the trimmed edge's timeline position decides what it snaps to.
       const end = origin.start + clipLength(origin);
       const edgeTime = edge === 'out' ? end + shift / origin.speed : origin.start;
-      const snapped = edge === 'out' ? (snap(edgeTime, snapPoints(base, playhead.current, id), reach) - origin.start) * origin.speed + origin.in : origin.in + shift;
+      const snapped = edge === 'out' ? (snapTo(edgeTime, snapPoints(base, playhead.current, id), reach) - origin.start) * origin.speed + origin.in : origin.in + shift;
       const next = trimClip(base, id, edge, snapped, props.current.source(origin.media_id));
       onChange(next, drag.group);
     } else {
@@ -505,6 +517,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     onItemMenu(item, timeOf(x), event.clientX, event.clientY);
   };
   const onPointerUp = () => {
+    snapLine.current = null;
     const drag = dragRef.current; const lift = liftRef.current;
     dragRef.current = null; liftRef.current = null;
     if (!drag || !lift?.target || (drag.kind !== 'move' && drag.kind !== 'soundMove')) return;

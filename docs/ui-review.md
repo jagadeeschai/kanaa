@@ -74,14 +74,14 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
 | A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click picks a range on a layer, ⌘-click adds or removes, ⌘A picks the whole layer; a change applies to all picked (not words or timing); Delete removes all. Still to do: drag a box, "Mixed" values | L | 🚧 |
-| A2 | Snapping and zoom give no visible cue | A snap line with its reason (Beat, Playhead, Clip edge); N toggles snapping; zoom slider and Fit (⇧Z) | M | ⬜ |
+| A2 | Snapping and zoom give no visible cue | ✅ A dashed line where a dragged edge snaps; magnet button and N toggle snapping; a zoom slider between − and + | M | ✅ |
 | A3 | Six long jobs, six progress styles, most can't be cancelled | ✅ One Jobs tray (right rail): running count, progress, what each is doing, Cancel, plain words for failures, a note when one finishes. Still to do: Retry, jump to the changed item | M | 🚧 |
 | A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |
 | A5 | Hints are written into code and not translated | A hints table through `t()`, shown under the control they explain | S | ⬜ |
 | A6 | Powerful features are buried (cinema reveal, keep clear, brand intro) | ⌘K command palette searching every action, English and Tamil; a "✦ Smart" row per inspector | M | ✅ |
 | A7 | Some focus rings removed; timeline not reachable by keyboard | Focus and contrast pass; arrow keys move between timeline items | M | ⬜ |
 | A8 | Tamil interface font only in bold; Tamil labels cut off | Load Noto Sans Tamil 400/500; Tamil-aware sizes; labels never truncated | S | ✅ |
-| A9 | A new project opens to an empty editor | A three-step first-run checklist (media → title → export) linked to the guide | S | ⬜ |
+| A9 | A new project opens to an empty editor | ✅ First steps card in the preview corner (clips → title → export), ticks itself, links to the guide, can be closed | S | ✅ |
 | A10 | Loading looks frozen in big projects | Shimmer placeholders; "Preparing preview…" on the stage | S | ⬜ |
 | A11 | Keys mean different things in different places | One keymap with scopes, feeding the shortcuts sheet and ⌘K | M | ⬜ |
 

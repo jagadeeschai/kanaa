@@ -440,3 +440,13 @@
 .ed-palette li span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-palette li small{color:var(--muted);font-size:11px}
 .ed-palette li.on{background:var(--selected-bg);color:var(--selected-text)}.ed-palette-empty{color:var(--muted);cursor:default}
 .ed-icon-button{padding-left:8px;padding-right:8px}.ed-tool-sep{display:inline-block;width:1px;height:18px;margin:0 4px;background:var(--hairline);vertical-align:middle}
+
+/* Timeline zoom slider. */
+.ed-zoom{width:90px;accent-color:var(--accent,#7c6cff)}
+/* First steps for a new video. */
+.ed-stage{position:relative}.ed-first-run{position:absolute;left:12px;top:12px;z-index:40;width:240px;padding:10px 12px;border-radius:12px;background:var(--panel,#1d1a26);border:1px solid var(--hairline);box-shadow:0 12px 30px rgba(0,0,0,.4);font-size:12px}
+.ed-first-run-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ed-first-run ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}.ed-first-run li{display:flex;align-items:center;gap:6px}
+.ed-first-run li .ed-link{flex:1;text-align:left}.ed-first-run li.done .ed-link{text-decoration:line-through;opacity:.6;cursor:default}
+.ed-first-run-tick{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--hairline)}.ed-first-run li.done .ed-first-run-tick{background:var(--accent,#7c6cff);border-color:transparent;color:#fff}
+.ed-first-run p{margin:8px 0 0;color:var(--muted);font-size:11px}

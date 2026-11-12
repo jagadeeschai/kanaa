@@ -12,7 +12,7 @@ import { splitAtCuts } from '../timeline/scenes';
 import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { BadgeCheck, Camera, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
+import { BadgeCheck, Camera, Magnet, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
 import { Search, Settings2 } from 'lucide-react';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -199,6 +199,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // Multi-select: items picked along with the selected one (⌘-click adds, Shift-click picks a range on its layer).
   const [moreIds, setMoreIds] = useState<ReadonlySet<string>>(new Set());
   const [zoom, setZoom] = useState(40);
+  const [snapping, setSnapping] = useState(true);  // N turns snapping off and on.
+  // First steps for a new video: shown until each is done or the card is closed.
+  const [firstRunClosed, setFirstRunClosed] = useState(() => { try { return localStorage.getItem('kanaa-first-run-closed') === '1'; } catch { return false; } });
+  const [exportedOnce, setExportedOnce] = useState(() => { try { return localStorage.getItem('kanaa-exported-once') === '1'; } catch { return false; } });
   const [playing, setPlaying] = useState(false);
   const [saved, setSaved] = useState<SaveState>('saved');
   const [ready, setReady] = useState<Record<number, boolean>>({});
@@ -1669,6 +1673,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
           engine?.pause(); seek(playhead.current + (event.key === 'ArrowLeft' ? -1 : 1) * frame * (event.shiftKey ? 10 : 1)); break;
         }
         case 's': split(); break;
+        case 'n': setSnapping((value) => !value); break;
         case 'f': toggleFullScreen(); break;
         case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
@@ -2382,6 +2387,22 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       </aside>
       {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
       <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
+    {timeline && !firstRunClosed && !fullScreen && (() => {
+      const steps = [
+        { done: total > 0, label: 'Add your clips or photos', go: () => { setLeftTab('media'); setPanelOpen(true); }, guide: 'getting-started' },
+        { done: timeline.layers.some((layer) => layer.kind === 'text' && layer.items.length > 0), label: 'Add a title', go: () => { setLeftTab('text'); setPanelOpen(true); }, guide: 'titles' },
+        { done: exportedOnce, label: 'Export your video', go: () => { if (total) { engineRef.current?.pause(); setExporting(true); } }, guide: 'getting-started' },
+      ];
+      if (steps.every((step) => step.done)) return null;
+      const close = () => { setFirstRunClosed(true); try { localStorage.setItem('kanaa-first-run-closed', '1'); } catch { /* ignore */ } };
+      return <aside className="ed-first-run" aria-label={t('First steps')}>
+        <div className="ed-first-run-head"><b>{t('First steps')}</b><button className="ed-icon small" aria-label={t('Close')} onClick={close}><X size={12}/></button></div>
+        <ol>{steps.map((step) => <li key={step.label} className={step.done ? 'done' : ''}><span className="ed-first-run-tick">{step.done ? <Check size={11}/> : null}</span>
+          <button className="ed-link" disabled={step.done} onClick={step.go}>{t(step.label)}</button>
+          <button className="ed-icon small" aria-label={t('How')} title={t('How')} onClick={() => openGuide(ARTICLES.some((article) => article.id === step.guide) ? step.guide : 'getting-started')}><CircleHelp size={11}/></button></li>)}</ol>
+        <p>{t('Press ⌘K any time to find an action.')}</p>
+      </aside>;
+    })()}
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setPickedInPreview(hit.id); setSelectedId(hit.id); setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
@@ -2448,7 +2469,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <button onClick={() => setShowingHelp(true)} aria-label={t('Guide and shortcuts')} data-tip={`${t('Guide and shortcuts')} (?)`}><CircleHelp size={17}/></button>
             <TopSettings appearance={themeChoice} onAppearance={(choice) => { if (setTheme) setTheme(choice); else nextTheme(); }} simple={layout.simple} onSimple={(simple) => updateLayout({ simple })}
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
-            <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
+            <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); try { localStorage.setItem('kanaa-exported-once', '1'); } catch { /* ignore */ } setExportedOnce(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
           </div> }}>
       <aside className="ed-inspector" aria-label="Clip settings"><LayerModeContext.Provider value={Boolean(layerSettings)}>{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{t(selectedIdentity.kind)}</span>{selected && !settingsLayer ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
         onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
@@ -2488,12 +2509,14 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <div className="ed-spacer"/>
       <span className="ed-tool-group" role="group" aria-label="Timeline view">
         <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
+        <button className={`ed-button ${snapping ? 'on' : ''}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} title={`${t(snapping ? 'Snapping on: edges lock to clips, the playhead and beats' : 'Snapping off')} (N)`}><Magnet size={14}/></button>
         <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
+        <input className="ed-zoom" type="range" min={Math.log(ZOOM_MIN)} max={Math.log(ZOOM_MAX)} step={0.01} value={Math.log(zoom)} onChange={(event) => setZoom(Math.exp(Number(event.target.value)))} aria-label={t('Timeline zoom')} title={t('Timeline zoom')}/>
         <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
         <button className="ed-button" aria-label="View" onClick={openViewMenu}><MoreHorizontal size={15}/>{t('View')}</button>
       </span>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} snapping={snapping} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
       onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
