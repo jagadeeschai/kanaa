@@ -185,4 +185,7 @@ export const TAMIL: Record<string, string> = {
   'Text layer': 'எழுத்து அடுக்கு',
   'Person layer': 'நபர் அடுக்கு',
   'Cuts': 'வெட்டுகள்',
+  'Same enter and exit on every item in this layer': 'இந்த அடுக்கின் எல்லாவற்றிலும் அதே நுழைவு, வெளியேற்றம்',
+  'Use on all {count} titles in this layer': 'அடுக்கின் {count} தலைப்புகளிலும் இடு',
+  'Use on all {count} clips in this layer': 'அடுக்கின் {count} கிளிப்களிலும் இடு',
 };

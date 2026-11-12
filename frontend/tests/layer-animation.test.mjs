@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { addText, animateWholeLayer, emptyTimeline, findText, insertClip, layerCount, mainLayer, newClip, updateClip, updateText } from '../src/timeline/model.ts';
+
+const line = (id, start, length) => ({ id, start, length, text: id, style: 'shadow', position: 'bottom', color: '#ffffff', size: 1 });
+
+test('every title in the layer gets the same enter and exit, fitted to short lines', () => {
+  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
+  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L'); t = addText(t, line('c', 10, 1), 'L');
+  t = updateText(t, 'a', { enter: { preset: 'fade', duration: 0.8 }, exit: { preset: 'slide-up', duration: 0.6 } });
+  assert.equal(layerCount(t, 'a'), 3);
+  t = animateWholeLayer(t, 'a');
+  assert.deepEqual(findText(t, 'b').text.enter, { preset: 'fade', duration: 0.8 });
+  assert.deepEqual(findText(t, 'b').text.exit, { preset: 'slide-up', duration: 0.6 });
+  assert.deepEqual(findText(t, 'c').text.enter, { preset: 'fade', duration: 0.5 });
+});
+
+test('a scene-depth reveal on another title is kept', () => {
+  let t = emptyTimeline({ width: 1920, height: 1080, fps: 30 });
+  t = addText(t, line('a', 0, 4), 'L'); t = addText(t, line('b', 5, 4), 'L');
+  t = updateText(t, 'b', { enter: { preset: 'rise-behind', duration: 1.2 } });
+  t = updateText(t, 'a', { enter: { preset: 'fade', duration: 0.5 } });
+  t = animateWholeLayer(t, 'a');
+  assert.equal(findText(t, 'b').text.enter.preset, 'rise-behind');
+});
+
+test('clips in a layer share the enter and exit', () => {
+  const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
+  let t = ['x', 'y'].reduce((acc, id) => insertClip(acc, newClip(source, id)), emptyTimeline({ width: 1920, height: 1080, fps: 30 }));
+  t = updateClip(t, 'x', { enter: { preset: 'fade', duration: 1 } });
+  t = animateWholeLayer(t, 'x');
+  assert.deepEqual(mainLayer(t).items.map((c) => c.enter?.preset), ['fade', 'fade']);
+});

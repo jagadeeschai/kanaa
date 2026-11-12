@@ -971,3 +971,31 @@ export function clipToMain(timeline: Timeline, id: string, index: number): Timel
   const without = withItems(timeline, from, from.items.filter((item) => item.id !== id));
   return insertClip(without, { ...clip, transform: { ...REST_TRANSFORM } }, index);
 }
+
+const CINEMA_PRESETS = ['ground-rise', 'rise-behind', 'push-through'];
+/** Each animation no longer than half the item, so enter and exit never run into each other on a short one. */
+function fitted(animation: Animation | null | undefined, length: number): Animation | null {
+  return animation ? { ...animation, duration: Math.min(animation.duration, Math.round(length / 2 * 100) / 100) } : null;
+}
+
+/** The same enter and exit as this title or clip on every title or clip in its layer. A title's scene-depth reveal stays its own. */
+export function animateWholeLayer(timeline: Timeline, id: string): Timeline {
+  const found = findText(timeline, id);
+  if (found) {
+    const simple = (animation: Animation | null | undefined) => animation && CINEMA_PRESETS.includes(animation.preset) ? undefined : animation ?? null;
+    const enter = simple(found.text.enter), exit = simple(found.text.exit);
+    return withItems(timeline, found.layer, found.layer.items.map((item) => ({ ...item,
+      ...(enter !== undefined && !(item.enter && CINEMA_PRESETS.includes(item.enter.preset)) ? { enter: fitted(enter, item.length) } : {}),
+      ...(exit !== undefined ? { exit: fitted(exit, item.length) } : {}) })));
+  }
+  const layer = overlayHolding(timeline, id) ?? mainLayer(timeline);
+  const source = layer.items.find((clip) => clip.id === id);
+  if (!source) return timeline;
+  const items = layer.items.map((clip) => { const length = (clip.out - clip.in) / (clip.speed || 1); return { ...clip, enter: fitted(source.enter, length), exit: fitted(source.exit, length) }; });
+  return layer === mainLayer(timeline) ? withClips(timeline, items) : withItems(timeline, layer, items);
+}
+
+/** How many titles or clips share this one's layer, itself included. */
+export function layerCount(timeline: Timeline, id: string): number {
+  return findText(timeline, id)?.layer.items.length ?? (overlayHolding(timeline, id) ?? mainLayer(timeline)).items.length;
+}
