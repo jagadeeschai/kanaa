@@ -86,7 +86,15 @@ export const RailContext = createContext<{ folded: boolean; setOpen: (open: bool
  * Clicking the open tab's icon folds the panel to the rail; clicking any icon on the folded rail unfolds it.
  * The search box and every group behave exactly as before.
  */
-export function Panel({ id, tabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
+/** Set while the settings panel shows a whole layer: only groups a layer can style are shown. */
+export const LayerModeContext = createContext(false);
+const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'sound']);
+const LAYER_GROUPS = new Set(['Style', 'Subtitle', 'Simple animation', 'Title moves', 'Advanced motion', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Animation', 'Moves', 'Speed and sound']);
+
+export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
+  // A whole layer shows only the tabs a layer can style.
+  const layerMode = useContext(LayerModeContext);
+  const tabs = layerMode ? allTabs.filter((item) => LAYER_TABS.has(item.id)) : allTabs;
   const remembered = lastTab.get(id);
   const [tab, setTab] = useState(remembered && tabs.some((item) => item.id === remembered) ? remembered : tabs[0]?.id ?? '');
   const [query, setQuery] = useState('');
@@ -121,6 +129,7 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
   const panel = useContext(PanelContext);
   const openHelp = useContext(HelpContext);
   const simple = useContext(SimpleContext);
+  if (useContext(LayerModeContext) && !LAYER_GROUPS.has(title)) return null;
   // A Pro group already in use stays visible, so Simple mode never hides a setting that is changing the video.
   if (simple && pro && !changed) return null;
   const matches = panel?.query ? `${searchText(title)} ${keywords} ${tip ? searchText(tip) : ''}`.toLowerCase().includes(panel.query) : null;

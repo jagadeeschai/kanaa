@@ -202,4 +202,5 @@ export const TAMIL: Record<string, string> = {
   'Font': 'எழுத்துரு',
   'Design': 'வடிவமைப்பு',
   'Mute': 'ஒலியடக்கு',
+  'Settings for every item on this layer': 'இந்த அடுக்கின் அனைத்துக்குமான அமைப்புகள்',
 };

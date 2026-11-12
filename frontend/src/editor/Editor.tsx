@@ -41,7 +41,7 @@ import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
 import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
 import { WordsPanel } from './Words';
 import { DEFAULT_CHROMA } from '../timeline/chroma';
-import { DEFAULT_LAYOUT, Group, HelpContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
+import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
 import { MotionPanel, MotionPath } from './Keyframes';
 import { ResizeBox } from './ResizeBox';
@@ -863,6 +863,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, []);
 
   const change = useCallback((next: Timeline, group?: string | null) => dispatch({ type: 'change', timeline: applyLayerStyles(next), group }), []);
+  const [layerSettings, setLayerSettings] = useState<string | null>(null);
+  useEffect(() => { if (!selectedId) setLayerSettings(null); }, [selectedId]);
   const selected = timeline ? findClip(timeline, selectedId) : null;
   const local = selected ? Math.max(0, Math.min(now - selected.start, clipLength(selected))) : 0;
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
@@ -879,7 +881,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
   const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
-  const selectedIdentity = selected ? { kind: 'Clip', name: selected.name || (mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}`) }
+  const settingsLayer = layerSettings ? timeline?.layers.find((l) => l.id === layerSettings) : undefined;
+  const selectedIdentity = settingsLayer ? { kind: 'Layer', name: settingsLayer.name || (settingsLayer.kind === 'text' ? 'Text' : 'Video') }
+    : selected ? { kind: 'Clip', name: selected.name || (mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}`) }
     : selectedText ? { kind: 'Title', name: selectedText.text || 'Untitled title' }
       : selectedSound ? { kind: 'Sound', name: selectedSound.sound.name || 'Untitled sound' }
         : selectedBlur ? { kind: 'Privacy', name: selectedBlur.style === 'pixelate' ? 'Pixelated area' : 'Blurred area' }
@@ -894,27 +898,34 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   const textLocal = selectedText ? Math.max(0, Math.min(now - selectedText.start, selectedText.length)) : 0;
   // Edits go to this item alone (and become its own, over the layer's style), or to the whole layer's style.
-  const [styleScope, setStyleScope] = useState<'item' | 'layer'>('item');
+  // The settings panel can show a whole text or video layer (its icon on the timeline): edits then go to the layer's style.
+  const styleScope: 'item' | 'layer' = layerSettings ? 'layer' : 'item';
+  const openLayerSettings = (layerId: string) => {
+    const layer = timeline?.layers.find((l) => l.id === layerId);
+    if (!layer || (layer.kind !== 'text' && layer.kind !== 'video') || !layer.items.length) return;
+    // The panel shows an item that follows the layer, so it reads the layer's own settings.
+    const items = layer.items as (Clip | TextItem)[];
+    setSelectedId((items.find((item) => !item.own?.length) ?? items[0]).id);
+    setLayerSettings(layerId);
+  };
   const scopedUpdate = <T extends object>(id: string, changes: T, one: (t: Timeline) => Timeline, group?: string) => {
     if (!timeline) return;
     if (styleScope === 'layer' && sharedKeys(changes).length) {
       const shared = Object.fromEntries(Object.entries(changes).filter(([key]) => sharedKeys({ [key]: 0 }).length));
       const rest = Object.fromEntries(Object.entries(changes).filter(([key]) => !sharedKeys({ [key]: 0 }).length));
-      let next = setLayerStyle(timeline, id, shared);
-      if (Object.keys(rest).length) next = one(next);
-      change(next, group ? `layer-${group}` : undefined);
+      void rest; // Timing, words and picture-bound settings belong to one item, never to a layer.
+      change(setLayerStyle(timeline, id, shared), group ? `layer-${group}` : undefined);
       return;
     }
     change(markOwn(one(timeline), id, changes), group);
   };
   const scopeBar = (id: string, noun: 'title' | 'clip') => {
     const layer = timeline ? styledLayerOf(timeline, id) : null;
-    if (!timeline || !layer || layer.items.length < 2) return null;
+    if (!timeline || !layer) return null;
+    if (layerSettings) return <div className="ed-scope"><p className="ed-tip">{t('Every item on this layer follows, except settings an item sets itself.')} ({layer.items.length})</p></div>;
     const own = ownOverLayer(timeline, id);
-    return <div className="ed-scope">
-      <Chips label="Changes apply to" options={[{ id: 'item' as const, label: noun === 'title' ? 'This title' : 'This clip' }, { id: 'layer' as const, label: t('Whole layer ({count})', { count: layer.items.length }) }]} value={styleScope} onPick={setStyleScope}/>
-      {styleScope === 'item' && own.length > 0 && <p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
-      {styleScope === 'layer' && <p className="ed-tip">{t('Every item on this layer follows, except settings an item sets itself.')}</p>}
+    return own.length > 0 && <div className="ed-scope">
+      {<p className="ed-tip">{t(noun === 'title' ? 'This title sets its own:' : 'This clip sets its own:')} {own.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')}. <button type="button" className="ed-link" onClick={() => change(useLayerStyle(timeline, id))}>{t("Use the layer's")}</button></p>}
     </div>;
   };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => { if (timeline && selectedText) scopedUpdate(selectedText.id, changes, (t) => updateText(t, selectedText.id, changes), group); };
@@ -2252,7 +2263,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
               format={timeline ? `${timeline.format.width} × ${timeline.format.height} · ${timeline.format.fps} fps` : 'Format'} onProject={() => { setSelectedId(null); updateLayout({ inspectorOpen: true }); }}/>
             <button className="ed-rail-export" disabled={!total} onClick={() => { engineRef.current?.pause(); setExporting(true); }} aria-label={t('Export')} data-tip={t('Export')}><Download size={17}/></button>
           </div> }}>
-      <aside className="ed-inspector" aria-label="Clip settings">{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{selectedIdentity.kind}</span>{selected ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
+      <aside className="ed-inspector" aria-label="Clip settings"><LayerModeContext.Provider value={Boolean(layerSettings)}>{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{t(selectedIdentity.kind)}</span>{selected && !settingsLayer ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
         onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
         onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}{!selectedLayer?.locked && (selectedText ? scopeBar(selectedText.id, 'title') : selected ? scopeBar(selected.id, 'clip') : null)}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
@@ -2266,7 +2277,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         : selected ? <Inspector onReframe={(() => { const item = mediaById.get(selected.media_id); return item?.media_type === 'video' && item.width && item.height && timeline && canReframe({ width: item.width, height: item.height }, selected.adjust.rotation, timeline.format) ? () => { void reframeClip(selected.id); } : null; })()} reframing={Boolean(reframeJob)} onMove={(move) => { void moveSelected(move); }} backgrounds={media.filter((item) => item.id !== selected.media_id && (item.media_type === 'video' || item.media_type === 'image'))} onBackground={(item) => newBackground(selected, item)} logos={media.filter((item) => item.media_type === 'image' && item.id !== selected.media_id)} clipBrandMarks={brandsOnClip(timeline!, selected).map((mark) => ({ id: mark.id, name: mediaById.get(mark.media_id)?.filename ?? `Media ${mark.media_id}` }))} onClipBrand={(item) => change(brandOnClip(timeline!, selected, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onRemoveClipBrand={(id) => change(removeClipBrand(timeline!, id), 'brand')} clip={selected} source={sourceFor(selected.media_id)} format={timeline!.format} onChange={updateSelected} canDetach={!selected.muted && hasSound(selected.media_id)} onDetach={() => detach()}
           local={local} onSeekLocal={(t) => seek(selected.start + t)} onPause={pauseEngine} follow={followPanel} isMain={selectedLayer === mainLayer(timeline!)} copyReady={Boolean(preparedWant(selected, timeline!.format.fps) && preparedReady[preparedKey(selected.media_id, ...preparedWant(selected, timeline!.format.fps)!)])} onLayout={splitScreen} picking={pickingKey} onPick={startPicking} timing={clipTiming(selected)} overlay={selectedLayer?.kind === 'video' && !selectedLayer.magnetic && selectedLayer !== mainLayer(timeline!) ? selectedLayer : null} onLayer={(changes) => change(updateLayer(timeline!, selectedLayer!.id, changes))} closesWithTransition={Boolean(clipsInOrder[clipIndex + 1]?.transition_in)}
           onShowEnter={() => showEnter(selected.start, selected.enter?.duration ?? 0.5)} onShowExit={() => showExit(selected.start + clipLength(selected), selected.exit?.duration ?? 0.5)}/> : timeline ? <ProjectInspector introBusy={introProgress} onBrandIntro={(item, tamil, english) => { void addBrandIntro(item, tamil, english); }} timeline={timeline} clipFormat={firstClipFormat && { ...firstClipFormat, fps: timeline.format.fps }} logos={media.filter((item) => item.media_type === 'image')} logo={(() => { const item = brandClip(timeline); return item ? media.find((entry) => entry.id === item.media_id) ?? null : null; })()} onBrand={(item) => change(applyBrand(timeline, { media_id: item.id, width: item.width || 800, height: item.height || 800 }, 'top-right', BRAND_SIZES[1].scale, newId()), 'brand')} onImported={(items) => { setMedia((current) => [...items, ...current]); }} onRemoveBrand={() => change(removeBrand(timeline), 'brand')} onChange={change} onPause={pauseEngine} onThemes={() => { setLeftTab('themes'); setPanelOpen(true); }} onGuide={() => setShowingHelp(true)}/>
-          : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</aside>
+          : <div className="ed-hint"><h2>Project settings</h2><p>Loading your project…</p></div>}</LayerModeContext.Provider></aside>
       </RailContext.Provider>
       </HelpContext.Provider>
     </div>
@@ -2286,7 +2297,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
         <button className="ed-button" aria-label="More view and help actions" onClick={openViewMenu}><MoreHorizontal size={15}/>More</button>
       </span>
     </div>
-    {timeline && <TimelineView timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={setSelectedId} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} onSelect={(id) => { setLayerSettings(null); setSelectedId(id); }} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
       onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
