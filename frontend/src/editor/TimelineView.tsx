@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Power, SlidersHorizontal, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Power, SlidersHorizontal, Link2, Link2Off, Eye, EyeOff, Lock, LockOpen, Music, Plus, Trash2, Type, Video, Volume2, VolumeX, X } from 'lucide-react';
 import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
@@ -681,7 +681,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   </div>;
 }
 
-function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, onCollapse, onToggle, onMove, onRename, onDelete, onSettings, settingsOpen }: { onSettings?: () => void; settingsOpen: boolean; layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; collapsed: boolean; onCollapse: () => void; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void; onDelete: () => void }) {
+function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, onCollapse, onToggle, onMove, onRename, onDelete, onSettings, settingsOpen }: { onSettings?: () => void; settingsOpen: boolean; layer: TrackLayer; top: number; height: number; isMain: boolean; position: number; overlays: number; collapsed: boolean; onCollapse: () => void; onToggle: (changes: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number; ripple?: boolean }) => void; onMove: (direction: 'forward' | 'back') => void; onRename: (name: string) => void; onDelete: () => void }) {
   const fallback = isMain ? 'Main' : layer.kind === 'video' ? `Overlay ${position + 1}` : layer.kind === 'text' ? 'Text' : layer.kind === 'blur' ? 'Blur' : layer.kind === 'captions' ? 'Captions' : 'Sound';
   const name = layer.name || fallback;
   const [editing, setEditing] = useState(false);
@@ -700,6 +700,7 @@ function LayerHead({ layer, top, height, isMain, position, overlays, collapsed, 
         <button aria-label={`Bring ${name} forward`} title="Bring forward (above the layers under it)" disabled={position === overlays - 1} onClick={() => onMove('forward')}><ArrowUp size={13}/></button>
         <button aria-label={`Send ${name} back`} title="Send back (under the layers above it)" disabled={position === 0} onClick={() => onMove('back')}><ArrowDown size={13}/></button>
       </>}
+      {!isMain && <button className={layer.ripple === false ? 'on' : ''} aria-pressed={layer.ripple === false} aria-label={`${layer.ripple === false ? 'Link' : 'Unlink'} ${name}`} title={layer.ripple === false ? 'Stays put when main clips are added or removed. Click to move with them' : 'Moves with the main track when clips are added, removed or trimmed. Click to keep it in place'} onClick={() => onToggle({ ripple: layer.ripple === false })}>{layer.ripple === false ? <Link2Off size={13}/> : <Link2 size={13}/>}</button>}
       {layer.kind !== 'audio' && <button className={layer.hidden ? 'on' : ''} aria-pressed={Boolean(layer.hidden)} aria-label={`Hide ${name}`} title={layer.hidden ? 'Show this layer' : 'Hide this layer'} onClick={() => onToggle({ hidden: !layer.hidden })}>{layer.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</button>}
       {(layer.kind === 'video' || layer.kind === 'audio') && <button className={layer.muted ? 'on' : ''} aria-pressed={Boolean(layer.muted)} aria-label={`Mute ${name}`} title={layer.muted ? 'Turn sound on' : 'Mute this layer'} onClick={() => onToggle({ muted: !layer.muted })}>{layer.muted ? <VolumeX size={13}/> : <Volume2 size={13}/>}</button>}
       <button className={layer.locked ? 'on' : ''} aria-pressed={Boolean(layer.locked)} aria-label={`Lock ${name}`} title={layer.locked ? 'Unlock this layer' : 'Lock this layer'} onClick={() => onToggle({ locked: !layer.locked })}>{layer.locked ? <Lock size={13}/> : <LockOpen size={13}/>}</button>

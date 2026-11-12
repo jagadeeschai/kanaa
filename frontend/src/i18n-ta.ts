@@ -203,4 +203,6 @@ export const TAMIL: Record<string, string> = {
   'Design': 'வடிவமைப்பு',
   'Mute': 'ஒலியடக்கு',
   'Settings for every item on this layer': 'இந்த அடுக்கின் அனைத்துக்குமான அமைப்புகள்',
+  'Stays put when main clips are added or removed. Click to move with them': 'முதன்மைக் கிளிப் மாறினாலும் இது நகராது. சேர்ந்து நகர அழுத்தவும்',
+  'Moves with the main track when clips are added, removed or trimmed. Click to keep it in place': 'முதன்மைக் கிளிப்களுடன் சேர்ந்து நகரும். நிலையாக வைக்க அழுத்தவும்',
 };

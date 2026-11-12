@@ -457,6 +457,7 @@ class LayerBase(Strict):
     hidden: bool = False
     muted: bool = False
     locked: bool = False
+    ripple: bool = True  # Moves with the main track's edits (inserting, removing, trimming); false stays put.
 
 
 class VideoLayer(LayerBase):

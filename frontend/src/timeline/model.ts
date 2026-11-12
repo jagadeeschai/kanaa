@@ -29,9 +29,9 @@ export type Clip = { id: string; /** What it is for, shown on it in the timeline
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
-export type VideoLayer = { id: string; kind: 'video'; name?: string; style?: Record<string, unknown>; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
+export type VideoLayer = { id: string; kind: 'video'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; style?: Record<string, unknown>; magnetic?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; blend?: BlendMode; items: Clip[] };
 export type Sound = { id: string; asset_id?: string; media_id?: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; fade_in: number; fade_out: number; duck: boolean; name: string; source_length?: number; clean_voice?: boolean };
-export type AudioLayer = { id: string; kind: 'audio'; name?: string; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
+export type AudioLayer = { id: string; kind: 'audio'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
 /** Extruded letters (sides in `color`), and a title locked to the scene of a clip. Match timeline_schema.py. */
 export type TitleDepth = { amount: number; color: string; light: number; angle?: number };
@@ -50,16 +50,16 @@ export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradi
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
-export type TextLayer = { id: string; kind: 'text'; name?: string; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
+export type TextLayer = { id: string; kind: 'text'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
 export type BlurBox = { id: string; start: number; length: number; style: 'blur' | 'pixelate'; shape: 'oval' | 'box'; amount: number; width: number; height: number; transform: Transform };
-export type BlurLayer = { id: string; kind: 'blur'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
+export type BlurLayer = { id: string; kind: 'blur'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: BlurBox[] };
 /** One caption line. `s` is each word's time from the caption's start. The layer holds the look. */
 export type CaptionWord = { w: string; s: number };
 /** `position`, when set, places this one caption elsewhere than its layer (for example above a face). */
 export type Caption = { id: string; start: number; length: number; words: CaptionWord[]; position?: 'top' | 'center' | 'bottom' | null };
 export type CaptionLook = { style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; highlight: string | null; size: number };
-export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
+export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
 export const DEFAULT_CAPTION_LOOK: CaptionLook = { style: 'outline', position: 'bottom', color: '#ffffff', highlight: '#ffd400', size: 48 };
 export type TrackLayer = VideoLayer | TextLayer | CaptionLayer | BlurLayer | AudioLayer;
 export type TrackItem = TextItem | Caption | BlurBox | Sound | Clip;
@@ -220,7 +220,51 @@ function withClips(timeline: Timeline, clips: Clip[]): Timeline {
     return placed;
   });
   const main = mainLayer(timeline);
-  return { ...timeline, layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: packed } : layer)) };
+  return ripple(timeline, main.items, packed, { ...timeline, layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: packed } : layer)) });
+}
+
+/**
+ * Everything on the other layers follows the main track's edits: an item moves with the main clip it starts in, so
+ * inserting, removing, trimming, reordering or speeding up a clip keeps titles, lyrics, overlays, effects and the
+ * song in step. An item wholly inside a removed clip goes with it; one starting there but running on moves to where
+ * the next clip now starts. Items starting before an edit (so spanning it) and after the old end don't move.
+ * A layer with `ripple: false` stays where it is.
+ */
+function ripple(before: Timeline, oldClips: Clip[], newClips: Clip[], after: Timeline): Timeline {
+  if (!oldClips.length) return after;
+  const newStart = new Map(newClips.map((clip) => [clip.id, clip.start]));
+  const shiftOf = (clip: Clip) => newStart.has(clip.id) ? newStart.get(clip.id)! - clip.start : null;
+  // How far an item starting at `t` moves, or 'remove' when it lies wholly inside a removed clip.
+  const moveFor = (t: number, end: number): number | 'remove' => {
+    const index = oldClips.findIndex((clip) => t >= clip.start - 1e-6 && t < clip.start + clipLength(clip) - 1e-6);
+    if (index < 0) return 0;
+    const clip = oldClips[index];
+    const shift = shiftOf(clip);
+    if (shift !== null) return shift;
+    if (end <= clip.start + clipLength(clip) + 1e-6) return 'remove';
+    const next = oldClips.slice(index + 1).find((later) => newStart.has(later.id));
+    return next ? newStart.get(next.id)! - t : 0;
+  };
+  let changed = false;
+  const layers = after.layers.map((layer) => {
+    if (layer.id === mainLayer(before).id || (layer as { ripple?: boolean }).ripple === false) return layer;
+    const items: TrackItem[] = [];
+    for (const item of layer.items as (TrackItem & { start: number })[]) {
+      const length = 'length' in item ? (item as { length: number }).length : 'out' in item ? ((item as { out: number; in: number; speed?: number }).out - (item as { in: number }).in) / ((item as { speed?: number }).speed || 1) : 0;
+      const move = moveFor(item.start, item.start + length);
+      if (move === 'remove') { changed = true; continue; }
+      if (Math.abs(move) < 1e-6) { items.push(item); continue; }
+      changed = true;
+      const moved: Record<string, unknown> = { ...item, start: round(Math.max(0, item.start + move)) };
+      for (const key of ['pin', 'stay_with'] as const) {
+        const held = (item as Record<string, unknown>)[key] as { at: number } | null | undefined;
+        if (held && typeof held.at === 'number') moved[key] = { ...held, at: round(Math.max(0, held.at + move)) };
+      }
+      items.push(moved as unknown as TrackItem);
+    }
+    return { ...layer, items } as TrackLayer;
+  });
+  return changed ? { ...after, layers } : after;
 }
 
 export function clipAt(timeline: Timeline, t: number): Clip | undefined {
