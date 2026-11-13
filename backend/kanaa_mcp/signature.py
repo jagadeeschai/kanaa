@@ -37,11 +37,12 @@ def _length(item: dict) -> float:
     return item['length'] if 'length' in item else (item['out'] - item['in']) / item.get('speed', 1)
 
 
-def _words(id_: str, start: float, length: float, text: str, x: float, y: float, size: int, color: str, subtitle: str | None = None, extra: dict | None = None) -> dict:
-    item = {'id': id_, 'start': round(start, 3), 'length': round(length, 3), 'text': text, 'style': 'shadow', 'position': 'center', 'align': 'center', 'color': color, 'size': size,
+def _words(id_: str, start: float, length: float, text: str, x: float, y: float, size: int, color: str, subtitle: str | None = None, extra: dict | None = None, above: bool = True) -> dict:
+    # On paper: no shadow (it smudges on white). A band in the paper's own colour leaves the letters clean.
+    item = {'id': id_, 'start': round(start, 3), 'length': round(length, 3), 'text': text, 'style': 'band', 'band_color': PAPER, 'position': 'center', 'align': 'center', 'color': color, 'size': size,
             **FONT, 'enter': {'preset': 'fade', 'duration': 0.7}, 'exit': {'preset': 'fade', 'duration': 0.6}, 'transform': {'x': x, 'y': y, 'scale': 1, 'opacity': 1, 'rotation': 0}}
     if subtitle:
-        item.update(subtitle=subtitle, subtitle_size=max(12, round(size * 0.62)), subtitle_color=GREY, subtitle_above=True, subtitle_spacing=0)
+        item.update(subtitle=subtitle, subtitle_size=max(9, round(size * 0.5)), subtitle_color=GREY, subtitle_above=above, subtitle_spacing=0)
     return {**item, **(extra or {})}
 
 
@@ -63,7 +64,9 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
         for item in layer['items']:
             if item['start'] >= at - 1e-6:
                 item['start'] = round(item['start'] + seconds, 3)
-    paper = {'id': 'signature-paper', 'media_id': signature['paper'], 'start': round(at, 3), 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
+    # With a drawn card (the portrait drawing itself, made once per song length), it is the background itself.
+    drawn = (signature.get('cards') or {}).get(str(round(seconds, 1)))
+    paper = {'id': 'signature-paper', 'media_id': drawn or signature['paper'], 'start': round(at, 3), 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
              'fade_in': 0.4, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0},
              'adjust': {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1}}
     main.append(paper)
@@ -76,12 +79,12 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
                 'volume': 0, 'muted': True, 'fade_in': 0.8, 'fade_out': 0.6, 'adjust': dict(paper['adjust']),
                 'transform': {'x': 0.3, 'y': 0.46, 'scale': 0.6, 'opacity': 1, 'rotation': 0}}
     lyricist = signature.get('lyricist')
-    words = [_words('signature-title', at + 0.6, seconds - 1.0, title, 0.66, 0.30, 64, MAROON),
-             _words('signature-english', at + 0.75, seconds - 1.15, english.upper(), 0.66, 0.39, 17, GREY)]
+    words = [_words('signature-title', at + 0.6, seconds - 1.0, title, 0.66, 0.27, 40, MAROON, subtitle=english.upper(), above=False)]
     for n, (tamil, english_role, name) in enumerate(roles[:4]):
-        words.append(_words(f'signature-role-{n + 1}', at + 0.9 + 0.12 * n, seconds - 1.3 - 0.12 * n, name, 0.66, 0.52 + 0.105 * n, 23, INK, subtitle=f'{tamil} · {english_role.upper()}'))
+        words.append(_words(f'signature-role-{n + 1}', at + 1.2 + 0.15 * n, seconds - 1.6 - 0.15 * n, name, 0.66, 0.47 + 0.12 * n, 20, INK, subtitle=f'{tamil} · {english_role.upper()}'))
     if lyricist:  # Their name beneath the portrait, as under a picture on a wall.
-        words.append(_words('signature-name', at + 0.5, seconds - 0.9, lyricist, 0.3, 0.86, 26, INK))
-    timeline['layers'].insert(1, {'id': 'signature-portrait', 'kind': 'video', 'name': 'Signature portrait', 'items': [portrait]})
+        words.append(_words('signature-name', at + 2.6, seconds - 3.0, lyricist, 0.3, 0.86, 22, MAROON))  # Once the portrait is drawn.
+    if not drawn:
+        timeline['layers'].insert(1, {'id': 'signature-portrait', 'kind': 'video', 'name': 'Signature portrait', 'items': [portrait]})
     timeline['layers'] += [{'id': f'signature-words-{n + 1}', 'kind': 'text', 'name': f'Signature card {n + 1}', 'items': [item]} for n, item in enumerate(words)]
     return at

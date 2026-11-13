@@ -69,3 +69,51 @@ def sketch(photo: Path, target: Path, framed: bool = True) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(out, 'RGBA').save(target)
     return target
+
+
+def draw_on_card(photo: Path, paper: Path, target: Path, seconds: float, size: tuple[int, int] = (1920, 1080), place: tuple[float, float] = (0.3, 0.46),
+                 height_share: float = 0.62, drawing: float = 2.6, fps: int = 30) -> Path:
+    """A white card on which the person's ink portrait draws itself: the ink seeps into the paper stroke by stroke,
+    darkest lines first, over `drawing` seconds, then holds. One video, so preview and export are the same."""
+    import shutil
+    import subprocess
+    import tempfile
+    import cv2
+    from PIL import Image
+    width, height = size
+    with tempfile.TemporaryDirectory() as folder:
+        ink_png = sketch(photo, Path(folder) / 'ink.png', framed=False)
+        rgba = np.asarray(Image.open(ink_png).convert('RGBA'), np.float32) / 255
+    side = int(height * height_share)
+    alpha = cv2.resize(rgba[..., 3], (side, side), interpolation=cv2.INTER_AREA)
+    ground = np.asarray(Image.open(paper).convert('RGB').resize((width, height)), np.float32) / 255
+    x0, y0 = int(place[0] * width - side / 2), int(place[1] * height - side / 2)
+    # When each bit of ink appears: dark strokes first, then lighter shading, broken up by a soft noise like ink
+    # finding its way through paper fibres.
+    rng = np.random.default_rng(11)
+    noise = cv2.GaussianBlur(rng.random((side, side)).astype(np.float32), (0, 0), side / 60)
+    noise = (noise - noise.min()) / (np.ptp(noise) or 1)
+    order = np.clip(0.55 * (1 - alpha) + 0.45 * noise, 0, 1)
+    ink_colour = np.array([0.086, 0.078, 0.07], np.float32)
+    frames = max(2, round(seconds * fps))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}', '-r', str(fps),
+                                '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(target)], stdin=subprocess.PIPE)
+    try:
+        assert process.stdin is not None
+        for n in range(frames):
+            t = n / fps
+            p = min(1.0, max(0.0, (t - 0.3) / drawing))
+            front = p * 1.25  # The front of the ink sweeps past every point by the end.
+            shown = alpha * np.clip((front - order) / 0.12, 0, 1)
+            frame = ground.copy()
+            region = frame[y0:y0 + side, x0:x0 + side]
+            region[:] = region * (1 - shown[..., None]) + ink_colour * shown[..., None]
+            process.stdin.write((frame * 255).astype(np.uint8).tobytes())
+        process.stdin.close()
+        if process.wait():
+            raise RuntimeError('Could not make the signature card.')
+    finally:
+        if process.poll() is None:
+            process.kill()
+    return target

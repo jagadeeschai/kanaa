@@ -21,7 +21,7 @@ def _text(id_: str, start: float, length: float, text: str, y: float, size: int,
     item = {'id': id_, 'start': round(start, 3), 'length': round(length, 3), 'text': text, 'style': 'shadow', 'position': 'center', 'align': 'center', 'color': color,
             'size': size, **FONT, 'enter': fade(0.6), 'exit': fade(0.6), 'transform': {'x': x, 'y': y, 'scale': 1, 'opacity': 1, 'rotation': 0}}
     if subtitle:
-        item.update(subtitle=subtitle, subtitle_size=max(12, round(size * 0.6)), subtitle_color=SOFT, subtitle_above=True, subtitle_spacing=0)
+        item.update(subtitle=subtitle, subtitle_size=max(9, round(size * 0.5)), subtitle_color=SOFT, subtitle_above=True, subtitle_spacing=0)
     return {**item, **(extra or {})}
 
 
@@ -68,14 +68,14 @@ def add(timeline: dict, title: str, english: str, roles: list[tuple[str, str, st
              for n, at in enumerate(times)]
     # End card: the last part, after the singing, in the left 40% of the frame.
     begin = max(last + 0.5, end - 18.0)
-    closing = [_text('credit-end-title', begin, end - begin, title, 0.26, 44, GOLD, x=0.24)]
+    closing = [_text('credit-end-title', begin, end - begin, title, 0.24, 30, GOLD, x=0.24)]
     for n, (tamil, english_role, name) in enumerate(roles[:4]):
-        closing.append(_text(f'credit-end-{n + 1}', begin + 0.2 + 0.12 * n, end - begin - 0.2 - 0.12 * n, name, 0.38 + 0.11 * n, 19, WHITE, x=0.24,
+        closing.append(_text(f'credit-end-{n + 1}', begin + 0.2 + 0.12 * n, end - begin - 0.2 - 0.12 * n, name, 0.37 + 0.1 * n, 20, WHITE, x=0.24,
                              subtitle=f'{tamil} · {english_role.upper()}'))
     if rights:
-        closing.append(_text('credit-end-rights', begin + 0.8, end - begin - 0.8, rights, 0.84, 13, SOFT, x=0.24))
+        closing.append(_text('credit-end-rights', begin + 0.8, end - begin - 0.8, '℗', 0.8, 20, SOFT, x=0.24, extra={'subtitle': rights.removeprefix('℗').strip(), 'subtitle_size': 9, 'subtitle_color': SOFT, 'subtitle_above': False}))
     if portrait and portrait[1] < 4:
-        pictures.append((portrait[0], begin + 0.2, end - begin - 0.2, 0.24 - 0.17, 0.38 + 0.11 * portrait[1] - 0.012))
+        pictures.append((portrait[0], begin + 0.2, end - begin - 0.2, 0.24 - 0.16, 0.37 + 0.1 * portrait[1] - 0.01))
     # Lines shown together each need their own layer: a layer holds one item at a time.
     timeline['layers'] += [{'id': f'credits-opening-{n + 1}', 'kind': 'text', 'name': f'Opening credits {n + 1}', 'items': [item]} for n, item in enumerate(card)]
     timeline['layers'].append({'id': 'credits-ticker', 'kind': 'text', 'name': 'Ticker', 'items': crawl})
