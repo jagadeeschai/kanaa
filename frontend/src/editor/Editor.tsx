@@ -21,6 +21,7 @@ import { BadgeCheck, Camera, Magnet, ChevronRight, Link2, Eye, Shuffle, Crop, Pa
 import { Search, Settings2, Paintbrush, X as Close } from 'lucide-react';
 import { useClipboard } from './useClipboard';
 import { asVideo } from './photoToVideo';
+import { wheelFactor, zoomBy } from '../timeline/zoom';
 import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
@@ -1801,6 +1802,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     event.currentTarget.setPointerCapture(event.pointerId);
     dragPreview.current = { x: event.clientX, y: event.clientY, clipX: valueAt(moving.transform, 'x', moving.local), clipY: valueAt(moving.transform, 'y', moving.local), group: `move-${Date.now()}` };
   };
+  // Zoom by hand: a trackpad pinch (or ⌘-scroll) over the preview resizes the selected picture or video.
+  const wheelRef = useRef<(event: WheelEvent) => void>(() => {});
+  wheelRef.current = (event: WheelEvent) => {
+    if (!(event.ctrlKey || event.metaKey) || !moving || selectedLayer?.locked || selected?.enabled === false || selected?.frame_locked) return;
+    event.preventDefault();  // A pinch would otherwise zoom the whole window.
+    moving.update(zoomBy(moving.transform, moving.local, wheelFactor(event.deltaY, event.ctrlKey)), `zoom-${selectedId}`);
+  };
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const listen = (event: WheelEvent) => wheelRef.current(event);
+    canvas.addEventListener('wheel', listen, { passive: false });  // Passive listeners can't stop the page zooming.
+    return () => canvas.removeEventListener('wheel', listen);
+  }, [timeline !== null]);
   const previewMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragPreview.current;
     if (!drag || !moving) return;

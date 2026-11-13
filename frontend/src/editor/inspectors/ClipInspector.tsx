@@ -9,6 +9,7 @@ import { EFFECT_LAYER } from '../../timeline/drop';
 import { clipEffects } from '../../timeline/effects';
 import { valueAt } from '../../timeline/evaluate';
 import { writeValue } from '../../timeline/keyframes';
+import { ZOOM_MAX, ZOOM_MIN } from '../../timeline/zoom';
 import { type Adjust, type Clip, type Corner, DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, type Format, type Sound, TONE_PRESETS, type VideoLayer, clipLength, cornerPlacement, duration, fillScale } from '../../timeline/model';
 import { type MovePreset } from '../../timeline/presets';
 import { RAMPS } from '../../timeline/ramp';
@@ -56,6 +57,8 @@ export function Inspector({ onReframe, reframing, onMove, backgrounds, onBackgro
       <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} disabled={clip.frame_locked} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
       <button className={`ed-button ${filling ? 'on' : ''}`} disabled={clip.frame_locked} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
     </div>
+    {!clip.frame_locked && <ValueSlider label="Zoom" value={valueAt(clip.transform, 'scale', local)} min={ZOOM_MIN} max={ZOOM_MAX} step={0.01} defaultValue={1} unit="%" factor={100}
+      onGestureStart={onPause} onChange={(scale, group) => onChange({ transform: writeValue(clip.transform, 'scale', local, scale) }, group)}/>}
     <button className={`ed-button wide ${clip.frame_locked ? 'on' : ''}`} aria-pressed={Boolean(clip.frame_locked)} onClick={() => onChange({ frame_locked: !clip.frame_locked })} title={clip.frame_locked ? 'Allow this picture to be moved and resized again' : 'Prevent accidental movement and resizing'}>{clip.frame_locked ? <Lock size={14}/> : <Unlock size={14}/>} {clip.frame_locked ? 'Frame locked' : 'Lock frame'}</button>
     {onReframe && <button className="ed-button wide" disabled={reframing || clip.frame_locked} onClick={onReframe} title="Fills the frame and pans with the main person, for a reel from a landscape video"><ScanFace size={14}/>{reframing ? 'Finding who to follow…' : 'Follow the person'}</button>}
     <div className="ed-pair">
