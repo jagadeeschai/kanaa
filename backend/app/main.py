@@ -10,6 +10,7 @@ from app.api.routes import router
 from app.api.ai_routes import router as ai_router
 from app.api.lights_routes import router as lights_router
 from app.api.signature_routes import router as signature_router
+from app.api.still_routes import router as still_router
 from app.api.timeline_routes import router as timeline_router
 from app.services.lyric_image_service import recover_scene_jobs
 
@@ -89,6 +90,7 @@ app.include_router(ai_router, prefix="/api")
 app.include_router(timeline_router, prefix='/api')
 app.include_router(lights_router, prefix='/api')
 app.include_router(signature_router, prefix='/api')
+app.include_router(still_router, prefix='/api')
 
 
 FRONTEND = Path(__file__).resolve().parents[2] / 'frontend' / 'dist'
