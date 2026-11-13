@@ -96,8 +96,8 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     cy = top + 60 * unit
     angle, reach = np.arctan2(ys - cy, xs - right), np.hypot(xs - right, ys - cy) / (420 * unit)
     rays = (0.5 + 0.5 * np.cos(angle * 18)) ** 6 * np.exp(-reach ** 2) * (reach > 0.15)
-    radiance = np.clip(glow * 0.55 + rays * 0.22, 0, 0.6)
-    radiance_rgba = np.dstack([np.full_like(radiance, RULE[0] / 255), np.full_like(radiance, RULE[1] / 255), np.full_like(radiance, RULE[2] / 255), radiance])
+    halo = np.clip(glow * 0.55 + rays * 0.22, 0, 0.6)
+    radiance_rgba = np.dstack([np.full_like(halo, RULE[0] / 255), np.full_like(halo, RULE[1] / 255), np.full_like(halo, RULE[2] / 255), halo])
     rule = Image.new('RGBA', (width, height))
     ImageDraw.Draw(rule).line([(right - round(70 * unit), top + round(176 * unit)), (right + round(70 * unit), top + round(176 * unit))], fill=RULE + (255,), width=max(1, round(2 * unit)))
     caption = [(_named(name, name_english, _font('Catamaran-Bold.ttf', round(34 * unit)), _font('Catamaran-Bold.ttf', round(24 * unit)), MAROON, width, height, int(width * 0.3),
