@@ -15,6 +15,12 @@ def song():
 
 
 class Package(unittest.TestCase):
+    def test_lines_added_by_hand_count_as_singing(self):
+        timeline = song()
+        timeline['layers'][1]['items'].append({'id': 'clip-abc', 'start': 268, 'length': 6, 'text': 'by hand'})
+        when = credit_package.add(timeline, 'x', 'x', ROLES, 'x')
+        self.assertGreaterEqual(when['end'][0], 274, 'the end card waits for the last line, even one made by hand')
+
     def test_opening_ticker_and_end_card_keep_out_of_the_way(self):
         timeline = song()
         when = credit_package.add(timeline, 'கற்கண்டு', 'Karkandu', ROLES, 'கற்கண்டு • பாடல் வரிகள்: பாவேந்தர் பாரதிதாசன்', rights='℗ 2026 கவின்தமிழ் Originals', portrait=(9, 0))

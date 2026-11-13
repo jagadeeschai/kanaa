@@ -26,7 +26,11 @@ def _text(id_: str, start: float, length: float, text: str, y: float, size: int,
 
 
 def _sung(timeline: dict) -> list[dict]:
-    return sorted((item for layer in timeline['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'].startswith('lyric-line')), key=lambda item: item['start'])
+    """Every lyric on screen: all items on the lyric layers, including lines a person added or split by hand (their ids
+    are the editor's own, not lyric-line-...)."""
+    lyric_layers = [layer for layer in timeline['layers'] if layer['kind'] == 'text' and (layer.get('id') in ('lyric-titles', 'lyrics-answer')
+                    or any(item['id'].startswith('lyric-line') for item in layer['items']))]
+    return sorted((item for layer in lyric_layers for item in layer['items'] if not item['id'].startswith(('credit', 'house-', 'closing-', 'opening-'))), key=lambda item: item['start'])
 
 
 def add(timeline: dict, title: str, english: str, roles: list[tuple[str, str, str]], ticker: str, rights: str | None = None,
