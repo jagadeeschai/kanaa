@@ -19,12 +19,13 @@ export type LyricBuildChoices = {
   painted: boolean;
   brand_intro: boolean;
   logo_media_id: number | null;
-  song_by: string; music: string; presented_by: string; footer: string;
+  song_by: string; music: string; arranged_by: string; singers: string; presented_by: string; footer: string;
+  song_details: boolean;
 };
 
 export const DEFAULT_BUILD: LyricBuildChoices = {
   look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, karaoke: false, night_sky: true, lamp_glow: true, painted: true, brand_intro: true, logo_media_id: null,
-  song_by: '', music: '', presented_by: '', footer: '',
+  song_by: '', music: '', arranged_by: '', singers: '', presented_by: '', footer: '', song_details: true,
 };
 const KEY = 'kanaa-lyric-build';  // The last choices, as most songs share the brand and credits.
 
@@ -48,7 +49,7 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
     try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* not remembered */ }
     onChange(next);
   };
-  const text = (key: 'song_by' | 'music' | 'presented_by' | 'footer', label: string, hint: string) =>
+  const text = (key: 'song_by' | 'music' | 'arranged_by' | 'singers' | 'presented_by' | 'footer', label: string, hint: string) =>
     <label className="block text-xs text-slate-400">{t(label)}<input aria-label={t(label)} className={input} value={value[key]} placeholder={t(hint)} maxLength={120} onChange={(event) => set({ [key]: event.target.value })}/></label>;
   return <div className="space-y-3">
     <div className="grid grid-cols-2 gap-3">
@@ -76,8 +77,12 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
     <fieldset className="space-y-2"><legend className="text-xs font-medium text-slate-300">{t('Credits')} <span className="font-normal text-slate-500">{t('(leave out what you do not know)')}</span></legend>
       {text('song_by', 'Lyricist', 'e.g. பாவேந்தர் பாரதிதாசன்')}
       {text('music', 'Music', 'e.g. Made with Suno')}
+      {text('arranged_by', 'Arrangement & style', 'e.g. KavinTamil Originals')}
+      {text('singers', 'Singers', 'e.g. the singers\u2019 names')}
       {text('presented_by', 'Presented by', 'e.g. கவின்தமிழ் Originals')}
       {text('footer', 'Footer', 'e.g. @yourchannel · Lyric video with Kanaa')}
+      <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.song_details} onChange={(event) => set({ song_details: event.target.checked })} className="mt-1 accent-brand-400"/>
+        <span>{t('Song details card')}<span className="block text-xs text-slate-400">{t('Like music channels: the song and who made it, when the singing starts and after the break.')}</span></span></label>
     </fieldset>
   </div>;
 }
