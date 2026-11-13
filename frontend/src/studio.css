@@ -43,3 +43,4 @@
 .project-folders{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 14px}.project-folders>span{display:flex;align-items:center;gap:6px;margin-right:4px;font-size:12px;font-weight:600;color:var(--st-756582)}.project-folders button{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--sl-e5deec);border-radius:999px;background:var(--sb-fbfafc);color:var(--st-5d586f);font-size:12px}.project-folders button em{font-style:normal;color:var(--st-9b8ca7)}.project-folders button.on{border-color:#6855dc;background:var(--sb-f0ecff);color:var(--st-6855ce)}
 .media-picker .check.order{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;font-size:11px;font-weight:700;border-radius:10px}
 .project-start-card>span.project-step{flex:0 0 auto}
+.studio-language{font-weight:700;font-size:13px;min-width:32px}

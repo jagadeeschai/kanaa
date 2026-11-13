@@ -48,7 +48,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | E8 | Project settings mix format, look, brand and sound | ✅ Tabs Format · Colour & finish · Brand (watermark, brand intro) · Sound. Still to do: loudness set once (it is also in Export) | M | 🚧 |
 | E9 | The guide is reachable five ways but has no visible button | A **?** in the header; fewer duplicate entries | ✅ |
 | E10 | Lite hides things silently | "More in Pro" hint | ✅ |
-| E11 | Much text not translated; the lyric screen is English only; language only in the editor | `t()` on toolbar, panels and lyric steps; language on the home screen too | ⬜ |
+| E11 | Much text not translated; the lyric screen is English only; language only in the editor | ✅ Every visible label on the home screen, lyric screen (all five steps) and editor panels is in Tamil when chosen (checked by collecting what stayed English); labels of typing boxes are translated, never their contents; numbered labels by pattern; a த / EN switch on the home screen. Still to do: retire the page translator for t() (B5) | ✅ |
 | E12 | Empty Templates, Themes and Ask panels | "Add a clip first" | ⬜ |
 
 ## Lyric video screen
