@@ -15,6 +15,7 @@ export type LyricBuildChoices = {
   shots: boolean;
   karaoke: boolean;
   night_sky: boolean;
+  lamp_glow: boolean;
   painted: boolean;
   brand_intro: boolean;
   logo_media_id: number | null;
@@ -22,7 +23,7 @@ export type LyricBuildChoices = {
 };
 
 export const DEFAULT_BUILD: LyricBuildChoices = {
-  look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, karaoke: false, night_sky: true, painted: true, brand_intro: true, logo_media_id: null,
+  look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, karaoke: false, night_sky: true, lamp_glow: true, painted: true, brand_intro: true, logo_media_id: null,
   song_by: '', music: '', presented_by: '', footer: '',
 };
 const KEY = 'kanaa-lyric-build';  // The last choices, as most songs share the brand and credits.
@@ -60,6 +61,8 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
       <span>{t('House style')}<span className="block text-xs text-slate-400">{t('Lines answer each other from both sides, a title card and a lower-third, a touch on each scene.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.night_sky} onChange={(event) => set({ night_sky: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('Night sky sparkle')}<span className="block text-xs text-slate-400">{t('Only pictures with a night sky: stars twinkle in the sky and the moon glows. Day pictures are left alone.')}</span></span></label>
+    <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.lamp_glow} onChange={(event) => set({ lamp_glow: event.target.checked })} className="mt-1 accent-brand-400"/>
+      <span>{t('Lamp glow')}<span className="block text-xs text-slate-400">{t('Only dusk and night pictures with lamps: oil lamps and lanterns flicker with a warm halo.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.karaoke} onChange={(event) => set({ karaoke: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('Karaoke')}<span className="block text-xs text-slate-400">{t('Each word lights up in gold as it is sung. You can change the colour on any line later.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.shots && value.lyric_motion !== 'into_clear'} disabled={value.lyric_motion === 'into_clear'} onChange={(event) => set({ shots: event.target.checked })} className="mt-1 accent-brand-400"/>

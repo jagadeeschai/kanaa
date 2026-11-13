@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 from app.services import sky_light_service
-from kanaa_mcp import night_sky
+from kanaa_mcp import picture_lights
 
 
 def picture(folder, night=True, moon=True):
@@ -45,13 +45,33 @@ class Analyze(unittest.TestCase):
             self.assertIsNone(found['moon'])
 
 
+class Lamps(unittest.TestCase):
+    def test_lamps_glow_at_night_and_daylight_is_left_alone(self):
+        from app.services import lamp_glow_service, picture_lights_service
+        with tempfile.TemporaryDirectory() as folder:
+            image = np.full((600, 900, 3), (25, 30, 40), np.uint8)  # A dim room.
+            for x in (200, 450, 700):
+                cv2.circle(image, (x, 400), 7, (120, 220, 255), -1)  # Flames: warm and as bright as it gets.
+                cv2.circle(image, (x, 400), 3, (200, 255, 255), -1)
+            night = Path(folder) / 'lamps.png'; cv2.imwrite(str(night), image)
+            self.assertEqual(len(lamp_glow_service.analyze(night)['lamps']), 3)
+            day = Path(folder) / 'day.png'; cv2.imwrite(str(day), np.clip(image.astype(int) + 150, 0, 255).astype(np.uint8))
+            self.assertEqual(lamp_glow_service.analyze(day)['lamps'], [])
+            both = picture_lights_service.analyze(night)
+            self.assertIsNone(both['sky']); self.assertEqual(len(both['lamps']), 3); self.assertNotIn('reason', both)
+            draw = lamp_glow_service.painter(night, 3, (450, 300))
+            a, b = draw(0.3), draw(1.1)
+            self.assertGreater(float(a[200, 100].max()), 0.2, 'a lamp glows')
+            self.assertNotAlmostEqual(float(a[200, 100, 0]), float(b[200, 100, 0]), places=3, msg='and flickers')
+
+
 class OverShots(unittest.TestCase):
     def test_sky_pieces_follow_each_shot_and_skip_day_pictures(self):
         shot = lambda id_, media, start, length, scale: {'id': id_, 'media_id': media, 'start': start, 'in': 0, 'out': length, 'speed': 1,
                                                          'transform': {'x': 0.5, 'y': 0.5, 'scale': scale, 'opacity': 1, 'rotation': 0, 'keyframes': {'scale': [{'t': 0, 'v': scale}, {'t': length, 'v': scale * 1.1}]}}}
         timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [shot('lyric-scene-1', 5, 0, 8, 1), shot('lyric-scene-1-2', 99, 8, 8, 1.35), shot('lyric-scene-2', 6, 16, 8, 1)]}]}
         asked = []
-        made = night_sky.add(timeline, lambda picture, seconds: asked.append((picture, seconds)) or (77 if picture == 5 else None))
+        made = picture_lights.add(timeline, lambda picture, seconds: asked.append((picture, seconds)) or (77 if picture == 5 else None))
         self.assertEqual(asked, [(5, 16), (6, 8)], 'asked once per picture, for all its shots together')
         self.assertEqual(made, [77])
         layer = timeline['layers'][1]
