@@ -5,7 +5,11 @@ export const SONG_IDS = ['signature-song', 'credit-song-lower', 'credit-song-end
 
 /** The song's name as the signature card shows it now: Tamil, and the English under it. */
 export function songName(timeline: Timeline): { tamil: string; english: string } | null {
-  for (const layer of timeline.layers) if (layer.kind === 'text') for (const item of layer.items) if (item.id === 'signature-song') return { tamil: item.text, english: item.subtitle ?? '' };
+  for (const layer of timeline.layers) if (layer.kind === 'text') for (const item of layer.items) if (item.id === 'signature-song') {
+    // A credits block: the first line is the song, the next its English name when it is in English letters.
+    const [first = '', second = ''] = item.text.split('\n');
+    return { tamil: first.trim(), english: /^[\x00-\x7f]+$/.test(second.trim()) ? second.trim() : item.subtitle ?? '' };
+  }
   return null;
 }
 

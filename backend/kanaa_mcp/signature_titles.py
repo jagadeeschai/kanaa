@@ -23,60 +23,50 @@ def heading(title: str, english: str) -> tuple[str, str]:
     return title, english.upper() if english and english != title else ''
 
 
-def _add(timeline: dict, prefix: str, name: str, items: list[dict]) -> None:
+def block(title: str, english: str, roles: list[list[str]], rights: str | None = None) -> str:
+    """The credit block as the lines of one title (layout 'credits'): title, its English name, then each credit as
+    its label, the name, and the name in English, a blank line between credits."""
+    tamil, latin = heading(title, english)
+    rows = [tamil] + ([latin] if latin else [])
+    for role in roles[:4]:
+        rows += ['', f'{role[0]} · {role[1].upper()}', role[2]] + ([role[3]] if len(role) > 3 and role[3] else [])
+    if rights:
+        rows += ['', rights]
+    return '\n'.join(rows)
+
+
+def _replace(timeline: dict, prefix: str, name: str, items: list[dict]) -> None:
     timeline['layers'] = [layer for layer in timeline['layers'] if not (layer.get('id') or '').startswith(prefix)]
-    timeline['layers'] += [{'id': f'{prefix}-{n + 1}', 'kind': 'text', 'name': f'{name} {n + 1}', 'items': [item]} for n, item in enumerate(items)]
+    if items:
+        timeline['layers'].append({'id': prefix, 'kind': 'text', 'name': name, 'items': sorted(items, key=lambda item: item['start'])})
 
 
 def card(timeline: dict, at: float, seconds: float, title: str, english: str, roles: list[list[str]]) -> None:
-    """The right-hand column of the signature card, over the card picture (which has the portrait and the poet)."""
-    tamil, latin = heading(title, english)
-    begin = at + 0.9
-    items = [_title('signature-song', begin, seconds - 1.5, tamil, 0.67, 0.26, 38, MAROON, 'Arima', subtitle=latin or None, sub_size=11, sub_color=GREY)]
-    y = 0.44
-    for n, role in enumerate(roles[:4]):
-        tamil_role, english_role, who = role[:3]
-        start = begin + 0.5 + 0.18 * n
-        items.append(_title(f'signature-role-{n + 1}', start, at + seconds - 0.6 - start, f'{tamil_role}   ·   {english_role.upper()}', 0.67, y, 9, GREY, 'Pavanam'))
-        items.append(_title(f'signature-name-{n + 1}', start, at + seconds - 0.6 - start, who, 0.67, y + 0.05, 17, INK, 'Catamaran',
-                            subtitle=role[3] if len(role) > 3 and role[3] else None, sub_size=11, sub_color=GREY))
-        y += 0.135
-    _add(timeline, 'signature-words', 'Signature card', items)
+    """The right-hand column of the signature card: one title, over the card picture (portrait and poet)."""
+    item = _title('signature-song', at + 0.9, seconds - 1.5, block(title, english, roles), 0.67, 0.5, 38, MAROON, 'Arima', sub_color=INK)
+    item.update(layout='credits', subtitle_color=INK)
+    _replace(timeline, 'signature-words', 'Signature card', [item])
 
 
 def credit_in_song(timeline: dict, times: list[float], title: str, english: str, roles: list[list[str]], channel: str | None, seconds: float = 9.0) -> None:
-    """At each time: the song (with its English name under it), the lyricist, the channel, at the bottom left."""
+    """At each time, one title at the bottom left: the song, the lyricist (and his English name), the channel."""
     tamil, latin = heading(title, english)
     lyric = next((role for role in roles if role[1].lower().startswith('lyric')), roles[0])
-    who = f'{lyric[0]} · {lyric[2]}' + (f'  ({lyric[3]})' if len(lyric) > 3 and lyric[3] else '')
+    rows = [f'{tamil}  |  {latin.title()}' if latin else tamil, f'{lyric[0]} · {lyric[2]}' + (f' ({lyric[3]})' if len(lyric) > 3 and lyric[3] else '')] + ([channel] if channel else [])
     items = []
     for n, at in enumerate(times):
-        items.append(_title(f'credit-song-lower-{n + 1}', at, seconds, f'{tamil}  |  {latin.title()}' if latin else tamil, 0.5, 0.79, 17, WHITE, 'Arima', style='shadow', align='left',
-                            subtitle=who, sub_size=11, sub_color=SOFT))
-        if channel:
-            items.append(_title(f'credit-channel-lower-{n + 1}', at + 0.3, seconds - 0.3, channel, 0.5, 0.905, 10, SOFT, 'Catamaran', style='shadow', align='left'))
-    # One layer each for the song line and the channel line (they show together); times never overlap within a layer.
+        item = _title(f'credit-song-lower-{n + 1}', at, seconds, '\n'.join(rows), 0.5, 0.85, 26, WHITE, 'Arima', style='shadow', align='left')
+        item.update(layout='credits', subtitle_color=SOFT)
+        items.append(item)
     timeline['layers'] = [layer for layer in timeline['layers'] if not (layer.get('id') or '').startswith('credit-lower-words')]
-    for kind in ('credit-song-lower', 'credit-channel-lower'):
-        mine = [item for item in items if item['id'].startswith(kind)]
-        if mine:
-            timeline['layers'].append({'id': f'credit-lower-words-{kind}', 'kind': 'text', 'name': 'Credit in the song', 'items': mine})
+    _replace(timeline, 'credit-lower-words', 'Credit in the song', items)
 
 
 def end_card(timeline: dict, start: float, finish: float, title: str, english: str, roles: list[list[str]], rights: str | None) -> None:
-    """After the last lyric: the song, then each credit (label, name, English name), then the ℗ line, at the left."""
-    tamil, latin = heading(title, english)
-    length = finish - start
-    items = [_title('credit-song-end', start, length, tamil, 0.5, 0.2, 22, WHITE, 'Arima', style='shadow', align='left', subtitle=latin or None, sub_size=10, sub_color=SOFT)]
-    y = 0.36
-    for n, role in enumerate(roles[:4]):
-        items.append(_title(f'credit-end-role-{n + 1}', start + 0.2 + 0.12 * n, length - 0.2 - 0.12 * n, f'{role[0]} · {role[1].upper()}', 0.5, y, 8, SOFT, 'Pavanam', style='shadow', align='left'))
-        items.append(_title(f'credit-end-name-{n + 1}', start + 0.2 + 0.12 * n, length - 0.2 - 0.12 * n, role[2], 0.5, y + 0.045, 13, WHITE, 'Catamaran', style='shadow', align='left',
-                            subtitle=role[3] if len(role) > 3 and role[3] else None, sub_size=10, sub_color=SOFT))
-        y += 0.13
-    if rights:
-        items.append(_title('credit-end-rights', start + 0.8, length - 0.8, rights, 0.5, y + 0.02, 8, SOFT, 'Pavanam', style='shadow', align='left'))
-    _add(timeline, 'credits-end-words', 'End credits', items)
+    """After the last lyric: one title at the left, the whole credit block."""
+    item = _title('credit-song-end', start, finish - start, block(title, english, roles, rights), 0.5, 0.5, 30, WHITE, 'Arima', style='shadow', align='left')
+    item.update(layout='credits', subtitle_color=SOFT)
+    _replace(timeline, 'credits-end-words', 'End credits', [item])
 
 
 def rename(timeline: dict, old: tuple[str, str], new: tuple[str, str]) -> int:

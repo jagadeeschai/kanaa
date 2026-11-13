@@ -13,8 +13,9 @@ class Titles(unittest.TestCase):
         st.credit_in_song(t, [50, 200], 'கற்கண்டு', 'Karkandu', ROLES, 'கவின்தமிழ் Originals')
         st.end_card(t, 270, 284, 'கற்கண்டு', 'Karkandu', ROLES, '℗ 2026')
         Timeline.model_validate(t)
-        names = [i.get('subtitle') for l in t['layers'] for i in l['items'] if i['id'].startswith('signature-name')]
-        self.assertIn('Bharathidasan', names, 'the English name on a small line under the Tamil')
+        blocks = [i for l in t['layers'] for i in l['items'] if i['id'] in ('signature-song', 'credit-song-end')]
+        self.assertEqual(len(blocks), 2, 'one title each for the card and the end card')
+        self.assertIn('பாவேந்தர் பாரதிதாசன்\nBharathidasan', blocks[0]['text'], 'the English name on a small line under the Tamil')
         self.assertGreater(st.rename(t, ('கற்கண்டு', 'Karkandu'), ('நிலவே', 'Nilave')), 3)
         texts = [i['text'] for l in t['layers'] for i in l['items'] if i['id'].startswith(st.SONG_IDS)]
         self.assertTrue(texts and all('நிலவே' in text for text in texts))

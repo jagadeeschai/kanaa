@@ -592,9 +592,13 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
     alignment = row + {'left': 0, 'center': 1, 'right': 2}[item.align]
     margin, side = round(height * 0.08), round(width * 0.055)
 
+    chosen: dict[str, str | None] = {'family': None}  # A credit line's own family (credits layout).
+
     def font_for(run: str) -> tuple[str, float]:
         # The chosen fonts replace the bundled one for their script; other scripts keep theirs.
         family, scale = lyric_font_for(run)
+        if chosen['family']:
+            return chosen['family'], scale
         if family == TAMIL_FONT:
             return item.tamil_font or family, scale
         if family == DEFAULT_LYRIC_FONT[0] and item.font:
@@ -635,8 +639,11 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
             pieces.append(rf'{{\fn{family}\fs{size * scale}}}{body}')
         return head + ''.join(pieces)
 
-    lines = [line(item.text, title_size, item.color, item.spacing, lit if item.karaoke else None)]
-    if item.subtitle:
+    if item.layout == 'credits' and letter_ids is None:
+        lines = credit_lines(item, title_size, line, chosen)
+    else:
+        lines = [line(item.text, title_size, item.color, item.spacing, lit if item.karaoke else None)]
+    if item.subtitle and item.layout != 'credits':
         sub = line(item.subtitle, sub_size, item.subtitle_color or item.color, item.subtitle_spacing)
         lines = [sub, *lines] if item.subtitle_above else [*lines, sub]
     family = DEFAULT_LYRIC_FONT[0]
@@ -664,6 +671,42 @@ def karaoke_states(item: Text) -> list[tuple[float, float, int | None]]:
     edges = [0.0, *times, item.length]
     states = [(edges[0], edges[1], None)] + [(edges[n + 1], edges[n + 2], n) for n in range(len(times))]
     return [state for state in states if state[1] - state[0] > 1e-6]
+
+
+# A credit block in one title (layout 'credits'): each line's part is read from the line itself, so a person only types
+# the credits in order. (share of the title's size, family, softness: 0 solid .. 255 clear)
+CREDIT_PARTS = {'title': (1.0, None, 0x00), 'english': (0.3, 'Catamaran', 0x50), 'label': (0.25, 'Pavanam', 0x60), 'name': (0.46, 'Catamaran', 0x00),
+                'small': (0.24, 'Pavanam', 0x50), 'gap': (0.22, None, 0xFF)}
+
+
+def credit_part(row: str, number: int, before: str) -> str:
+    text = row.strip()
+    if number == 0:
+        return 'title'
+    if not text:
+        return 'gap'
+    if text.startswith('℗'):
+        return 'small'
+    if '·' in text:
+        return 'label'
+    if text.isascii() and before in ('title', 'name'):
+        return 'english'  # A song's or a person's English name, under the Tamil.
+    return 'name'
+
+
+def credit_lines(item: Text, title_size: float, line, chosen: dict) -> list[str]:
+    lines, before = [], 'title'
+    colour = item.subtitle_color or item.color
+    for number, row in enumerate(item.text.split('\n')):
+        part = credit_part(row, number, before)
+        share, family, soft = CREDIT_PARTS[part]
+        chosen['family'] = family
+        text = row.strip() or '\u00a0'
+        drawn = line(text, title_size * share, item.color if part == 'title' else colour, item.spacing if part == 'title' else 0)
+        chosen['family'] = None
+        lines.append(rf'{{\1a&H{soft:02X}&}}' + drawn)
+        before = part if part != 'gap' else before
+    return lines
 
 
 def caption_states(item: Caption, highlight: bool) -> list[tuple[float, float, int | None]]:

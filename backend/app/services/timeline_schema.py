@@ -365,6 +365,8 @@ class Text(Strict):
     keep_clear: Optional[KeepClear] = None
     stay_with: Optional[StayWith] = None
     karaoke: Optional[Karaoke] = None
+    # credits: one title holds a whole credit block; each line is styled by what it is (title_credits in timeline_service).
+    layout: Optional[Literal['credits']] = None
     # Template looks. A title using none of these is drawn exactly as before.
     subtitle: Optional[str] = Field(default=None, max_length=200)
     subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.
@@ -382,7 +384,7 @@ class Text(Strict):
 
     @property
     def designed(self) -> bool:
-        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None or self.style == 'plain'
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None or self.style == 'plain' or self.layout is not None
 
     @property
     def length(self) -> float:

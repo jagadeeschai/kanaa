@@ -27,8 +27,10 @@ export const TAMIL_FONTS: FontChoice[] = [
 /** Designed to read well in Tamil and English, on phones. Sizes are at a 720-wide frame and grow with the video. */
 export const TEMPLATES: Template[] = [
   // A credit as labels show it: the role in Tamil and English above the name, gold title alone, no box behind.
-  { id: 'song-details', label: 'Song credit', look: { font: 'Gill Sans', tamil_font: 'Arima', text: 'பாவேந்தர் பாரதிதாசன்', subtitle: 'பாடல் வரிகள் · LYRICS', subtitle_above: true,
-    subtitle_size: 14, subtitle_color: '#d9cfbf', subtitle_spacing: 0, style: 'shadow', position: 'center', color: '#f5efe6', size: 24, enter: fade(0.6), exit: fade(0.6) } },
+  // Song credits in one title: type the lines in order (title, its English name, then label · ROLE, name, English name,
+  // a blank line between credits); each line is styled by what it is.
+  { id: 'song-details', label: 'Song credits', look: { font: 'Arima', tamil_font: 'Arima', layout: 'credits',
+    text: 'பாடல் பெயர்\nSONG NAME\n\nபாடல் வரிகள் · LYRICS\nபெயர்\nName\n\nஇசை · MUSIC\nபெயர்', style: 'shadow', position: 'center', color: '#f2c46d', subtitle_color: '#ffffff', size: 34, enter: fade(0.6), exit: fade(0.6) } },
   { id: 'cinematic', label: 'Cinematic', look: { font: 'Futura', tamil_font: 'Arima', text: 'கனவு', subtitle: 'A FILM BY YOU', subtitle_size: 30, subtitle_spacing: 9, subtitle_color: '#d9c7a0', style: 'outline', position: 'center', color: '#ffffff', size: 88, spacing: 14, enter: fade(1), exit: fade(0.6) } },
   { id: 'name-card', label: 'Name card', look: { font: 'Gill Sans', tamil_font: 'Hind Madurai', text: 'Your name', subtitle: 'What you do', style: 'band', band_color: '#7c3aed', align: 'left', position: 'bottom', color: '#ffffff', size: 44, enter: { preset: 'slide-right', duration: 0.5 }, exit: fade(0.3) } },
   { id: 'festival', label: 'Festival', look: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'Happy Pongal', subtitle: 'இனிய பொங்கல் வாழ்த்துகள்', subtitle_size: 36, subtitle_color: '#ffffff', style: 'outline', position: 'center', color: '#ffd400', size: 60, enter: { preset: 'pop', duration: 0.6 }, exit: fade(0.4) } },
