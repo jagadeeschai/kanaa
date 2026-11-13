@@ -37,6 +37,18 @@ def vision_sees_lights(picture: Path) -> list[str]:
     return [name for name, confidence in labels if name in LIGHT_LABELS and confidence >= SEEN]
 
 
+def faces_in(picture: Path) -> list[list[float]]:
+    """Faces Apple Vision finds, as [x, y, w, h] shares (top-left origin); none off a Mac."""
+    import json
+    import subprocess
+    try:
+        from app.services.cutout_service import helper
+        tool = helper(Path(__file__).resolve().parents[2] / 'native' / 'focus_points.swift')
+        return [face[:4] for face in json.loads(subprocess.run([str(tool), str(picture)], capture_output=True, text=True, timeout=60, check=True).stdout).get('faces') or []]
+    except Exception:
+        return []
+
+
 def analyze(picture: Path, mode: str = 'auto', regions: list[list[float]] | None = None) -> dict:
     """{'lamps': [[x, y, r, strength]...] as shares (r of the width), largest first, 'reason' when none, 'seen': what
     Vision recognised}. mode: 'auto' (dusk and night pictures, and brighter ones where Vision sees lamps or lanterns),
@@ -67,7 +79,8 @@ def analyze(picture: Path, mode: str = 'auto', regions: list[list[float]] | None
     warm = ((hue <= 35) | (hue >= 170)) & (saturation > 70)
     # The surroundings must be dim: a marigold or a sunlit sari is bright too, but lit by day, not giving light.
     dim = cv2.GaussianBlur(gray, (0, 0), 25)
-    lit = (value > 245) & warm & (gray - around > 55) & (dim < surround)
+    strong = saturation > (70 if middle <= DUSK else 120)  # By brighter light, skin and cloth are warm too; a lantern is deeply coloured.
+    lit = (value > 245) & warm & strong & (gray - around > 55) & (dim < surround)
     lit = cv2.morphologyEx(lit.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     count, labels, stats, centres = cv2.connectedComponentsWithStats(lit, connectivity=8)
     lamps = []
@@ -76,13 +89,19 @@ def analyze(picture: Path, mode: str = 'auto', regions: list[list[float]] | None
         if not (0.000004 * width * height <= area <= 0.004 * width * height):
             continue
         w, h = stats[n, cv2.CC_STAT_WIDTH], stats[n, cv2.CC_STAT_HEIGHT]
-        if max(w, h) > 6 * min(w, h):
+        if max(w, h) > (6 if middle <= DUSK else 2.5) * min(w, h):
             continue  # A long bright edge (a sunlit rail, a sari border), not a lamp.
+        if middle > DUSK and area / (w * h) < 0.45:
+            continue  # By brighter light a lamp is a compact round glow, not a ragged highlight.
         x, y = centres[n]
         if y < height * 0.02:
             continue
         strength = float((gray[labels == n] - around[labels == n]).mean()) / 255
         lamps.append([round(x / width, 4), round(y / height, 4), round(math.sqrt(area / math.pi) / width, 4), round(strength, 3)])
+    # A lit cheek or forehead is never a lamp: nothing glows on a face.
+    faces = faces_in(picture) if lamps else []
+    on_face = lambda x, y: any(fx - fw * 0.25 <= x <= fx + fw * 1.25 and fy - fh * 0.25 <= y <= fy + fh * 1.25 for fx, fy, fw, fh in faces)
+    lamps = [lamp for lamp in lamps if not on_face(lamp[0], lamp[1])]
     lamps.sort(key=lambda lamp: -lamp[2] * lamp[3])
     lamps = lamps[:MOST]
     return {'lamps': lamps, 'seen': seen, 'reason': None if lamps else 'No lamps or lights found in this picture.'}
@@ -126,11 +145,11 @@ def painter(picture: Path, seconds: float, size: tuple[int, int], found: dict | 
     lamps = []
     for x, y, r, strength in found['lamps']:
         cx, cy, radius = x * width, y * height, max(min(width, height) * 0.006, r * width)  # Even a tiny flame lights a room.
-        reach = int(radius * 16) + 2
-        x0, x1, y0, y1 = max(0, int(cx) - reach), min(width, int(cx) + reach), max(0, int(cy) - reach // 2), min(height, int(cy) + reach)
+        reach = int(radius * 26) + 2  # Far enough that the glow has faded to nothing at the edge: no square shows.
+        x0, x1, y0, y1 = max(0, int(cx) - reach), min(width, int(cx) + reach), max(0, int(cy) - reach), min(height, int(cy) + reach)
         ys, xs = np.mgrid[y0:y1, x0:x1].astype(np.float32)
         d = np.hypot(xs - cx, ys - cy) / radius
-        halo = np.exp(-d / 1.6) * 0.55 + np.exp(-d / 5) * 0.22 + np.exp(-d / 14) * 0.08
+        halo = np.exp(-d / 1.6) * 0.55 + np.exp(-d / 5) * 0.22 + np.exp(-((d / 12) ** 2)) * 0.08
         spill = np.exp(-(((xs - cx) / (radius * 12)) ** 2 + ((ys - cy - radius * 5) / (radius * 7)) ** 2)) * 0.12  # On the floor and wall below it.
         weight = min(1.0, 0.45 + strength)
         lamps.append({'box': (y0, y1, x0, x1), 'halo': (halo * weight).astype(np.float32), 'spill': (spill * weight).astype(np.float32), 'flicker': _flicker(rng),
