@@ -312,6 +312,18 @@ class KeepClear(Strict):
     y_keys: Optional[List[Keyframe]] = Field(default=None, max_length=2000)
 
 
+class Karaoke(Strict):
+    """Words light up as they are sung: `words` holds when each word starts, in the title's own seconds."""
+    color: str = Field(default='#ffd54a', pattern=r'^#[0-9a-fA-F]{6}$')
+    words: List[float] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode='after')
+    def ordered(self):
+        if any(b < a for a, b in zip(self.words, self.words[1:])):
+            raise ValueError('Karaoke word times must not go backwards.')
+        return self
+
+
 class StayWith(Strict):
     """The title stays with moving people: it keeps its distance from them and grows as they come nearer. The move is
     ordinary x, y and size keyframes; this remembers the moment it was set at and the position, size and keys from before."""
@@ -352,6 +364,7 @@ class Text(Strict):
     pin: Optional[TitlePin] = None
     keep_clear: Optional[KeepClear] = None
     stay_with: Optional[StayWith] = None
+    karaoke: Optional[Karaoke] = None
     # Template looks. A title using none of these is drawn exactly as before.
     subtitle: Optional[str] = Field(default=None, max_length=200)
     subtitle_size: Optional[int] = Field(default=None, ge=10, le=100)  # Defaults to just over half the title's size.
@@ -369,7 +382,7 @@ class Text(Strict):
 
     @property
     def designed(self) -> bool:
-        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None
 
     @property
     def length(self) -> float:

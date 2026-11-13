@@ -19,7 +19,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                       canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
                       music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
                       logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False,
-                      shots: bool = True, painted: bool = True, gentle: bool = True) -> dict:
+                      shots: bool = True, painted: bool = True, gentle: bool = True, karaoke: bool = False) -> dict:
     """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
     - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
     - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -41,6 +41,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
       the face (found on this Mac), each with its own slow move. Not with into_clear or three_d.
     - painted: every other scene's middle shot shows the picture painted (watercolour, pencil, oil or dream), made
       on this Mac with filters, no AI and no cost. Needs shots.
+    - karaoke: every lyric line lights its words, gold, as they are sung (word times from each line's timing).
     - gentle: with into_clear, each picture breathes or drifts a few per cent instead of holding still.
     Camera moves come from twelve slow moves (pans, tilts, diagonal drifts, slow turns, reveals), none repeated within
     three scenes, the bigger ones on the chorus.
@@ -159,6 +160,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         made = api.post('/effects/shine', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
         shine = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
         lyrics.shine_over(timeline, shine, 'house-title')
+    if karaoke:
+        lyrics.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
     validate(timeline)
     if project_id is None:

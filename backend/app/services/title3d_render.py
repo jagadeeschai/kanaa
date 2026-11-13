@@ -162,13 +162,19 @@ def text_colour(text) -> tuple[float, float, float]:
 
 
 def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, frames: int, target: Path, pin_at: PinAt | None = None,
-                        should_cancel: Callable[[], bool] = lambda: False) -> Path:
-    """`frames` frames of the title from its start, see-through, at `size`. Returns `target` (an ffv1 video with alpha)."""
+                        should_cancel: Callable[[], bool] = lambda: False, states: list[tuple[float, float, Path]] | None = None) -> Path:
+    """`frames` frames of the title from its start, see-through, at `size`. Returns `target` (an ffv1 video with alpha).
+    states: (start, end, picture) in the title's own seconds, for a karaoke title whose picture changes as words light."""
     width, height = size
-    rgba = np.asarray(Image.open(picture).convert('RGBA').resize((width, height), Image.BILINEAR), np.float32) / 255
-    box = alpha_box((rgba[..., 3] * 255).astype(np.uint8))
-    premultiplied = rgba.copy()
-    premultiplied[..., :3] *= premultiplied[..., 3:4]
+
+    def load(path: Path) -> np.ndarray:
+        rgba = np.asarray(Image.open(path).convert('RGBA').resize((width, height), Image.BILINEAR), np.float32) / 255
+        rgba[..., :3] *= rgba[..., 3:4]
+        return rgba
+
+    premultiplied = load(picture)
+    box = alpha_box((premultiplied[..., 3] * 255).astype(np.uint8))
+    loaded = [(start, end, load(path)) for start, end, path in states or []]
     depth = text.depth if text.depth and text.depth.amount > 0 else None
     shares = title3d.layers(depth)
     # Letter by letter: where each letter is, found once (title_letters.py), as the preview fetches it.
@@ -188,7 +194,8 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
         for n in range(frames):
             if should_cancel():
                 raise RuntimeError('Cancelled.')
-            process.stdin.write(frame_at(text, n / fps, premultiplied, box, shares, depth, colour, size, pin_at(text.start + n / fps) if pin_at else None, lettered).tobytes())
+            showing = next((image for start, end, image in loaded if start <= n / fps < end), premultiplied)
+            process.stdin.write(frame_at(text, n / fps, showing, box, shares, depth, colour, size, pin_at(text.start + n / fps) if pin_at else None, lettered).tobytes())
         process.stdin.close()
         if process.wait(timeout=600):
             raise RuntimeError('Could not draw this 3D title.')

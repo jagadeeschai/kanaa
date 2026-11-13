@@ -1233,6 +1233,39 @@ class MovingTitles(Clips):
         for got, want in zip(centres, (0.25 + 0.5 * 3 / 60, 0.5, 0.25 + 0.5 * 57 / 60)):
             self.assertAlmostEqual(got, want, delta=0.03)
 
+    def test_karaoke_words_light_up_in_turn_in_the_export(self):
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        # White words on the left, sung at 0.5 s and 1.2 s; the highlight is pure blue.
+        title = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIIII IIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff',
+                 'karaoke': {'color': '#0000ff', 'words': [0.5, 1.2]}}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [title]}]}
+        path = self.render(data, 'karaoke.mp4')
+
+        def blue_share(number):
+            frame = self.frame(path, number, (640, 360)).astype(int)
+            lit = (frame[:, :, 2] > 150) & (frame[:, :, 0] < 120)
+            columns = np.nonzero(lit.any(axis=0))[0]
+            return 0 if not len(columns) else columns.max() / 640
+        before, first, both = blue_share(6), blue_share(27), blue_share(50)
+        self.assertEqual(before, 0, 'nothing lit before the first word')
+        self.assertTrue(0.35 < first < 0.55, f'only the first word lit: {first}')
+        self.assertGreater(both, 0.55, 'then both')
+
+    def test_karaoke_also_lights_words_on_solid_3d_letters(self):
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        title = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIIII IIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff',
+                 'depth': {'amount': 0.3}, 'karaoke': {'color': '#0000ff', 'words': [0.5, 1.2]}}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [title]}]}
+        path = self.render(data, 'karaoke3d.mp4')
+        lit = lambda n: int(((self.frame(path, n, (640, 360))[:, :, 2] > 150) & (self.frame(path, n, (640, 360))[:, :, 0] < 120)).sum())
+        self.assertLess(lit(6), 30)
+        self.assertGreater(lit(50), lit(27))
+        self.assertGreater(lit(27), 30)
+
     def test_a_title_with_hundreds_of_position_keys_exports(self):
         # A followed or kept-clear title carries a key every frame or so; ffmpeg once refused the overlay's x/y expression.
         image = self.root / 'grey.png'

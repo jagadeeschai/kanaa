@@ -444,6 +444,27 @@ HOUSE_SCENE_TOUCHES = [
 ]
 
 
+def karaoke_words(text: str, length: float) -> list[float]:
+    """When each word of a line starts, from the line's own timing: as karaokeWords in model.ts."""
+    words = text.split()
+    if not words:
+        return []
+    sung = max(length * 0.6, min(length * 0.85, length - 0.4))
+    weights = [max(1, sum(1 for c in word if unicodedata.category(c)[0] in 'LMN')) for word in words]
+    total, at, out = sum(weights), 0.0, []
+    for weight in weights:
+        out.append(round(at, 3)); at += sung * weight / total
+    return out
+
+
+def karaoke(timeline: dict, colour: str = '#ffd54a') -> None:
+    """Every lyric line lights its words as they are sung."""
+    for layer in timeline['layers']:
+        for line in layer['items'] if layer['kind'] == 'text' else []:
+            if line['id'].startswith('lyric-line'):
+                line['karaoke'] = {'color': colour, 'words': karaoke_words(line['text'], line['length'])}
+
+
 def wave(length: float, a: float, b: float, period: float) -> list[dict]:
     """Back and forth between a and b every `period` seconds, eased (as titleMoves.ts wave)."""
     keys, at, step = [], 0.0, 0

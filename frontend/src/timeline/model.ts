@@ -48,7 +48,7 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
-  subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null };
+  subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null ; /** Words light up as they are sung: when each word starts, in the title's own seconds. */ karaoke?: { color: string; words: number[] } | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
 /** Hides part of the picture under it. `width` and `height` are of the frame, before the transform's scale. */
@@ -860,7 +860,14 @@ export function removeText(timeline: Timeline, id: string): Timeline {
 
 export function updateText(timeline: Timeline, id: string, changes: Partial<TextItem>): Timeline {
   const found = findText(timeline, id);
-  return found ? withItems(timeline, found.layer, found.layer.items.map((item) => item.id === id ? { ...item, ...changes } : item)) : timeline;
+  return found ? withItems(timeline, found.layer, found.layer.items.map((item) => item.id === id ? rekaraoke({ ...item, ...changes }, item) : item)) : timeline;
+}
+
+/** New words or a new length: a karaoke line's word times are worked out again, so they keep fitting the line. */
+function rekaraoke(next: TextItem, before: TextItem): TextItem {
+  if (!next.karaoke || (next.text === before.text && next.length === before.length && next.karaoke === before.karaoke)) return next;
+  if (next.karaoke !== before.karaoke && next.text === before.text && next.length === before.length) return next;
+  return { ...next, karaoke: { ...next.karaoke, words: karaokeWords(next.text, next.length) } };
 }
 
 /** `at` is the wanted timeline time of that edge. Works on text and blur boxes. */
@@ -1133,4 +1140,29 @@ export function retimeLayerLines(timeline: Timeline, layerId: string, lines: { s
     return next && item.start + item.length > next.start ? { ...item, length: round(Math.max(0.05, next.start - item.start)) } : item;
   });
   return { ...timeline, layers: timeline.layers.map((l) => l.id === layerId ? { ...l, items } as TrackLayer : l) };
+}
+
+export const KARAOKE_COLOUR = '#ffd54a';
+/** The last word sung by `local` seconds into a karaoke title, or null before the first. Matches karaoke_states. */
+export function karaokeLit(text: TextItem, local: number): number | null {
+  const words = text.karaoke?.words;
+  if (!words?.length) return null;
+  let lit: number | null = null;
+  words.forEach((at, index) => { if (local >= at) lit = index; });
+  return lit;
+}
+
+/**
+ * When each word of a line starts, worked out from the line's own timing (no listening needed): the sung part of the
+ * line is shared among its words by their length, as longer words take longer to sing. The last ~15% of a line (or
+ * its last second) is left for the held note at its end.
+ */
+export function karaokeWords(text: string, length: number): number[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const sung = Math.max(length * 0.6, Math.min(length * 0.85, length - 0.4));
+  const weights = words.map((word) => Math.max(1, [...word.replace(/[^\p{L}\p{M}\p{N}]/gu, '')].length));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let at = 0;
+  return weights.map((weight) => { const start = Math.round(at * 1000) / 1000; at += (sung * weight) / total; return start; });
 }

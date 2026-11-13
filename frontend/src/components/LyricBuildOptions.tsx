@@ -13,6 +13,7 @@ export type LyricBuildChoices = {
   lyric_motion: 'plain' | 'into_clear';
   house_style: boolean;
   shots: boolean;
+  karaoke: boolean;
   painted: boolean;
   brand_intro: boolean;
   logo_media_id: number | null;
@@ -20,7 +21,7 @@ export type LyricBuildChoices = {
 };
 
 export const DEFAULT_BUILD: LyricBuildChoices = {
-  look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, painted: true, brand_intro: true, logo_media_id: null,
+  look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, karaoke: false, painted: true, brand_intro: true, logo_media_id: null,
   song_by: '', music: '', presented_by: '', footer: '',
 };
 const KEY = 'kanaa-lyric-build';  // The last choices, as most songs share the brand and credits.
@@ -56,6 +57,8 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
     </div>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.house_style} onChange={(event) => set({ house_style: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('House style')}<span className="block text-xs text-slate-400">{t('Lines answer each other from both sides, a title card and a lower-third, a touch on each scene.')}</span></span></label>
+    <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.karaoke} onChange={(event) => set({ karaoke: event.target.checked })} className="mt-1 accent-brand-400"/>
+      <span>{t('Karaoke')}<span className="block text-xs text-slate-400">{t('Each word lights up in gold as it is sung. You can change the colour on any line later.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.shots && value.lyric_motion !== 'into_clear'} disabled={value.lyric_motion === 'into_clear'} onChange={(event) => set({ shots: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('Wide, medium and close shots')}<span className="block text-xs text-slate-400">{t(value.lyric_motion === 'into_clear' ? 'Not with lines moving into the clear space: the pictures stay whole there, breathing gently.' : 'A long scene cuts in closer on the face, each shot with its own slow move.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.painted && value.shots && value.lyric_motion !== 'into_clear'} disabled={!value.shots || value.lyric_motion === 'into_clear'} onChange={(event) => set({ painted: event.target.checked })} className="mt-1 accent-brand-400"/>

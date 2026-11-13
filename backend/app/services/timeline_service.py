@@ -564,7 +564,8 @@ def letter_clusters(text: str) -> list[str]:
     return out
 
 
-def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter_ids: list[int] | None = None, letter_group: Callable[[int], int] = lambda number: number) -> None:
+def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter_ids: list[int] | None = None, letter_group: Callable[[int], int] = lambda number: number,
+                lit: int | None = None) -> None:
     """A template title: title and subtitle in one block, each line in its script's font, aligned and boxed as chosen.
     Uses write_lyrics' sizes and borders, so a template's title line matches a plain title of the same size.
     Plain: the letters alone, no outline, shadow or box, for a design that draws its own bar behind them.
@@ -602,9 +603,18 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
         plain, blur = True, ''
         border_style, outline, shadow = 1, 0, 0
 
-    def line(text: str, size: float, colour: str, spacing: int = 0) -> str:
+    def line(text: str, size: float, colour: str, spacing: int = 0, lit_words: int | None = None) -> str:
         # Every line sets its own spacing and colour: override tags carry on past a line break.
         head = rf'{{\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}'
+        if lit_words is not None and letter_ids is None:
+            # Karaoke: the words sung so far (up to and including `lit_words`) in the highlight colour.
+            body, number = '', -1
+            for part in re.split(r'(\s+)', text):
+                if part.strip():
+                    number += 1
+                    body += rf'{{\1c{ass_colour(item.karaoke.color if number <= lit_words else colour)}}}'
+                body += line(part, size, colour, spacing)[len(head):] if part else ''
+            return head + body
         pieces = []
         for run in script_runs(text):
             family, scale = font_for(run)
@@ -620,7 +630,7 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
             pieces.append(rf'{{\fn{family}\fs{size * scale}}}{body}')
         return head + ''.join(pieces)
 
-    lines = [line(item.text, title_size, item.color, item.spacing)]
+    lines = [line(item.text, title_size, item.color, item.spacing, lit if item.karaoke else None)]
     if item.subtitle:
         sub = line(item.subtitle, sub_size, item.subtitle_color or item.color, item.subtitle_spacing)
         lines = [sub, *lines] if item.subtitle_above else [*lines, sub]
@@ -642,6 +652,15 @@ Dialogue: 0,{ass_timestamp(0)},{ass_timestamp(1)},Title,,0,0,0,,{r'\N'.join(line
 """, encoding='utf-8')
 
 
+def karaoke_states(item: Text) -> list[tuple[float, float, int | None]]:
+    """(start, end, last word lit) through a karaoke title, in its own seconds: none lit before the first word.
+    Matches karaokeLit in model.ts."""
+    times = [min(max(0.0, at), item.length) for at in item.karaoke.words]
+    edges = [0.0, *times, item.length]
+    states = [(edges[0], edges[1], None)] + [(edges[n + 1], edges[n + 2], n) for n in range(len(times))]
+    return [state for state in states if state[1] - state[0] > 1e-6]
+
+
 def caption_states(item: Caption, highlight: bool) -> list[tuple[float, float, int | None]]:
     """Each moment a caption looks different: (start, end, lit word), in its own seconds. Matches captionStates in model.ts."""
     if not highlight:
@@ -655,6 +674,7 @@ def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
 
 
 def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None) -> None:
+    """`lit`: for a caption, its highlighted word; for a karaoke title, the last word sung so far."""
     """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
     if layer is not None:
         edit, marks = caption_edit(layer, [{'start': 0, 'end': 1, 'text': item.text}]), [lit]
@@ -668,7 +688,7 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
             render_design(item, fmt, target)
             return
         if layer is None and item.designed:
-            write_title(folder / 'lyrics.ass', item, fmt)
+            write_title(folder / 'lyrics.ass', item, fmt, lit=lit)
         else:
             write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height), marks=marks, mark_color=layer.highlight if layer else None)
         (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
@@ -1030,10 +1050,33 @@ class Builder:
             label, output = f'text{position}_{number}', f't{position}_{number}'
             if title3d.is_3d(item):
                 # Tilted, extruded or pinned: drawn already posed, frame by frame, through the same corners as the preview.
-                warped = render_title_frames(item, image, (self.fmt.width, self.fmt.height), fps, frames, self.folder / f'text-{position}-{number}-3d.mkv', self.pin_for(item))
+                states = None
+                if item.karaoke and item.karaoke.words and not item.design:
+                    states = []
+                    for state, (start, end, lit) in enumerate(karaoke_states(item)):
+                        picture = image if lit is None else self.folder / f'text-{position}-{number}-lit{state}.png'
+                        if lit is not None:
+                            render_text_image(item, self.fmt, picture, lit=lit)
+                        states.append((start, end, picture))
+                warped = render_title_frames(item, image, (self.fmt.width, self.fmt.height), fps, frames, self.folder / f'text-{position}-{number}-3d.mkv', self.pin_for(item), states=states)
                 index = self.add_input('-i', str(warped))
                 self.graph.append(f'[{index}:v]format=gbrap,setpts=PTS-STARTPTS,settb=AVTB[{label}]')
                 shown = label
+            elif item.karaoke and item.karaoke.words and not item.design:
+                # Karaoke: one picture for each word sung so far, shown in turn, then posed and moved as one title.
+                states = karaoke_states(item)
+                listing = self.folder / f'text-{position}-{number}-karaoke.txt'
+                rows = []
+                for state, (start, end, lit) in enumerate(states):
+                    picture = image if lit is None else self.folder / f'text-{position}-{number}-lit{state}.png'
+                    if lit is not None:
+                        render_text_image(item, self.fmt, picture, lit=lit)
+                    rows += [f"file '{picture.name}'", f'duration {end - start:.6f}']
+                rows.append(f"file '{(image if states[-1][2] is None else picture).name}'")  # The concat reader needs the last picture twice.
+                listing.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+                index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
+                self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
+                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
             else:
                 index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(image))
                 self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')

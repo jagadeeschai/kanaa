@@ -6,7 +6,7 @@ import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
-import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { karaokeLit, REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
 import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 
@@ -517,7 +517,7 @@ export class PlaybackEngine {
   cleanVoice: (mediaId: number) => string | undefined = () => undefined;
   /** The picture of a clip's drawn shape, once it is ready. */
   shapeUrl: (mask: ShapeMask) => string | undefined = () => undefined;
-  private textUrl: (text: TextItem) => string | undefined = () => undefined;
+  private textUrl: (text: TextItem, lit?: number | null) => string | undefined = () => undefined;
   private captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined;
   private stopAt = Infinity;
   private gl: WebGL2RenderingContext;
@@ -624,7 +624,7 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem, lit?: number | null) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
     this.timeline = timeline;
     if ((timeline.lut ?? null) !== this.lutId) this.loadLut(timeline.lut ?? null);
     this.textUrl = textUrl;
@@ -1126,7 +1126,9 @@ export class PlaybackEngine {
   private drawText(layer: TextLayer) {
     const { gl, uniforms } = this;
     const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
-    const url = item && this.textUrl(item);
+    // A karaoke line shows the picture with the words sung so far lit, or the plain one until that picture is in.
+    const lit = item ? karaokeLit(item, this.time - item.start) : null;
+    const url = item && ((lit !== null && this.textUrl(item, lit)) || this.textUrl(item));
     if (!item || !url) return;
     const image = this.imageTexture(url, true);
     if (!image.ready) return;

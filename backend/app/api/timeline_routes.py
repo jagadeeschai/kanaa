@@ -477,16 +477,21 @@ def text_image(body: dict):
         item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
     except (KeyError, ValidationError) as exc:
         raise HTTPException(400, 'This text is not valid.') from exc
-    target = text_cache(item, fmt).with_suffix('.png')
+    lit = body.get('lit') if item.karaoke else None
+    if lit is not None and not isinstance(lit, int):
+        raise HTTPException(400, 'This text is not valid.')
+    target = text_cache(item, fmt).with_suffix('.png' if lit is None else f'.lit{lit}.png')
     if not target.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
-        render_text_image(item, fmt, target)
+        render_text_image(item, fmt, target, lit=lit)
     return FileResponse(target, media_type='image/png')
 
 
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design')}
+    if item.karaoke:
+        look['karaoke'] = item.karaoke.color  # Only the colour changes the pictures; word times pick which one shows.
     key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
     return settings.data_dir / 'cache' / 'text' / key
 
