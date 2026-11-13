@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import unicodedata
 import subprocess
 from pathlib import Path
 
@@ -32,27 +33,99 @@ LOOKS = {
 }
 
 
+def without_directions(words: str) -> str:
+    """A lyric line without the singing notes a song generator writes into it. Tags in square brackets and English
+    notes in round brackets go ("(Backing harmony)", "(Silent 1 second)"); a note with lyrics after a colon keeps the
+    lyrics ("(Stereo wide backing: பக்கத்திலே…)"); Tamil (or any non-English) words in brackets are sung, so they
+    stay, without the brackets. The lyric screen does the same (withoutDirections in utils/lyrics.ts)."""
+    def note(match: re.Match) -> str:
+        inside = match.group(1).strip()
+        if inside.isascii():
+            return ' '
+        head, colon, rest = inside.partition(':')
+        return ' ' + (rest.strip() if colon and head.isascii() else inside) + ' '
+    words = re.sub(r'\[[^\]]*\]', ' ', words)
+    words = re.sub(r'\(([^()]*)\)', note, words)
+    return re.sub(r'\s+', ' ', words).strip()
+
+
+STACKED = 0.05  # Lines this close in time were written on one moment.
+READABLE = 1.0  # A line shown for less than this cannot be read.
+
+
 def read_lrc(text: str, tail: float = 4.0, longest: float = 7.0) -> list[dict]:
-    """Timed lines from an LRC file: [mm:ss.xx]words. Stage directions in brackets are left out, a fragment of two
-    letters or fewer joins the line before it, and each line lasts until the next (at most `longest` seconds)."""
-    lines: list[tuple[float, str]] = []
-    for raw in text.splitlines():
+    """Timed lines from an LRC file: [mm:ss.xx]words, without the singing notes a song generator adds (see
+    without_directions); a fragment of two letters or fewer joins the line before it; a line that is only a note
+    ("(Silent 1 second)") is left out.
+
+    Song generators often write several lines on one moment: consecutive lead lines, with backing harmonies (lines in
+    brackets) stacked on them. At such a moment the lead lines are kept, in the file's order, and spread evenly up to
+    the next moment, so every sung line shows and none overlap; backing lines are used only where a moment has no lead
+    line, and a line repeated at the same moment shows once. Each line lasts until the next (at most `longest` s)."""
+    found: list[tuple[float, int, str, bool]] = []  # time, order in the file, words, a backing line
+    waiting = ''
+    for order, raw in enumerate(text.splitlines()):
         stamps = re.findall(r'\[(\d+):(\d+(?:\.\d+)?)\]', raw)
-        words = re.sub(r'\[[^\]]*\]', '', raw).strip()
+        sung = re.sub(r'\[[^\]]*\]', '', raw).strip()
+        words = without_directions(sung)
         if not stamps or not words:
             continue
+        if re.fullmatch(r'(?i)(silent|instrumental|end|verse|chorus|pre-chorus|post-chorus|outro|intro|bridge|hook|break)\b.*', words) and words.isascii():
+            continue
+        backing = sung.startswith('(')
+        if unicodedata.category(words[0]).startswith('M') and found:
+            last = found[-1]  # A word cut across two lines: the second half starts on a vowel sign.
+            found[-1] = (last[0], last[1], last[2] + words, last[3])
+            continue
+        if waiting:
+            words, waiting = waiting + ' ' + words, ''
+        when = int(stamps[0][0]) * 60 + float(stamps[0][1])
+        if len(words) <= 2 and found and 0 < when - found[-1][0] < 1.5 and unicodedata.category(found[-1][2][-1])[0] in 'LM':
+            last = found[-1]  # The rest of a word sung straight after its line ("சொல்லுவே" + "னே").
+            found[-1] = (last[0], last[1], last[2] + words, last[3])
+            continue
+        if len(words) <= 2:
+            waiting = words  # A one-word lead-in ("நீ") is sung into the next line.
+            continue
         for minutes, seconds in stamps:
-            at = int(minutes) * 60 + float(seconds)
-            if len(words) <= 2 and lines:
-                lines[-1] = (lines[-1][0], lines[-1][1] + words)
-            else:
-                lines.append((at, words))
-    lines.sort()
+            found.append((int(minutes) * 60 + float(seconds), order, words, backing))
+    found.sort(key=lambda line: (line[0], line[1]))
+    moments: list[tuple[float, list[str]]] = []
+    index = 0
+    while index < len(found):
+        at = found[index][0]
+        group = []
+        while index < len(found) and found[index][0] - at <= STACKED:
+            group.append(found[index]); index += 1
+        lead = [line for line in group if not line[3]] or group
+        words: list[str] = []
+        for line in lead:
+            if line[2] not in words:
+                words.append(line[2])
+        moments.append((at, words))
+    timed: list[tuple[float, str]] = []
+    for number, (at, words) in enumerate(moments):
+        until = moments[number + 1][0] if number + 1 < len(moments) else at + tail * len(words)
+        step = (until - at) / len(words)
+        timed += [(at + share * step, line) for share, line in enumerate(words)]
     cues = []
-    for index, (at, words) in enumerate(lines):
-        after = lines[index + 1][0] if index + 1 < len(lines) else at + tail
-        cues.append({'start': round(at, 2), 'end': round(max(at + 0.3, min(after - 0.05, at + longest)), 2), 'text': words})
+    for number, (at, words) in enumerate(timed):
+        after = timed[number + 1][0] if number + 1 < len(timed) else at + tail
+        end = min(after - 0.05, at + longest) if after - at > 0.35 else after - 0.01
+        cue = {'start': round(at, 2), 'end': round(max(end, at + 0.05), 2), 'text': words}
+        if after - at < READABLE:
+            cue['review'] = True  # The file gives this line too little time to read: its real time is not in it.
+        cues.append(cue)
     return cues
+
+
+def crowded(cues: list[dict]) -> list[str]:
+    """Where lines were given too little time to read (mm:ss of the first of each run), to tell the person."""
+    out: list[str] = []
+    for number, cue in enumerate(cues):
+        if cue.get('review') and (number == 0 or not cues[number - 1].get('review')):
+            out.append(f"{int(cue['start'] // 60)}:{int(cue['start'] % 60):02d}")
+    return out
 
 
 def base_timeline(handoff: dict) -> dict:
@@ -72,7 +145,9 @@ def lay_out(timeline: dict) -> None:
     at = 0.0
     for clip in timeline['layers'][0]['items']:
         clip['start'] = round(at, 3)
-        at += length_of(clip)
+        if 'out' in clip and 'in' in clip:
+            clip['out'] = round(clip['in'] + round(clip['out'] - clip['in'], 3), 3)
+        at = round(at + length_of(clip), 3)
 
 
 def dress(timeline: dict, look: str, lights: dict[str, int], camera_moves: bool = True) -> None:
@@ -288,6 +363,7 @@ def prepend_intro(timeline: dict, media_id: int, seconds: float = 5.5, cards: fl
             if item.get('id') == 'opening-1':
                 continue
             if item.get('id') == 'credit-opening-bg':
+                item['start'] = seconds
                 item['out'] = item['in'] + cards
                 keys = item.get('transform', {}).get('keyframes', {}).get('scale')
                 if keys:

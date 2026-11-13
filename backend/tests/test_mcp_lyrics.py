@@ -85,6 +85,33 @@ class Build(unittest.TestCase):
         scenes = [clip for clip in t['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
         self.assertEqual(scenes[-1]['exit'], {'preset': 'fade', 'duration': 3.0}, 'the last scene leaves slowly')
 
+    def test_stacked_suno_lines_keep_the_lead_lines_in_order_without_notes(self):
+        lrc = '''[00:40.45]வந்த என்னை நீயும் கண்டு
+[00:44.60](Backing harmony) மரத்தின் நிழலில் நின்று கொண்டு
+[00:44.60]வானம் பார்க்க என்ன உண்டு
+[00:44.60](Backing harmony)  வானம் பார்க்க என்ன உண்டு
+[00:44.60](நல்ல…. பருத்தி புடவை)
+[00:44.60]காய்த்ததடி பொன்வண்டு
+[00:48.03](Silent 1 second)
+[00:48.03]நீ
+[00:48.20]பக்கத்திலே நின்றாயடி கற்கண்டு.
+[00:55.00](Stereo wide backing: பக்கத்திலே நின்றாயடி கற்கண்டு)
+[01:00.00](கற்கண்டு...)'''
+        cues = lyrics.read_lrc(lrc)
+        texts = [cue['text'] for cue in cues]
+        self.assertEqual(texts, ['வந்த என்னை நீயும் கண்டு', 'வானம் பார்க்க என்ன உண்டு', 'காய்த்ததடி பொன்வண்டு', 'நீ பக்கத்திலே நின்றாயடி கற்கண்டு.',
+                                 'பக்கத்திலே நின்றாயடி கற்கண்டு', 'கற்கண்டு...'])
+        self.assertTrue(all(a['end'] <= b['start'] for a, b in zip(cues, cues[1:])), 'lines never overlap')
+        self.assertLess(cues[1]['start'], cues[2]['start'], 'lead lines on one moment are spread in order')
+        self.assertEqual(lyrics.crowded(cues), [])
+
+    def test_lines_crammed_into_a_moment_are_marked_for_checking(self):
+        lrc = '[02:22.34]' + '\n[02:22.34]'.join(f'வரி {n}' for n in range(10)) + '\n[02:25.21]அடுத்த வரி'
+        cues = lyrics.read_lrc(lrc)
+        self.assertTrue(all(cue.get('review') for cue in cues[:10]))
+        self.assertEqual(lyrics.crowded(cues), ['2:22'])
+        self.assertTrue(all(a['end'] <= b['start'] for a, b in zip(cues, cues[1:])))
+
     def test_without_3d_or_credits_it_still_keeps_to_the_rules(self):
         t = self.timeline(three_d=False)
         lyrics.lay_out(t)

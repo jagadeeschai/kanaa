@@ -137,5 +137,6 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     if folder and own:
         api.patch('/photos/folder', {'ids': own, 'folder': folder})
     return {'project_id': project_id, 'folder': folder, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
-            'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.'}
+            'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.',
+            'check_timing': lyrics.crowded(cues)}
 
