@@ -128,6 +128,11 @@ def shots(timeline: dict, focus_of: dict[int, tuple[float, float]], painted: dic
             shot = {**clip, 'id': clip['id'] if number == 0 else f"{clip['id']}-{number + 1}", 'start': round(clip['start'] + sum(pieces[:number]), 3),
                     'in': round(at_in, 3), 'out': round(at_in + piece * clip.get('speed', 1), 3)}
             at_in += piece * clip.get('speed', 1)
+            # The scene's own way in and out belong to its first and last shot.
+            if number:
+                shot.pop('enter', None)
+            if number < len(pieces) - 1:
+                shot.pop('exit', None); shot.pop('echo', None); shot['fade_out'] = 0
             if number:
                 shot['transition_in'] = {'kind': 'cross-blur', 'duration': 0.8}
                 zoom = 1.45 if len(pieces) == 2 else TIERS[number % len(TIERS)]

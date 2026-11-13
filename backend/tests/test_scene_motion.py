@@ -51,12 +51,15 @@ class Shots(unittest.TestCase):
 
 class LongScenes(unittest.TestCase):
     def test_a_long_scene_keeps_cutting_about_every_ten_seconds(self):
-        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [scene(1, 0, 107)]}]}
+        long = {**scene(1, 0, 107), 'enter': {'preset': 'blur', 'duration': 0.5}, 'exit': {'preset': 'fade', 'duration': 3.0}}
+        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [long]}]}
         scene_motion.shots(timeline, {}, {10: [99]})
         items = timeline['layers'][0]['items']
         self.assertEqual(len(items), 11)
         self.assertTrue(all(9 < item['out'] - item['in'] < 10.5 for item in items))
         self.assertEqual([item.get('shot') for item in items[:5]], [None, 1.35, 1.7, 1.35, None])
+        self.assertEqual([bool(item.get('enter')) for item in items].count(True), 1)
+        self.assertTrue(items[-1].get('exit') and not any(item.get('exit') for item in items[:-1]))
         painted = [item['id'] for item in items if item['media_id'] == 99]
         self.assertTrue(1 <= len(painted) <= 3, painted)
 
