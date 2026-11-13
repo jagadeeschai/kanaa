@@ -43,9 +43,9 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | E3 | Colour and looks set in five places | ✅ Themes panel is whole-video only (one-clip looks live in the clip's Colour); Effects' "Colour" category is now Stylise; Cinematic finish and LUT together under Colour & finish | M | ✅ |
 | E4 | Effects tab holds four unrelated tools | ✅ Travel map moved to Media; blur/pixelate/faces is the Privacy section; Effects holds clip effects, overlays and Privacy | M | ✅ |
 | E5 | Caption language lives in Words, which Lite hides | ✅ Captions have their own language choice (in Text, so Lite has it); a merged Captions & words tab was dropped because it would hide captions from Lite | S | ✅ |
-| E6 | The Transitions tab changes with the selection | Tab: gallery, Every cut, Remove all; per-clip length in the clip | ⬜ |
+| E6 | The Transitions tab changes with the selection | ✅ The tab holds the gallery, Every cut and Remove all; one cut's length and direction are set on the cut itself | ✅ |
 | E7 | "Templates" holds only stories | Rename to **Stories**; put Brand intro there as an opening | ✅ |
-| E8 | Project settings mix format, look, brand and sound | ✅ Tabs Format · Colour & finish · Brand (watermark, brand intro) · Sound. Still to do: loudness set once (it is also in Export) | M | 🚧 |
+| E8 | Project settings mix format, look, brand and sound; loudness also in Export | ✅ Tabs Format · Colour & finish · Brand · Sound; Export's loudness switch says it is the same setting as Project settings › Sound | M | ✅ |
 | E9 | The guide is reachable five ways but has no visible button | A **?** in the header; fewer duplicate entries | ✅ |
 | E10 | Lite hides things silently | "More in Pro" hint | ✅ |
 | E11 | Much text not translated; the lyric screen is English only; language only in the editor | ✅ Every visible label on the home screen, lyric screen (all five steps) and editor panels is in Tamil when chosen (checked by collecting what stayed English); labels of typing boxes are translated, never their contents; numbered labels by pattern; a த / EN switch on the home screen. Still to do: retire the page translator for t() (B5) | ✅ |
@@ -73,7 +73,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 | # | Problem | Change | Effort | Status |
 |---|---|---|---|---|
-| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click range, ⌘-click, ⌘A, and dragging a box over empty track; changes apply to all picked; Delete removes all. Still to do: "Mixed" values | L | 🚧 |
+| A1 | Only one item can be selected; fixing 40 lyric lines is 40 edits | ✅ Shift-click range, ⌘-click, ⌘A, a box over empty track; changes apply to all picked; Delete removes all; the picked note lists the Mixed settings ("the panel shows the first; a change makes them all the same") | L | ✅ |
 | A2 | Snapping and zoom give no visible cue | ✅ A dashed line where a dragged edge snaps; magnet button and N toggle snapping; a zoom slider between − and + | M | ✅ |
 | A3 | Six long jobs, six progress styles, most can't be cancelled | ✅ One Jobs tray: progress, Cancel, plain failure words, a note when one finishes, and Try again for a failed or cancelled job (same job, while Kanaa runs) | M | ✅ |
 | A4 | Errors show the server's raw English text | Plain sentences that say what to do, with Retry and Details | S | ✅ |

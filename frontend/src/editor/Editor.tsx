@@ -1009,6 +1009,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       box.focus();
     }, 60);
   };
+  // The settings that differ among the picked items (shown as Mixed); only settings a change would make the same.
+  const mixedSettings = (): string[] => {
+    if (!timeline || !selectedId || !moreIds.size) return [];
+    const ids = [selectedId, ...moreIds];
+    const items = ids.map((id) => findText(timeline, id)?.text ?? findClip(timeline, id)).filter(Boolean) as Record<string, unknown>[];
+    if (items.length < 2) return [];
+    const keys = sharedKeys(Object.assign({}, ...items)).filter((key) => key !== 'transform' && key !== 'adjust');
+    return keys.filter((key) => new Set(items.map((item) => JSON.stringify(item[key] ?? null))).size > 1).slice(0, 6);
+  };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => {
     if (timeline && selectedText && moreIds.size && styleScope === 'item') {
       // Several titles picked: the change goes to each of them (never their words or timing).
@@ -2258,10 +2267,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             <button className="ed-button wide" onClick={() => change(transitionEverywhere(timeline, transitionPick, 0.6), 'transition-all')} title={`Put a ${transitionPick} on every cut`}><Shuffle size={14}/>Every cut: {TRANSITIONS.find((item) => item.id === transitionPick)?.label ?? transitionPick}</button>
             {mainLayer(timeline).items.some((clip) => clip.transition_in) && <button className="ed-button wide" onClick={() => setConfirmingClear(true)}><X size={14}/>Remove all transitions</button>}
           </>}
-          {selected?.transition_in ? <ValueSlider label="Length" value={selected.transition_in.duration} min={0.2} max={2} step={0.05} defaultValue={0.6} unit="s" decimals={2} onGestureStart={pauseEngine} onChange={(duration, group) => change(updateClip(timeline!, selected.id, { transition_in: { ...selected.transition_in!, duration } }), group ?? 'transition-length')}/>
-            : <p className="ed-tip">Select a clip with a transition to adjust its length.</p>}
-          {selected?.transition_in && (selected.transition_in.kind === 'wipe' || selected.transition_in.kind === 'slide') &&
-            <Chips label="Direction" options={TRANSITION_DIRECTIONS} value={selected.transition_in.direction ?? 'left'} onPick={(direction) => change(updateClip(timeline!, selected.id, { transition_in: { ...selected.transition_in!, direction: direction === 'left' ? null : direction } }))}/>}
+          <p className="ed-tip">{t('To change one cut’s length or direction, click the cut between two clips on the timeline.')}</p>
         </>}
         {leftTab === 'ask' && timeline && <div data-keep-panel><AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/></div>}
         {leftTab === 'effects' && <div className="ed-effect-search"><Search size={14}/><input type="search" value={effectSearch} onChange={(event) => setEffectSearch(event.target.value)} placeholder="Search effects…" aria-label="Search effects"/>{effectSearch && <button className="ed-icon small" aria-label="Clear effect search" onClick={() => setEffectSearch('')}><X size={12}/></button>}</div>}
@@ -2467,7 +2473,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
           </div> }}>
       <aside className="ed-inspector" aria-label="Clip settings"><EditorContext.Provider value={editorShared}><LayerModeContext.Provider value={Boolean(layerSettings)}>{inspectorOpen && <>{selectedIdentity && <div className="ed-selection"><span>{t(selectedIdentity.kind)}</span>{selected && !settingsLayer ? <input key={selected.id} className="ed-selection-name" aria-label="Clip name" title="What this clip is for; shown on it in the timeline" maxLength={80} defaultValue={selected.name ?? ''} placeholder={mediaById.get(selected.media_id)?.filename ?? 'Clip name'}
         onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' || event.key === 'Escape') { if (event.key === 'Escape') event.currentTarget.value = selected.name ?? ''; event.currentTarget.blur(); } }}
-        onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}{moreIds.size > 0 && !layerSettings && <div className="ed-scope ed-multi"><b>{t('{count} items picked', { count: moreIds.size + 1 })}</b><span>{t('Changes apply to all of them (not their words or timing).')}</span><button className="ed-link" onClick={() => setMoreIds(new Set())}>{t('Just this one')}</button></div>}{!selectedLayer?.locked && (selectedText ? scopeBar(selectedText.id, 'title') : selected ? scopeBar(selected.id, 'clip') : null)}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
+        onBlur={(event) => { const name = event.currentTarget.value.trim() || null; if ((selected.name ?? null) !== name) change(updateClip(timeline!, selected.id, { name })); }}/> : <strong title={selectedIdentity.name}>{selectedIdentity.name}</strong>}</div>}{moreIds.size > 0 && !layerSettings && <div className="ed-scope ed-multi"><b>{t('{count} items picked', { count: moreIds.size + 1 })}</b><span>{t('Changes apply to all of them (not their words or timing).')}</span>{(() => { const mixed = mixedSettings(); return mixed.length > 0 && <span className="ed-multi-mixed">{t('Mixed:')} {mixed.map((key) => t(STYLE_NAMES[key] ?? key.replace(/_/g, ' '))).join(', ')} — {t('the panel shows the first; a change makes them all the same.')}</span>; })()}<button className="ed-link" onClick={() => setMoreIds(new Set())}>{t('Just this one')}</button></div>}{!selectedLayer?.locked && (selectedText ? scopeBar(selectedText.id, 'title') : selected ? scopeBar(selected.id, 'clip') : null)}</>}{selectedLayer?.locked ? <div className="ed-hint"><h2>Layer locked</h2><p>Unlock this layer on the timeline to change it.</p></div>
         : selectedCaption ? <CaptionInspector caption={selectedCaption.caption} layer={selectedCaption.layer} timing={textTiming(selectedCaption.caption)}
           onText={(text) => change(updateCaption(timeline!, selectedCaption.caption.id, { words: retypeCaption(selectedCaption.caption, text) }), `caption-${selectedCaption.caption.id}`)}
           onLook={(changes, group) => change(updateCaptionLook(timeline!, selectedCaption.layer.id, changes), group)} onRemoveAll={() => { change(setCaptions(timeline!, [], '')); setSelectedId(null); }}/>
@@ -2749,7 +2755,7 @@ function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, on
       <div className="ed-qualities">{QUALITIES.map((item) => <button key={item.id} className={quality === item.id ? 'on' : ''} aria-pressed={quality === item.id} onClick={() => setQuality(item.id)}><strong>{item.label}</strong><span>{item.note}</span></button>)}</div>
       <p className="ed-export-spec">{exportSpec(outputFormat, withSound)}</p>
       <label className="ed-check"><input type="checkbox" checked={hardware} onChange={(event) => setHardware(event.target.checked)}/><span>Fast export<small>Uses this Mac's hardware encoder — several times faster, same resolution. Off gives the smallest file.</small></span></label>
-      <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onNormalize(event.target.checked)}/><span>Even out loudness<small>Matches the level social apps expect. Applied to the export, not the preview.</small></span></label>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(timeline.normalize_audio)} onChange={(event) => onNormalize(event.target.checked)}/><span>Even out loudness<small>{t('The same setting as Project settings › Sound.')} Matches the level social apps expect. Applied to the export, not the preview.</small></span></label>
       {error && <p role="alert" className="ed-bad">{error}</p>}
       <button className="ed-primary wide" onClick={() => { void start(); }}><Download size={16}/>Export MP4</button></>}
     {running && <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p>{job.status === 'queued' ? 'Waiting for another job to finish…' : `Exporting… ${job.progress}%`}</p>

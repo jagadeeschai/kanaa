@@ -475,4 +475,8 @@ export const TAMIL: Record<string, string> = {
   'system': 'இந்த Mac போல',
   'light': 'வெளிர்',
   'dark': 'இருள்',
+  'To change one cut’s length or direction, click the cut between two clips on the timeline.': 'ஒரு வெட்டின் நீளம் அல்லது திசையை மாற்ற, காலவரிசையில் இரு கிளிப்புகளுக்கு இடையிலான வெட்டை அழுத்துங்கள்.',
+  'The same setting as Project settings › Sound.': 'திட்ட அமைப்புகள் › ஒலி-யில் உள்ள அதே அமைப்பு.',
+  'Mixed:': 'வேறுபட்டவை:',
+  'the panel shows the first; a change makes them all the same.': 'பலகம் முதலாவதைக் காட்டும்; மாற்றினால் அனைத்தும் ஒன்றாகும்.',
 };
