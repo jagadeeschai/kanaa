@@ -73,8 +73,40 @@ SHOT_MIN = 7.0  # A scene shorter than this stays one shot; one of 7 s or more b
 
 
 def focus(picture: Path) -> tuple[float, float]:
-    """Where the eye goes in a picture, as shares: the largest face, otherwise the upper-middle (where people's faces
-    and horizons usually are)."""
+    """Where the eye goes in a picture, as shares: the largest face (Apple Vision finds side-on faces too), otherwise
+    Vision's most eye-catching region, otherwise the largest face OpenCV finds (on a computer without Vision),
+    otherwise the upper-middle, where people's faces and horizons usually are."""
+    return focus_points(picture)[0]
+
+
+def focus_points(picture: Path) -> list[tuple[float, float]]:
+    """Every clear face, largest first (up to three), so a long scene's close shots can go from one person to the
+    next; one point when there is no face."""
+    seen = vision_focus(picture)
+    return seen if seen is not None else [opencv_focus(picture)]
+
+
+def vision_focus(picture: Path) -> list[tuple[float, float]] | None:
+    import json
+    import subprocess
+    try:
+        from app.services.cutout_service import helper
+        tool = helper(Path(__file__).resolve().parents[1] / 'native' / 'focus_points.swift')
+        found = json.loads(subprocess.run([str(tool), str(picture)], capture_output=True, text=True, timeout=60, check=True).stdout)
+    except Exception:  # No Vision here (not a Mac, no command line tools): the OpenCV finder takes over.
+        return None
+    faces = [face for face in found.get('faces') or [] if face[4] >= 0.5 and face[2] * face[3] >= 0.0004]
+    if faces:
+        largest = sorted(faces, key=lambda face: -face[2] * face[3])
+        # A face much smaller than the main one is a passer-by, not a second lead.
+        return [(x + w / 2, y + h / 2) for x, y, w, h, _ in largest[:3] if w * h >= largest[0][2] * largest[0][3] * 0.25]
+    if found.get('salient'):
+        x, y, w, h = found['salient']
+        return [(x + w / 2, y + min(h / 2, h * 0.35))]  # Toward the top of what stands out: a head more often than feet.
+    return [(0.5, 0.4)]
+
+
+def opencv_focus(picture: Path) -> tuple[float, float]:
     import cv2
     image = cv2.imread(str(picture), cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -109,7 +141,7 @@ def framed(point: tuple[float, float], zoom: float) -> tuple[float, float]:
     return tuple(round(0.5 + max(-room, min(room, (0.5 - p) * zoom)), 4) for p in point)  # type: ignore[return-value]
 
 
-def shots(timeline: dict, focus_of: dict[int, tuple[float, float]], painted: dict[int, list[int]] | None = None, seed: int = 7) -> None:
+def shots(timeline: dict, focus_of: dict[int, tuple[float, float] | list[tuple[float, float]]], painted: dict[int, list[int]] | None = None, seed: int = 7) -> None:
     """Cuts each long picture scene on the main track into a wide, a medium and a close shot of the same picture, each
     with its own slow move, joined by a soft blur. painted: picture media id -> painted versions; every other scene's
     middle shot shows one of them, so the same picture also changes look."""
@@ -121,7 +153,8 @@ def shots(timeline: dict, focus_of: dict[int, tuple[float, float]], painted: dic
         if not clip['id'].startswith('lyric-scene-') or length < SHOT_MIN:
             out.append(clip)
             continue
-        point = focus_of.get(clip['media_id'], (0.5, 0.4))
+        points = focus_of.get(clip['media_id']) or [(0.5, 0.4)]
+        points = [points] if isinstance(points[0], (int, float)) else points
         pieces = shot_lengths(length)
         at_in = clip['in']
         for number, piece in enumerate(pieces):
@@ -142,7 +175,7 @@ def shots(timeline: dict, focus_of: dict[int, tuple[float, float]], painted: dic
                 versions = (painted or {}).get(clip['media_id']) or []
                 if versions and zoom == 1.35 and (number % 4 == 3 or turn % 2 == 0) and (number // 2) % 2 == (0 if turn % 2 == 0 else 1):
                     shot['media_id'] = versions[(turn // 2 + number // 4) % len(versions)]
-            shot['focus'] = point
+            shot['focus'] = points[(number // 4) % len(points)]  # Each round of wide, medium, close, medium turns to the next face.
             out.append(shot)
         turn += 1
     main['items'] = out

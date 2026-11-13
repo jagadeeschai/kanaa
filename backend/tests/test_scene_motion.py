@@ -64,6 +64,14 @@ class LongScenes(unittest.TestCase):
         self.assertTrue(1 <= len(painted) <= 3, painted)
 
 
+class TwoPeople(unittest.TestCase):
+    def test_close_shots_go_from_one_face_to_the_other(self):
+        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [scene(1, 0, 90)]}]}
+        scene_motion.shots(timeline, {10: [(0.3, 0.3), (0.7, 0.35)]})
+        closes = [item['focus'] for item in timeline['layers'][0]['items'] if item.get('shot') == 1.7]
+        self.assertEqual(len(set(closes)), 2, closes)
+
+
 class Gentle(unittest.TestCase):
     def test_into_clear_pictures_breathe_and_the_person_layer_moves_with_them(self):
         clip = scene(1, 0, 10); clip['transform']['scale'] = 1.2
@@ -93,7 +101,7 @@ class Paint(unittest.TestCase):
                 out = scene_motion.paint(picture, style)
                 self.assertEqual(out.shape, image.shape)
                 self.assertGreater(float(np.abs(out.astype(int) - image.astype(int)).mean()), 1, style)
-            self.assertEqual(scene_motion.focus(picture), (0.5, 0.4), 'no face: the upper middle')
+            self.assertEqual(len(scene_motion.focus_points(picture)), 1, 'no face: one point')
 
 
 if __name__ == '__main__':

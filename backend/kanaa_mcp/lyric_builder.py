@@ -115,7 +115,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         for turn, scene in enumerate(scenes):
             item = media(int(scene['media_id']))
             picture = Path(item['absolute_path'])
-            focus[int(scene['media_id'])] = scene_motion.focus(picture)
+            focus[int(scene['media_id'])] = scene_motion.focus_points(picture)
             if painted and turn % 2 == 0:
                 style = scene_motion.PAINTS[(turn // 2) % len(scene_motion.PAINTS)]
                 versions[int(scene['media_id'])] = [painting(api, list_media, picture, Path(item['filename']).stem, style)]
