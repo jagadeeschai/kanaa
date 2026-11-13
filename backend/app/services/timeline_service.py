@@ -619,7 +619,10 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
         for run in script_runs(text):
             family, scale = font_for(run)
             if letter_ids is None:
-                pieces.append(rf'{{\fn{family}\fs{size * scale}}}{ass_text(run)}')
+                # Letter spacing pulls Tamil vowel signs off their letters, so Tamil keeps its natural spacing.
+                tamil = any('\u0b80' <= character <= '\u0bff' for character in run)
+                gap = rf'\fsp{0 if tamil else spacing * unit}' if spacing else ''
+                pieces.append(rf'{{\fn{family}\fs{size * scale}{gap}}}{ass_text(run)}')
                 continue
             body = ''
             for cluster in letter_clusters(run):

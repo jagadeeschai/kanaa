@@ -6,15 +6,16 @@ from __future__ import annotations
 ROLES = (('lyrics', 'பாடல்', 'Lyrics'), ('music', 'இசை', 'Music'), ('arrangement', 'இசையமைப்பு & பாணி', 'Arrangement & style'),
          ('singers', 'பாடியவர்', 'Singers'), ('label', 'வெளியீடு', 'Label'))
 # Classic: a dark panel with gold, at the top left, clear of the lyrics and the lower third.
-LOOK = {'font': 'Gill Sans', 'tamil_font': 'Arima', 'style': 'band', 'band_color': '#1a1410', 'align': 'left', 'position': 'top', 'color': '#f2c46d', 'size': 34,
-        'subtitle_size': 21, 'subtitle_color': '#f3eee4', 'subtitle_spacing': 1, 'enter': {'preset': 'slide-left', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.5}}
+# A compact card: small enough to sit in the corner above the lyrics. No letter spacing: it breaks Tamil letters apart.
+LOOK = {'font': 'Gill Sans', 'tamil_font': 'Arima', 'style': 'band', 'band_color': '#1a1410', 'align': 'left', 'position': 'top', 'color': '#f2c46d', 'size': 24,
+        'subtitle_size': 14, 'subtitle_color': '#f3eee4', 'subtitle_spacing': 0, 'enter': {'preset': 'slide-left', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.5}}
 FIRST, AGAIN = 7.0, 6.0  # Seconds on screen: when the singing starts, and after the break.
 BREAK = 8.0  # A gap between sung lines longer than this is the instrumental break.
 LAYER = 'song-details'
 
 
 def lines(details: dict) -> str:
-    return '\n'.join(f'{tamil} / {english} — {details[key].strip()}' for key, tamil, english in ROLES if (details.get(key) or '').strip())
+    return '\n'.join(f'{tamil} · {english}  {details[key].strip()}' for key, tamil, english in ROLES if (details.get(key) or '').strip())
 
 
 def add(timeline: dict, title: str, details: dict) -> int:

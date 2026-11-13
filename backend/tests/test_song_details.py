@@ -10,7 +10,7 @@ def line(at, length=3.0):
 class Card(unittest.TestCase):
     def test_only_named_roles_show_in_tamil_and_english(self):
         text = song_details.lines({'music': 'Suno', 'arrangement': 'KavinTamil Originals', 'lyrics': ' ', 'singers': None})
-        self.assertEqual(text, 'இசை / Music — Suno\nஇசையமைப்பு & பாணி / Arrangement & style — KavinTamil Originals')
+        self.assertEqual(text, 'இசை · Music  Suno\nஇசையமைப்பு & பாணி · Arrangement & style  KavinTamil Originals')
 
     def test_it_shows_when_the_singing_starts_and_after_the_break(self):
         timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': []}, {'id': 'L', 'kind': 'text', 'items': [line(35), line(40), line(45), line(120), line(125)]}]}
