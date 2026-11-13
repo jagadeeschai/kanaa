@@ -18,7 +18,8 @@ import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
 import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
 import { Fragment, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { BadgeCheck, Camera, Magnet, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
-import { Search, Settings2 } from 'lucide-react';
+import { Search, Settings2, Paintbrush, X as Close } from 'lucide-react';
+import { clipboardEnd, copyItems, copyStyle, pasteItems, pasteStyle, styleFor, type Clipboard, type CopiedStyle, type StyleKind } from '../timeline/clipboard';
 import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
 import { clipPlacement, invert, pinStretch, pinTrackOptions, sceneMatrix, type SceneTrack } from '../timeline/title3d';
@@ -983,6 +984,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       add('export', 'Export', 'Video', () => { engineRef.current?.pause(); setExporting(true); }, undefined, 'save mp4 share download');
     }
     add('undo', 'Undo', 'Edit', () => dispatch({ type: 'undo' }), '⌘Z');
+    if (selectedId) { add('copy', 'Copy', 'Edit', () => copySelection(), '⌘C'); add('cut', 'Cut', 'Edit', () => copySelection(true), '⌘X'); add('duplicate', 'Duplicate', 'Edit', () => duplicateSelection(), '⌘D');
+      add('copy-style', 'Copy style', 'Edit', () => copySelectedStyle(), '⌥⌘C', 'format painter look'); if (styleCopy) add('paste-style', 'Paste style', 'Edit', () => pasteSelectedStyle(), '⌥⌘V', 'format painter look'); }
+    if (readClipboard()) add('paste', 'Paste at the playhead', 'Edit', () => pasteAt(playhead.current), '⌘V');
     add('redo', 'Redo', 'Edit', () => dispatch({ type: 'redo' }), '⇧⌘Z');
     add('full', 'Full screen preview', 'View', () => toggleFullScreen(), 'F');
     add('guide', 'Guide and shortcuts', 'Help', () => setShowingHelp(true), '?');
@@ -1410,6 +1414,42 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, moreIds, change]);
+  // Copy and paste. The copy is kept for this Mac, so it can go from one project into another.
+  const [styleCopy, setStyleCopy] = useState<CopiedStyle | null>(null);
+  const pickedIds = useCallback(() => (selectedId ? [selectedId, ...moreIds] : []), [selectedId, moreIds]);
+  const copySelection = useCallback((cut = false) => {
+    if (!timeline) return;
+    const copied = copyItems(timeline, pickedIds());
+    if (!copied) return;
+    writeClipboard(copied);
+    setNote(t(cut ? 'Cut {count}' : 'Copied {count}', { count: copied.items.length }));
+    if (cut) removeSelected();
+  }, [timeline, pickedIds, removeSelected]);
+  const pasteAt = useCallback((at: number, copied: Clipboard | null = readClipboard()) => {
+    if (!timeline || !copied) return;
+    try {
+      const pasted = pasteItems(timeline, copied, at, newId);
+      change(pasted.timeline);
+      if (pasted.ids.length) { setSelectedId(pasted.ids[0]); setMoreIds(new Set(pasted.ids.slice(1))); }
+    } catch (problem) { setError((problem as Error).message); }
+  }, [timeline, change]);
+  const duplicateSelection = useCallback(() => {
+    if (!timeline) return;
+    const ids = pickedIds();
+    pasteAt(clipboardEnd(timeline, ids), copyItems(timeline, ids));
+  }, [timeline, pickedIds, pasteAt]);
+  const copySelectedStyle = useCallback(() => {
+    if (!timeline || !selectedId) return;
+    const style = copyStyle(timeline, selectedId);
+    if (style) { setStyleCopy(style); setNote(t('Style copied. Select items and press ⌥⌘V, or click the brush.')); }
+  }, [timeline, selectedId]);
+  const pasteSelectedStyle = useCallback(() => {
+    if (!timeline || !styleCopy || !selectedId) return;
+    const ids = pickedIds().filter((id) => !isLocked(timeline, id));
+    const next = pasteStyle(timeline, styleCopy, ids);
+    if (next === timeline) { setNote(t('That style does not fit what is selected.')); return; }
+    change(next);
+  }, [timeline, styleCopy, selectedId, pickedIds, change]);
   const addMedia = (item: Photo) => {
     if (!timeline) return;
     const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
@@ -1649,6 +1689,12 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         if (layer) { event.preventDefault(); setMoreIds(new Set((layer.items as { id: string }[]).map((item) => item.id).filter((id) => id !== selectedId))); }
         return;
       }
+      if (command && !event.altKey && (event.key === 'c' || event.key === 'x') && selectedId) { event.preventDefault(); copySelection(event.key === 'x'); return; }
+      if (command && !event.altKey && event.key === 'v') { event.preventDefault(); pasteAt(playhead.current); return; }
+      if (command && event.key === 'd' && selectedId) { event.preventDefault(); duplicateSelection(); return; }
+      // ⌥⌘C / ⌥⌘V: Option changes the letter on a Mac keyboard, so read the key's place.
+      if (command && event.altKey && (event.code === 'KeyC' || event.key.toLowerCase() === 'c')) { event.preventDefault(); copySelectedStyle(); return; }
+      if (command && event.altKey && (event.code === 'KeyV' || event.key.toLowerCase() === 'v')) { event.preventDefault(); pasteSelectedStyle(); return; }
       if (command) return;
       switch (event.key) {
         case ' ': event.preventDefault(); togglePlay(); break;
@@ -1688,7 +1734,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText, removeSelected]);
+  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText, copySelection, pasteAt, duplicateSelection, copySelectedStyle, pasteSelectedStyle]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
@@ -2057,7 +2103,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (!timeline) return;
     const place = { x, y };
     if (!id) {
-      setMenu({ ...place, items: [{ label: 'Move playhead here', onSelect: () => seek(t) }, { label: 'Fit timeline', disabled: !total, onSelect: fitZoom }, 'divider', ...generalItems()] });
+      setMenu({ ...place, items: [{ label: 'Move playhead here', onSelect: () => seek(t) }, { label: 'Paste here', hint: '⌘V', disabled: !readClipboard(), onSelect: () => pasteAt(t) }, { label: 'Fit timeline', disabled: !total, onSelect: fitZoom }, 'divider', ...generalItems()] });
       return;
     }
     const layer = layerOf(timeline, id)!;
@@ -2075,7 +2121,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
     if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
     if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
-    items.push({ label: 'Duplicate', onSelect: () => { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } });
+    const many = selectedId === id || moreIds.has(id);
+    const copyHere = (cut: boolean) => { if (!many) { setSelectedId(id); setMoreIds(new Set()); const copied = copyItems(timeline, [id]); if (copied) { writeClipboard(copied); if (cut) change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : removeClip(timeline, id)); } } else copySelection(cut); };
+    items.push('divider', { label: 'Cut', hint: '⌘X', onSelect: () => copyHere(true) }, { label: 'Copy', hint: '⌘C', onSelect: () => copyHere(false) },
+      { label: 'Paste', hint: '⌘V', disabled: !readClipboard(), onSelect: () => pasteAt(t) },
+      { label: 'Duplicate', hint: '⌘D', onSelect: () => { if (many) duplicateSelection(); else { try { change(duplicateItem(timeline, id, newId(), newId())); } catch (problem) { setError((problem as Error).message); } } } },
+      { label: 'Copy style', hint: '⌥⌘C', onSelect: () => { const style = copyStyle(timeline, id); if (style) { setStyleCopy(style); setNote('Style copied. Select items and press ⌥⌘V, or click the brush.'); } } },
+      { label: 'Paste style', hint: '⌥⌘V', disabled: !styleCopy || !styleFor(styleCopy, kindOfItem(timeline, id)).length, onSelect: () => change(pasteStyle(timeline, styleCopy!, many ? pickedIds() : [id])) }, 'divider');
     if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) }, { label: 'Snapshot freeze here', onSelect: () => { void snapshot(t); } });
     if (clip) {
       if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
@@ -2500,6 +2552,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
         <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} title={`${t('Undo')} (⌘Z)`}><Undo2 size={15}/></button>
         <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} title={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={15}/></button>
+        {styleCopy && <span className="ed-brush"><button className="ed-button ed-icon-button on" onClick={pasteSelectedStyle} disabled={!selectedId} aria-label={t('Paste style')} title={`${t('Paste style')} (⌥⌘V)`}><Paintbrush size={15}/></button><button className="ed-brush-off" onClick={() => setStyleCopy(null)} aria-label={t('Stop pasting style')} title={t('Stop pasting style')}><Close size={11}/></button></span>}
         <span className="ed-tool-sep" aria-hidden="true"/>
         <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
         <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
@@ -2598,7 +2651,7 @@ function TopSettings({ appearance, onAppearance, simple, onSimple, format, onPro
   </div>;
 }
 
-const SHORTCUTS: [string, string][] = [['⌘K', 'Find any action or setting'], ['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
+const SHORTCUTS: [string, string][] = [['⌘K', 'Find any action or setting'], ['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['⌘C / ⌘X / ⌘V', 'Copy, cut, paste at the playhead'], ['⌘D', 'Duplicate'], ['⌥⌘C / ⌥⌘V', 'Copy style, paste style'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
 
 
 
@@ -2766,4 +2819,18 @@ function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, on
     {job?.status === 'cancelled' && <><p>Export cancelled.</p><button className="ed-button wide" onClick={() => setJob(null)}>Back</button></>}
     {running && job.status === 'queued' && <LoaderCircle className="spin" size={16}/>}
   </div></div>;
+}
+
+const CLIPBOARD_KEY = 'kanaa.clipboard';
+let memoryClipboard: Clipboard | null = null;
+function writeClipboard(copied: Clipboard) {
+  memoryClipboard = copied;
+  try { localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(copied)); } catch { /* kept in memory */ }
+}
+function readClipboard(): Clipboard | null {
+  try { const saved = localStorage.getItem(CLIPBOARD_KEY); if (saved) return JSON.parse(saved) as Clipboard; } catch { /* fall back */ }
+  return memoryClipboard;
+}
+function kindOfItem(timeline: Timeline, id: string): StyleKind {
+  return findText(timeline, id) ? 'title' : findBlur(timeline, id) ? 'blur' : findSound(timeline, id) ? 'sound' : 'clip';
 }

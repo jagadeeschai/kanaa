@@ -4,6 +4,7 @@
  */
 export const TAMIL: Record<string, string> = {
   // Common
+  'Copy': 'நகல்', 'Cut': 'வெட்டு', 'Paste': 'ஒட்டு', 'Paste here': 'இங்கே ஒட்டு', 'Paste at the playhead': 'இயக்கக்குறியில் ஒட்டு', 'Copy style': 'பாணியை நகலெடு', 'Paste style': 'பாணியை ஒட்டு', 'Stop pasting style': 'பாணி ஒட்டுவதை நிறுத்து', 'Copied {count}': '{count} நகலெடுக்கப்பட்டது', 'Cut {count}': '{count} வெட்டப்பட்டது', 'Style copied. Select items and press ⌥⌘V, or click the brush.': 'பாணி நகலெடுக்கப்பட்டது. உருப்படிகளைத் தேர்ந்தெடுத்து ⌥⌘V அழுத்தவும், அல்லது தூரிகையைச் சொடுக்கவும்.', 'That style does not fit what is selected.': 'அந்தப் பாணி தேர்ந்தெடுத்தவற்றுக்குப் பொருந்தாது.', 'Copy, cut, paste at the playhead': 'நகல், வெட்டு, இயக்கக்குறியில் ஒட்டு', 'Copy style, paste style': 'பாணியை நகலெடு, பாணியை ஒட்டு',
   'Undo': 'செயல்தவிர்', 'Redo': 'மீண்டும் செய்', 'Delete': 'நீக்கு', 'Duplicate': 'நகலெடு', 'Remove': 'அகற்று', 'Find': 'தேடு',
   'Find a setting…': 'அமைப்பைத் தேடு…', 'Find a setting': 'அமைப்பைத் தேடு', 'Show all': 'அனைத்தும்', 'Matching “{query}”.': '“{query}” பொருந்தியவை.',
   'Learn more': 'மேலும் அறிக', 'More options': 'கூடுதல்', 'Guide and shortcuts': 'வழிகாட்டி, குறுக்குவழிகள்', 'Reset panel layout': 'பலக அமைப்பை மீட்டமை',

@@ -457,3 +457,4 @@
 .ed-palette li.ed-palette-group{padding:8px 10px 2px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:default;background:none}
 .ed-tab-heading{margin:14px 4px 2px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .ed-multi-mixed{flex:1 1 100%;font-size:11px;opacity:.9}
+.ed-brush{position:relative;display:inline-flex}.ed-brush .ed-icon-button.on{color:var(--accent-text);background:var(--accent-soft,rgba(139,123,255,.16));border-color:var(--accent-text)}.ed-brush-off{position:absolute;top:-5px;right:-5px;width:15px;height:15px;display:grid;place-items:center;padding:0;border-radius:50%;border:1px solid var(--hairline);background:var(--panel,#222);color:var(--muted)}.ed-brush-off:hover{color:var(--text)}
