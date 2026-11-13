@@ -14,7 +14,7 @@ import numpy as np
 
 
 STUDY_SIDE = 640
-MIN_SKY = 0.08  # Of the picture: less open sky than this is a glimpse between leaves, not a sky.
+MIN_SKY = 0.05  # Of the picture: less open sky than this is a glimpse between leaves, not a sky.
 NIGHT = 95  # The sky's average lightness (0-255) must be below this.
 STARS_PER_SKY = 220  # Stars across a sky filling the whole picture; fewer in a smaller sky.
 SHOOTING_EVERY = 17.0  # Seconds between shooting stars.
@@ -41,7 +41,7 @@ def analyze(picture: Path) -> dict:
     sky_level = float(brightness[mask > 0].mean())
     if sky_level >= NIGHT:
         return {'night': False, 'sky': round(share, 3), 'moon': None, 'reason': 'The sky in this picture is not a night sky.'}
-    return {'night': True, 'sky': round(share, 3), 'moon': find_moon(image, brightness), 'reason': None}
+    return {'night': True, 'sky': round(share, 3), 'moon': find_moon(image, brightness, mask), 'reason': None}
 
 
 def sky_mask(picture: Path):
@@ -56,12 +56,13 @@ def sky_mask(picture: Path):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
     texture = cv2.GaussianBlur(np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1)), (0, 0), 4)
     blue = (hue >= 90) & (hue <= 135) & (saturation > 45) & (value > 15) & (value < 200)
-    dark = (value < 55) & (saturation < 90)
-    candidate = (blue | dark) & (texture < 45)
+    # Night sky is blue: plain dark grey is just as often stone steps, cloth or shadow, where stars must never go.
+    candidate = blue & (texture < 45)
     candidate[int(height * 0.75):] = False  # The sky is never the bottom quarter.
     candidate = cv2.morphologyEx(candidate.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     count, labels, stats, centres = cv2.connectedComponentsWithStats(candidate, connectivity=4)
-    keep = [n for n in range(1, count) if stats[n, cv2.CC_STAT_AREA] >= 0.01 * width * height and centres[n][1] < 0.55 * height]
+    keep = [n for n in range(1, count) if stats[n, cv2.CC_STAT_AREA] >= 0.01 * width * height and centres[n][1] < 0.55 * height
+            and stats[n, cv2.CC_STAT_TOP] < 0.25 * height]  # A sky reaches the upper part of the picture.
     mask = np.isin(labels, keep).astype(np.uint8)
     # Fill the small holes left by stars, the moon and thin twigs, and keep a margin off the tree line.
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
@@ -69,7 +70,7 @@ def sky_mask(picture: Path):
     return mask, image
 
 
-def find_moon(image, brightness) -> list[float] | None:
+def find_moon(image, brightness, sky=None) -> list[float] | None:
     """The moon: the roundest small bright spot in the upper part of the picture, with darker sky round it."""
     import cv2
     height, width = brightness.shape
@@ -81,8 +82,10 @@ def find_moon(image, brightness) -> list[float] | None:
         area = cv2.contourArea(contour)
         if not (0.00005 * width * height <= area <= 0.03 * width * height):
             continue
-        perimeter = cv2.arcLength(contour, True)
-        round_ = 4 * math.pi * area / (perimeter * perimeter) if perimeter else 0
+        # Roundness of its outline with the dents filled: a moon's glow makes its bright edge ragged, not its shape.
+        hull = cv2.convexHull(contour)
+        perimeter, hull_area = cv2.arcLength(hull, True), cv2.contourArea(hull)
+        round_ = 4 * math.pi * hull_area / (perimeter * perimeter) if perimeter else 0
         (x, y), r = cv2.minEnclosingCircle(contour)
         ring = np.zeros_like(bright)
         cv2.circle(ring, (int(x), int(y)), int(r * 3 + 4), 1, -1)
@@ -90,6 +93,8 @@ def find_moon(image, brightness) -> list[float] | None:
         around = float(brightness[ring > 0].mean()) if ring.any() else 255
         if round_ < 0.6 or around > 120:
             continue
+        if sky is not None and ring.any() and float(sky[ring > 0].mean()) < 0.5:
+            continue  # The moon is in the sky; a lit window or temple light is not.
         score = round_ * area
         if best is None or score > best[0]:
             best = (score, x / width, y / height, r / width)

@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.services import lamp_glow_service, sky_light_service
 from app.services.job_service import JobCancelled
 
-VERSION = 2  # 2: no square edges on a glow, no lamps on faces.
+VERSION = 3  # 3: stars only in blue sky that reaches the top.
 FPS = 30
 LONG_SIDE = 1280  # Soft light scales up well; this keeps a long scene to a minute or so to make.
 
