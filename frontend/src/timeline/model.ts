@@ -929,7 +929,7 @@ export function transitionHalf(before: Clip, clip: Clip, fps: number): number {
   return Math.min(Math.round((clip.transition_in.duration * fps) / 2), Math.floor(frames(before) / 2), Math.floor(frames(clip) / 2));
 }
 
-export const MAX_VIDEO_LAYERS = 6;
+export const MAX_VIDEO_LAYERS = 8;  // As timeline_schema.MAX_LAYERS.
 export const OVERLAY_SCALE = 0.3;
 
 /** On top of the main track, at its own time and place. Text stays above it. */

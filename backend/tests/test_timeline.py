@@ -760,9 +760,9 @@ class Layers(Clips):
         layers = [{'id': f'l{n}', 'kind': 'video', 'blend': 'screen' if n == 3 else 'normal', 'items': [{'id': f'c{n}', 'media_id': 1 + n % 3, 'start': 0, 'in': 0, 'out': 1, 'transform': {'scale': 1 - n * 0.1}}]} for n in range(6)]
         self.assertEqual(probe_frames(self.render({'format': self.FORMAT, 'layers': layers})), 30)
 
-    def test_a_seventh_layer_is_refused_in_plain_words(self):
-        layers = [{'id': f'l{n}', 'kind': 'video', 'items': []} for n in range(7)]
-        with self.assertRaisesRegex(ValidationError, 'up to 6 video layers'):
+    def test_a_ninth_layer_is_refused_in_plain_words(self):
+        layers = [{'id': f'l{n}', 'kind': 'video', 'items': []} for n in range(9)]
+        with self.assertRaisesRegex(ValidationError, 'up to 8 video layers'):
             Timeline.model_validate({'layers': layers})
 
     def test_draft_is_the_same_length(self):
@@ -821,7 +821,7 @@ class Rules(unittest.TestCase):
 
     def test_layer_limit_and_unique_ids(self):
         with self.assertRaisesRegex(ValidationError, 'video layers'):
-            Timeline.model_validate({'layers': [{'id': str(i), 'kind': 'video'} for i in range(7)]})
+            Timeline.model_validate({'layers': [{'id': str(i), 'kind': 'video'} for i in range(9)]})
         with self.assertRaisesRegex(ValidationError, 'own id'):
             Timeline.model_validate({'layers': [{'id': 'a', 'kind': 'video'}, {'id': 'a', 'kind': 'audio'}]})
 

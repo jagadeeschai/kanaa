@@ -5,7 +5,7 @@ from typing import Annotated, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-MAX_LAYERS = 6  # Phase 1: live preview stays smooth up to 6 video layers.
+MAX_LAYERS = 8  # Lyric videos carry lights, effects, brand, credits and a person layer; sparse layers cost the preview little.
 MAX_ITEMS = 2000  # Captions on a long talk add up.
 FONT_NAME = r'^[A-Za-z0-9 ]{1,40}$'  # A font family name, which can't carry ASS formatting.
 Ease = Literal['linear', 'easeOut', 'easeInOut']

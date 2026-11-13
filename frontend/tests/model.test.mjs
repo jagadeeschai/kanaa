@@ -288,10 +288,11 @@ test('locks are per layer', () => {
   assert.equal(isLocked(next, 'a'), false);
 });
 
-test('the seventh video layer is refused in words', () => {
+test('the ninth video layer is refused in words', () => {
   const logo = (id) => ({ ...newClip(facts, id), start: 0, out: 2 });
-  const five = addOverlay(addOverlay(stacked(), logo('d'), 'four'), logo('e'), 'five');
-  assert.throws(() => addOverlay(five, logo('f'), 'six'), /up to 6/);
+  let full = addOverlay(addOverlay(stacked(), logo('d'), 'four'), logo('e'), 'five');
+  full = addOverlay(addOverlay(full, logo('f'), 'six'), logo('g'), 'seven');
+  assert.throws(() => addOverlay(full, logo('i'), 'nine'), /up to 8/);
 });
 
 test('a corner tucks the picture in with an even margin', () => {
