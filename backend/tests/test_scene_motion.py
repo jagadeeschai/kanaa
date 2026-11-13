@@ -31,7 +31,7 @@ class Shots(unittest.TestCase):
         timeline = {'format': {'width': 1920, 'height': 1080, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [scene(1, 0, 14), scene(2, 14, 5, media=11)]}]}
         scene_motion.shots(timeline, {10: (0.7, 0.3)}, {10: [99]})
         items = timeline['layers'][0]['items']
-        self.assertEqual([item['id'] for item in items], ['lyric-scene-1', 'lyric-scene-1-b', 'lyric-scene-1-c', 'lyric-scene-2'])
+        self.assertEqual([item['id'] for item in items], ['lyric-scene-1', 'lyric-scene-1-2', 'lyric-scene-1-3', 'lyric-scene-2'])
         self.assertAlmostEqual(sum(item['out'] - item['in'] for item in items[:3]), 14, places=2)
         self.assertEqual([item['start'] for item in items], [0, round(14 / 3, 3), round(28 / 3, 3), 14])
         self.assertEqual(items[1]['media_id'], 99, 'the medium shot is the painted one')
@@ -47,6 +47,18 @@ class Shots(unittest.TestCase):
                 m = scene_motion.shot_move({'shot': shot, 'focus': (0.95, 0.05)}, scene_motion.MOVES[name])
                 room = (min(m['scale']) - 1) / 2
                 self.assertTrue(all(abs(v - 0.5) <= room + 1e-6 for v in m['x'] + m['y']), name)
+
+
+class LongScenes(unittest.TestCase):
+    def test_a_long_scene_keeps_cutting_about_every_ten_seconds(self):
+        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [scene(1, 0, 107)]}]}
+        scene_motion.shots(timeline, {}, {10: [99]})
+        items = timeline['layers'][0]['items']
+        self.assertEqual(len(items), 11)
+        self.assertTrue(all(9 < item['out'] - item['in'] < 10.5 for item in items))
+        self.assertEqual([item.get('shot') for item in items[:5]], [None, 1.35, 1.7, 1.35, None])
+        painted = [item['id'] for item in items if item['media_id'] == 99]
+        self.assertTrue(1 <= len(painted) <= 3, painted)
 
 
 class Gentle(unittest.TestCase):

@@ -92,8 +92,12 @@ def focus(picture: Path) -> tuple[float, float]:
     return (x + w / 2) / small.shape[1], (y + h / 2) / small.shape[0]
 
 
+SHOT_LONGEST = 10.0  # A long scene keeps cutting, wide, medium, close, medium, wide..., about this often.
+TIERS = (None, 1.35, 1.7, 1.35)  # The zoom of each shot in turn; None is the whole picture.
+
+
 def shot_lengths(seconds: float) -> list[float]:
-    count = 1 if seconds < SHOT_MIN else 2 if seconds < 12 else 3
+    count = 1 if seconds < SHOT_MIN else 2 if seconds < 12 else max(3, round(seconds / SHOT_LONGEST))
     return [seconds / count] * count
 
 
@@ -121,15 +125,18 @@ def shots(timeline: dict, focus_of: dict[int, tuple[float, float]], painted: dic
         pieces = shot_lengths(length)
         at_in = clip['in']
         for number, piece in enumerate(pieces):
-            shot = {**clip, 'id': clip['id'] if number == 0 else f"{clip['id']}-{'abc'[number]}", 'start': round(clip['start'] + sum(pieces[:number]), 3),
+            shot = {**clip, 'id': clip['id'] if number == 0 else f"{clip['id']}-{number + 1}", 'start': round(clip['start'] + sum(pieces[:number]), 3),
                     'in': round(at_in, 3), 'out': round(at_in + piece * clip.get('speed', 1), 3)}
             at_in += piece * clip.get('speed', 1)
             if number:
                 shot['transition_in'] = {'kind': 'cross-blur', 'duration': 0.8}
-                shot['shot'] = (1.35, 1.7)[min(number, 2) - 1] if len(pieces) == 3 else 1.45
+                zoom = 1.45 if len(pieces) == 2 else TIERS[number % len(TIERS)]
+                if zoom:
+                    shot['shot'] = zoom
+                # Paintings: every other scene's first medium shot, and in a long scene every second medium shot.
                 versions = (painted or {}).get(clip['media_id']) or []
-                if versions and number == 1 and turn % 2 == 0:
-                    shot['media_id'] = versions[(turn // 2) % len(versions)]
+                if versions and zoom == 1.35 and (number % 4 == 3 or turn % 2 == 0) and (number // 2) % 2 == (0 if turn % 2 == 0 else 1):
+                    shot['media_id'] = versions[(turn // 2 + number // 4) % len(versions)]
             shot['focus'] = point
             out.append(shot)
         turn += 1
