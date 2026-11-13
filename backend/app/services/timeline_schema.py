@@ -356,7 +356,7 @@ class Text(Strict):
     style: Literal['outline', 'shadow', 'band', 'plain'] = 'band'  # plain: no outline, shadow or box (for text on white).
     position: Literal['top', 'center', 'bottom'] = 'bottom'
     color: str = Field(default='#ffffff', pattern=r'^#[0-9a-fA-F]{6}$')
-    size: int = Field(default=44, ge=12, le=100)
+    size: int = Field(default=44, ge=8, le=100)  # Credit lines may be small; the editor's slider starts at 20.
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
     transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.

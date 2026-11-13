@@ -203,11 +203,15 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             # The card typeset for this song: the portrait drawing itself, the song's details laid out beside it.
             from app.services import signature_card_service
             with tempfile.TemporaryDirectory() as folder:
-                made = signature_card_service.make(Path(saved['photo']), Path(media(int(saved['paper']))['absolute_path']), Path(folder) / f'{name} signature card.mp4',
-                                                   name, saved.get('english') or name, [role + ([saved['lyricist_english']] if role[2] == saved.get('lyricist') and saved.get('lyricist_english') else []) for role in roles],
-                                                   saved.get('lyricist'), name_english=saved.get('lyricist_english'))
+                # The picture: paper, the portrait drawing itself, the poet's name. The song's words go over it as titles.
+                made = signature_card_service.make(Path(saved['photo']), Path(media(int(saved['paper']))['absolute_path']), Path(folder) / f'{saved.get("lyricist") or signature} card.mp4',
+                                                   name, name, roles, saved.get('lyricist'), name_english=saved.get('lyricist_english'), words=False)
                 card = int(api.upload('/media', made)['id'])
-        signatures.add_card(timeline, name, saved.get('english') or name, saved, roles, card=card)
+        at = signatures.add_card(timeline, name, saved.get('english') or name, saved, roles, card=card)
+        from kanaa_mcp import signature_titles
+        english_name = saved.get('english') or ''
+        if card is not None:
+            signature_titles.card(timeline, at, signatures.SECONDS, name, english_name, saved.get('roles') or roles)
         if saved.get('roles'):
             # The same set as every song of this signature: the credit in the song, the end card, the production close.
             from app.services import signature_credits_service as pictures
@@ -216,13 +220,15 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             when = credit_package.add(timeline, name, english_title, [tuple(role[:3]) for role in saved['roles']], name)
             sung = credit_package._sung(timeline)
             with tempfile.TemporaryDirectory() as folder:
-                made = {kind: int(api.upload('/media', path)['id']) for kind, path in (
-                    ('lower', pictures.lower(Path(folder) / f'{name} credit.png', name, english_title, saved['roles'], saved.get('channel'))),
-                    ('end', pictures.end_card(Path(folder) / f'{name} end card.png', name, english_title, saved['roles'], saved.get('rights'))),
-                    ('production', pictures.production(Path(folder) / f'{name} production.png', saved.get('channel') or presented_by or '')))}
+                made = {'production': int(api.upload('/media', pictures.production(Path(folder) / f'{name} production.png', saved.get('channel') or presented_by or ''))['id'])}
             effect = api.post('/effects/bubbles', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
             bubbles = effect['media']['id'] if effect.get('media') else int(look_up(api.wait(effect['job_id']), 'media_id'))
-            signature_credits.place(timeline, when.get('ticker', []), max(item['start'] + item['length'] for item in sung), made['lower'], made['end'], made['production'], bubbles)
+            last_sung = max(item['start'] + item['length'] for item in sung)
+            signature_credits.place(timeline, when.get('ticker', []), last_sung, None, None, made['production'], bubbles)
+            # The credit in the song and the end card as titles, so the song's name can be typed into them.
+            signature_titles.credit_in_song(timeline, [at + 1 for at in when.get('ticker', [])], name, english_name, saved['roles'], saved.get('channel'))
+            finish = max(item['start'] + (item['length'] if 'length' in item else (item['out'] - item['in']) / item.get('speed', 1)) for layer in timeline['layers'] for item in layer['items'])
+            signature_titles.end_card(timeline, last_sung + 0.5, finish - signature_credits.CLOSE - 0.2, name, english_name, saved['roles'], saved.get('rights'))
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)

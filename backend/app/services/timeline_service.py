@@ -574,8 +574,9 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
     when a title has more letters than can move apart)."""
     width, height = fmt.width, fmt.height
     unit = width / 720
-    title_size = max(20, item.size) * unit
-    sub_size = (item.subtitle_size or round(max(20, item.size) * SUBTITLE_SHARE)) * unit
+    smallest = 8  # Credit lines can be small; the editor's own size slider still starts at 20.
+    title_size = max(smallest, item.size) * unit
+    sub_size = (item.subtitle_size or round(max(smallest, item.size) * SUBTITLE_SHARE)) * unit
     border_style, outline, shadow, outline_colour, back_colour = {
         'outline': (1, 2 * unit, 1 * unit, '&H00101010', '&H80000000'),
         'shadow': (1, 3 * unit, 2 * unit, '&H00000000', '&H40000000'),

@@ -58,7 +58,9 @@ def _block(width: int, height: int, items: list[tuple[str, ImageFont.FreeTypeFon
 
 
 def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles: list[list[str]], name: str | None, seconds: float = 6.0, name_english: str | None = None,
-         size: tuple[int, int] = (1920, 1080), drawing: float = 2.4, radiance: bool = False) -> Path:
+         size: tuple[int, int] = (1920, 1080), drawing: float = 2.4, radiance: bool = False, words: bool = True) -> Path:
+    """words=False: only the paper, the portrait drawing itself (with its shine) and the poet's name; the song's title
+    and credits are laid over it as titles (kanaa_mcp/signature_titles.py), so they can be typed into."""
     import cv2
     width, height = size
     unit = height / 1080
@@ -86,6 +88,7 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
         lines.append((f'{tamil}   ·   {english_role.upper()}', label_font, GREY, y))
         named.append(_named(who, also[0] if also else None, name_font, small, INK, width, height, right, y + round(70 * unit)))
         y += round(112 * unit)
+    words_shown = words
     words = _block(width, height, lines, right)
     labels = words[2:]
     words = words[:2] + [pair for label, name_line in zip(labels, named) for pair in ((label[0], 0), (name_line, 0))]
@@ -103,7 +106,7 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     caption = [(_named(name, name_english, _font('Catamaran-Bold.ttf', round(34 * unit)), _font('Catamaran-Bold.ttf', round(24 * unit)), MAROON, width, height, int(width * 0.3),
                        py + side + round(48 * unit)), 0)] if name else []
     # When each part appears: the title just after the portrait starts, the credits one by one, the name once drawn.
-    timed = [(words[0][0], 0.9), (words[1][0], 1.15), (rule, 1.3)] + [(layer, 1.5 + 0.18 * n) for n, (layer, _) in enumerate(words[2:])] + [(layer, 0.4 + drawing) for layer, _ in caption]
+    timed = ([(words[0][0], 0.9), (words[1][0], 1.15), (rule, 1.3)] + [(layer, 1.5 + 0.18 * n) for n, (layer, _) in enumerate(words[2:])] if words_shown else []) + [(layer, 0.4 + drawing) for layer, _ in caption]
     layers = ([(radiance_rgba.astype(np.float32), 0.75)] if radiance else []) + [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]
     frames = max(2, round(seconds * FPS))
     target.parent.mkdir(parents=True, exist_ok=True)
