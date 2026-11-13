@@ -67,6 +67,14 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | H2 | Folder actions only on the home screen | Also in the editor's media right-click menu | ⬜ |
 | H3 | One chip per folder fills the media panel as songs grow | One folder picker with counts; this video's own folder first (★) | ✅ |
 
+## Release 1 blockers (owner, 2026-11-13)
+
+Must be done before Kanaa is publicly available:
+
+- **B1 finished:** Editor.tsx split until no file is a grab-bag (aim: under ~1,200 lines, each panel or tool in its own file).
+- **B2 finished:** one shared editor store, so panels stop taking 30+ inputs.
+- New features keep landing in their own modules (as clipboard, karaoke, scene_motion and lyric_touches do).
+
 ## Architect review (third pass)
 
 ### Experience
