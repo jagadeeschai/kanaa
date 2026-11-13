@@ -25,7 +25,9 @@ def face_box(photo: Path, image) -> tuple[int, int, int, int]:
     return (width - side) // 2, height // 5, side, side
 
 
-def sketch(photo: Path, target: Path) -> Path:
+def sketch(photo: Path, target: Path, framed: bool = True) -> Path:
+    """framed: a white disc with a thin rim (for over pictures); otherwise only the ink lines, see-through around them
+    (for a white or paper card)."""
     import cv2
     from PIL import Image, ImageOps
     image = cv2.cvtColor(np.asarray(ImageOps.exif_transpose(Image.open(photo)).convert('RGB')), cv2.COLOR_RGB2BGR)
@@ -46,6 +48,16 @@ def sketch(photo: Path, target: Path) -> Path:
     dark = cv2.GaussianBlur((gray < 55).astype(np.float32), (0, 0), 1.2)
     ink = ink * (1 - dark) + 25 * dark
     ink = cv2.GaussianBlur(ink.astype(np.uint8), (0, 0), 0.7)
+    if not framed:
+        # Only the ink: lines as dark as drawn, the paper see-through, soft at the edges so no square shows.
+        yy, xx = np.mgrid[0:SIDE, 0:SIDE].astype(np.float32)
+        fade = np.clip((1.0 - np.hypot(xx - SIDE / 2, yy - SIDE / 2) / (SIDE / 2)) * 4, 0, 1)
+        darkness = 255 - ink.astype(np.float32)
+        alpha = (np.where(darkness < 45, 0, darkness) * fade).clip(0, 255)  # Faint grey from the old photo's paper is dropped.
+        out = np.dstack([np.full_like(ink, 22), np.full_like(ink, 20), np.full_like(ink, 18), alpha.astype(np.uint8)]).astype(np.uint8)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(out, 'RGBA').save(target)
+        return target
     # The round frame: white disc, a thin warm rim, see-through outside.
     yy, xx = np.mgrid[0:SIDE, 0:SIDE].astype(np.float32)
     r = np.hypot(xx - SIDE / 2, yy - SIDE / 2) / (SIDE / 2)

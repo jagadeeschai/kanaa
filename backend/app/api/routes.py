@@ -595,7 +595,7 @@ def build_lyric_video_route(body: dict, request: Request):
     from kanaa_mcp import server as mcp
     from kanaa_mcp.lyric_builder import build_lyric_video
     allowed = {'name', 'song_asset_id', 'song_seconds', 'cues', 'scenes', 'look', 'lyric_motion', 'three_d', 'lights', 'lyric_font', 'lyric_colour',
-               'lyric_size', 'canvas', 'presents', 'song_by', 'music', 'presented_by', 'footer', 'accent', 'logo_media_id', 'brand_intro', 'project_id', 'house_style', 'shots', 'painted', 'gentle', 'karaoke', 'night_sky', 'lamp_glow', 'arranged_by', 'singers', 'song_details'}
+               'lyric_size', 'canvas', 'presents', 'song_by', 'music', 'presented_by', 'footer', 'accent', 'logo_media_id', 'brand_intro', 'project_id', 'house_style', 'shots', 'painted', 'gentle', 'karaoke', 'night_sky', 'lamp_glow', 'arranged_by', 'singers', 'song_details', 'signature'}
     params = {key: value for key, value in body.items() if key in allowed and value not in (None, '')}
     for key in ('name', 'song_asset_id', 'song_seconds', 'cues', 'scenes'):
         if key not in params:

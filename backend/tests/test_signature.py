@@ -1,0 +1,34 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from kanaa_mcp import signature
+
+SIG = {'portrait': 7, 'paper': 8, 'presented_by': 'கவின்தமிழ் Originals'}
+
+
+def song():
+    return {'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'brand-intro', 'start': 0, 'in': 0, 'out': 5.5, 'speed': 1},
+                                                                    {'id': 'lyric-scene-1', 'start': 5.5, 'in': 0, 'out': 100, 'speed': 1}]},
+                       {'id': 'song', 'kind': 'audio', 'items': [{'id': 'song', 'start': 5.5, 'in': 0, 'out': 100, 'speed': 1}]},
+                       {'id': 'L', 'kind': 'text', 'items': [{'id': 'lyric-line-1', 'start': 35, 'length': 3, 'text': 'x'}]}]}
+
+
+class Card(unittest.TestCase):
+    def test_the_card_opens_in_silence_and_everything_after_moves_later(self):
+        timeline = song()
+        at = signature.add_card(timeline, 'கற்கண்டு', 'Karkandu', SIG, [['பாடல் வரிகள்', 'Lyrics', 'பாவேந்தர் பாரதிதாசன்']])
+        self.assertEqual(at, 5.5)
+        main = timeline['layers'][0]['items']
+        self.assertEqual([c['id'] for c in main], ['brand-intro', 'signature-paper', 'lyric-scene-1'])
+        song_start = next(l for l in timeline['layers'] if l['kind'] == 'audio')['items'][0]['start']
+        self.assertEqual(song_start, 11.5, 'the music waits for the card')
+        self.assertEqual(next(l for l in timeline['layers'] if l['id'] == 'L')['items'][0]['start'], 41)
+        signature.add_card(timeline, 'கற்கண்டு', 'Karkandu', SIG, [['பாடல் வரிகள்', 'Lyrics', 'x']])
+        self.assertEqual(next(l for l in timeline['layers'] if l['kind'] == 'audio')['items'][0]['start'], 11.5, 'made again, not moved twice')
+
+    def test_a_signature_is_kept_for_the_next_song(self):
+        with tempfile.TemporaryDirectory() as folder:
+            signature.save(Path(folder), 'பாவேந்தர் பாரதிதாசன்', SIG)
+            self.assertEqual(signature.load(Path(folder), 'பாவேந்தர் பாரதிதாசன்')['portrait'], 7)
+            self.assertIsNone(signature.load(Path(folder), 'someone else'))

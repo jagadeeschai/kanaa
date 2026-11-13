@@ -21,7 +21,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                       logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False,
                       shots: bool = True, painted: bool = True, gentle: bool = True, karaoke: bool = False,
                       night_sky: bool = True, lamp_glow: bool = True,
-                      arranged_by: str | None = None, singers: str | None = None, song_details: bool = True) -> dict:
+                      arranged_by: str | None = None, singers: str | None = None, song_details: bool = True,
+                      signature: str | None = None) -> dict:
     """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
     - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
     - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -49,6 +50,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     - song_details: credits as music labels present them: an opening card over the intro, a slow ticker three times,
       an end card clear of YouTube's end-screen buttons (lyrics `song_by`, `music`, `arranged_by`, `singers`,
       produced by `presented_by`). Only names given are shown.
+    - signature: the name of a saved signature (e.g. the lyricist's): the song opens, in silence, with that white
+      title card (their line portrait and the song's details) instead of an opening card over the intro.
     - karaoke: every lyric line lights its words, gold, as they are sung (word times from each line's timing).
     - gentle: with into_clear, each picture breathes or drifts a few per cent instead of holding still.
     Camera moves come from twelve slow moves (pans, tilts, diagonal drifts, slow turns, reveals), none repeated within
@@ -178,6 +181,19 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             timeline['layers'] = [layer for layer in timeline['layers'] if not any(item['id'].startswith(('opening-', 'closing-')) for item in layer['items'] if layer['kind'] == 'text')]
             ticker = '   •   '.join([name] + [f'{tamil}: {who}' for tamil, _, who in roles[:2]] + ([presented_by] if presented_by else []) + ([footer.split('·')[0].strip()] if footer else []))
             credit_package.add(timeline, name, name, roles, ticker, rights=f'℗ {time.strftime("%Y")} {presented_by}' if presented_by else None)
+    if signature:
+        from app.core.config import settings
+        from kanaa_mcp import signature as signatures
+        saved = signatures.load(settings.data_dir, signature)
+        if saved is None:
+            raise ToolError(f'No signature called {signature} is saved yet.')
+        roles = [[tamil, english, who] for tamil, english, who in (('பாடல் வரிகள்', 'Lyrics', song_by or saved.get('lyricist')), ('இசை', 'Music', music),
+                                                                ('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by), ('தயாரிப்பு', 'Produced by', presented_by or saved.get('presented_by'))) if (who or '').strip()]
+        timeline['layers'] = [layer for layer in timeline['layers'] if layer.get('id') != 'credits-opening']  # The white card says it instead.
+        for layer in timeline['layers']:
+            if layer.get('id') == 'credits-portraits':
+                layer['items'] = [clip for clip in layer['items'] if clip['start'] > 60]
+        signatures.add_card(timeline, name, saved.get('english') or name, saved, roles)
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
