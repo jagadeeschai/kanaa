@@ -45,7 +45,7 @@ export function TitleToolbar({ text, top, left, onChange, onEdit }: { text: Text
     <label className="ed-tt-colour" title={t('Colour')}><input type="color" aria-label={t('Text colour')} value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/><i style={{ background: text.color }}/></label>
     <select aria-label={t('Tamil font')} title={t('Tamil font')} value={text.tamil_font ?? 'Noto Sans Tamil'} onChange={(event) => onChange({ tamil_font: event.target.value === 'Noto Sans Tamil' ? null : event.target.value })}>{TAMIL_FONTS.map((font) => <option key={font.family} value={font.family}>{font.label}</option>)}</select>
     <span className="ed-tt-sep"/>
-    {(['band', 'shadow', 'outline'] as const).map((style) => <button key={style} className={text.style === style ? 'on' : ''} aria-pressed={text.style === style} onClick={() => onChange({ style })} title={t(style === 'band' ? 'Band' : style === 'shadow' ? 'Shadow' : 'Outline')}>{style === 'band' ? '▬' : style === 'shadow' ? 'S' : 'O'}</button>)}
+    {(['band', 'shadow', 'outline', 'plain'] as const).map((style) => <button key={style} className={text.style === style ? 'on' : ''} aria-pressed={text.style === style} onClick={() => onChange({ style })} title={t(style === 'band' ? 'Band' : style === 'shadow' ? 'Shadow' : style === 'outline' ? 'Outline' : 'Plain')}>{style === 'band' ? '▬' : style === 'shadow' ? 'S' : style === 'outline' ? 'O' : 'P'}</button>)}
   </div>;
 }
 

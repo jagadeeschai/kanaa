@@ -353,7 +353,7 @@ class Text(Strict):
     start: float = Field(ge=0)
     length_: float = Field(gt=0, alias='length')
     text: str = Field(min_length=1, max_length=500)
-    style: Literal['outline', 'shadow', 'band'] = 'band'
+    style: Literal['outline', 'shadow', 'band', 'plain'] = 'band'  # plain: no outline, shadow or box (for text on white).
     position: Literal['top', 'center', 'bottom'] = 'bottom'
     color: str = Field(default='#ffffff', pattern=r'^#[0-9a-fA-F]{6}$')
     size: int = Field(default=44, ge=12, le=100)
@@ -382,7 +382,7 @@ class Text(Strict):
 
     @property
     def designed(self) -> bool:
-        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None
+        return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None or self.style == 'plain'
 
     @property
     def length(self) -> float:

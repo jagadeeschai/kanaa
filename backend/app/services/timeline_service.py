@@ -580,6 +580,7 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
         'outline': (1, 2 * unit, 1 * unit, '&H00101010', '&H80000000'),
         'shadow': (1, 3 * unit, 2 * unit, '&H00000000', '&H40000000'),
         'band': (3, 12 * unit, 0, '&H70000000', '&H70000000'),
+        'plain': (1, 0, 0, '&H00000000', '&H00000000'),
     }[item.style]
     if item.style == 'band' and item.band_color:
         outline_colour = back_colour = ass_colour(item.band_color, 0x20)
@@ -682,7 +683,7 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
     if layer is not None:
         edit, marks = caption_edit(layer, [{'start': 0, 'end': 1, 'text': item.text}]), [lit]
     else:
-        edit, marks = VideoEditRequest(canvas='original', lyric_style=item.style, lyric_size=max(20, item.size), lyric_position=item.position,
+        edit, marks = VideoEditRequest(canvas='original', lyric_style='shadow' if item.style == 'plain' else item.style, lyric_size=max(20, item.size), lyric_position=item.position,
                                        lyric_color=item.color, lyrics=[{'start': 0, 'end': 1, 'text': item.text}]), None
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
