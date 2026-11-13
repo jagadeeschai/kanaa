@@ -17,6 +17,7 @@ export const TAMIL: Record<string, string> = {
   'Signature card': 'அடையாள அட்டை', 'Song title': 'பாடல் பெயர்', 'English title': 'ஆங்கிலப் பெயர்', 'Update card': 'அட்டையைப் புதுப்பி', 'Drawing the card…': 'அட்டை வரையப்படுகிறது…', 'The card, the credit in the song and the end card are updated.': 'தொடக்க அட்டை, பாடலுக்கு நடுவிலான நன்றி, இறுதி அட்டை புதுப்பிக்கப்பட்டன.', 'Signature': 'அடையாளம்',
   'Change song name': 'பாடல் பெயரை மாற்று', 'The song name is changed on the card, in the song and on the end card.': 'தொடக்க அட்டை, பாடலின் நடுவே, இறுதி அட்டை மூன்றிலும் பாடல் பெயர் மாற்றப்பட்டது.',
   'Song credits': 'பாடல் நன்றி',
+  'Collapse all': 'அனைத்தையும் மடக்கு',
   'Undo': 'செயல்தவிர்', 'Redo': 'மீண்டும் செய்', 'Delete': 'நீக்கு', 'Duplicate': 'நகலெடு', 'Remove': 'அகற்று', 'Find': 'தேடு',
   'Find a setting…': 'அமைப்பைத் தேடு…', 'Find a setting': 'அமைப்பைத் தேடு', 'Show all': 'அனைத்தும்', 'Matching “{query}”.': '“{query}” பொருந்தியவை.',
   'Learn more': 'மேலும் அறிக', 'More options': 'கூடுதல்', 'Guide and shortcuts': 'வழிகாட்டி, குறுக்குவழிகள்', 'Reset panel layout': 'பலக அமைப்பை மீட்டமை',

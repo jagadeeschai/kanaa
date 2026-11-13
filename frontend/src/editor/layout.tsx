@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { searchText, t } from '../i18n';
-import { ChevronRight, Info, Search, X, type LucideIcon } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, Info, Search, X, type LucideIcon } from 'lucide-react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 const THEME_KEY = 'wa.editorTheme';
@@ -66,6 +66,12 @@ export function Splitter({ label, axis, value, min, max, sign, onChange, onReset
 }
 
 const opened = new Map<string, boolean>();
+// Collapse all: every open section closes at once, so the one wanted is quick to find.
+const closers = new Set<() => void>();
+export function collapseAllGroups() {
+  for (const key of opened.keys()) opened.set(key, false);
+  closers.forEach((close) => close());
+}
 
 /** A settings group. Several can stay open, and each remembers its state until the page reloads. */
 /** Opens the guide at an article. Set by the editor; panels call it from their ⓘ buttons. */
@@ -106,7 +112,7 @@ export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: Panel
   return <PanelContext.Provider value={{ tab: shown, query: query.trim().toLowerCase() }}>
     <div className="ed-panel-rail-host">
       {!folded && <div className="ed-panel-main">
-        <label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Find a setting…')} aria-label={t('Find a setting')}/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label>
+        <div className="ed-find-row"><label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Find a setting…')} aria-label={t('Find a setting')}/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label><button className="ed-icon" aria-label={t('Collapse all')} data-tip={t('Collapse all')} onClick={collapseAllGroups}><ChevronsDownUp size={15}/></button></div>
         <div className="ed-panel-body">{children}</div>
         {query && <p className="ed-tip ed-find-none">{t('Matching “{query}”.', { query })} <button className="ed-link" onClick={() => setQuery('')}>{t('Show all')}</button></p>}
       </div>}
@@ -134,6 +140,11 @@ export function TabHeading({ tab, children }: { tab: string; children: ReactNode
 
 export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, summary, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; /** A one-line look at the values, shown in the heading. */ summary?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
+  useEffect(() => {
+    const close = () => { opened.set(title, false); setOpen(false); };
+    closers.add(close);
+    return () => { closers.delete(close); };
+  }, [title]);
   const panel = useContext(PanelContext);
   const openHelp = useContext(HelpContext);
   const simple = useContext(SimpleContext);
