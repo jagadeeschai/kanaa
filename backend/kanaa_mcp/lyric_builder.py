@@ -18,7 +18,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                       lyric_font: Literal['standard', 'elegant', 'modern', 'playful', 'handwritten'] = 'elegant', lyric_colour: str = '#ffffff', lyric_size: int = 50,
                       canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
                       music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
-                      logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False) -> dict:
+                      logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False,
+                      shots: bool = True, painted: bool = True, gentle: bool = True) -> dict:
     """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
     - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
     - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -26,7 +27,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
       picture, and the pictures fill the frame and hold still so the space stays where it was measured.
       plain: lines simply fade in and out. in_scene: what stands up in a 3D picture covers the lyrics the whole time
       (the owner found this hides the words; use only if asked).
-    - three_d: each picture becomes a 3D camera glide (push, drift or rise). Not with into_clear.
+    - three_d: each picture becomes a 3D camera glide (push, pull, drift, sweep, crane and more, never the same twice in a row). Not with into_clear.
     - look: lyric entrances and light overlays. energetic (blast, prism, chromatic...; sun rays, flares), romantic
       (lines rising from behind the people, magic form...; fireflies, bokeh, lanterns), calm (soft reveals; dust, fog).
       Every line keeps solid 3D letters; each scene adds a slow pan or zoom.
@@ -36,6 +37,13 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     - logo_media_id: a picture with transparency, small in the bottom-right corner and large on the closing card.
     - brand_intro: open with the animated brand intro made from that logo (a leaf falls among music notes and
       becomes it, with வழங்கும் and PRESENTS); it replaces the `presents` card.
+    - shots: a long scene (7 s or more) becomes a wide, a medium and a close shot of the same picture, closing in on
+      the face (found on this Mac), each with its own slow move. Not with into_clear or three_d.
+    - painted: every other scene's middle shot shows the picture painted (watercolour, pencil, oil or dream), made
+      on this Mac with filters, no AI and no cost. Needs shots.
+    - gentle: with into_clear, each picture breathes or drifts a few per cent instead of holding still.
+    Camera moves come from twelve slow moves (pans, tilts, diagonal drifts, slow turns, reveals), none repeated within
+    three scenes, the bigger ones on the chorus.
     - project_id: update that editor project instead of making a new one (do this when redoing a video).
     Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
     from kanaa_mcp import lyrics
@@ -82,9 +90,10 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             stills[clip_id] = int(video['id'])
             depth[int(scene['media_id'])] = int(video['id'])  # The scene plays its still clip, the same picture the people were found in.
     if three_d:
+        depth_moves = pick_depth(len(scenes))
         for index, scene in enumerate(scenes):
             seconds = (starts[index + 1] if index + 1 < len(scenes) else song_seconds) - starts[index]
-            made = api.post(f"/photos/{int(scene['media_id'])}/depth-motion", {'seconds': round(min(120, max(0.5, seconds + 0.2)), 2), 'move': ['push', 'drift', 'rise'][index % 3]})
+            made = api.post(f"/photos/{int(scene['media_id'])}/depth-motion", {'seconds': round(min(120, max(0.5, seconds + 0.2)), 2), 'move': depth_moves[index]})
             video = made.get('output_photo_id') if made.get('status') == 'ready' else look_up(api.wait(made['job_id'], timeout=1800), 'output_photo_id')
             depth[int(scene['media_id'])] = int(video)
     handoff = {'name': name, 'backgrounds': [{'id': int(scene['media_id']), 'media_type': 'image'} for scene in scenes], 'backgroundType': 'image', 'duration': song_seconds,
@@ -99,9 +108,24 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         for effect in lyrics.LOOKS[look]['light']:
             made = api.post(f'/effects/{effect}', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
             light_media[effect] = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
+    made_paintings: list[int] = []
+    if shots and not clear and not three_d:
+        from kanaa_mcp import scene_motion
+        focus, versions = {}, {}
+        for turn, scene in enumerate(scenes):
+            item = media(int(scene['media_id']))
+            picture = Path(item['absolute_path'])
+            focus[int(scene['media_id'])] = scene_motion.focus(picture)
+            if painted and turn % 2 == 0:
+                style = scene_motion.PAINTS[(turn // 2) % len(scene_motion.PAINTS)]
+                versions[int(scene['media_id'])] = [painting(api, list_media, picture, Path(item['filename']).stem, style)]
+                made_paintings += versions[int(scene['media_id'])]
+        scene_motion.shots(timeline, focus, versions)
     lyrics.dress(timeline, look, light_media, camera_moves=not clear)
     if clear:
         lyrics.into_clear(timeline, spaces, stills)
+        if gentle:
+            lyrics.gentle_moves(timeline)
     elif lyric_motion == 'plain':
         for layer in timeline['layers']:
             for item in layer['items'] if layer['kind'] == 'text' else []:
@@ -132,7 +156,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         save(project_id, timeline_of(project_id), timeline, 'Rebuilt the lyric video')
     # The song's own media (its pictures and the clips made from them) goes into a library folder named after the song.
     from app.services.media_service import song_folder
-    own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()))
+    own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()) | set(made_paintings))
     folder = song_folder(name)
     if folder and own:
         api.patch('/photos/folder', {'ids': own, 'folder': folder})
@@ -140,3 +164,24 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.',
             'check_timing': lyrics.crowded(cues)}
 
+
+
+def pick_depth(count: int) -> list[str]:
+    """3D moves for `count` scenes, none repeated within three."""
+    from app.services.depth_motion_service import MOVES
+    from kanaa_mcp import scene_motion
+    return scene_motion.pick(count, moves=MOVES)
+
+
+def painting(api, list_media, picture: Path, title: str, style: str) -> int:
+    """The media id of `picture` painted in `style`, made once and then found again by its name."""
+    import cv2
+    from kanaa_mcp import scene_motion
+    name = f'{title} {style}.jpg'
+    found = next((item for item in list_media(kind='image', query=name, limit=20) if item.get('filename') == name), None)
+    if found:
+        return int(found['id'])
+    with tempfile.TemporaryDirectory() as folder:
+        target = Path(folder) / name
+        cv2.imwrite(str(target), scene_motion.paint(picture, style), [cv2.IMWRITE_JPEG_QUALITY, 92])
+        return int(api.upload('/media', target)['id'])

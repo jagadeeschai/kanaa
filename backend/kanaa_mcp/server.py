@@ -643,7 +643,7 @@ def build_server(api: KanaaApi) -> MCPServer:
           picture, and the pictures fill the frame and hold still so the space stays where it was measured.
           plain: lines simply fade in and out. in_scene: what stands up in a 3D picture covers the lyrics the whole time
           (the owner found this hides the words; use only if asked).
-        - three_d: each picture becomes a 3D camera glide (push, drift or rise). Not with into_clear.
+        - three_d: each picture becomes a 3D camera glide (push, pull, drift, sweep, crane and more, never the same twice in a row). Not with into_clear.
         - look: lyric entrances and light overlays. energetic (blast, prism, chromatic...; sun rays, flares), romantic
           (lines rising from behind the people, magic form...; fireflies, bokeh, lanterns), calm (soft reveals; dust, fog).
           Every line keeps solid 3D letters; each scene adds a slow pan or zoom.

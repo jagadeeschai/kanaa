@@ -996,7 +996,7 @@ def make_travel_map(body: dict):
 
 @router.post('/photos/{identifier}/depth-motion')
 def start_depth_motion(identifier: int, body: dict):
-    """A picture as a 3D moving video (`seconds` long, `move`: push, drift or rise): the camera glides through the scene.
+    """A picture as a 3D moving video (`seconds` long, `move`: push, pull, drift, drift-left, rise, sink, sweep, crane or glide-back): the camera glides through the scene.
     The job's result is the new video's `output_photo_id`. Ready at once when it was made before."""
     from app.services import depth_motion_service
     item = get_media(identifier)
@@ -1009,7 +1009,7 @@ def start_depth_motion(identifier: int, body: dict):
         if not (0.5 <= seconds <= 120) or move not in depth_motion_service.MOVES:
             raise ValueError
     except (TypeError, ValueError) as exc:
-        raise HTTPException(400, 'Choose 0.5 to 120 seconds and a push, drift or rise.') from exc
+        raise HTTPException(400, 'Choose 0.5 to 120 seconds and one of the 3D moves.') from exc
     picture = Path(item['absolute_path'])
 
     def find(target: Path):

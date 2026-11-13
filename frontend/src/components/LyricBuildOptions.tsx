@@ -12,13 +12,15 @@ export type LyricBuildChoices = {
   look: 'energetic' | 'romantic' | 'calm';
   lyric_motion: 'plain' | 'into_clear';
   house_style: boolean;
+  shots: boolean;
+  painted: boolean;
   brand_intro: boolean;
   logo_media_id: number | null;
   song_by: string; music: string; presented_by: string; footer: string;
 };
 
 export const DEFAULT_BUILD: LyricBuildChoices = {
-  look: 'romantic', lyric_motion: 'plain', house_style: true, brand_intro: true, logo_media_id: null,
+  look: 'romantic', lyric_motion: 'plain', house_style: true, shots: true, painted: true, brand_intro: true, logo_media_id: null,
   song_by: '', music: '', presented_by: '', footer: '',
 };
 const KEY = 'kanaa-lyric-build';  // The last choices, as most songs share the brand and credits.
@@ -54,6 +56,10 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
     </div>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.house_style} onChange={(event) => set({ house_style: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('House style')}<span className="block text-xs text-slate-400">{t('Lines answer each other from both sides, a title card and a lower-third, a touch on each scene.')}</span></span></label>
+    <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.shots && value.lyric_motion !== 'into_clear'} disabled={value.lyric_motion === 'into_clear'} onChange={(event) => set({ shots: event.target.checked })} className="mt-1 accent-brand-400"/>
+      <span>{t('Wide, medium and close shots')}<span className="block text-xs text-slate-400">{t(value.lyric_motion === 'into_clear' ? 'Not with lines moving into the clear space: the pictures stay whole there, breathing gently.' : 'A long scene cuts in closer on the face, each shot with its own slow move.')}</span></span></label>
+    <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.painted && value.shots && value.lyric_motion !== 'into_clear'} disabled={!value.shots || value.lyric_motion === 'into_clear'} onChange={(event) => set({ painted: event.target.checked })} className="mt-1 accent-brand-400"/>
+      <span>{t('Painted versions')}<span className="block text-xs text-slate-400">{t('Some shots show the picture as watercolour, pencil, oil or a soft dream. Made on this Mac, free.')}</span></span></label>
     <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.brand_intro} disabled={!logos.length} onChange={(event) => set({ brand_intro: event.target.checked })} className="mt-1 accent-brand-400"/>
       <span>{t('Brand intro')}<span className="block text-xs text-slate-400">{logos.length ? t('Your logo comes to life at the start, then stays small in the corner.') : t('Put your logo in the Brand folder in Media to use it.')}</span></span></label>
     {logos.length > 0 && <label className="block text-xs text-slate-400">{t('Logo')}<KanaaSelect aria-label={t('Logo')} value={String(value.logo_media_id ?? '')} onChange={(event) => set({ logo_media_id: event.target.value ? Number(event.target.value) : null })} className="mt-1">

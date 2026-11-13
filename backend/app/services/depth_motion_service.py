@@ -37,6 +37,13 @@ MOVES = {
     'push': {'zoom': 0.10, 'drift': 0.0, 'rise': 0.0},
     'drift': {'zoom': 0.04, 'drift': 0.05, 'rise': 0.0},
     'rise': {'zoom': 0.05, 'drift': 0.0, 'rise': 0.04},
+    # Played backwards (`back`): the camera pulls away instead of gliding in.
+    'pull': {'zoom': 0.10, 'drift': 0.0, 'rise': 0.0, 'back': True},
+    'drift-left': {'zoom': 0.04, 'drift': -0.05, 'rise': 0.0},
+    'sink': {'zoom': 0.05, 'drift': 0.0, 'rise': -0.04},
+    'sweep': {'zoom': 0.07, 'drift': 0.04, 'rise': 0.0},
+    'crane': {'zoom': 0.06, 'drift': 0.0, 'rise': 0.035},
+    'glide-back': {'zoom': 0.07, 'drift': -0.04, 'rise': 0.0, 'back': True},
 }
 FAR_SHARE = 0.25  # The farthest scene still moves this much of a near thing's move: real distance, not a flat backdrop.
 STANDS_OUT = 0.08  # Of the depth range: how much nearer than its row a pixel must be to stand in front.
@@ -99,6 +106,8 @@ def camera(near: np.ndarray, move: dict, progress: float, base: float) -> tuple[
     ys, xs = np.mgrid[0:height, 0:width].astype(np.float32)
     weight = FAR_SHARE + (1 - FAR_SHARE) * near
     ease = progress * progress * (3 - 2 * progress)  # Starts and ends gently.
+    if move.get('back'):
+        ease = 1 - ease
     scale = base * (1 + move['zoom'] * ease * weight)
     dx = move['drift'] * (ease - 0.5) * weight * width
     dy = -move['rise'] * (ease - 0.5) * weight * height
@@ -128,7 +137,7 @@ def make(picture: Path, seconds: float, move: str = 'push', on_progress: Callabl
     near = depth_of(rgb)
     on_progress(10)
     shape = MOVES[move]
-    base = 1 + shape['drift'] + shape['rise'] + 0.02  # Enough to hide every edge the drift could show.
+    base = 1 + abs(shape['drift']) + abs(shape['rise']) + 0.02  # Enough to hide every edge the drift could show.
     smooth, front = widen(near), standing(near)
     frames = max(2, round(seconds * FPS))
     target.parent.mkdir(parents=True, exist_ok=True)

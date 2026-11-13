@@ -49,6 +49,7 @@ Examples that worked:
   - `plain`: lines just fade in and out over the pictures. Use when the owner asks for simple.
   - `in_scene`: people cover the lyrics the whole time. **The owner rejected this as unreadable**; do not use it unless asked.
 - `three_d`: a 3D camera glide on each picture. Off by default, and not with `into_clear`. The owner asked for simple; ask before using it.
+- Variety (on by default, free, made on this Mac): `shots` cuts a scene of 7 s or more into wide, medium and close shots of the same picture, closing in on the face; `painted` shows every other scene's middle shot as watercolour, pencil, oil or dream; `gentle` lets into_clear pictures breathe a few per cent. Camera moves come from twelve slow moves, never repeated within three scenes, the bigger ones on the chorus. Shots and paintings need `lyric_motion` plain (not into_clear). More pictures still give the most variety; suggest AI pictures only for the 2–3 key moments.
 - `lights`: light overlays over the opening seconds of each scene. On.
 - `lyric_font` (`elegant` reads well for Tamil), `lyric_colour` (`#ffffff`, or a soft lavender `#f4f1ff` for night scenes), `lyric_size` (44-52), `canvas` (`landscape` for YouTube).
 - Credits, film style. **Only what is true; ask rather than guess names** (singers' and composers' names are often unknown; leave them out):

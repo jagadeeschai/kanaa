@@ -9,9 +9,11 @@ from __future__ import annotations
 import copy
 import json
 import re
-import unicodedata
 import subprocess
+import unicodedata
 from pathlib import Path
+
+from kanaa_mcp import scene_motion
 
 FRONTEND = Path(__file__).resolve().parents[2] / 'frontend'
 ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1}
@@ -160,15 +162,17 @@ def dress(timeline: dict, look: str, lights: dict[str, int], camera_moves: bool 
         line['enter'] = {'preset': preset, 'duration': round(min(1.2 if preset == 'rise-behind' else 0.8, max(0.3, line['length'] / 3)), 2)}
         line['exit'] = {'preset': style['exit'][index % len(style['exit'])], 'duration': round(min(0.4, line['length'] / 5), 2)}
     scenes = [clip for clip in timeline['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
-    moves = ['pan-left', 'zoom-in', 'pan-right', 'zoom-out']
+    # The bigger moves land on the chorus: scenes in which a line sung more than once starts.
+    chorus = scene_motion.chorus_lines([line['text'] for line in lines])
+    strong = {index for index, clip in enumerate(scenes) if any(clip['start'] <= line['start'] < clip['start'] + length_of(clip)
+                                                               and ' '.join(line['text'].split()).strip(' .,!?…').lower() in chorus for line in lines)}
     camera = {}
-    for index, clip in enumerate(scenes if camera_moves else []):
-        length, move = round(length_of(clip), 3), moves[index % len(moves)]
-        keys = ({'x': [{'t': 0, 'v': 0.53, 'ease': 'easeInOut'}, {'t': length, 'v': 0.47, 'ease': 'easeInOut'}]} if move == 'pan-left'
-                else {'x': [{'t': 0, 'v': 0.47, 'ease': 'easeInOut'}, {'t': length, 'v': 0.53, 'ease': 'easeInOut'}]} if move == 'pan-right'
-                else {'scale': [{'t': 0, 'v': 1.0 if move == 'zoom-in' else 1.1, 'ease': 'easeInOut'}, {'t': length, 'v': 1.1 if move == 'zoom-in' else 1.0, 'ease': 'easeInOut'}]})
-        clip['transform'] = {**clip['transform'], 'scale': 1.07, 'keyframes': keys}
+    for clip, name in zip(scenes if camera_moves else [], scene_motion.pick(len(scenes), strong)):
+        move = scene_motion.shot_move(clip, scene_motion.MOVES[name])
+        clip['transform'] = {**clip['transform'], **scene_motion.keys(move, round(length_of(clip), 3))}
         camera[clip['id']] = clip['transform']
+    for clip in scenes:
+        clip.pop('shot', None); clip.pop('focus', None)
     front = next((layer for layer in timeline['layers'] if layer.get('name') == 'In front'), None)
     for clip in front['items'] if front else []:
         clip['transform'] = copy.deepcopy(camera[clip['id'].removesuffix('-front')])
@@ -382,6 +386,27 @@ def prepend_intro(timeline: dict, media_id: int, seconds: float = 5.5, cards: fl
     main.insert(0, {'id': 'brand-intro', 'name': 'Brand intro', 'media_id': media_id, 'start': 0, 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
                     'fade_in': 0, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}, 'adjust': adjust})
     lay_out(timeline)
+
+
+def gentle_moves(timeline: dict, seed: int = 7) -> None:
+    """For into_clear: each scene breathes or drifts a few per cent about the centre, so the picture is never frozen
+    while the words still land in the space measured on it. The person layer moves with its scene, frame for frame."""
+    scenes = [clip for clip in timeline['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
+    names = scene_motion.pick(len(scenes), moves=scene_motion.GENTLE, seed=seed)
+    moves = {}
+    for clip, name in zip(scenes, names):
+        move = {key: (a * clip['transform']['scale'], b * clip['transform']['scale']) if key == 'scale' else (a, b) for key, (a, b) in scene_motion.GENTLE[name].items()}
+        moves[clip['id']] = (clip, move)
+        clip['transform'] = {**clip['transform'], **scene_motion.keys(move, round(length_of(clip), 3), ease='linear')}
+    person = next((layer for layer in timeline['layers'] if layer.get('id') == 'lyric-in-front'), None)
+    for cover in person['items'] if person else []:
+        scene, move = next(((clip, move) for clip, move in moves.values() if clip['start'] <= cover['start'] < clip['start'] + length_of(clip)), (None, None))
+        if scene is None:
+            continue
+        whole = length_of(scene)
+        begin, end = (cover['start'] - scene['start']) / whole, (cover['start'] + length_of(cover) - scene['start']) / whole
+        span = {key: (scene_motion.at(move, begin)[key], scene_motion.at(move, end)[key]) for key in move}
+        cover['transform'] = {**cover['transform'], **scene_motion.keys(span, round(length_of(cover), 3), ease='linear')}
 
 
 def fill_frame(timeline: dict, sizes: dict[int, tuple[float, float]], only: set[str] | None = None) -> None:
