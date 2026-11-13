@@ -101,6 +101,11 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}', '-r', str(FPS),
                                 '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '15', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(target)], stdin=subprocess.PIPE)
     ink_colour = np.array([0.086, 0.078, 0.07], np.float32)
+    gold = np.array(RULE, np.float32) / 255
+    # The shine: once the portrait is drawn, a soft band of warm light crosses it once, slanting, and the ink gleams gold.
+    shine_start, shine_time = 0.3 + drawing + 0.1, 0.9
+    ys, xs = np.mgrid[0:side, 0:side].astype(np.float32)
+    slant = (xs + ys * 0.5) / (side * 1.5)
     try:
         assert process.stdin is not None
         for n in range(frames):
@@ -110,7 +115,14 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
             p = min(1.0, max(0.0, (t - 0.3) / drawing))
             shown = alpha * np.clip((p * 1.25 - order) / 0.12, 0, 1) * out
             region = frame[py:py + side, px:px + side]
-            region[:] = region * (1 - shown[..., None]) + ink_colour * shown[..., None]
+            q = (t - shine_start) / shine_time
+            if 0 <= q <= 1:
+                band = np.exp(-((slant - (q * 1.4 - 0.2)) / 0.07) ** 2)
+                colour = ink_colour * (1 - band[..., None] * 0.85) + gold * band[..., None] * 0.85
+                region[:] = region * (1 - shown[..., None]) + colour * shown[..., None]
+                region[:] = region * (1 - band[..., None] * 0.06) + gold * band[..., None] * 0.06  # A faint warmth on the paper too.
+            else:
+                region[:] = region * (1 - shown[..., None]) + ink_colour * shown[..., None]
             for layer, start in layers:
                 level = min(1.0, max(0.0, (t - start) / 0.6)) * out
                 if level <= 0:

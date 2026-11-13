@@ -1,4 +1,5 @@
 import { PictureLightsGroup } from './PictureLightsGroup';
+import { SignatureCardGroup } from './SignatureCardGroup';
 import { useEditor, useItemTime } from '../state/EditorContext';
 import { photoThumbUrl } from '../../api/client';
 import { t } from '../../i18n';
@@ -90,6 +91,7 @@ export function Inspector({ onReframe, reframing, onMove, backgrounds, onBackgro
     </More>
     </Group>
     {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
+    {clip.id === 'signature-paper' && <SignatureCardGroup clip={clip}/>}
     <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>
