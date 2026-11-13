@@ -131,3 +131,9 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | Media panel: New folder button | Already there: Move to folder… › Create a new folder. The editor's folder picker is now searchable instead | ✅ |
 | ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything | ✅ Group headings; the last five actions first, under Recent |
 | Export ▾ quick choices (1080p, 4K) | Nice to have; the Export window already chooses quality | — |
+
+## Later (owner's list)
+
+| What | Notes | Status |
+|---|---|---|
+| Create the lyric video for கற்கண்டு with Build video | Lyric project "கற்கண்டு"; song and LRC in Downloads (`கற்கண்டு.wav`, `கற்கண்டு by kavintamiloriginals.lrc`). Use the lyric screen's Build video step (house style, brand intro with the gold leaf logo, credits). The screen already removes Suno's notes like "(Backing harmony)"; the agent's reader still needs the same rule once the other session commits its lyrics.py fix | ⬜ |
