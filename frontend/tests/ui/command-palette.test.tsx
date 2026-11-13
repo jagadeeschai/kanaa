@@ -46,6 +46,19 @@ describe('⌘K command palette', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it('shows the last actions first, under Recent, when nothing is typed', async () => {
+    const { default: CommandPalette } = await inLanguage('en', () => import('../../src/editor/CommandPalette'));
+    const run = vi.fn();
+    const first = render(<CommandPalette commands={commands(run)} onSettings={vi.fn()} onClose={vi.fn()}/>);
+    await userEvent.type(screen.getByRole('combobox'), 'lyric{Enter}');
+    expect(run).toHaveBeenCalledTimes(1);
+    first.unmount();
+    render(<CommandPalette commands={commands(run)} onSettings={vi.fn()} onClose={vi.fn()}/>);
+    const options = screen.getAllByRole('option');
+    expect(options[0].textContent).toContain('Fix lyric timing');
+    expect(screen.getByText('Recent')).toBeTruthy();
+  });
+
   it('speaks Tamil when the interface is in Tamil', async () => {
     const { default: CommandPalette } = await inLanguage('ta', () => import('../../src/editor/CommandPalette'));
     render(<CommandPalette commands={commands(vi.fn())} onSettings={vi.fn()} onClose={vi.fn()}/>);

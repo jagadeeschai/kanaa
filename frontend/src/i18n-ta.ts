@@ -479,4 +479,5 @@ export const TAMIL: Record<string, string> = {
   'The same setting as Project settings › Sound.': 'திட்ட அமைப்புகள் › ஒலி-யில் உள்ள அதே அமைப்பு.',
   'Mixed:': 'வேறுபட்டவை:',
   'the panel shows the first; a change makes them all the same.': 'பலகம் முதலாவதைக் காட்டும்; மாற்றினால் அனைத்தும் ஒன்றாகும்.',
+  'Recent': 'சமீபத்தியவை',
 };

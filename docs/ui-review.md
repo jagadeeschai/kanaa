@@ -24,7 +24,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 |---|---|---|---|
 | C1 | The effects list squeezed the settings | Effects fold to one line | ✅ |
 | C2 | Effects on three tabs (Mirror on Frame; Echo, Zoom blur, Beat pulse on Motion) | ✅ Clip tabs Frame · Colour · Effects · Backdrop · Motion · Sound; all eleven effects in Effects | ✅ |
-| C3 | The per-clip brand mark sits under Backdrop | Move it next to the brand watermark | ⬜ |
+| C3 | The per-clip brand mark sits under Backdrop | ✅ On the clip's Frame tab, with the other things placed on the picture (the project-wide mark stays in Project settings › Brand) | ✅ |
 
 ## Layers and timeline
 
@@ -129,5 +129,5 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 | Timeline right-click is a flat 15+ list | Overstated: it already has dividers and an Effects submenu. Fair that the AI tools could sit in a submenu. "Fix lyric sync" doesn't belong on a clip; "F" is full screen, not freeze | ✅ "Smart tools ▸" submenu (Follow the person, Split at scene changes) |
 | Media panel: Move to folder | Already there (right-click a media item › Move to folder…) | — |
 | Media panel: New folder button | Already there: Move to folder… › Create a new folder. The editor's folder picker is now searchable instead | ✅ |
-| ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything | ✅ Group headings; recent actions still to do |
+| ⌘K: section headings, suggestions when empty | Partly: an empty box already lists everything | ✅ Group headings; the last five actions first, under Recent |
 | Export ▾ quick choices (1080p, 4K) | Nice to have; the Export window already chooses quality | — |

@@ -8,6 +8,14 @@ import { searchText, t } from '../i18n';
 
 export type Command = { id: string; label: string; group: string; hint?: string; keywords?: string; run: () => void };
 
+const RECENT_KEY = 'kanaa-recent-commands';
+const RECENT_KEEP = 5;
+function recentIds(): string[] { try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch { return []; } }
+function remember(id: string) {
+  if (id === 'settings') return;
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recentIds().filter((other) => other !== id)].slice(0, RECENT_KEEP))); } catch { /* not remembered */ }
+}
+
 export default function CommandPalette({ commands, onSettings, onClose }: { commands: Command[]; onSettings: (query: string) => void; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [at, setAt] = useState(0);
@@ -26,10 +34,12 @@ export default function CommandPalette({ commands, onSettings, onClose }: { comm
     for (const entry of [...scored].sort((a, b) => a.score - b.score)) if (!order.has(entry.command.group)) order.set(entry.command.group, order.size);
     return scored.sort((a, b) => (order.get(a.command.group)! - order.get(b.command.group)!) || a.score - b.score).slice(0, 60).map((entry) => entry.command);
   }, [commands, query]);
-  const rows: Command[] = query.trim() ? [...found, { id: 'settings', label: `${t('Find in settings')}: “${query.trim()}”`, group: t('Settings'), run: () => onSettings(query.trim()) }] : found;
+  // With nothing typed, the last few actions come first, under Recent.
+  const recent = useMemo(() => recentIds().map((id) => commands.find((command) => command.id === id)).filter((command): command is Command => Boolean(command)).map((command) => ({ ...command, id: `recent-${command.id}`, group: t('Recent'), run: command.run, original: command.id })), [commands]);
+  const rows: Command[] = !query.trim() && recent.length ? [...recent, ...found] : query.trim() ? [...found, { id: 'settings', label: `${t('Find in settings')}: “${query.trim()}”`, group: t('Settings'), run: () => onSettings(query.trim()) }] : found;
   useEffect(() => { setAt(0); }, [query]);
   useEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [at]);
-  const run = (command: Command | undefined) => { if (!command) return; onClose(); command.run(); };
+  const run = (command: Command | undefined) => { if (!command) return; remember((command as Command & { original?: string }).original ?? command.id); onClose(); command.run(); };
   return <div className="ed-palette-layer" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="ed-palette" role="dialog" aria-label={t('Find any action')}>
       <label className="ed-palette-search"><Search size={15}/><input autoFocus value={query} placeholder={t('Type what you want to do…')} aria-label={t('Find any action')} role="combobox" aria-expanded aria-controls="ed-palette-list"
