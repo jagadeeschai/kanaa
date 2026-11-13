@@ -57,7 +57,7 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 |---|---|---|---|
 | Y1 | Background options split across Scenes, Style and Timing; "Export" step doesn't export | ✅ Steps: Song & words · Backgrounds · Timing · Lyric style · Open in editor; image animation, 3D, how images change and crossfade together under Backgrounds › How the pictures move; Timing is only line sync | ✅ |
 | Y2 | Its own styling and spelling ("Text color") | 🚧 Spelling matches the editor (colour) and the step names and main labels are in Tamil; its controls still look different from the editor's | 🚧 |
-| Y3 | Lyric style presets don't match the editor's names | Same names after handoff | ⬜ |
+| Y3 | Lyric style presets don't match the editor's names | Superseded: Build video sets the look by Mood and House style, so the presets no longer carry into the editor | — |
 
 ## Home
 
