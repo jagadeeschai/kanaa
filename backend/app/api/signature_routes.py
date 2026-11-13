@@ -49,3 +49,23 @@ def make_signature_card(name: str, body: dict):
 
     job_id = enqueue_render('signature_card', f'Signature card: {title}', run, total=100)
     return {'job_id': job_id}
+
+
+@router.post('/signatures/{name}/credits')
+def make_signature_credits(name: str, body: dict):
+    """The mid-song credit and end card for one song from signature `name`, with the song's {title, english}: at once,
+    {'lower': media id, 'end': media id}. They replace the pictures of clips credit-lower-* and credit-end-card."""
+    from app.services import signature_credits_service as credits
+    import hashlib
+    saved = signature.load(settings.data_dir, name)
+    if saved is None:
+        raise HTTPException(404, 'No such signature.')
+    title, english = str(body.get('title') or '').strip(), str(body.get('english') or '').strip()
+    if not title or len(title) > 60 or len(english) > 60:
+        raise HTTPException(400, 'Give the song title (up to 60 letters).')
+    roles = saved.get('roles') or []
+    key = hashlib.sha1(repr((name, title, english, roles)).encode()).hexdigest()[:16]
+    folder = settings.data_dir / 'media'
+    low = credits.lower(folder / f'credit-lower-{key}.png', title, english, roles, saved.get('channel'))
+    end = credits.end_card(folder / f'credit-end-{key}.png', title, english, roles, saved.get('rights'))
+    return {'lower': index_media(low, f'{title} credit.png', folder='Signatures')['id'], 'end': index_media(end, f'{title} end card.png', folder='Signatures')['id']}

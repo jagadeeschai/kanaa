@@ -208,6 +208,21 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                                                    saved.get('lyricist'), name_english=saved.get('lyricist_english'))
                 card = int(api.upload('/media', made)['id'])
         signatures.add_card(timeline, name, saved.get('english') or name, saved, roles, card=card)
+        if saved.get('roles'):
+            # The same set as every song of this signature: the credit in the song, the end card, the production close.
+            from app.services import signature_credits_service as pictures
+            from kanaa_mcp import credit_package, signature_credits
+            english_title = saved.get('english') or name
+            when = credit_package.add(timeline, name, english_title, [tuple(role[:3]) for role in saved['roles']], name)
+            sung = credit_package._sung(timeline)
+            with tempfile.TemporaryDirectory() as folder:
+                made = {kind: int(api.upload('/media', path)['id']) for kind, path in (
+                    ('lower', pictures.lower(Path(folder) / f'{name} credit.png', name, english_title, saved['roles'], saved.get('channel'))),
+                    ('end', pictures.end_card(Path(folder) / f'{name} end card.png', name, english_title, saved['roles'], saved.get('rights'))),
+                    ('production', pictures.production(Path(folder) / f'{name} production.png', saved.get('channel') or presented_by or '')))}
+            effect = api.post('/effects/bubbles', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
+            bubbles = effect['media']['id'] if effect.get('media') else int(look_up(api.wait(effect['job_id']), 'media_id'))
+            signature_credits.place(timeline, when.get('ticker', []), max(item['start'] + item['length'] for item in sung), made['lower'], made['end'], made['production'], bubbles)
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)

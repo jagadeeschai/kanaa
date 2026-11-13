@@ -34,13 +34,18 @@ export function SignatureCardGroup({ clip }: { clip: Clip }) {
         if (status.status === 'done') card = status.output_photo_id;
         setBusy(status.progress);
       }
-      const item = await getPhoto(card);
-      addMedia(item);
-      change(updateClip(timeline, clip.id, { media_id: card, name: englishTitle ? `${title} | ${englishTitle}` : title }));
-      setNote(t('The card is updated.'));
+      // The song's credit pictures carry its title too: the mid-song credit and the end card are redrawn with it.
+      const credits = await requestJson<{ lower: number; end: number }>(`/api/signatures/${encodeURIComponent(chosen)}/credits`, { method: 'POST', body: JSON.stringify({ title, english: englishTitle }) });
+      const [item, lower, end] = await Promise.all([getPhoto(card), getPhoto(credits.lower), getPhoto(credits.end)]);
+      [item, lower, end].forEach(addMedia);
+      let next = updateClip(timeline, clip.id, { media_id: card, name: englishTitle ? `${title} | ${englishTitle}` : title });
+      next = { ...next, layers: next.layers.map((layer) => layer.kind !== 'video' ? layer : { ...layer, items: layer.items.map((each) =>
+        each.id.startsWith('credit-lower-') ? { ...each, media_id: credits.lower } : each.id === 'credit-end-card' ? { ...each, media_id: credits.end } : each) }) };
+      change(next);
+      setNote(t('The card, the credit in the song and the end card are updated.'));
     } catch (problem) { setNote((problem as Error).message); } finally { setBusy(null); }
   };
-  return <Group title="Signature card" tab="frame" startOpen keywords="signature title card poet portrait credits song name" tip="The song's opening card: the poet's portrait drawing itself, the title and the credits. Change the title and redraw it.">
+  return <Group title="Signature card" tab="frame" startOpen keywords="signature title card poet portrait credits song name" tip="The song's title template: the opening card, the credit in the song and the end card. Change the title and all three are redrawn.">
     {signatures.length > 1 && <div className="ed-chips" role="group" aria-label={t('Signature')}>{signatures.map((each) => <button key={each.name} className={chosen === each.name ? 'on' : ''} aria-pressed={chosen === each.name} onClick={() => setChosen(each.name)}>{each.name}</button>)}</div>}
     <label className="ed-field-row">{t('Song title')}<input value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="கற்கண்டு"/></label>
     <label className="ed-field-row">{t('English title')}<input value={englishTitle} maxLength={60} onChange={(event) => setEnglishTitle(event.target.value)} placeholder="Karkandu"/></label>
