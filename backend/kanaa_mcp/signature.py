@@ -42,7 +42,7 @@ def _words(id_: str, start: float, length: float, text: str, x: float, y: float,
     item = {'id': id_, 'start': round(start, 3), 'length': round(length, 3), 'text': text, 'style': 'band', 'band_color': PAPER, 'position': 'center', 'align': 'center', 'color': color, 'size': size,
             **FONT, 'enter': {'preset': 'fade', 'duration': 0.7}, 'exit': {'preset': 'fade', 'duration': 0.6}, 'transform': {'x': x, 'y': y, 'scale': 1, 'opacity': 1, 'rotation': 0}}
     if subtitle:
-        item.update(subtitle=subtitle, subtitle_size=max(9, round(size * 0.5)), subtitle_color=GREY, subtitle_above=above, subtitle_spacing=0)
+        item.update(subtitle=subtitle, subtitle_size=max(10, round(size * 0.5)), subtitle_color=GREY, subtitle_above=above, subtitle_spacing=0)
     return {**item, **(extra or {})}
 
 

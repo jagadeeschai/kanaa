@@ -25,6 +25,10 @@ class Card(unittest.TestCase):
             items = sorted(layer['items'], key=lambda item: item['start'])
             for a, b in zip(items, items[1:]):
                 self.assertLessEqual(a['start'] + a.get('length', (a.get('out', 0) - a.get('in', 0))), b['start'] + 1e-6, f"items overlap on {layer['id']}")
+        from app.services.timeline_schema import Text
+        for layer in timeline['layers']:
+            for item in layer['items'] if layer['kind'] == 'text' else []:
+                Text.model_validate(item)
         self.assertIn('பாவேந்தர் பாரதிதாசன்', [layer['items'][0]['text'] for layer in timeline['layers'] if layer['id'].startswith('signature-words')], 'his name under the portrait')
         main = timeline['layers'][0]['items']
         self.assertEqual([c['id'] for c in main], ['brand-intro', 'signature-paper', 'lyric-scene-1'])

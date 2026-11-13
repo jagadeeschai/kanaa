@@ -26,6 +26,10 @@ class Package(unittest.TestCase):
             items = sorted(layer['items'], key=lambda item: item['start'])
             for a, b in zip(items, items[1:]):
                 self.assertLessEqual(a['start'] + a.get('length', 0), b['start'] + 1e-6, f"items overlap on {layer['id']}")
+        from app.services.timeline_schema import Text
+        for layer in timeline['layers']:
+            for item in layer['items'] if layer['kind'] == 'text' else []:
+                Text.model_validate(item)
         layers = {layer['id']: layer for layer in timeline['layers']}
         self.assertTrue(all(item['transform']['y'] > 0.9 for item in layers['credits-ticker']['items']), 'the ticker runs along the bottom')
         self.assertTrue(all(layer['items'][0]['transform']['x'] < 0.4 for key, layer in layers.items() if key.startswith('credits-end')), 'the end card keeps the right side free')
