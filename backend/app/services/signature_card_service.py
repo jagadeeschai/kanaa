@@ -58,7 +58,7 @@ def _block(width: int, height: int, items: list[tuple[str, ImageFont.FreeTypeFon
 
 
 def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles: list[list[str]], name: str | None, seconds: float = 6.0, name_english: str | None = None,
-         size: tuple[int, int] = (1920, 1080), drawing: float = 2.4) -> Path:
+         size: tuple[int, int] = (1920, 1080), drawing: float = 2.4, radiance: bool = False) -> Path:
     import cv2
     width, height = size
     unit = height / 1080
@@ -104,7 +104,7 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
                        py + side + round(48 * unit)), 0)] if name else []
     # When each part appears: the title just after the portrait starts, the credits one by one, the name once drawn.
     timed = [(words[0][0], 0.9), (words[1][0], 1.15), (rule, 1.3)] + [(layer, 1.5 + 0.18 * n) for n, (layer, _) in enumerate(words[2:])] + [(layer, 0.4 + drawing) for layer, _ in caption]
-    layers = [(radiance_rgba.astype(np.float32), 0.75)] + [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]
+    layers = ([(radiance_rgba.astype(np.float32), 0.75)] if radiance else []) + [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]
     frames = max(2, round(seconds * FPS))
     target.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}', '-r', str(FPS),
