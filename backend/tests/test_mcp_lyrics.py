@@ -71,7 +71,7 @@ class Build(unittest.TestCase):
         names = [layer.get('name') for layer in t['layers']]
         self.assertIn('Lyrics (answer)', names)
         self.assertIn('Title', names)
-        self.assertIn('Lower third', names)
+        self.assertNotIn('Lower third', names, 'credits come as a ticker now, not a lower third all song')
         lines = sorted((item for layer in t['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'].startswith('lyric-line-')), key=lambda item: item['start'])
         answer = next(layer for layer in t['layers'] if layer['id'] == 'lyrics-answer')
         self.assertEqual({item['id'] for item in answer['items']}, {line['id'] for line in lines[1::2]}, 'even lines answer on their own layer')
@@ -80,8 +80,6 @@ class Build(unittest.TestCase):
         self.assertEqual(first['transform']['keyframes']['x'][0]['v'], 0.5, 'each line starts at the centre')
         self.assertEqual(first['transform']['x'], 0.72, 'odd lines go right')
         self.assertEqual(lines[1]['transform']['x'], 0.29, 'even lines go left')
-        lower = next(layer for layer in t['layers'] if layer['id'] == 'house-lower')['items'][0]
-        self.assertEqual(lower['subtitle'], 'பாவேந்தர் பாரதிதாசன்')
         scenes = [clip for clip in t['layers'][0]['items'] if clip['id'].startswith('lyric-scene-')]
         self.assertEqual(scenes[-1]['exit'], {'preset': 'fade', 'duration': 3.0}, 'the last scene leaves slowly')
 

@@ -456,7 +456,7 @@ def _two_lines(text: str) -> str:
 
 def house_style(timeline: dict, title: str, poet: str | None) -> None:
     """Restyles a built lyric video in the owner's house style: lyrics on two answering layers that glide out from the
-    centre with particle entrances; the song's title card and a lower-third with the poet; a different touch on each
+    centre with particle entrances; the song's title card (credits come from credit_package.py); a different touch on each
     scene and a long fade on the last; the song fading out."""
     layers = timeline['layers']
     lyric_layer = next((layer for layer in layers if layer['kind'] == 'text' and any(item['id'].startswith('lyric-line-') for item in layer['items'])), None)
@@ -481,21 +481,14 @@ def house_style(timeline: dict, title: str, poet: str | None) -> None:
         layers.insert(layers.index(lyric_layer) + 1, answer)
     song_start = lines[0]['start'] if lines else 0
     end = max((item['start'] + length_of(item) for layer in layers for item in layer['items'] if 'start' in item), default=song_start)
-    # The title card, red at the bottom right, for the ten seconds before the first line; then a lower-third to the end.
+    # The title card, red at the bottom right, for the ten seconds before the first line.
     card_start = max(0.0, song_start - 10.6)
     card = {'id': 'house-title', 'start': round(card_start, 3), 'length': round(max(2.0, song_start - card_start - 0.05), 3), 'text': title, 'design': 'overlap',
             'font': 'Futura', 'tamil_font': 'Baloo Thambi 2', 'style': 'shadow', 'position': 'center', 'color': '#ef4444', 'size': 34,
             'enter': {'preset': 'particle-form', 'duration': 0.5}, 'exit': {'preset': 'particle-form', 'duration': 0.4},
             'transform': {'x': 0.62, 'y': 0.9, 'scale': 1, 'opacity': 1, 'rotation': 0}}
-    lower_start = card['start'] + card['length']
-    lower = {'id': 'house-lower-third', 'start': round(lower_start, 3), 'length': round(max(1.0, end - lower_start), 3), 'text': title, 'subtitle': poet or None,
-             'subtitle_color': '#e5e5e5', 'design': 'gradient', 'font': 'Gill Sans', 'tamil_font': 'Arima', 'style': 'outline', 'align': 'left', 'position': 'bottom',
-             'color': '#ffffff', 'size': 20, 'band_color': '#2b2121', 'enter': {'preset': 'reveal', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.4},
-             'transform': {'x': 0.4872, 'y': 0.5767, 'scale': 1, 'opacity': 1, 'rotation': 0}}
-    # Words that stay up the whole song keep breathing, very slightly, so they never look pasted on.
-    lower['transform']['keyframes'] = {'scale': lyric_touches.wave(lower['length'], 1.0, 1.03, 4.0)}
     layers.append({'id': 'house-title-card', 'kind': 'text', 'name': 'Title', 'items': [card]})
-    layers.append({'id': 'house-lower', 'kind': 'text', 'name': 'Lower third', 'items': [lower]})
+    # No lower third for the whole song: labels show credits a few times instead (credit_package.py's ticker).
     # A different touch on each scene; the last one leaves slowly.
     main = layers[0]
     scenes = [clip for clip in main['items'] if clip['id'].startswith('lyric-scene-')]

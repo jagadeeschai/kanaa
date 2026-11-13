@@ -46,8 +46,9 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     - night_sky: a picture with a night sky gets twinkling stars in its sky and a glow round its moon.
     - lamp_glow: a dusk or night picture's oil lamps and lanterns flicker with a warm halo.
       Both move with each shot; pictures without them are left alone. Made on this Mac.
-    - song_details: the music-channel card (song name; lyrics `song_by`, music, `arranged_by`, `singers`, label
-      `presented_by`) when the singing starts and after the instrumental break. Only names given are shown.
+    - song_details: credits as music labels present them: an opening card over the intro, a slow ticker three times,
+      an end card clear of YouTube's end-screen buttons (lyrics `song_by`, `music`, `arranged_by`, `singers`,
+      produced by `presented_by`). Only names given are shown.
     - karaoke: every lyric line lights its words, gold, as they are sung (word times from each line's timing).
     - gentle: with into_clear, each picture breathes or drifts a few per cent instead of holding still.
     Camera moves come from twelve slow moves (pans, tilts, diagonal drifts, slow turns, reveals), none repeated within
@@ -168,8 +169,15 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         shine = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
         lyric_touches.shine_over(timeline, shine, 'house-title')
     if song_details:
-        from kanaa_mcp import song_details as details
-        details.add(timeline, name, {'lyrics': song_by, 'music': music, 'arrangement': arranged_by, 'singers': singers, 'label': presented_by})
+        # Credits as labels present them: an opening card, a slow ticker, an end card (credit_package.py). They
+        # replace the film-style credit cards.
+        from kanaa_mcp import credit_package
+        roles = [(tamil, english, who) for tamil, english, who in (('பாடல் வரிகள்', 'Lyrics', song_by), ('இசை', 'Music', music), ('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by),
+                                                                  ('பாடியவர்', 'Singers', singers), ('தயாரிப்பு', 'Produced by', presented_by)) if (who or '').strip()]
+        if roles:
+            timeline['layers'] = [layer for layer in timeline['layers'] if not any(item['id'].startswith(('opening-', 'closing-')) for item in layer['items'] if layer['kind'] == 'text')]
+            ticker = '   •   '.join([name] + [f'{tamil}: {who}' for tamil, _, who in roles[:2]] + ([presented_by] if presented_by else []) + ([footer.split('·')[0].strip()] if footer else []))
+            credit_package.add(timeline, name, name, roles, ticker, rights=f'℗ {time.strftime("%Y")} {presented_by}' if presented_by else None)
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)

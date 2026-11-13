@@ -82,7 +82,7 @@ export default function LyricBuildOptions({ value, onChange }: { value: LyricBui
       {text('presented_by', 'Presented by', 'e.g. கவின்தமிழ் Originals')}
       {text('footer', 'Footer', 'e.g. @yourchannel · Lyric video with Kanaa')}
       <label className="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" checked={value.song_details} onChange={(event) => set({ song_details: event.target.checked })} className="mt-1 accent-brand-400"/>
-        <span>{t('Song details card')}<span className="block text-xs text-slate-400">{t('Like music channels: the song and who made it, when the singing starts and after the break.')}</span></span></label>
+        <span>{t('Credits like music labels')}<span className="block text-xs text-slate-400">{t('An opening card over the intro, a slow ticker three times, and an end card clear of YouTube\u2019s buttons.')}</span></span></label>
     </fieldset>
   </div>;
 }
