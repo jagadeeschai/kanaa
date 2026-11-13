@@ -27,6 +27,23 @@ def _spaced(text: str, spacing: str = ' ') -> str:
     return spacing.join(text)
 
 
+def _pieces(width: int, height: int, segments: list[tuple[str, ImageFont.FreeTypeFont, tuple[int, int, int]]], centre_x: int, baseline: int) -> Image.Image:
+    """One line made of pieces of different sizes on a shared baseline (a Tamil name, then | and its English
+    spelling, smaller), centred on `centre_x`."""
+    layer = Image.new('RGBA', (width, height))
+    draw = ImageDraw.Draw(layer)
+    widths = [draw.textlength(text, font=font) for text, font, _ in segments]
+    x = centre_x - sum(widths) / 2
+    for (text, font, colour), advance in zip(segments, widths):
+        draw.text((x, baseline), text, font=font, fill=colour + (255,), anchor='ls')
+        x += advance
+    return layer
+
+
+def _named(who: str, english: str | None, font, small, colour, width: int, height: int, centre_x: int, baseline: int) -> Image.Image:
+    return _pieces(width, height, [(who, font, colour)] + ([('   |   ', small, GREY), (english, small, colour)] if english else []), centre_x, baseline)
+
+
 def _block(width: int, height: int, items: list[tuple[str, ImageFont.FreeTypeFont, tuple[int, int, int], int]], centre_x: int) -> list[tuple[Image.Image, int]]:
     """Each line as its own see-through layer (so each can fade in on its own), centred on `centre_x`, from the
     given tops. items: (text, font, colour, top)."""
@@ -40,7 +57,7 @@ def _block(width: int, height: int, items: list[tuple[str, ImageFont.FreeTypeFon
     return layers
 
 
-def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles: list[list[str]], name: str | None, seconds: float = 6.0,
+def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles: list[list[str]], name: str | None, seconds: float = 6.0, name_english: str | None = None,
          size: tuple[int, int] = (1920, 1080), drawing: float = 2.4) -> Path:
     import cv2
     width, height = size
@@ -60,14 +77,19 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     title_font, english_font = _font('Arima-Bold.ttf', round(88 * unit)), _font('Pavanam-Regular.ttf', round(24 * unit))
     label_font, name_font = _font('Pavanam-Regular.ttf', round(22 * unit)), _font('Catamaran-Bold.ttf', round(36 * unit))
     lines, y = [(title, title_font, MAROON, round(236 * unit)), (_spaced(english.upper()), english_font, GREY, round(358 * unit))], round(460 * unit)
-    for tamil, english_role, who in roles[:4]:
+    small = _font('Catamaran-Bold.ttf', round(26 * unit))
+    named = []  # Name lines: the Tamil name, then | and the English name, smaller (roles may give a fourth item).
+    for tamil, english_role, who, *also in roles[:4]:
         lines.append((f'{tamil}   ·   {english_role.upper()}', label_font, GREY, y))
-        lines.append((who, name_font, INK, y + round(34 * unit)))
+        named.append(_named(who, also[0] if also else None, name_font, small, INK, width, height, right, y + round(70 * unit)))
         y += round(112 * unit)
     words = _block(width, height, lines, right)
+    labels = words[2:]
+    words = words[:2] + [pair for label, name_line in zip(labels, named) for pair in ((label[0], 0), (name_line, 0))]
     rule = Image.new('RGBA', (width, height))
     ImageDraw.Draw(rule).line([(right - round(70 * unit), round(412 * unit)), (right + round(70 * unit), round(412 * unit))], fill=RULE + (255,), width=max(1, round(2 * unit)))
-    caption = _block(width, height, [(name, _font('Catamaran-Bold.ttf', round(34 * unit)), MAROON, py + side + round(14 * unit))], int(width * 0.3)) if name else []
+    caption = [(_named(name, name_english, _font('Catamaran-Bold.ttf', round(34 * unit)), _font('Catamaran-Bold.ttf', round(24 * unit)), MAROON, width, height, int(width * 0.3),
+                       py + side + round(48 * unit)), 0)] if name else []
     # When each part appears: the title just after the portrait starts, the credits one by one, the name once drawn.
     timed = [(words[0][0], 0.9), (words[1][0], 1.15), (rule, 1.3)] + [(layer, 1.5 + 0.18 * n) for n, (layer, _) in enumerate(words[2:])] + [(layer, 0.4 + drawing) for layer, _ in caption]
     layers = [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]

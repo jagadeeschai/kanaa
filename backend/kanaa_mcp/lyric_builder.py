@@ -199,7 +199,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             from app.services import signature_card_service
             with tempfile.TemporaryDirectory() as folder:
                 made = signature_card_service.make(Path(saved['photo']), Path(media(int(saved['paper']))['absolute_path']), Path(folder) / f'{name} signature card.mp4',
-                                                   name, saved.get('english') or name, roles, saved.get('lyricist'))
+                                                   name, saved.get('english') or name, [role + ([saved['lyricist_english']] if role[2] == saved.get('lyricist') and saved.get('lyricist_english') else []) for role in roles],
+                                                   saved.get('lyricist'), name_english=saved.get('lyricist_english'))
                 card = int(api.upload('/media', made)['id'])
         signatures.add_card(timeline, name, saved.get('english') or name, saved, roles, card=card)
     if karaoke:
