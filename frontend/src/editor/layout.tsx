@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { searchText, t } from '../i18n';
 import { ChevronRight, ChevronsDownUp, Info, Search, X, type LucideIcon } from 'lucide-react';
 
@@ -167,7 +167,9 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
 export function More({ label = 'More options', children }: { label?: string; children: ReactNode }) {
   const panel = useContext(PanelContext);
   const [open, setOpen] = useState(false);
-  if (useContext(SimpleContext)) return null;
+  const simple = useContext(SimpleContext);
+  // Nothing inside for this clip (say, a photo on the main track): no empty "More options" to open.
+  if (simple || Children.toArray(children).length === 0) return null;
   const showing = open || Boolean(panel?.query);
   return <div className={`ed-more ${showing ? 'open' : ''}`}>
     <button className="ed-more-head" aria-expanded={showing} onClick={() => setOpen(!open)}><ChevronRight size={13}/>{t(label)}</button>
