@@ -37,7 +37,7 @@ export const TAMIL: Record<string, string> = {
   'Makes the whole video as loud as social apps expect.': 'சமூக ஊடகங்களுக்கு ஏற்ற ஒலியளவு.',
   'One click dresses the whole video: colours, transitions, titles and music.': 'ஒரே சொடுக்கில் முழு வீடியோவும்: நிறம், மாற்றங்கள், தலைப்பு, இசை.',
   'Brand watermark': 'பிராண்ட் முத்திரை', 'Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best.': 'உங்கள் லோகோ வீடியோ முழுதும் தெரியும். ஒளிபுகும் பின்னணி கொண்ட PNG சிறந்தது.',
-  'Brand intro': 'பிராண்ட் அறிமுகம்', 'Your logo comes to life at the start: a leaf falls among music notes and becomes it, with வழங்கும் and PRESENTS beneath.': 'தொடக்கத்தில் உங்கள் லோகோ உயிர்பெறும்: இசைக்குறிகளிடையே இலை விழுந்து லோகோவாகும், கீழே வழங்கும்.',
+  'Add': 'சேர்', 'Brand intro': 'பிராண்ட் அறிமுகம்', 'Your logo comes to life at the start: a leaf falls among music notes and becomes it, with வழங்கும் and PRESENTS beneath.': 'தொடக்கத்தில் உங்கள் லோகோ உயிர்பெறும்: இசைக்குறிகளிடையே இலை விழுந்து லோகோவாகும், கீழே வழங்கும்.',
   // Clip: frame, look, speed, sound
   'Fit shows everything; Fill covers the screen. Drag the picture to move it, or a corner to resize it.': 'Fit முழுப் படம்; Fill முழுத் திரை. படத்தை இழுத்து நகர்த்து, மூலையை இழுத்து அளவு மாற்று.',
   'Brightness': 'பிரகாசம்', 'Contrast': 'மாறுபாடு', 'Gamma': 'காமா', 'Temperature': 'வெப்பநிலை', 'Tint': 'சாயல்', 'Warmth': 'கதகதப்பு', 'Balance': 'சமநிலை', 'Colour boost': 'நிற மெருகு',
