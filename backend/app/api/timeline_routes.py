@@ -1030,7 +1030,7 @@ def start_depth_motion(identifier: int, body: dict):
         made = depth_motion_service.make(picture, seconds, move, lambda progress: update_job(job_id, progress=progress), should_cancel)
         existing = find(made)
         name = f"{Path(item['filename']).stem} 3D.mp4"
-        return {'progress': 100, 'output_photo_id': existing or index_media(made, name, folder=item.get('folder'))['id']}  # Beside its picture
+        return {'progress': 100, 'output_photo_id': existing or index_media(made, name, folder=item['folder'])['id']}  # Beside its picture
 
     job_id = enqueue_render('depth_motion', f"Making {item['filename']} 3D", run, total=100)
     return {'status': 'preparing', 'job_id': job_id}

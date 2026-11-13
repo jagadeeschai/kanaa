@@ -2,6 +2,7 @@
  * What every settings panel needs from the editor, shared through context instead of being passed to each panel:
  * the timeline, how to change it, pausing playback and opening the guide. Panels read it with useEditor().
  */
+import type { Photo } from '../../types/photo';
 import { createContext, useContext } from 'react';
 import type { Timeline } from '../../timeline/model';
 
@@ -18,6 +19,8 @@ export type EditorShared = {
   /** The selected item (titles, clips, sounds…), and choosing another (or none). */
   selectedId: string | null;
   select: (id: string | null) => void;
+  /** A new file made for this project (an effect, a night sky…), so the preview can play it at once. */
+  addMedia: (item: Photo) => void;
 };
 
 export const EditorContext = createContext<EditorShared | null>(null);

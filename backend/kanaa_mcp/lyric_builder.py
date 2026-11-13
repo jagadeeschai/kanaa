@@ -19,7 +19,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                       canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
                       music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
                       logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False,
-                      shots: bool = True, painted: bool = True, gentle: bool = True, karaoke: bool = False) -> dict:
+                      shots: bool = True, painted: bool = True, gentle: bool = True, karaoke: bool = False,
+                      night_sky: bool = True) -> dict:
     """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
     - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
     - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -41,6 +42,8 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
       the face (found on this Mac), each with its own slow move. Not with into_clear or three_d.
     - painted: every other scene's middle shot shows the picture painted (watercolour, pencil, oil or dream), made
       on this Mac with filters, no AI and no cost. Needs shots.
+    - night_sky: a picture with a night sky gets twinkling stars in its sky and a glow round its moon, moving with
+      each shot; pictures without one are left alone. Made on this Mac.
     - karaoke: every lyric line lights its words, gold, as they are sung (word times from each line's timing).
     - gentle: with into_clear, each picture breathes or drifts a few per cent instead of holding still.
     Camera moves come from twelve slow moves (pans, tilts, diagonal drifts, slow turns, reveals), none repeated within
@@ -163,6 +166,17 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
+    made_skies: list[int] = []
+    if night_sky and not three_d:  # A 3D picture moves within itself; a flat sky would slide off it.
+        from kanaa_mcp import night_sky as sky
+        picture_of = {video: picture for picture, video in depth.items()}  # into_clear plays each picture as a still video.
+
+        def sky_video_for(shown: int, seconds: float):
+            made = api.post(f'/photos/{picture_of.get(shown, shown)}/night-sky', {'seconds': min(600, seconds)})
+            if made.get('status') == 'none':
+                return None
+            return int(made['output_photo_id'] if made.get('status') == 'ready' else look_up(api.wait(made['job_id'], timeout=1800), 'output_photo_id'))
+        made_skies = sky.add(timeline, sky_video_for)
     validate(timeline)
     if project_id is None:
         project_id = api.post('/projects', {'name': name, 'kind': 'edit', 'media_ids': [int(scenes[0]['media_id'])]})['id']
@@ -171,7 +185,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         save(project_id, timeline_of(project_id), timeline, 'Rebuilt the lyric video')
     # The song's own media (its pictures and the clips made from them) goes into a library folder named after the song.
     from app.services.media_service import song_folder
-    own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()) | set(made_paintings))
+    own = sorted({int(scene['media_id']) for scene in scenes} | set(stills.values()) | set(depth.values()) | set(made_paintings) | set(made_skies))
     folder = song_folder(name)
     if folder and own:
         api.patch('/photos/folder', {'ids': own, 'folder': folder})

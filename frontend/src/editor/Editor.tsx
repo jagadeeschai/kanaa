@@ -1302,7 +1302,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const seek = useCallback((t: number) => engineRef.current?.seek(t), []);
   // What the settings panels share (state/EditorContext). Null until the project has loaded.
   const editorShared = useMemo(() => timeline ? { timeline, change, pause: () => engineRef.current?.pause(), openGuide: (article?: string) => { if (article) openGuide(article); else setShowingHelp(true); },
-    now, seek, selectedId, select: (id: string | null) => { setMoreIds(new Set()); setSelectedId(id); } } : null, [timeline, change, openGuide, now, seek, selectedId]);
+    now, seek, selectedId, select: (id: string | null) => { setMoreIds(new Set()); setSelectedId(id); },
+    addMedia: (item: Photo) => setMedia((current) => (current.some((each) => each.id === item.id) ? current : [item, ...current])) } : null, [timeline, change, openGuide, now, seek, selectedId]);
   const togglePlay = useCallback(() => { const engine = engineRef.current; if (!engine) return; if (engine.playing) engine.pause(); else engine.play(); }, []);
   const split = useCallback(() => {
     if (!timeline) return;
