@@ -76,10 +76,13 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     right = int(width * 0.67)
     title_font, english_font = _font('Arima-Bold.ttf', round(88 * unit)), _font('Pavanam-Regular.ttf', round(24 * unit))
     label_font, name_font = _font('Pavanam-Regular.ttf', round(22 * unit)), _font('Catamaran-Bold.ttf', round(36 * unit))
-    lines, y = [(title, title_font, MAROON, round(236 * unit)), (_spaced(english.upper()), english_font, GREY, round(358 * unit))], round(460 * unit)
+    # The column is centred on the frame whatever the number of credits: title to last name is 316 + 112 per credit.
+    shown = roles[:4]
+    top = round((height - (316 + 112 * len(shown)) * unit) / 2 + 30 * unit)  # Level with the portrait and its name.
+    lines, y = [(title, title_font, MAROON, top), (_spaced(english.upper()), english_font, GREY, top + round(122 * unit))], top + round(224 * unit)
     small = _font('Catamaran-Bold.ttf', round(26 * unit))
     named = []  # Name lines: the Tamil name, then | and the English name, smaller (roles may give a fourth item).
-    for tamil, english_role, who, *also in roles[:4]:
+    for tamil, english_role, who, *also in shown:
         lines.append((f'{tamil}   ·   {english_role.upper()}', label_font, GREY, y))
         named.append(_named(who, also[0] if also else None, name_font, small, INK, width, height, right, y + round(70 * unit)))
         y += round(112 * unit)
@@ -87,7 +90,7 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     labels = words[2:]
     words = words[:2] + [pair for label, name_line in zip(labels, named) for pair in ((label[0], 0), (name_line, 0))]
     rule = Image.new('RGBA', (width, height))
-    ImageDraw.Draw(rule).line([(right - round(70 * unit), round(412 * unit)), (right + round(70 * unit), round(412 * unit))], fill=RULE + (255,), width=max(1, round(2 * unit)))
+    ImageDraw.Draw(rule).line([(right - round(70 * unit), top + round(176 * unit)), (right + round(70 * unit), top + round(176 * unit))], fill=RULE + (255,), width=max(1, round(2 * unit)))
     caption = [(_named(name, name_english, _font('Catamaran-Bold.ttf', round(34 * unit)), _font('Catamaran-Bold.ttf', round(24 * unit)), MAROON, width, height, int(width * 0.3),
                        py + side + round(48 * unit)), 0)] if name else []
     # When each part appears: the title just after the portrait starts, the credits one by one, the name once drawn.

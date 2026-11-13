@@ -187,8 +187,13 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         saved = signatures.load(settings.data_dir, signature)
         if saved is None:
             raise ToolError(f'No signature called {signature} is saved yet.')
+        producer = presented_by or saved.get('presented_by')
+        same = arranged_by and producer and saved.get('presented_by_english') and arranged_by.strip().lower() == saved['presented_by_english'].strip().lower()
         roles = [[tamil, english, who] for tamil, english, who in (('பாடல் வரிகள்', 'Lyrics', song_by or saved.get('lyricist')), ('இசை', 'Music', music),
-                                                                ('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by), ('தயாரிப்பு', 'Produced by', presented_by or saved.get('presented_by'))) if (who or '').strip()]
+                                                                *((('இசை வடிவமைப்பு & தயாரிப்பு', 'Arrangement & Production', producer),) if same else
+                                                                  (('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by), ('தயாரிப்பு', 'Produced by', producer)))) if (who or '').strip()]
+        if same:  # The channel's Tamil and English names are one credit: Tamil | English.
+            roles[-1].append(saved['presented_by_english'])
         timeline['layers'] = [layer for layer in timeline['layers'] if not (layer.get('id') or '').startswith('credits-opening')]  # The white card says it instead.
         for layer in timeline['layers']:
             if layer.get('id') == 'credits-portraits':
