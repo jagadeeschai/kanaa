@@ -72,6 +72,44 @@ class TwoPeople(unittest.TestCase):
         self.assertEqual(len(set(closes)), 2, closes)
 
 
+class Pacing(unittest.TestCase):
+    def test_cuts_land_on_beats_and_come_quicker_in_the_chorus(self):
+        beats = [round(i * 0.5, 3) for i in range(200)]
+        lengths = scene_motion.cut_lengths(0, 60, beats, [(30, 60)])
+        edges = [sum(lengths[:n]) for n in range(1, len(lengths))]
+        self.assertTrue(all(abs(edge * 2 - round(edge * 2)) < 1e-6 for edge in edges), 'every cut on a beat')
+        verse = [b - a for a, b in zip([0] + edges, edges) if b <= 30]
+        chorus = [b - a for a, b in zip(edges, edges[1:]) if a >= 30]
+        self.assertTrue(verse and chorus and max(chorus) < min(verse))
+        self.assertGreaterEqual(min(lengths), scene_motion.SHORTEST_SHOT)
+
+    def test_the_chorus_is_found_and_each_return_looks_different(self):
+        line = lambda at, text: {'id': f'lyric-line-{at}', 'start': at, 'length': 3, 'text': text}
+        lines = [line(0, 'ஒன்று'), line(10, 'கற்கண்டு'), line(14, 'நீ வா'), line(40, 'இரண்டு'), line(60, 'கற்கண்டு'), line(64, 'நீ வா'), line(90, 'கற்கண்டு!'), line(94, 'நீ வா')]
+        spans = scene_motion.chorus_spans(lines)
+        self.assertEqual(spans, [(10, 17), (60, 67), (90, 97)])
+        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': [scene(1, 10, 6), scene(2, 60, 6), scene(3, 90, 6), scene(4, 40, 6)]}]}
+        scene_motion.chorus_looks(timeline, spans)
+        self.assertEqual([c.get('look') for c in timeline['layers'][0]['items']], [None, 'warm', 'film', None])
+
+    def test_picture_advice(self):
+        from kanaa_mcp.lyric_builder import picture_advice
+        self.assertEqual(picture_advice(6, 280)['suggest'], 13)
+        self.assertIn('13 pictures', picture_advice(6, 280)['note'])
+        self.assertIsNone(picture_advice(12, 280)['note'])
+
+
+class KeepAlive(unittest.TestCase):
+    def test_a_shine_covers_the_whole_title_on_its_own_screen_layer(self):
+        timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': []}, {'id': 'T', 'kind': 'text', 'items': [{'id': 'house-title', 'start': 2, 'length': 12, 'transform': {'x': 0.62, 'y': 0.9}}]}]}
+        lyrics.shine_over(timeline, 7, 'house-title')
+        layer = timeline['layers'][1]
+        self.assertEqual((layer['blend'], layer['kind']), ('screen', 'video'))
+        self.assertAlmostEqual(sum(item['out'] for item in layer['items']), 12)
+        self.assertEqual(layer['items'][-1]['start'], 12)
+        self.assertEqual(lyrics.wave(8, 1, 1.03, 4)[-1], {'t': 8, 'v': 1, 'ease': 'easeInOut'})
+
+
 class Gentle(unittest.TestCase):
     def test_into_clear_pictures_breathe_and_the_person_layer_moves_with_them(self):
         clip = scene(1, 0, 10); clip['transform']['scale'] = 1.2

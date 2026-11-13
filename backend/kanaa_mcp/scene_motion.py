@@ -141,7 +141,67 @@ def framed(point: tuple[float, float], zoom: float) -> tuple[float, float]:
     return tuple(round(0.5 + max(-room, min(room, (0.5 - p) * zoom)), 4) for p in point)  # type: ignore[return-value]
 
 
-def shots(timeline: dict, focus_of: dict[int, tuple[float, float] | list[tuple[float, float]]], painted: dict[int, list[int]] | None = None, seed: int = 7) -> None:
+VERSE_SHOT = 9.0  # Seconds a shot lasts in a verse: slow, so the words and the picture can be taken in.
+CHORUS_SHOT = 5.0  # In the chorus the cuts come quicker.
+SHORTEST_SHOT = 3.0
+BEAT_REACH = 1.2  # A cut moves at most this far to land on a beat.
+
+
+def chorus_spans(lines: list[dict], gap: float = 6.0) -> list[tuple[float, float]]:
+    """When the chorus is sung: runs of two or more lines that are each sung more than once in the song."""
+    chorus = chorus_lines([line['text'] for line in lines])
+    spans: list[list[float]] = []
+    count = 0
+    for line in sorted(lines, key=lambda line: line['start']):
+        if ' '.join(line['text'].split()).strip(' .,!?…').lower() not in chorus:
+            continue
+        end = line['start'] + line.get('length', 0)
+        if spans and line['start'] - spans[-1][1] <= gap:
+            spans[-1][1] = end; count += 1
+        else:
+            if spans and count < 2:
+                spans.pop()
+            spans.append([line['start'], end]); count = 1
+    if spans and count < 2:
+        spans.pop()
+    return [(round(a, 3), round(b, 3)) for a, b in spans]
+
+
+def cut_lengths(start: float, length: float, beats: list[float] | None = None, chorus: list[tuple[float, float]] | None = None) -> list[float]:
+    """Where a scene's shots change: about every VERSE_SHOT seconds, every CHORUS_SHOT in the chorus, each cut moved
+    onto the nearest beat when one is close."""
+    end = start + length
+    if length < SHOT_MIN:
+        return [length]
+    # A shot that would run into the chorus is already a chorus shot, so the quicker cuts start with it.
+    in_chorus = lambda t: any(t < b and a < t + VERSE_SHOT * 0.6 for a, b in chorus or [])
+    cuts, at = [], start
+    while True:
+        target = at + (CHORUS_SHOT if in_chorus(at) else VERSE_SHOT)
+        near = min(beats or [], key=lambda beat: abs(beat - target), default=None)
+        if near is not None and abs(near - target) <= BEAT_REACH:
+            target = near
+        if end - target < SHORTEST_SHOT + 0.5:
+            break
+        cuts.append(target); at = target
+    edges = [start, *cuts, end]
+    return [round(b - a, 3) for a, b in zip(edges, edges[1:])]
+
+
+def chorus_looks(timeline: dict, spans: list[tuple[float, float]]) -> None:
+    """Each return of the chorus looks a little different: the first as it is, then golden, then like film, then vivid."""
+    looks = [None, 'warm', 'film', 'vivid']
+    for clip in timeline['layers'][0]['items']:
+        if not clip['id'].startswith('lyric-scene-') or clip.get('look') not in (None, 'none'):
+            continue
+        middle = clip['start'] + (clip['out'] - clip['in']) / clip.get('speed', 1) / 2
+        turn = next((number for number, (a, b) in enumerate(spans) if a <= middle < b), None)
+        if turn:
+            clip['look'] = looks[min(turn, len(looks) - 1)]
+
+
+def shots(timeline: dict, focus_of: dict[int, tuple[float, float] | list[tuple[float, float]]], painted: dict[int, list[int]] | None = None, seed: int = 7,
+          beats: list[float] | None = None, chorus: list[tuple[float, float]] | None = None) -> None:
     """Cuts each long picture scene on the main track into a wide, a medium and a close shot of the same picture, each
     with its own slow move, joined by a soft blur. painted: picture media id -> painted versions; every other scene's
     middle shot shows one of them, so the same picture also changes look."""
@@ -155,7 +215,7 @@ def shots(timeline: dict, focus_of: dict[int, tuple[float, float] | list[tuple[f
             continue
         points = focus_of.get(clip['media_id']) or [(0.5, 0.4)]
         points = [points] if isinstance(points[0], (int, float)) else points
-        pieces = shot_lengths(length)
+        pieces = cut_lengths(clip['start'], length, beats, chorus) if beats is not None or chorus is not None else shot_lengths(length)
         at_in = clip['in']
         for number, piece in enumerate(pieces):
             shot = {**clip, 'id': clip['id'] if number == 0 else f"{clip['id']}-{number + 1}", 'start': round(clip['start'] + sum(pieces[:number]), 3),

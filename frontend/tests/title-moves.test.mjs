@@ -48,7 +48,8 @@ test('stand still keeps the title where it is now, and undoes a crawl\'s lean', 
 });
 
 test('every move is offered once', () => {
-  assert.equal(new Set(TITLE_MOVES.map((move) => move.id)).size, 6);
+  assert.equal(new Set(TITLE_MOVES.map((move) => move.id)).size, TITLE_MOVES.length);
+  assert.equal(TITLE_MOVES.length, 11);
 });
 
 test('picture animations go through the 3D path, and enter and exit tricks combine', () => {
@@ -59,4 +60,19 @@ test('picture animations go through the 3D path, and enter and exit tricks combi
   assert.equal(both.line, 1, 'the exit\'s line, drawn while at rest');
   const copies = animatedLook({ preset: 'chromatic', duration: 1 }, { preset: 'echo', duration: 1 }, 3.9, 4);
   assert.equal(copies.trick, 3, 'the wider copies, the echo leaving, win');
+});
+
+test('keep-alive moves repeat for the whole title and start from where it rests', async () => {
+  const { applyTitleMove } = await import('../src/timeline/titleMoves.ts');
+  const text = { id: 't', start: 0, length: 30, text: 'கற்கண்டு', style: 'shadow', position: 'bottom', color: '#fff', size: 40, transform: { x: 0.4, y: 0.6, scale: 1, opacity: 1, rotation: 0 } };
+  const sway = applyTitleMove(text, 'sway').transform.keyframes.rotation;
+  assert.ok(sway.length >= 15 && sway.every((key) => Math.abs(key.v) <= 3));
+  assert.equal(sway.at(-1).t, 30);
+  const float = applyTitleMove(text, 'float').transform.keyframes.y;
+  assert.ok(float.every((key) => Math.abs(key.v - 0.6) <= 0.0101));
+  const swing = applyTitleMove(text, 'swing-3d').transform.keyframes.tilt_y;
+  assert.ok(swing.some((key) => key.v > 20) && swing.some((key) => key.v < -20));
+  const turn = applyTitleMove(text, 'turn-now-and-then').transform.keyframes.rotation;
+  assert.equal(turn.at(-1).v, 360 * 4, 'one turn every six seconds, ending still');
+  assert.ok(turn.every((key, n) => n === 0 || key.t > turn[n - 1].t));
 });

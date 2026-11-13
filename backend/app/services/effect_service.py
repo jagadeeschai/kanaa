@@ -81,6 +81,7 @@ EFFECTS = [
     Effect('lanterns', 'Floating lanterns', 'வான விளக்குகள்', 'travel', 'Warm sky lanterns drifting up and away'),
     Effect('leaves', 'Falling leaves', 'உதிரும் இலைகள்', 'travel', 'Depth-layered leaves turning gently as they fall'),
     Effect('caustics', 'Water caustics', 'நீர் ஒளி அலைகள்', 'travel', 'Soft moving light patterns for water and boats'),
+    Effect('shine', 'Shine sweep', 'மின்னும் ஒளிக்கோடு', 'any', 'A bright streak of light passing across, twice; lay it over a title'),
     Effect('sea-sparkle', 'Sea sparkle', 'கடல் மினுமினுப்பு', 'travel', 'Sun glints dancing across the water'),
 ]
 BY_ID = {effect.id: effect for effect in EFFECTS}
@@ -124,6 +125,24 @@ def _glow(image: Image.Image, radius: float, strength: float = 1.0) -> Image.Ima
     """Adds a soft halo: the picture plus a blurred copy of itself."""
     halo = np.asarray(image.filter(ImageFilter.GaussianBlur(radius)), np.float32) * strength
     return Image.fromarray(np.clip(np.asarray(image, np.float32) + halo, 0, 255).astype(np.uint8))
+
+
+def shine(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    """A slanted streak of light crossing from left to right in the first second of every two and a half, then dark."""
+    width, height = size
+    t = (n / FPS) % 2.5
+    image = Image.new('RGB', size)
+    if t > 1.0:
+        return image
+    ease = t * t * (3 - 2 * t)
+    centre = -0.3 * width + ease * 1.6 * width
+    ys, xs = np.mgrid[0:height, 0:width].astype(np.float32)
+    slant = xs + (ys - height / 2) * 0.45  # Leaning, like light caught on glass.
+    band = np.exp(-((slant - centre) / (0.035 * width)) ** 2)
+    core = np.exp(-((slant - centre) / (0.008 * width)) ** 2)
+    light = np.clip(band * 150 + core * 140, 0, 255)
+    rgb = np.stack([light, light * 0.97, light * 0.88], axis=-1).astype(np.uint8)  # A little warm, like gold leaf.
+    return Image.fromarray(rgb)
 
 
 def falling(colours, count, size_range, sway, spin, shape):
@@ -1321,6 +1340,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'dust': dust,
     'lens-flare': lens_flare,
     'sparkles': sparkles,
+    'shine': shine,
     'fireworks': fireworks,
     'bokeh': bokeh,
     'light-leak': light_leak,

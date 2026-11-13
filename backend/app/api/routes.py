@@ -608,7 +608,7 @@ def build_lyric_video_route(body: dict, request: Request):
             helpers = mcp.build_server(api).lyric_helpers
             update_job(job_id, phase='Building your lyric video', progress=5)
             result = build_lyric_video(api, *helpers, **params)
-        return {'progress': 100, 'phase': 'Ready to review', 'project_id': result['project_id'], 'folder': result.get('folder')}
+        return {'progress': 100, 'phase': 'Ready to review', 'project_id': result['project_id'], 'folder': result.get('folder'), 'pictures': result.get('pictures')}
 
     job_id = enqueue_render('lyric_build', f"Building {params['name']}", run, total=100)
     return {'job_id': job_id}

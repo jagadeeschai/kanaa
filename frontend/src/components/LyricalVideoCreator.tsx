@@ -496,6 +496,11 @@ export default function LyricalVideoCreator({ photo, projectId, projectName, onC
                 <div className="space-y-2 rounded-xl border border-white/10 p-3 text-xs text-slate-300"><p>{firstBackground ? '✓ Background ready' : '○ Choose a background'}</p><p>{isVideo || song ? '✓ Audio source ready' : '○ Add a song'}</p><p>{valid && cues.length ? `✓ ${cues.length} timed lyric lines` : '○ Sync and review lyric timing'}</p><p>{resolvedCanvas === 'portrait' ? '9:16 portrait' : resolvedCanvas === 'square' ? '1:1 square' : '16:9 landscape'}{canvas === 'auto' ? ' · matched to media' : ''} · {quality} · MP4</p></div>
                 {(!firstBackground || !song || !valid || !cues.length) && <p className="text-xs text-amber-200">Complete the missing items above before continuing.</p>}
                 
+                {(() => {
+                  // About one picture per 22 seconds keeps viewers watching (the builder's picture_advice says the same).
+                  const want = Math.max(3, Math.round(duration / 22)); const have = new Set(backgrounds.map((item) => item.id)).size;
+                  return duration > 0 && have < want * 0.8 && <p role="note" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-2 text-xs text-amber-100">{t('This song wants about {want} pictures; you have {have}. With fewer, each one stays on screen a long time. Add more in Backgrounds, or build anyway: shots, moves and paintings stretch what you have.', { want, have })}</p>;
+                })()}
                 <LyricBuildOptions value={buildChoices} onChange={setBuildChoices}/>
                 {isVideo && <p className="text-xs text-amber-200">{t('The full build uses pictures. With a video background, open a simple project instead.')}</p>}
                 {building && <p role="status" className="text-xs text-violet-300">{building}</p>}

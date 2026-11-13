@@ -120,7 +120,16 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                 style = scene_motion.PAINTS[(turn // 2) % len(scene_motion.PAINTS)]
                 versions[int(scene['media_id'])] = [painting(api, list_media, picture, Path(item['filename']).stem, style)]
                 made_paintings += versions[int(scene['media_id'])]
-        scene_motion.shots(timeline, focus, versions)
+        song = next(item for layer in timeline['layers'] if layer['kind'] == 'audio' for item in layer['items'])
+        try:
+            heard = api.get(f'/video-audio/{song_asset_id}/beats').get('beats') or []
+        except Exception:  # No beats found (a quiet song): cuts keep their own rhythm.
+            heard = []
+        beats = [round(song['start'] + beat - song.get('in', 0), 3) for beat in heard]
+        sung = [item for layer in timeline['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'].startswith('lyric-line')]
+        chorus = scene_motion.chorus_spans(sung)
+        scene_motion.shots(timeline, focus, versions, beats=beats, chorus=chorus)
+        scene_motion.chorus_looks(timeline, chorus)
     lyrics.dress(timeline, look, light_media, camera_moves=not clear)
     if clear:
         lyrics.into_clear(timeline, spaces, stills)
@@ -147,6 +156,9 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
                 sizes[clip['media_id']] = (float(item['width']), float(item['height']))
     if house_style:
         lyrics.house_style(timeline, name, song_by)
+        made = api.post('/effects/shine', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
+        shine = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
+        lyrics.shine_over(timeline, shine, 'house-title')
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
     validate(timeline)
     if project_id is None:
@@ -161,7 +173,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     if folder and own:
         api.patch('/photos/folder', {'ids': own, 'folder': folder})
     return {'project_id': project_id, 'folder': folder, 'seconds': round(max(clip['start'] + lyrics.length_of(clip) for clip in timeline['layers'][0]['items']), 2),
-            'scenes': len(scenes), 'lines': len(cues), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.',
+            'scenes': len(scenes), 'lines': len(cues), 'pictures': picture_advice(len({int(scene['media_id']) for scene in scenes}), song_seconds), 'lyric_motion': lyric_motion, 'note': 'Not exported. Use look to check moments; the person reviews and exports.',
             'check_timing': lyrics.crowded(cues)}
 
 
@@ -185,3 +197,14 @@ def painting(api, list_media, picture: Path, title: str, style: str) -> int:
         target = Path(folder) / name
         cv2.imwrite(str(target), scene_motion.paint(picture, style), [cv2.IMWRITE_JPEG_QUALITY, 92])
         return int(api.upload('/media', target)['id'])
+
+
+PICTURE_SECONDS = 22.0  # About this much of the song per picture keeps a viewer watching; more on one picture feels long.
+
+
+def picture_advice(have: int, song_seconds: float) -> dict:
+    """How many pictures a song wants, and a plain sentence when there are too few."""
+    want = max(3, round(song_seconds / PICTURE_SECONDS))
+    minutes = f'{int(song_seconds // 60)}:{int(song_seconds % 60):02d}'
+    note = None if have >= want * 0.8 else f'This {minutes} song wants about {want} pictures; it has {have}. Each one stays on screen a long time.'
+    return {'have': have, 'suggest': want, 'note': note}

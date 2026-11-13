@@ -444,6 +444,33 @@ HOUSE_SCENE_TOUCHES = [
 ]
 
 
+def wave(length: float, a: float, b: float, period: float) -> list[dict]:
+    """Back and forth between a and b every `period` seconds, eased (as titleMoves.ts wave)."""
+    keys, at, step = [], 0.0, 0
+    while at <= length + 1e-6:
+        keys.append({'t': round(min(at, length), 4), 'v': round(b if step % 2 else a, 4), 'ease': 'easeInOut'})
+        at += period / 2; step += 1
+    return keys
+
+
+def shine_over(timeline: dict, media_id: int, text_id: str, scale: float = 0.3) -> None:
+    """A streak of light across one title's words for as long as it shows (the 5-second shine effect, repeated)."""
+    text = next((item for layer in timeline['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'] == text_id), None)
+    if text is None:
+        return
+    transform = text.get('transform') or {}
+    pieces, at = [], 0.0
+    while at < text['length'] - 0.05:
+        piece = min(5.0, text['length'] - at)
+        pieces.append({'id': f'{text_id}-shine-{len(pieces) + 1}', 'media_id': media_id, 'start': round(text['start'] + at, 3), 'in': 0, 'out': round(piece, 3), 'speed': 1,
+                       'volume': 0, 'muted': True, 'fade_in': 0, 'fade_out': 0, 'adjust': dict(ADJUST),
+                       'transform': {'x': transform.get('x', 0.5), 'y': transform.get('y', 0.5), 'scale': scale, 'opacity': 0.9, 'rotation': 0}})
+        at += piece
+    layers = timeline['layers']
+    after = max(index for index, layer in enumerate(layers) if layer['kind'] == 'video') + 1
+    layers.insert(after, {'id': f'{text_id}-shine', 'kind': 'video', 'name': 'Effects', 'blend': 'screen', 'items': pieces})
+
+
 def _two_lines(text: str) -> str:
     """A line of more than a few words split near its middle, at a space, as the owner sets lyrics."""
     if '\n' in text or len(text) < 16 or ' ' not in text:
@@ -492,6 +519,8 @@ def house_style(timeline: dict, title: str, poet: str | None) -> None:
              'subtitle_color': '#e5e5e5', 'design': 'gradient', 'font': 'Gill Sans', 'tamil_font': 'Arima', 'style': 'outline', 'align': 'left', 'position': 'bottom',
              'color': '#ffffff', 'size': 20, 'band_color': '#2b2121', 'enter': {'preset': 'reveal', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.4},
              'transform': {'x': 0.4872, 'y': 0.5767, 'scale': 1, 'opacity': 1, 'rotation': 0}}
+    # Words that stay up the whole song keep breathing, very slightly, so they never look pasted on.
+    lower['transform']['keyframes'] = {'scale': wave(lower['length'], 1.0, 1.03, 4.0)}
     layers.append({'id': 'house-title-card', 'kind': 'text', 'name': 'Title', 'items': [card]})
     layers.append({'id': 'house-lower', 'kind': 'text', 'name': 'Lower third', 'items': [lower]})
     # A different touch on each scene; the last one leaves slowly.
