@@ -38,7 +38,8 @@ def make(lines: list[tuple[str, str, int]], at: tuple[float, float], target: Pat
     first, last = (rows.min(), rows.max()) if len(rows) else (0, height - 1)
     share = np.clip((np.arange(height, dtype=np.float32) - first) / max(1, last - first), 0, 1)[:, None, None]
     fill = np.array(TOP, np.float32) * (1 - share) + np.array(BOTTOM, np.float32) * share
-    shadow = np.asarray(mask.filter(ImageFilter.GaussianBlur(6 * unit)), np.float32) / 255 * 0.55
+    # Two shadows, close and wide, so even small letters read over a white cloth or a bright sky.
+    shadow = np.clip(np.asarray(mask.filter(ImageFilter.GaussianBlur(3 * unit)), np.float32) / 255 * 1.1 + np.asarray(mask.filter(ImageFilter.GaussianBlur(14 * unit)), np.float32) / 255 * 0.7, 0, 0.85)
     out_rgb = np.zeros((height, width, 3), np.float32)
     out_a = shadow.copy()
     if radiance:
