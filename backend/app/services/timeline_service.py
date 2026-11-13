@@ -1401,6 +1401,32 @@ def fit_threads(compiled: Compiled, cores: int | None = None) -> tuple[list[str]
     return args, graph, [] if threads >= cores else ['-filter_complex_threads', str(threads)]
 
 
+def _render_in_slices(timeline: Timeline, media, audio_asset, target: Path, on_progress, should_cancel, prepared, masks, voices, hardware: bool, ffmpeg: str) -> bool:
+    """A long final export in slices side by side (parallel_export); False when it is better made as one graph."""
+    import os
+    from app.services import parallel_export
+    if os.environ.get('KANAA_PARALLEL_EXPORT', '1') == '0':
+        return False
+    cuts = parallel_export.plan(timeline)
+    parts = parallel_export.slices(timeline, cuts) if cuts else None
+    if not parts:
+        return False
+    logger.info('Exporting in %d slices at %s', len(parts), ', '.join(f'{end:.2f}' for _, end, _ in parts[:-1]))
+
+    def render_one(part: Timeline, length: float, path: Path, progress, stop) -> None:
+        render_timeline(part, media, audio_asset, path, progress, stop, prepared=prepared, masks=masks, voices=voices, hardware=hardware, window=(0.0, length))
+
+    def mix(folder: Path) -> Path | None:
+        compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks, voices)
+        if not compiled.has_audio:
+            return None
+        sound = mix_audio(ffmpeg, compiled, folder, should_cancel)
+        return normalize_loudness(ffmpeg, compiled, sound, folder, should_cancel) if compiled.normalize_audio else sound
+
+    parallel_export.render(timeline, parts, render_one, mix, ffmpeg, target, on_progress, should_cancel, run_cancellable)
+    return True
+
+
 def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], target: Path,
                     on_progress: Callable[[int], None], should_cancel: Callable[[], bool] = lambda: False, draft: bool = False, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None, hardware: bool = True,
                     window: tuple[float, float] | None = None) -> None:
@@ -1410,6 +1436,8 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     if not ffmpeg:
         raise ValueError('Exporting requires ffmpeg on the server.')
     target.parent.mkdir(parents=True, exist_ok=True)
+    if window is None and not draft and _render_in_slices(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg):
+        return
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
         if window:

@@ -59,26 +59,40 @@ def _trim(item: dict, by: float) -> None:
             word['s'] = round(max(0.0, word['s'] - by), 6)
 
 
+def _slice(timeline: Timeline, start: float, end: float) -> Timeline:
+    """The part from `start` to `end` moved to start at zero; raises _Whole when something cannot be trimmed exactly."""
+    data = timeline.model_dump(by_alias=True, mode='json')
+    for layer in data['layers']:
+        kept = []
+        for item in layer['items']:
+            begin, finish = item['start'], item['start'] + _length(item)
+            if finish <= start or begin >= end:
+                continue
+            item = copy.deepcopy(item)
+            if begin < start:
+                _trim(item, start - begin)
+                item['start'] = 0.0
+            else:
+                item['start'] = round(begin - start, 6)
+            kept.append(item)
+        layer['items'] = kept
+    return Timeline.model_validate(data)
+
+
 def cut(timeline: Timeline, start: float, end: float) -> tuple[Timeline, float]:
     """The part of `timeline` from `start` to `end`, moved to start at zero, and how far it moved (0: used whole)."""
     if start <= 0:
         return timeline, 0.0
-    data = timeline.model_dump(by_alias=True, mode='json')
     try:
-        for layer in data['layers']:
-            kept = []
-            for item in layer['items']:
-                begin, finish = item['start'], item['start'] + _length(item)
-                if finish <= start or begin >= end:
-                    continue
-                item = copy.deepcopy(item)
-                if begin < start:
-                    _trim(item, start - begin)
-                    item['start'] = 0.0
-                else:
-                    item['start'] = round(begin - start, 6)
-                kept.append(item)
-            layer['items'] = kept
-        return Timeline.model_validate(data), start
+        return _slice(timeline, start, end), start
     except Exception:  # Anything not cut exactly: the whole timeline, which is always right, only slower.
         return timeline, 0.0
+
+
+def cut_exact(timeline: Timeline, start: float, end: float) -> Timeline | None:
+    """Like cut(), for a final export's slice: from zero too (later items left out), and None instead of the whole
+    timeline when anything cannot be cut exactly, so the caller can choose another way."""
+    try:
+        return _slice(timeline, max(0.0, start), end)
+    except Exception:
+        return None
