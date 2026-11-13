@@ -1,4 +1,5 @@
 import type { Animation, LookName, Transition } from './animation';
+import { karaokeWords } from './karaoke.ts';
 import type { Chroma } from './chroma';
 import type { Transform } from './evaluate';
 import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
@@ -1142,27 +1143,3 @@ export function retimeLayerLines(timeline: Timeline, layerId: string, lines: { s
   return { ...timeline, layers: timeline.layers.map((l) => l.id === layerId ? { ...l, items } as TrackLayer : l) };
 }
 
-export const KARAOKE_COLOUR = '#ffd54a';
-/** The last word sung by `local` seconds into a karaoke title, or null before the first. Matches karaoke_states. */
-export function karaokeLit(text: TextItem, local: number): number | null {
-  const words = text.karaoke?.words;
-  if (!words?.length) return null;
-  let lit: number | null = null;
-  words.forEach((at, index) => { if (local >= at) lit = index; });
-  return lit;
-}
-
-/**
- * When each word of a line starts, worked out from the line's own timing (no listening needed): the sung part of the
- * line is shared among its words by their length, as longer words take longer to sing. The last ~15% of a line (or
- * its last second) is left for the held note at its end.
- */
-export function karaokeWords(text: string, length: number): number[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (!words.length) return [];
-  const sung = Math.max(length * 0.6, Math.min(length * 0.85, length - 0.4));
-  const weights = words.map((word) => Math.max(1, [...word.replace(/[^\p{L}\p{M}\p{N}]/gu, '')].length));
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  let at = 0;
-  return weights.map((weight) => { const start = Math.round(at * 1000) / 1000; at += (sung * weight) / total; return start; });
-}

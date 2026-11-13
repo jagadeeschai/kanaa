@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kanaa_mcp import lyrics, scene_motion
+from kanaa_mcp import lyric_touches, lyrics, scene_motion
 
 
 def scene(n, start, length, media=10):
@@ -102,12 +102,12 @@ class Pacing(unittest.TestCase):
 class KeepAlive(unittest.TestCase):
     def test_a_shine_covers_the_whole_title_on_its_own_screen_layer(self):
         timeline = {'layers': [{'id': 'main', 'kind': 'video', 'items': []}, {'id': 'T', 'kind': 'text', 'items': [{'id': 'house-title', 'start': 2, 'length': 12, 'transform': {'x': 0.62, 'y': 0.9}}]}]}
-        lyrics.shine_over(timeline, 7, 'house-title')
+        lyric_touches.shine_over(timeline, 7, 'house-title')
         layer = timeline['layers'][1]
         self.assertEqual((layer['blend'], layer['kind']), ('screen', 'video'))
         self.assertAlmostEqual(sum(item['out'] for item in layer['items']), 12)
         self.assertEqual(layer['items'][-1]['start'], 12)
-        self.assertEqual(lyrics.wave(8, 1, 1.03, 4)[-1], {'t': 8, 'v': 1, 'ease': 'easeInOut'})
+        self.assertEqual(lyric_touches.wave(8, 1, 1.03, 4)[-1], {'t': 8, 'v': 1, 'ease': 'easeInOut'})
 
 
 class Gentle(unittest.TestCase):

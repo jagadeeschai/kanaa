@@ -1,6 +1,7 @@
+import { KARAOKE_COLOUR } from '../../timeline/karaoke';
 import { useEditor, useItemTime } from '../state/EditorContext';
 import { t } from '../../i18n';
-import { type CinemaReveal, type Clip, type CoverKind, DEFAULT_TITLE_DEPTH, KARAOKE_COLOUR, type KeepClear, REST_TRANSFORM, type SurfaceKind, TITLE_DESIGNS, TITLE_SPACE, type TextItem, duration, titleSpaceOf } from '../../timeline/model';
+import { type CinemaReveal, type Clip, type CoverKind, DEFAULT_TITLE_DEPTH, type KeepClear, REST_TRANSFORM, type SurfaceKind, TITLE_DESIGNS, TITLE_SPACE, type TextItem, duration, titleSpaceOf } from '../../timeline/model';
 import { ENGLISH_FONTS, TAMIL_FONTS } from '../../timeline/templates';
 import { TITLE_MOVES, applyTitleMove, stillTitle } from '../../timeline/titleMoves';
 import { MotionPanel } from '../Keyframes';

@@ -1,3 +1,4 @@
+import { karaokeLit } from '../timeline/karaoke';
 import { dipColour, animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
@@ -6,7 +7,7 @@ import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
-import { karaokeLit, REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
 import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 

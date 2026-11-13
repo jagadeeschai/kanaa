@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addText, emptyTimeline, findText, karaokeLit, karaokeWords, updateText } from '../src/timeline/model.ts';
+import { addText, emptyTimeline, findText, updateText } from '../src/timeline/model.ts';
+import { karaokeLit, karaokeWords } from '../src/timeline/karaoke.ts';
 
 test('word times share the sung part of a line by word length', () => {
   const words = karaokeWords('நீ பக்கத்திலே நின்றாயடி', 4);

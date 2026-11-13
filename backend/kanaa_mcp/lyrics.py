@@ -13,7 +13,7 @@ import subprocess
 import unicodedata
 from pathlib import Path
 
-from kanaa_mcp import scene_motion
+from kanaa_mcp import lyric_touches, scene_motion
 
 FRONTEND = Path(__file__).resolve().parents[2] / 'frontend'
 ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1}
@@ -444,54 +444,6 @@ HOUSE_SCENE_TOUCHES = [
 ]
 
 
-def karaoke_words(text: str, length: float) -> list[float]:
-    """When each word of a line starts, from the line's own timing: as karaokeWords in model.ts."""
-    words = text.split()
-    if not words:
-        return []
-    sung = max(length * 0.6, min(length * 0.85, length - 0.4))
-    weights = [max(1, sum(1 for c in word if unicodedata.category(c)[0] in 'LMN')) for word in words]
-    total, at, out = sum(weights), 0.0, []
-    for weight in weights:
-        out.append(round(at, 3)); at += sung * weight / total
-    return out
-
-
-def karaoke(timeline: dict, colour: str = '#ffd54a') -> None:
-    """Every lyric line lights its words as they are sung."""
-    for layer in timeline['layers']:
-        for line in layer['items'] if layer['kind'] == 'text' else []:
-            if line['id'].startswith('lyric-line'):
-                line['karaoke'] = {'color': colour, 'words': karaoke_words(line['text'], line['length'])}
-
-
-def wave(length: float, a: float, b: float, period: float) -> list[dict]:
-    """Back and forth between a and b every `period` seconds, eased (as titleMoves.ts wave)."""
-    keys, at, step = [], 0.0, 0
-    while at <= length + 1e-6:
-        keys.append({'t': round(min(at, length), 4), 'v': round(b if step % 2 else a, 4), 'ease': 'easeInOut'})
-        at += period / 2; step += 1
-    return keys
-
-
-def shine_over(timeline: dict, media_id: int, text_id: str, scale: float = 0.3) -> None:
-    """A streak of light across one title's words for as long as it shows (the 5-second shine effect, repeated)."""
-    text = next((item for layer in timeline['layers'] if layer['kind'] == 'text' for item in layer['items'] if item['id'] == text_id), None)
-    if text is None:
-        return
-    transform = text.get('transform') or {}
-    pieces, at = [], 0.0
-    while at < text['length'] - 0.05:
-        piece = min(5.0, text['length'] - at)
-        pieces.append({'id': f'{text_id}-shine-{len(pieces) + 1}', 'media_id': media_id, 'start': round(text['start'] + at, 3), 'in': 0, 'out': round(piece, 3), 'speed': 1,
-                       'volume': 0, 'muted': True, 'fade_in': 0, 'fade_out': 0, 'adjust': dict(ADJUST),
-                       'transform': {'x': transform.get('x', 0.5), 'y': transform.get('y', 0.5), 'scale': scale, 'opacity': 0.9, 'rotation': 0}})
-        at += piece
-    layers = timeline['layers']
-    after = max(index for index, layer in enumerate(layers) if layer['kind'] == 'video') + 1
-    layers.insert(after, {'id': f'{text_id}-shine', 'kind': 'video', 'name': 'Effects', 'blend': 'screen', 'items': pieces})
-
-
 def _two_lines(text: str) -> str:
     """A line of more than a few words split near its middle, at a space, as the owner sets lyrics."""
     if '\n' in text or len(text) < 16 or ' ' not in text:
@@ -541,7 +493,7 @@ def house_style(timeline: dict, title: str, poet: str | None) -> None:
              'color': '#ffffff', 'size': 20, 'band_color': '#2b2121', 'enter': {'preset': 'reveal', 'duration': 0.6}, 'exit': {'preset': 'fade', 'duration': 0.4},
              'transform': {'x': 0.4872, 'y': 0.5767, 'scale': 1, 'opacity': 1, 'rotation': 0}}
     # Words that stay up the whole song keep breathing, very slightly, so they never look pasted on.
-    lower['transform']['keyframes'] = {'scale': wave(lower['length'], 1.0, 1.03, 4.0)}
+    lower['transform']['keyframes'] = {'scale': lyric_touches.wave(lower['length'], 1.0, 1.03, 4.0)}
     layers.append({'id': 'house-title-card', 'kind': 'text', 'name': 'Title', 'items': [card]})
     layers.append({'id': 'house-lower', 'kind': 'text', 'name': 'Lower third', 'items': [lower]})
     # A different touch on each scene; the last one leaves slowly.

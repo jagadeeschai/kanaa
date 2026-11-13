@@ -47,7 +47,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
     three scenes, the bigger ones on the chorus.
     - project_id: update that editor project instead of making a new one (do this when redoing a video).
     Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
-    from kanaa_mcp import lyrics
+    from kanaa_mcp import lyric_touches, lyrics
     if not scenes:
         raise ToolError('Give at least one scene picture.')
     scenes = sorted(scenes, key=lambda scene: float(scene.get('start', 0)))
@@ -159,9 +159,9 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         lyrics.house_style(timeline, name, song_by)
         made = api.post('/effects/shine', {'width': timeline['format']['width'], 'height': timeline['format']['height']})
         shine = made['media']['id'] if made.get('media') else int(look_up(api.wait(made['job_id']), 'media_id'))
-        lyrics.shine_over(timeline, shine, 'house-title')
+        lyric_touches.shine_over(timeline, shine, 'house-title')
     if karaoke:
-        lyrics.karaoke(timeline)
+        lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
     validate(timeline)
     if project_id is None:
