@@ -46,7 +46,7 @@ def _words(id_: str, start: float, length: float, text: str, x: float, y: float,
     return {**item, **(extra or {})}
 
 
-def add_card(timeline: dict, title: str, english: str, signature: dict, roles: list[list[str]], at: float | None = None, seconds: float = SECONDS) -> float:
+def add_card(timeline: dict, title: str, english: str, signature: dict, roles: list[list[str]], at: float | None = None, seconds: float = SECONDS, card: int | None = None) -> float:
     """Opens the song with the signature card, `seconds` long, at `at` (after the brand intro by default): everything
     from there on moves later by `seconds`, so the card plays in silence. Returns where it starts."""
     main = timeline['layers'][0]['items']
@@ -65,7 +65,11 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
             if item['start'] >= at - 1e-6:
                 item['start'] = round(item['start'] + seconds, 3)
     # With a drawn card (the portrait drawing itself, made once per song length), it is the background itself.
-    drawn = (signature.get('cards') or {}).get(str(round(seconds, 1)))
+    # A typeset card (signature_card_service.py: the portrait drawing itself and every word laid out) is the whole card.
+    if card is not None:
+        drawn = card
+    else:
+        drawn = (signature.get('cards') or {}).get(str(round(seconds, 1)))
     paper = {'id': 'signature-paper', 'media_id': drawn or signature['paper'], 'start': round(at, 3), 'in': 0, 'out': seconds, 'speed': 1, 'volume': 0, 'muted': True,
              'fade_in': 0.4, 'fade_out': 0, 'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0},
              'adjust': {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1}}
@@ -86,5 +90,6 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
         words.append(_words('signature-name', at + 2.6, seconds - 3.0, lyricist, 0.3, 0.86, 22, MAROON))  # Once the portrait is drawn.
     if not drawn:
         timeline['layers'].insert(1, {'id': 'signature-portrait', 'kind': 'video', 'name': 'Signature portrait', 'items': [portrait]})
-    timeline['layers'] += [{'id': f'signature-words-{n + 1}', 'kind': 'text', 'name': f'Signature card {n + 1}', 'items': [item]} for n, item in enumerate(words)]
+    if card is None:  # A typeset card already has its words.
+        timeline['layers'] += [{'id': f'signature-words-{n + 1}', 'kind': 'text', 'name': f'Signature card {n + 1}', 'items': [item]} for n, item in enumerate(words)]
     return at

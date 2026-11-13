@@ -38,6 +38,12 @@ class Card(unittest.TestCase):
         signature.add_card(timeline, 'கற்கண்டு', 'Karkandu', SIG, [['பாடல் வரிகள்', 'Lyrics', 'x']])
         self.assertEqual(next(l for l in timeline['layers'] if l['kind'] == 'audio')['items'][0]['start'], 11.5, 'made again, not moved twice')
 
+    def test_a_typeset_card_is_the_whole_card(self):
+        timeline = song()
+        signature.add_card(timeline, 'கற்கண்டு', 'Karkandu', SIG, [['பாடல் வரிகள்', 'Lyrics', 'x']], card=42)
+        self.assertEqual(next(c for c in timeline['layers'][0]['items'] if c['id'] == 'signature-paper')['media_id'], 42)
+        self.assertFalse([l for l in timeline['layers'] if l['id'].startswith(('signature-words', 'signature-portrait'))], 'its words and portrait are in the card itself')
+
     def test_a_signature_is_kept_for_the_next_song(self):
         with tempfile.TemporaryDirectory() as folder:
             signature.save(Path(folder), 'பாவேந்தர் பாரதிதாசன்', SIG)

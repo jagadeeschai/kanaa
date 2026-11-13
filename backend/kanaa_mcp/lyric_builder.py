@@ -193,7 +193,15 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         for layer in timeline['layers']:
             if layer.get('id') == 'credits-portraits':
                 layer['items'] = [clip for clip in layer['items'] if clip['start'] > 60]
-        signatures.add_card(timeline, name, saved.get('english') or name, saved, roles)
+        card = None
+        if saved.get('photo') and Path(saved['photo']).is_file():
+            # The card typeset for this song: the portrait drawing itself, the song's details laid out beside it.
+            from app.services import signature_card_service
+            with tempfile.TemporaryDirectory() as folder:
+                made = signature_card_service.make(Path(saved['photo']), Path(media(int(saved['paper']))['absolute_path']), Path(folder) / f'{name} signature card.mp4',
+                                                   name, saved.get('english') or name, roles, saved.get('lyricist'))
+                card = int(api.upload('/media', made)['id'])
+        signatures.add_card(timeline, name, saved.get('english') or name, saved, roles, card=card)
     if karaoke:
         lyric_touches.karaoke(timeline)
     lyrics.fill_frame(timeline, sizes, {'credit-opening-bg', 'credit-closing-bg'} if clear else None)
