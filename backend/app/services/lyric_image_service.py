@@ -15,7 +15,8 @@ from app.core.config import settings
 from app.db.database import get_connection
 from app.services.ai_settings_service import read_settings
 from app.services.job_service import JobCancelled, update_job
-from app.services.media_service import index_media, song_folder
+from app.services.image_references import request_image_with_references
+from app.services.media_service import get_media, index_media, song_folder
 from app.services.render_queue_service import enqueue_render
 
 STYLES = {
@@ -55,6 +56,10 @@ class GenerateScenes(BaseModel):
     batch_id: str
     scenes: list[SceneEdit] = Field(min_length=1, max_length=8)
     quality: Literal['low', 'medium', 'high'] = 'medium'
+    # Earlier pictures of the same people and place (media ids): the new scenes are drawn from them, so faces,
+    # clothes and the village stay the same. More scenes for a song already started are numbered on from `number_from`.
+    references: list[int] = Field(default_factory=list, max_length=4)
+    number_from: int = Field(default=1, ge=1, le=999)
 
 
 def require_project(identifier):
@@ -190,6 +195,7 @@ def _start_generation(identifier, request):
         raise ValueError('These scenes are already generated. Retry unfinished scenes or make a new plan.')
     for scene in request.scenes:
         require_english_visual_prompt(scene.prompt, 'scene prompt')
+    references = [Path(get_media(media_id)['absolute_path']) for media_id in request.references]
     ready = threading.Event()
     with get_connection() as conn:
         for scene in request.scenes:
@@ -209,11 +215,12 @@ def _start_generation(identifier, request):
                 path = settings.data_dir / 'media' / f'ai-{uuid.uuid4().hex}.png'
                 indexed = False
                 try:
-                    image = asyncio.run(request_image(config, scene.prompt, SIZES[batch['canvas']], request.quality, should_cancel))
+                    image = asyncio.run(request_image_with_references(config, scene.prompt, SIZES[batch['canvas']], request.quality, references, should_cancel) if references
+                                        else request_image(config, scene.prompt, SIZES[batch['canvas']], request.quality, should_cancel))
                     if should_cancel(): raise JobCancelled()
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(image)
-                    media = index_media(path, f'AI scene {available[scene.id]["position"] + 1}.png', folder=folder)
+                    media = index_media(path, f'AI scene {available[scene.id]["position"] + request.number_from}.png', folder=folder)
                     indexed = True
                     with get_connection() as conn:
                         conn.execute("UPDATE image_scenes SET media_id=?,status='done',error=NULL WHERE id=?", (media['id'], scene.id)); conn.commit()
