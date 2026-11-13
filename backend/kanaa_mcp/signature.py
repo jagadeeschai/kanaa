@@ -12,7 +12,7 @@ PAPER = '#fbf8f2'
 INK, MAROON, GREY = '#1f1b16', '#6b1d1d', '#8a8178'
 FONT = {'font': 'Gill Sans', 'tamil_font': 'Arima'}
 SECONDS = 6.0
-LAYERS = ('signature-words', 'signature-portrait')
+LAYERS = ('signature-words', 'signature-portrait')  # Prefixes: each line has its own layer.
 
 
 def store(data_dir: Path) -> Path:
@@ -51,7 +51,7 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
     main = timeline['layers'][0]['items']
     if at is None:
         at = max((clip['start'] + _length(clip) for clip in main if clip['id'].startswith('brand-intro')), default=0.0)
-    for layer in [layer for layer in timeline['layers'] if layer.get('id') in LAYERS]:
+    for layer in [layer for layer in timeline['layers'] if (layer.get('id') or '').startswith(LAYERS)]:
         timeline['layers'].remove(layer)
     if any(clip['id'] == 'signature-paper' for clip in main):
         timeline['layers'][0]['items'] = main = [clip for clip in main if clip['id'] != 'signature-paper']  # Replaced: no double shift.
@@ -74,11 +74,14 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
     # The portrait on the left, the song on the right: title in maroon ink, then each role, Tamil label above the name.
     portrait = {'id': 'signature-portrait-1', 'media_id': signature['portrait'], 'start': round(at + 0.3, 3), 'in': 0, 'out': round(seconds - 0.7, 3), 'speed': 1,
                 'volume': 0, 'muted': True, 'fade_in': 0.8, 'fade_out': 0.6, 'adjust': dict(paper['adjust']),
-                'transform': {'x': 0.3, 'y': 0.5, 'scale': 0.62, 'opacity': 1, 'rotation': 0}}
+                'transform': {'x': 0.3, 'y': 0.46, 'scale': 0.6, 'opacity': 1, 'rotation': 0}}
+    lyricist = signature.get('lyricist')
     words = [_words('signature-title', at + 0.6, seconds - 1.0, title, 0.66, 0.30, 64, MAROON),
              _words('signature-english', at + 0.75, seconds - 1.15, english.upper(), 0.66, 0.39, 17, GREY)]
     for n, (tamil, english_role, name) in enumerate(roles[:4]):
         words.append(_words(f'signature-role-{n + 1}', at + 0.9 + 0.12 * n, seconds - 1.3 - 0.12 * n, name, 0.66, 0.52 + 0.105 * n, 23, INK, subtitle=f'{tamil} · {english_role.upper()}'))
+    if lyricist:  # Their name beneath the portrait, as under a picture on a wall.
+        words.append(_words('signature-name', at + 0.5, seconds - 0.9, lyricist, 0.3, 0.86, 26, INK))
     timeline['layers'].insert(1, {'id': 'signature-portrait', 'kind': 'video', 'name': 'Signature portrait', 'items': [portrait]})
-    timeline['layers'].append({'id': 'signature-words', 'kind': 'text', 'name': 'Signature card', 'items': words})
+    timeline['layers'] += [{'id': f'signature-words-{n + 1}', 'kind': 'text', 'name': f'Signature card {n + 1}', 'items': [item]} for n, item in enumerate(words)]
     return at

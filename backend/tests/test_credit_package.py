@@ -1,5 +1,7 @@
 import unittest
 
+from app.services.timeline_schema import Timeline
+
 from kanaa_mcp import credit_package
 
 ROLES = [('பாடல் வரிகள்', 'Lyrics', 'பாவேந்தர் பாரதிதாசன்'), ('இசை & குரல்', 'Music & Vocals', 'AI (Suno)'), ('இசை வடிவமைப்பு', 'Arrangement & Style', 'KavinTamil Originals'),
@@ -20,12 +22,16 @@ class Package(unittest.TestCase):
         self.assertGreater(start, 5.5, 'after the brand intro')
         self.assertLess(finish, 24.5, 'gone before the title card and the singing')
         self.assertEqual(len(when['ticker']), 3)
+        for layer in timeline['layers']:
+            items = sorted(layer['items'], key=lambda item: item['start'])
+            for a, b in zip(items, items[1:]):
+                self.assertLessEqual(a['start'] + a.get('length', 0), b['start'] + 1e-6, f"items overlap on {layer['id']}")
         layers = {layer['id']: layer for layer in timeline['layers']}
         self.assertTrue(all(item['transform']['y'] > 0.9 for item in layers['credits-ticker']['items']), 'the ticker runs along the bottom')
-        self.assertTrue(all(item['transform']['x'] < 0.4 for item in layers['credits-end']['items']), 'the end card keeps the right side free')
+        self.assertTrue(all(layer['items'][0]['transform']['x'] < 0.4 for key, layer in layers.items() if key.startswith('credits-end')), 'the end card keeps the right side free')
         self.assertEqual(when['end'][1], 282.8)
         self.assertGreater(when['end'][0], 264, 'after the singing')
-        self.assertNotIn('band_color', layers['credits-opening']['items'][0], 'no boxes behind the words')
+        self.assertNotIn('band_color', layers['credits-opening-1']['items'][0], 'no boxes behind the words')
         portraits = layers['credits-portraits']['items']
         self.assertEqual([p['media_id'] for p in portraits], [9, 9], 'the lyricist\'s portrait on the opening and end cards')
         self.assertLess(portraits[0]['transform']['scale'], 0.1, 'smaller than a passport photo')

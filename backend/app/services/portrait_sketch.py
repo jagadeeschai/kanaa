@@ -51,7 +51,7 @@ def sketch(photo: Path, target: Path, framed: bool = True) -> Path:
     if not framed:
         # Only the ink: lines as dark as drawn, the paper see-through, soft at the edges so no square shows.
         yy, xx = np.mgrid[0:SIDE, 0:SIDE].astype(np.float32)
-        fade = np.clip((1.0 - np.hypot(xx - SIDE / 2, yy - SIDE / 2) / (SIDE / 2)) * 4, 0, 1)
+        fade = np.clip((1.0 - np.hypot(xx - SIDE / 2, yy - SIDE / 2) / (SIDE / 2)) * 1.8, 0, 1) ** 1.5  # Sinks softly into the wall.
         darkness = 255 - ink.astype(np.float32)
         alpha = (np.where(darkness < 45, 0, darkness) * fade).clip(0, 255)  # Faint grey from the old photo's paper is dropped.
         out = np.dstack([np.full_like(ink, 22), np.full_like(ink, 20), np.full_like(ink, 18), alpha.astype(np.uint8)]).astype(np.uint8)

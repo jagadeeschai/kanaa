@@ -1,10 +1,12 @@
 import tempfile
 import unittest
+
+from app.services.timeline_schema import Timeline
 from pathlib import Path
 
 from kanaa_mcp import signature
 
-SIG = {'portrait': 7, 'paper': 8, 'presented_by': 'கவின்தமிழ் Originals'}
+SIG = {'portrait': 7, 'paper': 8, 'presented_by': 'கவின்தமிழ் Originals', 'lyricist': 'பாவேந்தர் பாரதிதாசன்'}
 
 
 def song():
@@ -19,6 +21,11 @@ class Card(unittest.TestCase):
         timeline = song()
         at = signature.add_card(timeline, 'கற்கண்டு', 'Karkandu', SIG, [['பாடல் வரிகள்', 'Lyrics', 'பாவேந்தர் பாரதிதாசன்']])
         self.assertEqual(at, 5.5)
+        for layer in timeline['layers']:
+            items = sorted(layer['items'], key=lambda item: item['start'])
+            for a, b in zip(items, items[1:]):
+                self.assertLessEqual(a['start'] + a.get('length', (a.get('out', 0) - a.get('in', 0))), b['start'] + 1e-6, f"items overlap on {layer['id']}")
+        self.assertIn('பாவேந்தர் பாரதிதாசன்', [layer['items'][0]['text'] for layer in timeline['layers'] if layer['id'].startswith('signature-words')], 'his name under the portrait')
         main = timeline['layers'][0]['items']
         self.assertEqual([c['id'] for c in main], ['brand-intro', 'signature-paper', 'lyric-scene-1'])
         song_start = next(l for l in timeline['layers'] if l['kind'] == 'audio')['items'][0]['start']

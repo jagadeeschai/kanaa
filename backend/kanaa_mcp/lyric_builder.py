@@ -189,7 +189,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
             raise ToolError(f'No signature called {signature} is saved yet.')
         roles = [[tamil, english, who] for tamil, english, who in (('பாடல் வரிகள்', 'Lyrics', song_by or saved.get('lyricist')), ('இசை', 'Music', music),
                                                                 ('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by), ('தயாரிப்பு', 'Produced by', presented_by or saved.get('presented_by'))) if (who or '').strip()]
-        timeline['layers'] = [layer for layer in timeline['layers'] if layer.get('id') != 'credits-opening']  # The white card says it instead.
+        timeline['layers'] = [layer for layer in timeline['layers'] if not (layer.get('id') or '').startswith('credits-opening')]  # The white card says it instead.
         for layer in timeline['layers']:
             if layer.get('id') == 'credits-portraits':
                 layer['items'] = [clip for clip in layer['items'] if clip['start'] > 60]

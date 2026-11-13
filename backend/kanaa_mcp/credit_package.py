@@ -37,7 +37,7 @@ def add(timeline: dict, title: str, english: str, roles: list[tuple[str, str, st
     sung = _sung(timeline)
     if not sung:
         return {}
-    for layer in [layer for layer in timeline['layers'] if layer.get('id') in LAYERS + (PORTRAIT_LAYER,)]:
+    for layer in [layer for layer in timeline['layers'] if (layer.get('id') or '').startswith(LAYERS + (PORTRAIT_LAYER,))]:
         timeline['layers'].remove(layer)
     end = max(item['start'] + item.get('length', (item.get('out', 0) - item.get('in', 0))) for layer in timeline['layers'] for item in layer['items'])
     first, last = sung[0]['start'], sung[-1]['start'] + sung[-1]['length']
@@ -76,9 +76,10 @@ def add(timeline: dict, title: str, english: str, roles: list[tuple[str, str, st
         closing.append(_text('credit-end-rights', begin + 0.8, end - begin - 0.8, rights, 0.84, 13, SOFT, x=0.24))
     if portrait and portrait[1] < 4:
         pictures.append((portrait[0], begin + 0.2, end - begin - 0.2, 0.24 - 0.17, 0.38 + 0.11 * portrait[1] - 0.012))
-    timeline['layers'] += [{'id': 'credits-opening', 'kind': 'text', 'name': 'Opening credits', 'items': card},
-                           {'id': 'credits-ticker', 'kind': 'text', 'name': 'Ticker', 'items': crawl},
-                           {'id': 'credits-end', 'kind': 'text', 'name': 'End credits', 'items': closing}]
+    # Lines shown together each need their own layer: a layer holds one item at a time.
+    timeline['layers'] += [{'id': f'credits-opening-{n + 1}', 'kind': 'text', 'name': f'Opening credits {n + 1}', 'items': [item]} for n, item in enumerate(card)]
+    timeline['layers'].append({'id': 'credits-ticker', 'kind': 'text', 'name': 'Ticker', 'items': crawl})
+    timeline['layers'] += [{'id': f'credits-end-{n + 1}', 'kind': 'text', 'name': f'End credits {n + 1}', 'items': [item]} for n, item in enumerate(closing)]
     if pictures:
         clips = [{'id': f'credit-portrait-{n + 1}', 'media_id': media, 'start': round(at, 3), 'in': 0, 'out': round(length, 3), 'speed': 1, 'volume': 0, 'muted': True,
                   'fade_in': 0.6, 'fade_out': 0.6, 'adjust': {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1},
