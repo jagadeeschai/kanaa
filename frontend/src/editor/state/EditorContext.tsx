@@ -21,6 +21,8 @@ export type EditorShared = {
   select: (id: string | null) => void;
   /** A new file made for this project (an effect, a night sky…), so the preview can play it at once. */
   addMedia: (item: Photo) => void;
+  /** Lets the person drag a box on the preview; `onBox` gets it as [centre x, centre y, width, height], shares of the frame. */
+  drawBox: (onBox: (box: [number, number, number, number]) => void) => void;
 };
 
 export const EditorContext = createContext<EditorShared | null>(null);

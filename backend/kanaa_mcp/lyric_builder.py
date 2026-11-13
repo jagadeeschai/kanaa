@@ -173,7 +173,7 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         picture_of = {video: picture for picture, video in depth.items()}  # into_clear plays each picture as a still video.
 
         def sky_video_for(shown: int, seconds: float):
-            made = api.post(f'/photos/{picture_of.get(shown, shown)}/lights', {'seconds': min(600, seconds), 'sky': night_sky, 'lamps': lamp_glow})
+            made = api.post(f'/photos/{picture_of.get(shown, shown)}/lights', {'seconds': min(600, seconds), 'sky': night_sky, 'lamps': 'auto' if lamp_glow else 'off'})
             if made.get('status') == 'none':
                 return None
             return int(made['output_photo_id'] if made.get('status') == 'ready' else look_up(api.wait(made['job_id'], timeout=1800), 'output_photo_id'))

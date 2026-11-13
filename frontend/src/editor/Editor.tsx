@@ -258,7 +258,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const openGuide = useCallback((article: string) => { setGuideArticle(article); setShowingHelp(true); }, []);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pickingKey, setPickingKey] = useState(false);
-  const [drawing, setDrawing] = useState<{ mode: 'start' | 'continue'; from?: [number, number]; to?: [number, number] } | null>(null);
+  const [drawing, setDrawing] = useState<{ mode: 'start' | 'continue'; from?: [number, number]; to?: [number, number]; onBox?: (box: Box) => void } | null>(null);
   const drawStart = useRef<[number, number] | null>(null); // Pointer events can arrive before a re-render, so the corner is kept here too.
   const [followSize, setFollowSize] = useState(false);
   const [followJob, setFollowJob] = useState<FollowJob | null>(null);
@@ -1303,7 +1303,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // What the settings panels share (state/EditorContext). Null until the project has loaded.
   const editorShared = useMemo(() => timeline ? { timeline, change, pause: () => engineRef.current?.pause(), openGuide: (article?: string) => { if (article) openGuide(article); else setShowingHelp(true); },
     now, seek, selectedId, select: (id: string | null) => { setMoreIds(new Set()); setSelectedId(id); },
-    addMedia: (item: Photo) => setMedia((current) => (current.some((each) => each.id === item.id) ? current : [item, ...current])) } : null, [timeline, change, openGuide, now, seek, selectedId]);
+    addMedia: (item: Photo) => setMedia((current) => (current.some((each) => each.id === item.id) ? current : [item, ...current])),
+    drawBox: (onBox: (box: Box) => void) => { engineRef.current?.pause(); setDrawing({ mode: 'start', onBox }); } } : null, [timeline, change, openGuide, now, seek, selectedId]);
   const togglePlay = useCallback(() => { const engine = engineRef.current; if (!engine) return; if (engine.playing) engine.pause(); else engine.play(); }, []);
   const split = useCallback(() => {
     if (!timeline) return;
@@ -1991,9 +1992,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const finishDrawing = (event: React.PointerEvent<HTMLElement>) => {
     const box = drawnBox({ mode: 'start', from: drawStart.current ?? undefined, to: frameAt(event) });
     const mode = drawing?.mode ?? 'start';
+    const onBox = drawing?.onBox;
     drawStart.current = null;
     setDrawing(null);
-    if (box && box[2] > MIN_DRAWN_BOX && box[3] > MIN_DRAWN_BOX) void startFollowing(box, mode);
+    if (!box || box[2] <= MIN_DRAWN_BOX || box[3] <= MIN_DRAWN_BOX) return;
+    if (onBox) onBox(box); else void startFollowing(box, mode);  // A panel asked for a box (marking lamps), or Follow did.
   };
   useEffect(() => {
     if (!followJob) return;
@@ -2489,7 +2492,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
             {shaping.points.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="0.008" className={index === 0 && shaping.mode === 'outline' ? 'first' : ''}/>)}
           </svg>}
           {shaping && <div className="ed-pick-note ed-shape-note" role="status">{shaping.mode === 'ground' ? 'Click along the top of the mountain or ground, left to right.' : 'Click around what should stay in front. Click the first point to close.'} Enter finishes, Backspace undoes a point, Esc cancels.</div>}
-          {drawing && <div className="ed-draw" aria-label="Drag a box around what to follow" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
+          {drawing && <div className="ed-draw" aria-label={drawing.onBox ? "Drag a box around the light" : "Drag a box around what to follow"} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
             onPointerMove={(event) => { const from = drawStart.current; const to = frameAt(event); if (from) setDrawing((state) => state && { ...state, from, to }); }} onPointerUp={finishDrawing}>
             <div className="ed-pick-note" role="status">Drag a box around what to follow. Esc cancels.</div>
             {(() => { const box = drawnBox(drawing); return box && <i style={{ left: `${(box[0] - box[2] / 2) * 100}%`, top: `${(box[1] - box[3] / 2) * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }}/>; })()}

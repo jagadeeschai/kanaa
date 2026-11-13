@@ -21,19 +21,20 @@ FPS = 30
 LONG_SIDE = 1280  # Soft light scales up well; this keeps a long scene to a minute or so to make.
 
 
-def analyze(picture: Path, sky: bool = True, lamps: bool = True) -> dict:
-    """What the picture has: {'sky': the night-sky facts or None, 'lamps': the lamps or [], 'reason' when neither}."""
+def analyze(picture: Path, sky: bool = True, lamps: str = 'auto', regions: list[list[float]] | None = None) -> dict:
+    """What the picture has: {'sky': the night-sky facts or None, 'lamps': the lamps or [], 'reason' when neither}.
+    lamps: 'off', 'auto', 'always' or 'marked' (with `regions`), as lamp_glow_service.analyze."""
     night = sky_light_service.analyze(picture) if sky else {'night': False, 'reason': None}
-    lit = lamp_glow_service.analyze(picture) if lamps else {'lamps': [], 'reason': None}
-    found = {'sky': night if night['night'] else None, 'lamps': lit['lamps']}
+    lit = lamp_glow_service.analyze(picture, lamps, regions) if lamps != 'off' else {'lamps': [], 'reason': None}
+    found = {'sky': night if night['night'] else None, 'lamps': lit['lamps'], 'seen': lit.get('seen', [])}
     if not found['sky'] and not found['lamps']:
         reasons = [reason for reason in (night.get('reason'), lit.get('reason')) if reason]
         found['reason'] = ' '.join(reasons) or 'Nothing to light in this picture.'
     return found
 
 
-def video_path(picture: Path, seconds: float, sky: bool, lamps: bool) -> Path:
-    ident = json.dumps([VERSION, hashlib.sha256(picture.read_bytes()).hexdigest()[:16], round(seconds, 2), sky, lamps])
+def video_path(picture: Path, seconds: float, sky: bool, lamps: str, regions: list[list[float]] | None = None) -> Path:
+    ident = json.dumps([VERSION, hashlib.sha256(picture.read_bytes()).hexdigest()[:16], round(seconds, 2), sky, lamps, regions or []])
     return settings.data_dir / 'media' / f'lights-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -45,13 +46,13 @@ def size_of(picture: Path) -> tuple[int, int]:
     return round(width * scale / 2) * 2, round(height * scale / 2) * 2
 
 
-def make(picture: Path, seconds: float, sky: bool = True, lamps: bool = True, on_progress: Callable[[int], None] = lambda _: None,
+def make(picture: Path, seconds: float, sky: bool = True, lamps: str = 'auto', regions: list[list[float]] | None = None, on_progress: Callable[[int], None] = lambda _: None,
          should_cancel: Callable[[], bool] = lambda: False) -> Path:
     """The lights as a `seconds`-long video on black. Raises ValueError when the picture has nothing to light."""
-    target = video_path(picture, seconds, sky, lamps)
+    target = video_path(picture, seconds, sky, lamps, regions)
     if target.is_file():
         return target
-    found = analyze(picture, sky, lamps)
+    found = analyze(picture, sky, lamps, regions)
     if found.get('reason'):
         raise ValueError(found['reason'])
     width, height = size_of(picture)

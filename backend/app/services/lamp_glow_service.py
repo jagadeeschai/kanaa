@@ -17,8 +17,31 @@ DUSK = 100  # A picture whose middle lightness (0-255) is above this is in dayli
 MOST = 40  # The brightest lamps glow; a village of a hundred tiny lights is a texture, not lamps.
 
 
-def analyze(picture: Path) -> dict:
-    """{'lamps': [[x, y, r, strength]...] as shares (r of the width), largest first, 'reason' when none}."""
+# Vision's scene labels for things that give light. When it sees one, a brighter picture is searched for lamps too.
+LIGHT_LABELS = {'light', 'lamp', 'lantern', 'candle', 'candlestick', 'lamppost', 'chandelier', 'fireworks', 'bonfire', 'fire', 'string_lights',
+                'christmas_lights', 'diya', 'torch', 'campfire', 'lightbulb', 'neon'}
+SEEN = 0.15  # Vision's confidence that counts as seeing it.
+BRIGHT = 140  # Even with lamps seen, a picture brighter than this in the middle is full daylight.
+
+
+def vision_sees_lights(picture: Path) -> list[str]:
+    """The light-giving things Apple Vision sees in the picture (empty off a Mac, or without its tools)."""
+    import json
+    import subprocess
+    try:
+        from app.services.cutout_service import helper
+        tool = helper(Path(__file__).resolve().parents[2] / 'native' / 'scene_labels.swift')
+        labels = json.loads(subprocess.run([str(tool), str(picture)], capture_output=True, text=True, timeout=60, check=True).stdout)['labels']
+    except Exception:
+        return []
+    return [name for name, confidence in labels if name in LIGHT_LABELS and confidence >= SEEN]
+
+
+def analyze(picture: Path, mode: str = 'auto', regions: list[list[float]] | None = None) -> dict:
+    """{'lamps': [[x, y, r, strength]...] as shares (r of the width), largest first, 'reason' when none, 'seen': what
+    Vision recognised}. mode: 'auto' (dusk and night pictures, and brighter ones where Vision sees lamps or lanterns),
+    'always' (any picture), 'marked' (only inside `regions`, [x0, y0, x1, y1] shares of the picture, which the person
+    drew round the lights: a light is found in each, or the area itself glows)."""
     import cv2
     image = cv2.imread(str(picture), cv2.IMREAD_COLOR)
     if image is None:
@@ -27,9 +50,15 @@ def analyze(picture: Path) -> dict:
     if scale < 1:
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     height, width = image.shape[:2]
-    # Lamps only light a scene at dusk or night; by day, bright warm spots are sunlight through leaves.
-    if float(np.median(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))) > DUSK:
-        return {'lamps': [], 'reason': 'This picture is in daylight; its lamps would not show.'}
+    if mode == 'marked':
+        return _marked(image, regions or [])
+    # Lamps light a scene at dusk or night; by day, bright warm spots are sunlight through leaves. A brighter picture
+    # is still searched when Vision recognises lamps, lanterns or candles in it (or the person asks for it).
+    middle = float(np.median(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)))
+    seen = vision_sees_lights(picture) if middle > DUSK and mode == 'auto' else []
+    if mode == 'auto' and middle > DUSK and not (seen and middle <= BRIGHT):
+        return {'lamps': [], 'seen': seen, 'reason': 'This picture is in daylight; its lamps would not show.'}
+    surround = 105 if middle <= DUSK else 160  # In a brighter picture a lantern sits among lit things.
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     hue, saturation, value = (hsv[..., n].astype(np.int32) for n in range(3))
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -38,7 +67,7 @@ def analyze(picture: Path) -> dict:
     warm = ((hue <= 35) | (hue >= 170)) & (saturation > 70)
     # The surroundings must be dim: a marigold or a sunlit sari is bright too, but lit by day, not giving light.
     dim = cv2.GaussianBlur(gray, (0, 0), 25)
-    lit = (value > 245) & warm & (gray - around > 55) & (dim < 105)
+    lit = (value > 245) & warm & (gray - around > 55) & (dim < surround)
     lit = cv2.morphologyEx(lit.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     count, labels, stats, centres = cv2.connectedComponentsWithStats(lit, connectivity=8)
     lamps = []
@@ -56,7 +85,27 @@ def analyze(picture: Path) -> dict:
         lamps.append([round(x / width, 4), round(y / height, 4), round(math.sqrt(area / math.pi) / width, 4), round(strength, 3)])
     lamps.sort(key=lambda lamp: -lamp[2] * lamp[3])
     lamps = lamps[:MOST]
-    return {'lamps': lamps, 'reason': None if lamps else 'No lamps or lights found in this picture.'}
+    return {'lamps': lamps, 'seen': seen, 'reason': None if lamps else 'No lamps or lights found in this picture.'}
+
+
+def _marked(image, regions: list[list[float]]) -> dict:
+    """In each area the person drew: its brightest warm spot glows; if it has none, the whole area glows softly."""
+    import cv2
+    height, width = image.shape[:2]
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    lamps = []
+    for x0, y0, x1, y1 in regions[:MOST]:
+        a, b = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1)))); c, d = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
+        left, right, top, bottom = int(a * width), max(int(a * width) + 1, int(b * width)), int(c * height), max(int(c * height) + 1, int(d * height))
+        patch = gray[top:bottom, left:right]
+        warm = ((hsv[top:bottom, left:right, 0] <= 35) | (hsv[top:bottom, left:right, 0] >= 170)) & (hsv[top:bottom, left:right, 1] > 60)
+        score = np.where(warm, patch, patch * 0.6)
+        y, x = np.unravel_index(int(np.argmax(score)), score.shape)
+        box = min(right - left, bottom - top)
+        found = float(score[y, x]) > 200
+        lamps.append([round((left + x) / width, 4), round((top + y) / height, 4), round((box / 8 if found else box / 4) / width, 4), 0.6 if found else 0.35])
+    return {'lamps': lamps, 'seen': [], 'reason': None if lamps else 'Mark the lights first.'}
 
 
 def _flicker(rng):

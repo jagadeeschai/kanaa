@@ -89,7 +89,7 @@ export function Inspector({ onReframe, reframing, onMove, backgrounds, onBackgro
     <p className="ed-group-tip">Above 100% warms, below cools. Tint leans green or magenta. Fade lifts blacks into a soft matte.</p>
     </More>
     </Group>
-    {source?.kind === 'image' && <PictureLightsGroup clip={clip}/>}
+    {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
     <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>
