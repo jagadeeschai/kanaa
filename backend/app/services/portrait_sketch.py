@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-SIDE = 640
+SIDE = 1280
 
 
 def face_box(photo: Path, image) -> tuple[int, int, int, int]:
@@ -37,17 +37,19 @@ def sketch(photo: Path, target: Path, framed: bool = True) -> Path:
     height, width = image.shape[:2]
     left, top = int(max(0, cx - half)), int(max(0, cy - half))
     right, bottom = int(min(width, cx + half)), int(min(height, cy + half))
-    crop = cv2.resize(image[top:bottom, left:right], (SIDE, SIDE), interpolation=cv2.INTER_AREA)
+    piece = image[top:bottom, left:right]
+    crop = cv2.resize(piece, (SIDE, SIDE), interpolation=cv2.INTER_AREA if piece.shape[0] >= SIDE else cv2.INTER_LANCZOS4)
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.fastNlMeansDenoising(gray, None, 7, 7, 21)  # An old print's grain would draw as specks.
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-    smooth = cv2.bilateralFilter(gray, 9, 40, 9)
+    smooth = cv2.bilateralFilter(gray, 15, 40, 15)
     # Pencil lines (colour dodge of the inverted blur), then cleaned to ink: dark lines, white paper.
-    dodge = cv2.divide(smooth, 255 - cv2.GaussianBlur(255 - smooth, (0, 0), 9), scale=256).astype(np.float32)
+    dodge = cv2.divide(smooth, 255 - cv2.GaussianBlur(255 - smooth, (0, 0), 18), scale=256).astype(np.float32)
     ink = np.where(dodge > 225, 255, dodge * 0.55)  # Paper stays clean white; strokes go darker.
     # The darkest parts (hair, glasses, moustache) filled in as solid ink, as an artist would.
-    dark = cv2.GaussianBlur((gray < 55).astype(np.float32), (0, 0), 1.2)
+    dark = cv2.GaussianBlur((gray < 55).astype(np.float32), (0, 0), 2.4)
     ink = ink * (1 - dark) + 25 * dark
-    ink = cv2.GaussianBlur(ink.astype(np.uint8), (0, 0), 0.7)
+    ink = cv2.GaussianBlur(ink.astype(np.uint8), (0, 0), 1.2)
     if not framed:
         # Only the ink: lines as dark as drawn, the paper see-through, soft at the edges so no square shows.
         yy, xx = np.mgrid[0:SIDE, 0:SIDE].astype(np.float32)

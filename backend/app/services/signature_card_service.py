@@ -89,13 +89,22 @@ def make(photo: Path, paper: Path, target: Path, title: str, english: str, roles
     words = _block(width, height, lines, right)
     labels = words[2:]
     words = words[:2] + [pair for label, name_line in zip(labels, named) for pair in ((label[0], 0), (name_line, 0))]
+    # Radiance behind the title: its own shape blurred into a golden glow, and faint rays fanning from it.
+    title_mask = np.asarray(words[0][0], np.float32)[..., 3] / 255
+    glow = cv2.GaussianBlur(title_mask, (0, 0), 22 * unit) * 1.6 + cv2.GaussianBlur(title_mask, (0, 0), 60 * unit) * 1.2
+    ys, xs = np.mgrid[0:height, 0:width].astype(np.float32)
+    cy = top + 60 * unit
+    angle, reach = np.arctan2(ys - cy, xs - right), np.hypot(xs - right, ys - cy) / (420 * unit)
+    rays = (0.5 + 0.5 * np.cos(angle * 18)) ** 6 * np.exp(-reach ** 2) * (reach > 0.15)
+    radiance = np.clip(glow * 0.55 + rays * 0.22, 0, 0.6)
+    radiance_rgba = np.dstack([np.full_like(radiance, RULE[0] / 255), np.full_like(radiance, RULE[1] / 255), np.full_like(radiance, RULE[2] / 255), radiance])
     rule = Image.new('RGBA', (width, height))
     ImageDraw.Draw(rule).line([(right - round(70 * unit), top + round(176 * unit)), (right + round(70 * unit), top + round(176 * unit))], fill=RULE + (255,), width=max(1, round(2 * unit)))
     caption = [(_named(name, name_english, _font('Catamaran-Bold.ttf', round(34 * unit)), _font('Catamaran-Bold.ttf', round(24 * unit)), MAROON, width, height, int(width * 0.3),
                        py + side + round(48 * unit)), 0)] if name else []
     # When each part appears: the title just after the portrait starts, the credits one by one, the name once drawn.
     timed = [(words[0][0], 0.9), (words[1][0], 1.15), (rule, 1.3)] + [(layer, 1.5 + 0.18 * n) for n, (layer, _) in enumerate(words[2:])] + [(layer, 0.4 + drawing) for layer, _ in caption]
-    layers = [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]
+    layers = [(radiance_rgba.astype(np.float32), 0.75)] + [(np.asarray(layer, np.float32) / 255, start) for layer, start in timed]
     frames = max(2, round(seconds * FPS))
     target.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{width}x{height}', '-r', str(FPS),
