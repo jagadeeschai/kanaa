@@ -42,6 +42,12 @@ Rules for versioning: each 1.x ships only when `./test.sh` is green and the gold
 - Cinematic preset swatches and Tamil labels beside preset names.
 - Remember last-used watermark corner/size per project.
 
+## Rendering speed (owner priority, 2026-11-14)
+
+The owner definitely wants faster renders. Today a 4:49 lyric video at 1080p takes about 12–15 minutes with parallel slices (`parallel_export.py`, shipped 2026-11-14), down from about an hour as one graph.
+
+- **GPU render engine (Swift helper, Core Image / AVFoundation)** — the iMovie approach. A native helper draws each frame on the GPU (Metal / Core Image: overlays, scaling, blur, colour, titles as textures), touching only what is on screen at that frame, and feeds frames straight into the hardware encoder (AVAssetWriter / VideoToolbox) with hardware decoding. Fastest option, potentially several times faster again, but a large project: every effect, transition, title animation and karaoke must render identically to `timeline_service.py` and the preview (`playback.ts`), checked with the golden check. Start with a measured spike: plain clips + moves + crossfades + PNG titles, compared frame by frame against the ffmpeg export, then grow coverage effect by effect with ffmpeg as the fallback for anything not yet ported. (P)
+
 ## Done (keep for context)
 
 - Cinematic presets (Teal & orange, Golden hour, Night city, B&W classic, Clean documentary) — project Look tab.
