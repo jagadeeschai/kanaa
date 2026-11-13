@@ -1266,6 +1266,32 @@ class MovingTitles(Clips):
         self.assertGreater(lit(50), lit(27))
         self.assertGreater(lit(27), 30)
 
+    def test_a_look_late_in_a_long_video_matches_and_skips_what_came_before(self):
+        import time
+        from app.services import render_window
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        clips = [{'id': f'c{n}', 'media_id': 50, 'start': n * 6, 'in': 0, 'out': 6, 'transform': {'keyframes': {'scale': [{'t': 0, 'v': 1}, {'t': 6, 'v': 1.2}]}}} for n in range(20)]
+        words = [{'id': f't{n}', 'start': n * 6 + 1, 'length': 4, 'text': 'IIIII IIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff',
+                  'karaoke': {'color': '#0000ff', 'words': [0.5, 2.0]}} for n in range(20)]
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': clips}, {'id': 'words', 'kind': 'text', 'items': words}]}
+        timeline = Timeline.model_validate(data)
+        cut, moved = render_window.cut(timeline, 110.5, 112)
+        self.assertEqual(moved, 110.5)
+        self.assertEqual(len(cut.layers[0].items), 1, 'only the clip on screen')
+        first = cut.layers[1].items[0]
+        self.assertEqual((first.start, first.length), (0, 2.5), 'the title already showing, from where it was')
+        self.assertEqual(first.karaoke.words, [0, 0.5], 'its first word already lit, the second still to come')
+        self.assertAlmostEqual(cut.layers[0].items[0].model_dump(by_alias=True)['in'], 2.5, places=3, msg='the clip carries on from 2.5 s in')
+        began = time.monotonic()
+        path = self.render(data, 'late.mp4', window=(110.5, 112))
+        quick = time.monotonic() - began
+        self.assertLess(quick, 20)
+        frame = self.frame(path, 20, (640, 360))
+        lit = (frame[:, :, 2] > 150) & (frame[:, :, 0] < 120)
+        self.assertGreater(int(lit.sum()), 30, 'the karaoke word is lit in the look')
+
     def test_a_title_with_hundreds_of_position_keys_exports(self):
         # A followed or kept-clear title carries a key every frame or so; ffmpeg once refused the overlay's x/y expression.
         image = self.root / 'grey.png'

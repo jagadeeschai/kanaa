@@ -1364,6 +1364,11 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
+        if window:
+            # Only that moment: a look at minute four should not work through everything before it.
+            from app.services import render_window
+            timeline, moved = render_window.cut(timeline, window[0], window[1])
+            window = (window[0] - moved, window[1] - moved)
         compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks, voices)
         video_args, graph, extra_threads = fit_threads(compiled)
         (folder / 'graph.txt').write_text(graph, encoding='utf-8')
