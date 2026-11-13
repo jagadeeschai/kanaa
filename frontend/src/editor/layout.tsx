@@ -98,7 +98,7 @@ export const LayerModeContext = createContext(false);
 const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'effects', 'sound']);
 const LAYER_GROUPS = new Set(['Text', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Mirror and kaleidoscope', 'Duotone and split-tone', 'Tilt-shift', 'Beat pulse', 'Echo trail', 'Zoom blur', 'Animation', 'Moves', 'Speed and sound']);
 
-export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: PanelTab[]; children: ReactNode }) {
+export function Panel({ id, tabs: allTabs, header, children }: { id: string; tabs: PanelTab[]; header?: ReactNode; children: ReactNode }) {
   // A whole layer shows only the tabs a layer can style.
   const layerMode = useContext(LayerModeContext);
   const tabs = layerMode ? allTabs.filter((item) => LAYER_TABS.has(item.id)) : allTabs;
@@ -113,6 +113,7 @@ export function Panel({ id, tabs: allTabs, children }: { id: string; tabs: Panel
     <div className="ed-panel-rail-host">
       {!folded && <div className="ed-panel-main">
         <div className="ed-find-row"><label className="ed-find"><Search size={13}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Find a setting…')} aria-label={t('Find a setting')}/>{query && <button className="ed-icon small" aria-label="Clear search" onClick={() => setQuery('')}><X size={12}/></button>}</label><button className="ed-icon" aria-label={t('Collapse all')} data-tip={t('Collapse all')} onClick={collapseAllGroups}><ChevronsDownUp size={15}/></button></div>
+        {header}
         <div className="ed-panel-body">{children}</div>
         {query && <p className="ed-tip ed-find-none">{t('Matching “{query}”.', { query })} <button className="ed-link" onClick={() => setQuery('')}>{t('Show all')}</button></p>}
       </div>}
