@@ -1422,7 +1422,9 @@ class MovingTitles(Clips):
         self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
         text = {'id': 't', 'start': 0, 'length': 2, 'text': 'IIIIIIII', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff', **title}
         data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 2}]}, {'id': 'words', 'kind': 'text', 'items': [text]}]}
-        return self.frame(self.render(data, name), frame, (640, 360)).astype(int)
+        # How the title is drawn is the reference (ffmpeg) path's job; the GPU engine's match is tested in test_gpu_render.
+        with patch.dict(os.environ, {'KANAA_GPU_RENDER': '0'}):
+            return self.frame(self.render(data, name), frame, (640, 360)).astype(int)
 
     def test_picture_animations_draw_what_they_say(self):
         enter = lambda preset: {'enter': {'preset': preset, 'duration': 1}}

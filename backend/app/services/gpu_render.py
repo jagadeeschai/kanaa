@@ -42,10 +42,14 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.kind == 'text':
             from app.services import title3d
             for item in layer.items:
-                if title3d.is_3d(item):
-                    found.add('3D, tilted or pinned titles')
                 if item.keep_clear or item.stay_with:
                     found.add('titles that move with people')
+                if title3d.is_3d(item):
+                    # Drawn frame by frame by the export's own title renderer (title3d_render), then laid on as pictures;
+                    # a pinned title follows the camera through the clip, which only the ffmpeg path does.
+                    if item.pin:
+                        found.add('pinned titles')
+                    continue
                 if set(item.transform.keyframes) - {'x', 'y', 'scale', 'opacity'} or item.transform.rotation:
                     found.add('rotation and tilt')
                 for move in (item.enter, item.exit):
@@ -153,10 +157,26 @@ def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead:
 def _title(item, fmt, folder: Path, name: str) -> dict:
     """A title as the export draws it: one full-frame picture, or for karaoke one per word sung so far, shown in turn."""
     from app.services.timeline_service import karaoke_states, render_text_image
+    from app.services import title3d
     fps = fmt.fps
     frames = max(1, round(item.length * fps))
     image = folder / f'{name}.png'
     render_text_image(item, fmt, image)
+    if title3d.is_3d(item):
+        # Depth, tilt and the letter tricks (pop-letters, reveal, line...): the export's own frames, already in place,
+        # each different one drawn once (title3d_render.render_title_sequence).
+        from app.services.title3d_render import render_title_sequence
+        states = None
+        if item.karaoke and item.karaoke.words and not item.design:
+            states = []
+            for number, (start, end, lit) in enumerate(karaoke_states(item)):
+                picture = image if lit is None else folder / f'{name}-lit{number}.png'
+                if lit is not None:
+                    render_text_image(item, fmt, picture, lit=lit)
+                states.append((start, end, picture))
+        paths, shown = render_title_sequence(item, image, (fmt.width, fmt.height), fps, frames, folder, f'{name}-frame', states=states)
+        return {'kind': 'image', 'path': paths[0], 'paths': paths, 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
+                'x': [0.5] * frames, 'y': [0.5] * frames, 'scale': [1.0] * frames, 'opacity': [1.0] * frames}
     found = {'kind': 'image', 'path': str(image), 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
              **_frames(item.transform, item.enter, item.exit, frames / fps, frames, fps)}
     if item.karaoke and item.karaoke.words and not item.design:

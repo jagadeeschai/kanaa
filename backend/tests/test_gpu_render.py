@@ -147,8 +147,11 @@ class Accepts(unittest.TestCase):
 
     def test_titles_that_need_more_stay_with_ffmpeg(self):
         data = timeline().model_dump(by_alias=True, mode='json')
+        # Letter tricks and depth are drawn now (their frames, by the title renderer); a pinned title follows the camera.
         data['layers'][3]['items'][0]['enter'] = {'preset': 'prism', 'duration': 0.5}
-        self.assertIn('prism animation', gpu_render.unsupported(Timeline.model_validate(data), self.facts))
+        self.assertEqual(gpu_render.unsupported(Timeline.model_validate(data), self.facts), [])
+        data['layers'][3]['items'][0]['pin'] = {'clip_id': 'm0', 'at': 1.0}
+        self.assertIn('pinned titles', gpu_render.unsupported(Timeline.model_validate(data), self.facts))
 
     def test_plan_matches_the_schema_maths(self):
         with mock.patch('app.services.timeline_service.render_text_image'):

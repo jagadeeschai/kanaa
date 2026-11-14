@@ -161,10 +161,19 @@ def text_colour(text) -> tuple[float, float, float]:
     return tuple(int(colour[at:at + 2], 16) / 255 for at in (1, 3, 5))
 
 
-def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, frames: int, target: Path, pin_at: PinAt | None = None,
-                        should_cancel: Callable[[], bool] = lambda: False, states: list[tuple[float, float, Path]] | None = None) -> Path:
-    """`frames` frames of the title from its start, see-through, at `size`. Returns `target` (an ffv1 video with alpha).
-    states: (start, end, picture) in the title's own seconds, for a karaoke title whose picture changes as words light."""
+def still_from(text, length: float) -> tuple[float, float] | None:
+    """When every frame of the title looks the same (its own seconds, from, to): after its entrance and before its exit,
+    for a title with no keyframes and no pin. None when it can change on any frame."""
+    if text.pin or (text.transform and text.transform.keyframes):
+        return None
+    first, last = (text.enter.duration if text.enter else 0), (text.exit.duration if text.exit else 0)
+    excess = max(1, (first + last) / length)  # As animated_look shares an overlong entrance and exit.
+    return first / excess, length - last / excess
+
+
+def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, pin_at: PinAt | None, states):
+    """What both renderers share: the title's pictures and letters, made once. Returns draw(n) -> (key, frame), where
+    frames with the same key (a still moment of the same picture) are the same, so they are drawn once."""
     width, height = size
 
     def load(path: Path) -> np.ndarray:
@@ -186,6 +195,30 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
         if boxes:
             lettered = (labels, boxes)
     colour = np.array([int(depth.color[at:at + 2], 16) / 255 for at in (1, 3, 5)], np.float32) if depth else None
+    still = None if pin_at else still_from(text, frames / fps)
+    cache: dict = {}
+
+    def draw(n: int):
+        local = n / fps
+        state = next((index for index, (start, end, _) in enumerate(loaded) if start <= local < end), None)
+        showing = loaded[state][2] if state is not None else premultiplied
+        key = ('still', state) if still and still[0] + 1e-6 < local < still[1] - 1e-6 else None
+        if key is not None and key in cache:
+            return key, cache[key]
+        frame = frame_at(text, local, showing, box, shares, depth, colour, size, pin_at(text.start + local) if pin_at else None, lettered)
+        if key is not None:
+            cache[key] = frame
+        return key, frame
+    return draw
+
+
+def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, frames: int, target: Path, pin_at: PinAt | None = None,
+                        should_cancel: Callable[[], bool] = lambda: False, states: list[tuple[float, float, Path]] | None = None) -> Path:
+    """`frames` frames of the title from its start, see-through, at `size`. Returns `target` (an ffv1 video with alpha).
+    states: (start, end, picture) in the title's own seconds, for a karaoke title whose picture changes as words light.
+    A still stretch (after the entrance, before the exit) is drawn once and repeated."""
+    width, height = size
+    draw = _drawer(text, picture, size, fps, frames, pin_at, states)
     target.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{width}x{height}',
                                 '-r', str(fps), '-i', '-', '-c:v', 'ffv1', '-pix_fmt', 'bgra', str(target)], stdin=subprocess.PIPE)
@@ -194,8 +227,7 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
         for n in range(frames):
             if should_cancel():
                 raise RuntimeError('Cancelled.')
-            showing = next((image for start, end, image in loaded if start <= n / fps < end), premultiplied)
-            process.stdin.write(frame_at(text, n / fps, showing, box, shares, depth, colour, size, pin_at(text.start + n / fps) if pin_at else None, lettered).tobytes())
+            process.stdin.write(draw(n)[1].tobytes())
         process.stdin.close()
         if process.wait(timeout=600):
             raise RuntimeError('Could not draw this 3D title.')
@@ -204,6 +236,26 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
         target.unlink(missing_ok=True)
         raise
     return target
+
+
+def render_title_sequence(text, picture: Path, size: tuple[int, int], fps: int, frames: int, folder: Path, name: str,
+                          states: list[tuple[float, float, Path]] | None = None) -> tuple[list[str], list[int]]:
+    """The same frames as pictures, for the GPU engine: each different frame once as a PNG, and which one each frame
+    shows. (Pinned titles, which follow the camera, are not drawn here.)"""
+    draw = _drawer(text, picture, size, fps, frames, None, states)
+    paths: list[str] = []
+    index: dict = {}
+    shown: list[int] = []
+    for n in range(frames):
+        key, frame = draw(n)
+        if key is not None and key in index:
+            shown.append(index[key]); continue
+        path = folder / f'{name}-{len(paths):04d}.png'
+        Image.fromarray(frame, 'RGBA').save(path, compress_level=1)
+        paths.append(str(path)); shown.append(len(paths) - 1)
+        if key is not None:
+            index[key] = len(paths) - 1
+    return paths, shown
 
 
 def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, colour, size: tuple[int, int], pin, lettered=None) -> np.ndarray:
