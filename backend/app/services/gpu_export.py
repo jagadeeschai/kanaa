@@ -16,7 +16,9 @@ def try_render(timeline, media, audio_asset, target, on_progress, should_cancel,
     from app.services import gpu_render, timeline_service as reference
     from app.services.gpu_audio import compile_audio
     media = functools.cache(media)
-    if not hardware or os.environ.get('KANAA_GPU_RENDER') == '0':
+    # Off unless asked for (KANAA_GPU_RENDER=1) until the ffmpeg export's own frame drift is fixed and a full-song
+    # comparison passes; see docs/gpu-render-progress.md.
+    if not hardware or os.environ.get('KANAA_GPU_RENDER') != '1':
         return False
     try:
         if not reference._hardware_h264(ffmpeg):

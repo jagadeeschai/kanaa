@@ -48,3 +48,17 @@ The comparison test explicitly identifies the known first-word karaoke timing fr
 3. Inspect the real contact sheet, particularly 69.8–72.3 seconds, particle titles, transitions and glow. Fix unacceptable differences; do not claim full parity from the synthetic averages alone.
 4. Review/remove the animated-edge tolerance extension if it fails the handoff's strict acceptance requirement.
 5. Finish the final backend verification and results report. Do not restart Kanaa or push.
+
+## Review and merge — 14 November 2026 (Claude)
+
+- Fixed: dreamy glow softened in source pixels instead of the export's canvas pixels (கற்கண்டு 70.3 s was visibly
+  blurred); radius now converted per clip (`_canvas_fit`). That scene now matches at 31–35 dB.
+- Rebased onto main (karaoke fix); co-author lines corrected.
+- Full song, same timeline snapshot: GPU 275 s against ffmpeg 2,470 s (the ffmpeg pass ran alongside other work).
+  Average 33.4 dB; frames under 30 dB are concentrated where **the ffmpeg export itself drifts**: when rounding puts a
+  clip's start a frame before the previous clip's end, `Builder.add_video_layer` starts it at the cursor instead, so
+  runs of short clips slip 1–4 frames late (the end montage, 4:12–4:42), and parallel slices reset that drift at each
+  cut, so the reference's timing depends on slicing. The GPU places each clip at its own rounded start, as the preview.
+- **Merged with GPU export off by default** (`KANAA_GPU_RENDER=1` to use it). To turn it on: fix the ffmpeg drift
+  (start each clip at its own rounded time, trimming the previous one), re-run the full-song comparison, and check
+  that frames under 30 dB are only known karaoke/particle frames.
