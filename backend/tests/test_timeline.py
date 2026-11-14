@@ -159,6 +159,21 @@ class FrameRates(Clips):
             self.assertLess(np.abs(got - colour).max(), 40, f'clip {number + 1} shows on its own first frame {first}: {got}')
         self.assertEqual(self.frame_count(path), round(len(colours) * 0.36 * 30))
 
+    def test_a_one_frame_gap_does_not_pull_later_clips_a_frame_early(self):
+        colours = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        for number, colour in enumerate(colours):
+            image = self.root / f'gap-{number}.png'
+            Image.new('RGB', (320, 180), colour).save(image)
+            self.facts[80 + number] = MediaFacts(path=image, media_type='image', width=320, height=180)
+        # Frames 0-29, then one empty frame (30), then 31-45 and 46-75.
+        items = [{'id': 'a', 'media_id': 80, 'start': 0, 'in': 0, 'out': 1.0}, {'id': 'b', 'media_id': 81, 'start': 31 / 30, 'in': 0, 'out': 0.5},
+                 {'id': 'c', 'media_id': 82, 'start': 46 / 30, 'in': 0, 'out': 1.0}]
+        path = self.render({'format': {'width': 426, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': items}]}, 'gap.mp4')
+        for number, want in ((30, (0, 0, 0)), (31, colours[1]), (45, colours[1]), (46, colours[2])):
+            got = self.frame(path, number, (426, 240))[120, 213]
+            self.assertLess(np.abs(got - want).max(), 40, f'frame {number}: {got}')
+        self.assertEqual(self.frame_count(path), 76)
+
 class Join(Clips):
     FORMAT = {'width': 1280, 'height': 720, 'fps': 30}
 

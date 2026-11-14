@@ -99,7 +99,7 @@ def property_expression(transform: Transform, prop: str, clock: str = 't') -> st
     for a, b in zip(keys, keys[1:]):
         if b.t <= a.t:
             continue  # Never reached by value_at.
-        p = f'(({clock}-{a.t})/{b.t - a.t})'
+        p = f'(({clock}-({a.t}))/{b.t - a.t})'  # A slice's move under way has its first key before zero.
         pieces.append((a.t, f'{a.v}+({b.v - a.v})*{ease_expression(a.ease, p)}'))
     pieces.append((keys[-1].t, f'{keys[-1].v}'))
 
@@ -788,6 +788,12 @@ class Builder:
     def frames(self, seconds: float) -> int:
         return max(1, round(seconds * self.fmt.fps))
 
+    def concat(self, parts: int) -> str:
+        """Joins pieces made at the export's rate, one after another. A one-frame piece has no length of its own to
+        concat, so the next piece's first frame got its time and one of the two was dropped (every later frame a frame
+        early); numbering the frames again gives each its own time."""
+        return f'concat=n={parts}:v=1:a=0,setpts=N/({self.fmt.fps}*TB)'
+
     def transparent_gap(self, label: str, frames: int) -> None:
         self.graph.append(f'color=c=black@0:s={self.fmt.width}x{self.fmt.height}:r={self.fmt.fps}:d={frames / self.fmt.fps:.6f},format=gbrap,settb=AVTB,trim=end_frame={frames},setsar=1[{label}]')
 
@@ -1012,7 +1018,7 @@ class Builder:
             segments.append(f'[{label}]')
             lengths.append(self.total_frames - cursor)
         joined = f'layer{position}'
-        self.graph.append(f"{''.join(segments)}concat=n={len(segments)}:v=1:a=0[{joined}]")
+        self.graph.append(f"{''.join(segments)}{self.concat(len(segments))}[{joined}]")
         if layer.blend != 'normal':
             return self.blended(base, joined, position, layer.blend)
         return self.overlay(base, joined, position, '0', '0')
@@ -1051,7 +1057,7 @@ class Builder:
             parts.append(f'{n}_post')
         else:
             self.graph.append(f'[{n}_s2]nullsink')
-        self.graph.append(f"{''.join(f'[{part}]' for part in parts)}concat=n={len(parts)}:v=1:a=0[{out}]")
+        self.graph.append(f"{''.join(f'[{part}]' for part in parts)}{self.concat(len(parts))}[{out}]")
 
     def whip_blur(self, label: str, first: int, frames: int, total: int, peak: float = WHIP_BLUR, sideways: bool = True) -> str:
         """A blur that peaks halfway through the transition: sideways for a whip, so the cut reads as a fast camera pan;

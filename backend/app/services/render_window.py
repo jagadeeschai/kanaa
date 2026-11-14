@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import copy
 
-from app.services.timeline_schema import Timeline, Transform, value_at
+from app.services.timeline_schema import Keyframe, Timeline, Transform, value_at
 
 UNSAFE = ('ramp', 'keep_clear', 'pin', 'stay_with', 'focus_pull')  # Times inside these are not simply shifted.
 
@@ -24,23 +24,35 @@ def _length(item: dict) -> float:
     return item['length'] if 'length' in item else (item['out'] - item['in']) / item.get('speed', 1)
 
 
-def _shift_keys(transform: dict | None, by: float) -> None:
-    """Keyframes as seen `by` seconds into the item: the value there becomes the first key."""
+def _shift_keys(transform: dict | None, by: float) -> dict[str, list[dict]]:
+    """Keyframes as seen `by` seconds into the item. The move under way keeps its own first key, now before zero, so
+    an eased move carries on along the same curve (easing again from the cut would draw a different one). Keys can't
+    be before zero in a recipe, so those moves get a stand-in here (the value at the cut as the first key) and are
+    returned, by property, to be put back once the timeline is built."""
     if not transform or not transform.get('keyframes'):
-        return
+        return {}
     model = Transform.model_validate(transform)
+    early = {}
     for name, keys in list(transform['keyframes'].items()):
         if not keys:
             continue
         later = [{**key, 't': round(key['t'] - by, 6)} for key in keys if key['t'] > by]
+        under_way = [key for key in keys if key['t'] <= by]
+        if later and under_way:
+            exact = [{**under_way[-1], 't': round(under_way[-1]['t'] - by, 6)}, *later]
+            if exact[0]['t'] >= 0:
+                transform['keyframes'][name] = exact
+                continue
+            early[name] = exact
         transform['keyframes'][name] = [{'t': 0, 'v': value_at(model, name, by), 'ease': 'linear'}, *later]
+    return early
 
 
-def _trim(item: dict, by: float) -> None:
-    """Item `item` from `by` seconds into it on, as if it had started there."""
+def _trim(item: dict, by: float) -> dict[str, list[dict]]:
+    """Item `item` from `by` seconds into it on, as if it had started there. Returns _shift_keys's moves to put back."""
     if any(item.get(key) for key in UNSAFE):
         raise _Whole()
-    _shift_keys(item.get('transform'), by)
+    early = _shift_keys(item.get('transform'), by)
     if 'enter' in item:
         item['enter'] = None  # It has already come in.
     if 'in' in item:  # A clip or a sound: later in its source.
@@ -57,12 +69,14 @@ def _trim(item: dict, by: float) -> None:
             item['karaoke']['words'] = [round(max(0.0, at - by), 6) for at in item['karaoke']['words']]
         for word in item.get('words') or []:
             word['s'] = round(max(0.0, word['s'] - by), 6)
+    return early
 
 
 def _slice(timeline: Timeline, start: float, end: float) -> Timeline:
     """The part from `start` to `end` moved to start at zero; raises _Whole when something cannot be trimmed exactly."""
     data = timeline.model_dump(by_alias=True, mode='json')
-    for layer in data['layers']:
+    put_back = []  # (layer, item, property, keys): moves whose first key is before zero.
+    for number, layer in enumerate(data['layers']):
         kept = []
         for item in layer['items']:
             begin, finish = item['start'], item['start'] + _length(item)
@@ -70,13 +84,16 @@ def _slice(timeline: Timeline, start: float, end: float) -> Timeline:
                 continue
             item = copy.deepcopy(item)
             if begin < start:
-                _trim(item, start - begin)
+                put_back += [(number, len(kept), name, keys) for name, keys in _trim(item, start - begin).items()]
                 item['start'] = 0.0
             else:
                 item['start'] = round(begin - start, 6)
             kept.append(item)
         layer['items'] = kept
-    return Timeline.model_validate(data)
+    result = Timeline.model_validate(data)
+    for number, index, name, keys in put_back:
+        result.layers[number].items[index].transform.keyframes[name] = [Keyframe.model_construct(**key) for key in keys]
+    return result
 
 
 def cut(timeline: Timeline, start: float, end: float) -> tuple[Timeline, float]:

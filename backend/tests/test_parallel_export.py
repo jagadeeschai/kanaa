@@ -11,7 +11,7 @@ from unittest import mock
 
 from app.services import parallel_export, render_window
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import Timeline
+from app.services.timeline_schema import Timeline, value_at
 from app.services.timeline_service import render_timeline
 
 FPS = 30
@@ -26,7 +26,9 @@ def song_timeline(seconds=90.0, transitions=True):
     items, at, k = [], 0.0, 0
     while at < seconds - 0.01:
         length = min(11.0, seconds - at)
-        extra = {'transform': {'x': 0.5, 'y': 0.5, 'scale': 1.1, 'keyframes': {'x': [{'t': 0, 'v': 0.45}, {'t': length, 'v': 0.55}]}}}
+        # Eased moves, as real songs have: a slice cut through one must carry on along the same curve.
+        extra = {'transform': {'x': 0.5, 'y': 0.5, 'scale': 1.1, 'keyframes': {'x': [{'t': 0, 'v': 0.45}, {'t': length, 'v': 0.55}],
+                                                                               'scale': [{'t': 0, 'v': 1.1, 'ease': 'easeInOut'}, {'t': length, 'v': 1.6}]}}}
         if transitions and k:
             extra['transition_in'] = {'kind': 'crossfade', 'duration': 0.8}
         items.append(clip(f'c{k}', 1 + k % 3, round(at, 6), round(length, 6), **extra))
@@ -73,6 +75,18 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(end, start)
         for start, end, part in parts:  # Each slice has only what shows in it.
             self.assertLessEqual(len(part.layers[0].items), 5)
+
+    def test_a_slice_cut_through_an_eased_move_follows_the_same_curve(self):
+        timeline = song_timeline(200)
+        for start, end, part in parallel_export.slices(timeline, parallel_export.plan(timeline)):
+            for item in part.layers[0].items:
+                original = next(o for o in timeline.layers[0].items if o.id == item.id)
+                for k in range(100):
+                    at = start + item.start + k * 0.1
+                    if at >= min(end, original.start + original.length):
+                        break
+                    self.assertAlmostEqual(value_at(item.transform, 'scale', at - start - item.start), value_at(original.transform, 'scale', at - original.start), places=9,
+                                           msg=f'{item.id} at {at:.1f} s in the slice from {start}')
 
     def test_cut_exact_refuses_instead_of_using_the_whole(self):
         data = song_timeline(100).model_dump(by_alias=True, mode='json')
