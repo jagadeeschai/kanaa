@@ -97,15 +97,28 @@ def colour_constants(adjust, look: str) -> dict:
             'contrast': rounded(contrast * adjust.contrast), 'saturation': rounded(saturation * adjust.saturation)}
 
 
-def glow_constants(effect) -> dict | None:
-    """Match dreamy_glow_filters; the preview uses a different screened bloom."""
+def glow_constants(effect, fit: float = 1.0) -> dict | None:
+    """Match dreamy_glow_filters; the preview uses a different screened bloom. The export softens after the picture is
+    fitted into its working canvas (clip_chain), but the engine softens the source picture, so the radius is given in
+    source pixels: the canvas radius divided by `fit`, the canvas pixels per source pixel."""
     if effect is None or effect.intensity <= 0:
         return None
-    return {'radius': (3 + round(effect.softness * 8)) / 3,
+    return {'radius': round((3 + round(effect.softness * 8)) / 3 / max(fit, 1e-6), 4),
             'amount': round(.25 + effect.intensity * .9, 4),
             'lift': round(effect.intensity * .035, 4), 'saturation': round(1 + effect.intensity * .04, 4),
             'red': round(effect.warmth * effect.intensity * .045, 4),
             'blue': round(-effect.warmth * effect.intensity * .025, 4)}
+
+
+def _canvas_fit(clip, enter, exit_, facts, fmt) -> float:
+    """Canvas pixels per source pixel where the export applies picture effects: the source fitted inside the working
+    canvas (clip_chain), whose size comes from supersample()."""
+    from app.services.timeline_service import supersample
+    if not facts.width or not facts.height:
+        return 1.0
+    scale = supersample(clip.transform, enter, exit_, facts, fmt)
+    canvas_w, canvas_h = round(fmt.width * scale / 2) * 2, round(fmt.height * scale / 2) * 2
+    return min(canvas_w / facts.width, canvas_h / facts.height)
 
 
 def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead: int = 0) -> dict:
@@ -223,7 +236,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
-                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow),
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             from app.services.gpu_masks import resolve
             items[-1]['mask_path'] = resolve(clip, facts, masks)

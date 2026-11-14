@@ -57,6 +57,18 @@ class Accepts(unittest.TestCase):
         self.assertEqual(item['colour']['fade'], .1)
         self.assertEqual(gpu_render.unsupported(work, self.facts), [])
 
+    def test_glow_softens_in_canvas_pixels_like_the_export(self):
+        """The export softens after fitting the picture into its canvas, so a small source needs a smaller radius in its
+        own pixels, and a large one a bigger radius."""
+        glowing = timeline(dreamy_glow={'intensity': 0.45, 'softness': 0.5, 'warmth': 0.2})
+        radius = lambda width, height: gpu_render.plan(glowing, lambda _: MediaFacts(path=Path('x.png'), media_type='image', width=width, height=height),
+                                                      Path('out.mp4'), 1, Path('/tmp'))['items'][0]['glow']['radius']
+        with mock.patch('app.services.timeline_service.render_text_image'):
+            canvas = radius(1920, 1080)  # Fills the canvas at a scale of 1 (the clip zooms to 1.18 within a 1080p source).
+            small, large = radius(768, 432), radius(3840, 2160)
+        self.assertLess(small, canvas)
+        self.assertGreater(large, canvas)
+
     def test_turns_remain_unsupported(self):
         self.assertIn('turn adjustments', gpu_render.unsupported(timeline(adjust={'flip_horizontal': True}), self.facts))
 
