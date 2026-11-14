@@ -36,7 +36,7 @@ export function Inspector({ onReframe, reframing, onMove, backgrounds, onBackgro
   const isEffect = overlay?.name === EFFECT_LAYER;
   const effectFadeMax = Math.min(2, clipLength(clip) / 2);
   return <>
-    <Panel id="clip" header={<ActiveEffects clip={clip} onChange={onChange}/>} tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
+    <Panel id="clip" header={<>{clip.id === 'signature-paper' && <SignatureCardGroup/>}<ActiveEffects clip={clip} onChange={onChange}/></>} tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Clip visibility" tab="frame" startOpen changed={clip.enabled === false} keywords="active inactive disable hide camera angle multicam" tip="Deactivate an angle without deleting or moving it.">
@@ -93,7 +93,6 @@ export function Inspector({ onReframe, reframing, onMove, backgrounds, onBackgro
     </More>
     </Group>
     {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
-    {clip.id === 'signature-paper' && <SignatureCardGroup/>}
     <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>

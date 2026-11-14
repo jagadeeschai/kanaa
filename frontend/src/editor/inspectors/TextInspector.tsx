@@ -8,6 +8,8 @@ import { MotionPanel } from '../Keyframes';
 import { Timing, timingSummary } from '../Timing';
 import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, LayerModeContext, More, Panel, TabHeading } from '../layout';
+import { SONG_IDS } from '../../timeline/signatureTitles';
+import { SignatureCardGroup } from './SignatureCardGroup';
 import { ALargeSmall, Bookmark, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
@@ -34,7 +36,7 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
     <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
   </>;
   // One Text tab: the words with everything about how they look; and a Motion tab.
-  return <Panel id="title" tabs={[{ id: 'style', label: 'Text', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
+  return <Panel id="title" header={SONG_IDS.some((id) => text.id.startsWith(id)) ? <SignatureCardGroup/> : undefined} tabs={[{ id: 'style', label: 'Text', Icon: ALargeSmall }, { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(text.enter || text.exit || Object.keys(text.transform?.keyframes ?? {}).length) }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming">
       <Timing fields={timing}/>
     </Group>
