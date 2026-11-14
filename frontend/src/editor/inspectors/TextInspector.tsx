@@ -10,7 +10,7 @@ import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, LayerModeContext, More, Panel, TabHeading } from '../layout';
 import { SONG_IDS } from '../../timeline/signatureTitles';
 import { SignatureCardGroup } from './SignatureCardGroup';
-import { ALargeSmall, Bookmark, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
+import { ALargeSmall, Bookmark, Check, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
 
@@ -23,6 +23,7 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
   const [draft, setDraft] = useState(text.text);
+  const [savedNow, setSavedNow] = useState(false);  // A moment of "Saved to My styles" after saving.
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
   const forLayer = useContext(LayerModeContext);
   const fontsAndSize = <>
@@ -61,7 +62,12 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
       <Chips label="Layout" options={[{ id: 'none' as const, label: 'Plain' }, ...TITLE_DESIGNS]} value={text.design ?? 'none'} onPick={(design) => onChange({ design: design === 'none' ? null : design })}/>
       {text.design && <p className="ed-group-tip">{DESIGN_TIPS[text.design]}</p>}
       {(text.style === 'band' || (text.design && BACKED_DESIGNS.has(text.design))) && <label className="ed-color"><span>{text.design ? 'Backing colour' : 'Band colour'}</span><input type="color" aria-label="Band colour" value={text.band_color ?? '#000000'} onChange={(event) => onChange({ band_color: event.target.value }, `band-${text.id}`)}/></label>}
-      {!forLayer && <button className="ed-button wide" onClick={onSaveStyle} title="Keep this title — look, place, moves and length — in Text, under My styles, for any video; change only the words"><Bookmark size={14}/>Save as my style</button>}
+      {!forLayer && <div className="ed-save-style">
+        <button className={`ed-button ${savedNow ? 'done' : ''}`} onClick={() => { onSaveStyle(); setSavedNow(true); window.setTimeout(() => setSavedNow(false), 2200); }}
+          title="Keep this title — look, place, moves and length — in Text, under My styles, for any video; change only the words">
+          {savedNow ? <><Check size={13}/>{t('Saved to My styles')}</> : <><Bookmark size={13}/>{t('Save as my style')}</>}
+        </button>
+      </div>}
     </Group>
     <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
       <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
