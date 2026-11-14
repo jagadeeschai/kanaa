@@ -12,6 +12,7 @@ import Metal
 
 struct Item: Decodable {
     let colour: Colour?
+    let glow: Glow?
     let kind: String  // "image" or "video"
     let path: String
     let paths: [String]?  // An image item that changes picture (a karaoke title): the pictures, and which one each frame shows.
@@ -34,6 +35,27 @@ struct Colour: Decodable {
     let contrast: Double
     let saturation: Double
 }
+
+struct Glow: Decodable {
+    let radius: Double
+    let amount: Double
+    let lift: Double
+    let saturation: Double
+    let red: Double
+    let blue: Double
+}
+
+let glowKernel = CIColorKernel(source: """
+kernel vec4 soften(__sample sharp, __sample blurred, float amount, float lift, float saturation, float red, float blue) {
+    vec3 c = mix(sharp.rgb, blurred.rgb, amount);
+    c = clamp(c + lift * sharp.a, 0.0, sharp.a);
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = clamp(mix(vec3(luma), c, saturation), 0.0, sharp.a);
+    vec3 shadows = clamp((vec3(0.333333) - c) * 3.0, 0.0, 1.0);
+    c += shadows * vec3(red, 0.0, blue) * sharp.a;
+    return vec4(clamp(c, 0.0, sharp.a), sharp.a);
+}
+""")!
 
 // Same RGB order as picture_filters. Round at the 8-bit intermediate filter boundaries.
 let colourKernel = CIColorKernel(source: """
@@ -174,6 +196,10 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
     if let c = item.colour, c.tint != [1, 1, 1] || c.power != 1 || c.fade != 0 || c.contrast != 1 || c.saturation != 1 {
         shown = colourKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: c.tint[0], y: c.tint[1], z: c.tint[2]), c.power, c.fade, c.contrast, c.saturation])!
+    }
+    if let g = item.glow {
+        let blurred = shown.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: g.radius]).cropped(to: shown.extent)
+        shown = glowKernel.apply(extent: shown.extent, arguments: [shown, blurred, g.amount, g.lift, g.saturation, g.red, g.blue])!
     }
     let e = shown.extent
     let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]

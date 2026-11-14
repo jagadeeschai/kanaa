@@ -60,6 +60,14 @@ class Accepts(unittest.TestCase):
     def test_turns_remain_unsupported(self):
         self.assertIn('turn adjustments', gpu_render.unsupported(timeline(adjust={'flip_horizontal': True}), self.facts))
 
+    def test_glow_constants_and_disabled_glow(self):
+        from app.services.timeline_schema import DreamyGlow
+        self.assertIsNone(gpu_render.glow_constants(DreamyGlow(intensity=0)))
+        constants = gpu_render.glow_constants(DreamyGlow(intensity=.5, softness=.5, warmth=.5))
+        self.assertAlmostEqual(constants['amount'], .7)
+        self.assertEqual(constants['red'], .0112)
+        self.assertEqual(constants['blue'], -.0063)
+
     def test_anything_else_is_named_so_ffmpeg_keeps_it(self):
         missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
         self.assertEqual(missing, ['zoom transition'])
@@ -127,7 +135,7 @@ class MatchesFfmpeg(unittest.TestCase):
             print('kept', cls.root)
 
     def test_same_picture_and_faster(self):
-        work = timeline(int(os.environ.get('GPU_BENCH_SECONDS', '30')), look='warm',
+        work = timeline(int(os.environ.get('GPU_BENCH_SECONDS', '30')), look='warm', dreamy_glow={'intensity': .5, 'softness': .5, 'warmth': .5},
                         adjust={'brightness': 1.03, 'gamma': 1.1, 'fade': 0.03, 'contrast': 1.04, 'saturation': 1.08, 'temperature': 1.02, 'tint': 0.98})
         ffmpeg_out, gpu_out = self.root / 'ffmpeg.mp4', self.root / 'gpu.mp4'
         began = time.monotonic()

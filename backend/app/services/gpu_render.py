@@ -25,7 +25,7 @@ from app.services.timeline_schema import Timeline, value_at
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'gpu_render.swift'
 FADES = {'fade'}  # Entrance and exit presets drawn so far.
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
-EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
+EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
 TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
@@ -88,6 +88,17 @@ def colour_constants(adjust, look: str) -> dict:
                      rounded(b * adjust.brightness * (2 - adjust.temperature))],
             'power': rounded(1 / adjust.gamma), 'fade': rounded(adjust.fade),
             'contrast': rounded(contrast * adjust.contrast), 'saturation': rounded(saturation * adjust.saturation)}
+
+
+def glow_constants(effect) -> dict | None:
+    """Match dreamy_glow_filters; the preview uses a different screened bloom."""
+    if effect is None or effect.intensity <= 0:
+        return None
+    return {'radius': (3 + round(effect.softness * 8)) / 3,
+            'amount': round(.25 + effect.intensity * .9, 4),
+            'lift': round(effect.intensity * .035, 4), 'saturation': round(1 + effect.intensity * .04, 4),
+            'red': round(effect.warmth * effect.intensity * .045, 4),
+            'blue': round(-effect.warmth * effect.intensity * .025, 4)}
 
 
 def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead: int = 0) -> dict:
@@ -190,7 +201,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
-                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look),
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             if head:
                 items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height)
