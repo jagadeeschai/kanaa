@@ -8,7 +8,8 @@ MAX_BLUR = 0.03  # Of the frame height.
 # beat in both: one engine's 0.5 can be the other's 0.49999999 and show the end of the last beat instead.
 BEAT_SLACK = 1e-4
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
-OPACITY_SPAN = {'fly-through': 0.55, 'rapid-zoom': 0.15, 'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
+OPACITY_SPAN = {'fly-through': 0.55, 'fade': 1,  # Rapid zoom has none: a crash zoom hits at full strength.
+                'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
                 'chromatic': .4, 'prism': .4, 'echo': .5, 'blur-sideways': .6}
 # Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
 PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways'}
