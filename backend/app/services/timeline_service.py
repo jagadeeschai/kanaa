@@ -615,12 +615,14 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
         head = rf'{{\1c{ass_colour(colour)}\fsp{spacing * unit}{blur}}}'
         if lit_words is not None and letter_ids is None:
             # Karaoke: the words sung so far (up to and including `lit_words`) in the highlight colour.
-            body, number = '', -1
-            for part in re.split(r'(\s+)', text):
-                if part.strip():
-                    number += 1
-                    body += rf'{{\1c{ass_colour(item.karaoke.color if number <= lit_words else colour)}}}'
-                body += line(part, size, colour, spacing)[len(head):] if part else ''
+            # Each word keeps the spaces after it, as script_runs does without karaoke: a lone space would take the
+            # other script's font and size, widen the line and wrap it differently from the title without karaoke.
+            leading = re.match(r'\s*', text).group()
+            body, number = (line(leading, size, colour, spacing)[len(head):] if leading else ''), -1
+            for part in re.findall(r'\S+\s*', text):
+                number += 1
+                body += rf'{{\1c{ass_colour(item.karaoke.color if number <= lit_words else colour)}}}'
+                body += line(part, size, colour, spacing)[len(head):]
             return head + body
         pieces = []
         for run in script_runs(text):

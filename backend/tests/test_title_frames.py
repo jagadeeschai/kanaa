@@ -55,3 +55,22 @@ class GpuTakesThem(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class KaraokeKeepsTheLayout(unittest.TestCase):
+    def test_lit_words_wrap_like_the_plain_title(self):
+        """A long Tamil karaoke line: its lit pictures must lay out as the plain one (a lone space once took the English
+        size, widened the line and wrapped it onto two lines, so the export cut off its first half)."""
+        text = Text.model_validate({'id': 't', 'start': 0, 'length': 3, 'text': 'பனிமலர் ஏறிய தேனும் காய்ச்சும்', 'style': 'shadow', 'size': 46,
+                                    'karaoke': {'color': '#7dd3fc', 'words': [0, 0.6, 1.0, 1.5]}})
+        fmt = Format(width=1920, height=1080, fps=30)
+        boxes = []
+        with tempfile.TemporaryDirectory() as folder:
+            for lit in (None, 0, 3):
+                path = Path(folder) / f'{lit}.png'; render_text_image(text, fmt, path, lit=lit)
+                alpha = np.asarray(__import__('PIL.Image', fromlist=['Image']).open(path))[..., 3]
+                rows, columns = np.nonzero(alpha.max(1))[0], np.nonzero(alpha.max(0))[0]
+                boxes.append((rows.min(), rows.max(), columns.min(), columns.max()))
+        for box in boxes[1:]:
+            for a, b in zip(boxes[0], box):
+                self.assertLessEqual(abs(int(a) - int(b)), 3, boxes)
