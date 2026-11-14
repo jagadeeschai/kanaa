@@ -84,7 +84,8 @@ def add_card(timeline: dict, title: str, english: str, signature: dict, roles: l
                 'transform': {'x': 0.3, 'y': 0.46, 'scale': 0.6, 'opacity': 1, 'rotation': 0}}
     lyricist = signature.get('lyricist')
     words = [_words('signature-title', at + 0.6, seconds - 1.0, title, 0.66, 0.27, 40, MAROON, subtitle=english.upper(), above=False)]
-    for n, (tamil, english_role, name) in enumerate(roles[:4]):
+    for n, role in enumerate(roles[:4]):
+        tamil, english_role, name = role[:3]  # A fourth part, the name in English, is for the credits block.
         words.append(_words(f'signature-role-{n + 1}', at + 1.2 + 0.15 * n, seconds - 1.6 - 0.15 * n, name, 0.66, 0.47 + 0.12 * n, 20, INK, subtitle=f'{tamil} · {english_role.upper()}'))
     if lyricist:  # Their name beneath the portrait, as under a picture on a wall.
         words.append(_words('signature-name', at + 2.6, seconds - 3.0, lyricist, 0.3, 0.86, 22, MAROON))  # Once the portrait is drawn.

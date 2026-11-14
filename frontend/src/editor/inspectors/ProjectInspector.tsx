@@ -15,6 +15,7 @@ import { Chips } from './parts';
 import { BadgeCheck, Captions, Monitor, Music, Search, SlidersHorizontal, Volume2 } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { BrandIntroGroup, FRAME_RATES, RATE_TIPS } from './project-parts';
+import { SignatureAddGroup } from './SignatureAddGroup';
 
 export function ProjectInspector({ introBusy, onBrandIntro, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onThemes }: {  introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onThemes: () => void }) {
   const { timeline, change: onChange, pause: onPause, openGuide } = useEditor();
@@ -88,6 +89,7 @@ export function ProjectInspector({ introBusy, onBrandIntro, clipFormat, logos, l
           </>}
         </>}
       </Group>
+      <SignatureAddGroup/>
       <BrandIntroGroup logos={logos} logo={logo} busy={introBusy} has={mainLayer(timeline).items.some((clip) => clip.id.startsWith('brand-intro'))} onMake={onBrandIntro}/>
       <Group pro title="LUT colour grade" tab="look" startOpen changed={Boolean(timeline.lut)} keywords="lut cube color colour grade pack cinematic wedding" tip="A professional colour lookup over the whole film. Captions stay unchanged." help="cinematic-finish">
         <label className="ed-lut-field"><span>LUT</span><KanaaSelect searchable searchPlaceholder={`Search ${luts.length || ''} LUTs…`} aria-label="Project LUT" value={timeline.lut ?? ''} onChange={(event) => onChange({ ...timeline, lut: event.target.value || null, lut_amount: timeline.lut_amount ?? 1 })}>

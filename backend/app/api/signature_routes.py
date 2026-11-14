@@ -69,3 +69,19 @@ def make_signature_credits(name: str, body: dict):
     low = credits.lower(folder / f'credit-lower-{key}.png', title, english, roles, saved.get('channel'))
     end = credits.end_card(folder / f'credit-end-{key}.png', title, english, roles, saved.get('rights'))
     return {'lower': index_media(low, f'{title} credit.png', folder='Signatures')['id'], 'end': index_media(end, f'{title} end card.png', folder='Signatures')['id']}
+
+
+@router.post('/signatures/{name}/apply')
+def apply_signature(name: str, body: dict):
+    """Signature `name` put into a song: {timeline, title, english} -> the timeline with the card, its credits and the
+    end credits, only the song's name new. The editor applies it as one change (undoable)."""
+    from app.services import signature_apply
+    title, english = str(body.get('title') or '').strip(), str(body.get('english') or '').strip()
+    if not title or len(title) > 60 or len(english) > 60:
+        raise HTTPException(400, 'Give the song title (up to 60 letters).')
+    try:
+        return signature_apply.apply(body.get('timeline') or {}, settings.data_dir, name, title, english)
+    except LookupError:
+        raise HTTPException(404, 'No such signature.')
+    except ValueError as error:
+        raise HTTPException(400, str(error))
