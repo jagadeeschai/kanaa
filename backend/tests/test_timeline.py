@@ -1433,13 +1433,14 @@ class MovingTitles(Clips):
         self.assertEqual(reddish(plain), 0)
         self.assertGreater(reddish(deep), 200, 'the extruded sides show in red')
 
-    def test_cinema_presets_rise_and_push_through_settle_flat(self):
-        for preset in ('rise-behind', 'push-through'):
+    def test_cinema_presets_rise_and_push_through_settle_where_they_should(self):
+        # Push-through ends upright; rise-behind settles back onto a floor plane, tilted 68 degrees (as animation.ts).
+        for preset, rest in (('rise-behind', {'transform': {'tilt_x': 68}}), ('push-through', {})):
             early = self.title_frame(f'{preset}-early.mp4', 4, enter={'preset': preset, 'duration': 1})
             rested = self.title_frame(f'{preset}-rest.mp4', 45, enter={'preset': preset, 'duration': 1})
-            flat = self.title_frame(f'{preset}-flat.mp4', 45)
-            self.assertLess(np.abs(rested - flat).mean(), 1.5, f'{preset} ends exactly as the flat title')
-            self.assertGreater(np.abs(early - flat).mean(), 1, f'{preset} starts elsewhere')
+            still = self.title_frame(f'{preset}-still.mp4', 45, **rest)
+            self.assertLess(np.abs(rested - still).mean(), 1.5, f'{preset} ends exactly as the still title in its resting pose')
+            self.assertGreater(np.abs(early - still).mean(), 1, f'{preset} starts elsewhere')
 
 
 class Faces(unittest.TestCase):
