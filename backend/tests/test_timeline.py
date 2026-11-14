@@ -174,6 +174,20 @@ class FrameRates(Clips):
             self.assertLess(np.abs(got - want).max(), 40, f'frame {number}: {got}')
         self.assertEqual(self.frame_count(path), 76)
 
+    def test_clips_that_meet_in_seconds_meet_in_frames_and_keep_their_transition(self):
+        # As in கற்கண்டு: 32.885 + 10.693 = 43.578 s, but round(10.693 s) is 321 frames from frame 987, one past 43.578's
+        # frame 1307. The clips still meet, so there is no black frame and the cross-blur between them is kept.
+        from app.services.gpu_render import _halves
+        from app.services.timeline_schema import Timeline, clip_frames
+        first = {'id': 'a', 'media_id': 6, 'start': 32.885, 'in': 0, 'out': 10.693}
+        second = {'id': 'b', 'media_id': 6, 'start': 43.578, 'in': 0, 'out': 10.692, 'transition_in': {'kind': 'cross-blur', 'duration': 0.8}}
+        clips = Timeline.model_validate({'format': {'width': 426, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [first, second]}]}).layers[0].items
+        (start_a, frames_a), (start_b, _) = clip_frames(clips[0], 30), clip_frames(clips[1], 30)
+        self.assertEqual((start_a, start_a + frames_a, start_b), (987, 1307, 1307))
+        self.assertEqual(_halves(clips, 30), [0, 12], 'the GPU engine keeps the transition')
+        # Halves round up, as Math.round in the preview: 1.75 s at 30 fps is frame 53, not Python's 52.
+        self.assertEqual(clip_frames(clips[0].model_copy(update={'start': 1.75}), 30)[0], 53)
+
 class Join(Clips):
     FORMAT = {'width': 1280, 'height': 720, 'fps': 30}
 

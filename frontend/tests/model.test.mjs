@@ -170,6 +170,10 @@ test('transitionHalf needs touching clips and fits inside both', () => {
   assert.equal(transitionHalf(a, { ...b, start: 3 }, 30), 0);
   assert.equal(transitionHalf(a, { ...b, transition_in: { kind: 'wipe', duration: 2 }, out: 0.5 }, 30), 7);
   assert.equal(transitionHalf(a, { ...b, transition_in: null }, 30), 0);
+  // Clips that meet in seconds meet in frames however their lengths round (32.885 + 10.693 = 43.578), as the export.
+  const c = { ...newClip(facts, 'c'), start: 32.885, in: 0, out: 10.693 };
+  const d = { ...newClip(facts, 'd'), start: 43.578, in: 0, out: 10.692, transition_in: { kind: 'cross-blur', duration: 0.8 } };
+  assert.equal(transitionHalf(c, d, 30), 12);
 });
 
 const still = () => ({ x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 });
