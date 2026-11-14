@@ -22,7 +22,7 @@ from app.services.finish_service import finish_filters
 from app.services.cutout_service import make_space_mask
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
-from app.services import title3d
+from app.services import particle_frames, title3d
 from app.services.title3d_render import render_title_frames
 from app.services.moving_transitions import MOVING_KINDS, Moves
 from app.services.job_service import JobCancelled, stop_process_when
@@ -316,7 +316,8 @@ def dreamy_glow_filters(effect) -> list[str]:
     blue = -effect.warmth * effect.intensity * .025
     return [f'unsharp=luma_msize_x={radius | 1}:luma_msize_y={radius | 1}:luma_amount={soften:.4f}',
             f'eq=brightness={lift - 1:.4f}:saturation={1 + effect.intensity * .04:.4f}',
-            f'colorbalance=rs={red:.4f}:bs={blue:.4f}:pl=1']
+            # Without pl=1: ffmpeg's preserve-lightness turned clipped warm colours (orange, gold) flat grey.
+            f'colorbalance=rs={red:.4f}:bs={blue:.4f}']
 
 
 # Mirror, zoom blur and tilt-shift move or average pixels of the picture itself, so they run before it is padded to the
@@ -837,15 +838,8 @@ class Builder:
             moves.append((exit_.preset, f'min(1,max(0,({length:.6f}-{clock})/{last:.6f}))'))
             if span := OPACITY_SPAN.get(exit_.preset):
                 filters.append(f'fade=t=out:st={lead + length - last * span:.6f}:d={last * span:.6f}:alpha=1')
-        particle_windows = []
-        if enter and enter.preset in ('particle-form', 'magic-form'):
-            particle_windows.append(f'between({clock},0,{first * .92:.6f})')
-        if exit_ and exit_.preset in ('particle-form', 'magic-vanish'):
-            particle_windows.append(f'between({clock},{length - last * .92:.6f},{length:.6f})')
-        if particle_windows:
-            block = 4 if any(item and item.preset == 'particle-form' for item in (enter, exit_)) else 7
-            filters.append(f"shufflepixels=mode=block:w={block}:h={block}:seed=1977:enable='{'+'.join(particle_windows)}'")
-            filters.append(f"colorchannelmixer=rr=.72:gg=.88:bb=1:enable='{'+'.join(particle_windows)}'")
+        # Particles are drawn into a title's own frames (particle_frames.py), as the preview does; a picture's magic
+        # entrance or exit is its zoom, blur and fade only, as in the preview.
         if blur := self.blur_commands(enter, exit_, first, last, length, frames, lead, name):
             filters.append(blur)
         x, y, scale = property_expression(transform, 'x', clock), property_expression(transform, 'y', clock), property_expression(transform, 'scale', clock)
@@ -1110,6 +1104,23 @@ class Builder:
                 index = self.add_input('-i', str(warped))
                 self.graph.append(f'[{index}:v]format=gbrap,setpts=PTS-STARTPTS,settb=AVTB[{label}]')
                 shown = label
+            elif particle_frames.has_particles(item):
+                # Particles: the title's own frames drawn as the preview draws them, through its karaoke states if any.
+                pictures = {None: image}
+                states = karaoke_states(item) if item.karaoke and item.karaoke.words and not item.design else [(0.0, item.length, None)]
+                for state, (_, _, lit) in enumerate(states):
+                    if lit is not None:
+                        pictures[state] = self.folder / f'text-{position}-{number}-lit{state}.png'
+                        render_text_image(item, self.fmt, pictures[state], lit=lit)
+
+                def picture_at(t: float, states=states, pictures=pictures) -> Path:
+                    state = max(n for n, (start, _, _) in enumerate(states) if start <= t + 1e-6)
+                    return pictures.get(state, image) if states[state][2] is not None else image
+
+                pattern = particle_frames.sequence(item, fps, frames, picture_at, self.folder, f'text-{position}-{number}')
+                index = self.add_input('-framerate', str(fps), '-i', str(pattern))
+                self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
+                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
             elif item.karaoke and item.karaoke.words and not item.design:
                 # Karaoke: one picture for each word sung so far, shown in turn, then posed and moved as one title.
                 states = karaoke_states(item)
