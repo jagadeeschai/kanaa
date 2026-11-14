@@ -23,6 +23,14 @@ struct Item: Decodable {
     let y: [Double]
     let scale: [Double]  // Of the picture fitted inside the frame.
     let opacity: [Double]
+    let transition: Transition?  // Mixes this item with the one before it (same layer) over its first frames.
+}
+
+struct Transition: Decodable {
+    let frames: Int
+    let weights: [[Double]]  // Per frame: the item before, this item, the fill colour.
+    let blur: [Double]  // Per frame: Gaussian blur of the mix, in pixels (cross blur), or 0.
+    let fill: [Double]  // RGB, 0...1.
 }
 
 struct Plan: Decodable {
@@ -48,7 +56,8 @@ final class VideoSource {
             throw NSError(domain: "gpu_render", code: 2, userInfo: [NSLocalizedDescriptionKey: "No picture in \(path)"])
         }
         reader = try AVAssetReader(asset: asset)
-        reader.timeRange = CMTimeRange(start: CMTime(seconds: from, preferredTimescale: 60000), duration: .positiveInfinity)
+        // Before the source starts (a transition's extra frames), its first frame is held.
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: max(0, from), preferredTimescale: 60000), duration: .positiveInfinity)
         output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         output.alwaysCopiesSampleData = false
         reader.add(output)
@@ -117,38 +126,70 @@ let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: frame
 var pictures: [String: CIImage] = [:]
 var videos: [Int: VideoSource] = [:]
 
+/// Scales a picture's alpha (Core Image keeps colour premultiplied, so this scales every channel evenly).
+func weighted(_ image: CIImage, _ amount: Double) -> CIImage {
+    amount >= 0.999 ? image : image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(amount))])
+}
+
+/// Item `index` at its own frame `k`, placed on the frame: fitted inside it, sized, centred where the plan says (Core
+/// Image counts y from the bottom), and as see-through as the plan says. Nil when it shows nothing.
+func posed(_ index: Int, _ k: Int) -> CIImage? {
+    let item = plan.items[index]
+    var picture: CIImage?
+    if item.kind == "image" {
+        let path = item.paths.map { $0[item.shown![k]] } ?? item.path
+        if pictures[path] == nil {
+            pictures[path] = CIImage(contentsOf: URL(fileURLWithPath: path), options: [.colorSpace: NSNull(), .applyOrientationProperty: true])
+        }
+        picture = pictures[path]
+    } else {
+        if videos[index] == nil {
+            do { videos[index] = try VideoSource(path: item.path, from: item.sourceIn) } catch { fail("Could not read \(item.path): \(error)") }
+        }
+        picture = videos[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed)
+    }
+    guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
+    let e = shown.extent
+    let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]
+    shown = shown.transformed(by: CGAffineTransform(translationX: -e.midX, y: -e.midY))
+        .transformed(by: CGAffineTransform(scaleX: size, y: size))
+        .transformed(by: CGAffineTransform(translationX: item.x[k] * Double(W), y: (1 - item.y[k]) * Double(H)))
+    return weighted(shown, item.opacity[k])
+}
+
+/// Whether item `index` is the clip before a transition that is under way at frame `f` (then the next item draws both).
+func givesWay(_ index: Int, _ f: Int) -> Bool {
+    guard index + 1 < plan.items.count, let mix = plan.items[index + 1].transition else { return false }
+    let into = f - plan.items[index + 1].start
+    return into >= 0 && into < mix.frames
+}
+
 for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
         let k = f - item.start
         if k >= item.frames { videos[index] = nil }  // Finished: let its decoder go.
-        guard k >= 0, k < item.frames else { continue }
-        var picture: CIImage?
-        if item.kind == "image" {
-            let path = item.paths.map { $0[item.shown![k]] } ?? item.path
-            if pictures[path] == nil {
-                pictures[path] = CIImage(contentsOf: URL(fileURLWithPath: path), options: [.colorSpace: NSNull(), .applyOrientationProperty: true])
+        guard k >= 0, k < item.frames, !givesWay(index, f) else { continue }
+        if let mix = item.transition, k < mix.frames {
+            // The two clips mixed as one layer (xfade), with the fill colour for a dip or flash, then blurred.
+            let w = mix.weights[k]
+            var layer = CIImage.empty().cropped(to: frameRect)
+            let before = plan.items[index - 1]
+            let parts: [(CIImage?, Double)] = [
+                (posed(index - 1, f - before.start), w[0]), (posed(index, k), w[1]),
+                (CIImage(color: CIColor(red: CGFloat(mix.fill[0]), green: CGFloat(mix.fill[1]), blue: CGFloat(mix.fill[2]))).cropped(to: frameRect), w[2]),
+            ]
+            for (picture, amount) in parts where amount > 0.0005 {
+                if let picture { layer = weighted(picture, amount).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: layer]) }
             }
-            picture = pictures[path]
-        } else {
-            if videos[index] == nil {
-                do { videos[index] = try VideoSource(path: item.path, from: item.sourceIn) } catch { fail("Could not read \(item.path): \(error)") }
+            layer = layer.cropped(to: frameRect)
+            if mix.blur[k] > 0.01 {
+                layer = layer.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: mix.blur[k]]).cropped(to: frameRect)
             }
-            picture = videos[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed)
+            frame = layer.composited(over: frame)
+        } else if let shown = posed(index, k) {
+            frame = shown.composited(over: frame)
         }
-        guard var shown = picture else { continue }
-        let opacity = item.opacity[k]
-        if opacity <= 0.001 { continue }
-        // Fitted inside the frame, sized, then centred where the plan says (Core Image counts y from the bottom).
-        let e = shown.extent
-        let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]
-        shown = shown.transformed(by: CGAffineTransform(translationX: -e.midX, y: -e.midY))
-            .transformed(by: CGAffineTransform(scaleX: size, y: size))
-            .transformed(by: CGAffineTransform(translationX: item.x[k] * Double(W), y: (1 - item.y[k]) * Double(H)))
-        if opacity < 0.999 {
-            shown = shown.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))])
-        }
-        frame = shown.composited(over: frame)
     }
     while !input.isReadyForMoreMediaData { usleep(200) }
     var buffer: CVPixelBuffer?

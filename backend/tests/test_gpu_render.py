@@ -23,7 +23,8 @@ def timeline(seconds=30, width=1920, height=1080, **extra_clip):
         length = 6.0
         moves = {'x': [{'t': 0, 'v': 0.47, 'ease': 'easeInOut'}, {'t': length, 'v': 0.53, 'ease': 'easeInOut'}],
                  'scale': [{'t': 0, 'v': 1.05}, {'t': length, 'v': 1.18}]}
-        main.append({'id': f'm{k}', 'media_id': 1 + k % 3, 'start': k * length, 'in': 0, 'out': length, 'transform': {'scale': 1.05, 'keyframes': moves}, **extra_clip})
+        joins = {} if not k else {'transition_in': {'kind': ('cross-blur', 'crossfade', 'dip', 'flash')[(k - 1) % 4], 'duration': 0.8}}
+        main.append({'id': f'm{k}', 'media_id': 1 + k % 3, 'start': k * length, 'in': 0, 'out': length, 'transform': {'scale': 1.05, 'keyframes': moves}, **joins, **extra_clip})
     pip = [{'id': 'pip', 'media_id': 4, 'start': 2, 'in': 0.5, 'out': 0.5 + seconds - 6, 'transform': {'x': 0.75, 'y': 0.3, 'scale': 0.35,
             'keyframes': {'opacity': [{'t': 0, 'v': 1}, {'t': seconds / 2, 'v': 0.6}]}}, 'enter': {'preset': 'fade', 'duration': 0.8}, 'exit': {'preset': 'fade', 'duration': 1}}]
     logo = [{'id': 'logo', 'media_id': 5, 'start': 0, 'in': 0, 'out': seconds, 'transform': {'x': 0.9, 'y': 0.88, 'scale': 0.12, 'opacity': 0.8}}]
@@ -48,8 +49,23 @@ class Accepts(unittest.TestCase):
         self.assertEqual(gpu_render.unsupported(timeline(), self.facts), [])
 
     def test_anything_else_is_named_so_ffmpeg_keeps_it(self):
-        missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'crossfade', 'duration': 0.6}), self.facts)
-        self.assertEqual(missing, ['looks', 'transition in'])
+        missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
+        self.assertEqual(missing, ['looks', 'zoom transition'])
+
+    def test_a_transition_is_centred_on_the_cut(self):
+        with mock.patch('app.services.timeline_service.render_text_image'):
+            work = gpu_render.plan(timeline(), self.facts, Path('out.mp4'), 1, Path('/tmp'))
+        before, after = work['items'][0], work['items'][1]
+        self.assertEqual((before['start'], before['frames']), (0, 6 * FPS + 12))  # Plays on 12 frames into the cross blur.
+        self.assertEqual((after['start'], after['frames']), (6 * FPS - 12, 6 * FPS + 24))  # Starts 12 early; the next join too.
+        mix = after['transition']
+        self.assertEqual(mix['frames'], 24)
+        self.assertEqual(mix['weights'][0], [1, 0, 0])
+        self.assertGreater(mix['blur'][12], mix['blur'][1])  # Blur peaks halfway.
+        dip = work['items'][3]['transition']['weights'][12]
+        self.assertEqual(dip[0], 0)  # Halfway through a dip the clip before is gone, mostly black, the next one showing.
+        self.assertGreater(dip[2], dip[1])
+        self.assertAlmostEqual(sum(dip), 1, places=5)
 
     def test_titles_that_need_more_stay_with_ffmpeg(self):
         data = timeline().model_dump(by_alias=True, mode='json')

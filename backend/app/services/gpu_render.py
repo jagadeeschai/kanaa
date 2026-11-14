@@ -6,12 +6,14 @@ every item, its source and, frame by frame, where it sits, how big and how see-t
 maths as the ffmpeg export (timeline_schema.value_at, shared_fit, OPACITY_SPAN), so the two agree.
 
 What it draws today: pictures and videos on video layers, and titles (drawn by the export's own title renderer, karaoke
-included), with moves, size and opacity (keyframed or not) and fade entrances and exits. Anything else is listed by `unsupported` and that export stays with ffmpeg. Coverage grows effect
+included), with moves, size and opacity (keyframed or not), fade entrances and exits, and crossfade, cross-blur, dip
+and flash transitions. Anything else is listed by `unsupported` and that export stays with ffmpeg. Coverage grows effect
 by effect, each checked frame by frame against the ffmpeg export (tests/test_gpu_render.py).
 """
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Callable
@@ -24,7 +26,8 @@ SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'gpu_render.swift'
 FADES = {'fade'}  # Entrance and exit presets drawn so far.
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
-           'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull', 'transition_in')
+           'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
+TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
 
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
@@ -58,6 +61,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
                 continue
             data = clip.model_dump()
             found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name))
+            if clip.transition_in and clip.transition_in.kind not in TRANSITIONS:
+                found.add(f'{clip.transition_in.kind} transition')
             if clip.look != 'none':
                 found.add('looks')
             if clip.adjust.model_dump() != DEFAULT_ADJUST:
@@ -75,7 +80,7 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
     return sorted(found)
 
 
-def _frames(transform, enter, exit_, length: float, frames: int, fps: int) -> dict:
+def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead: int = 0) -> dict:
     """Per frame of an item: where it sits, how big and how see-through, as the ffmpeg export's pose() works it out."""
     from app.services.timeline_service import shared_fit
     first, last = shared_fit(enter, exit_, length)
@@ -83,7 +88,7 @@ def _frames(transform, enter, exit_, length: float, frames: int, fps: int) -> di
     last_fade = last * OPACITY_SPAN['fade'] if exit_ else 0
     xs, ys, sizes, seen = [], [], [], []
     for k in range(frames):
-        t = k / fps
+        t = (k - lead) / fps  # A transition's extra frames before the clip's own start come first.
         xs.append(round(value_at(transform, 'x', t), 6))
         ys.append(round(value_at(transform, 'y', t), 6))
         sizes.append(round(value_at(transform, 'scale', t), 6))
@@ -119,6 +124,40 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
     return found
 
 
+def _halves(clips, fps: int) -> list[int]:
+    """Frames either side of each clip's opening cut, as Builder.transition_frames (and transitionHalf in model.ts)."""
+    frames = lambda seconds: max(1, round(seconds * fps))
+    halves = [0] * len(clips)
+    for number, (before, clip) in enumerate(zip(clips, clips[1:]), start=1):
+        if clip.transition_in and round(before.start * fps) + frames(before.length) == round(clip.start * fps):
+            halves[number] = min(round(clip.transition_in.duration * fps / 2), frames(before.length) // 2, frames(clip.length) // 2)
+    return halves
+
+
+def _smooth(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def _transition(transition, frames: int, height: int) -> dict:
+    """How the clip before and this one mix, frame by frame through the transition: weights of the clip before, this
+    clip and a fill colour (ffmpeg xfade: fade, and fadeblack/fadewhite or the custom dip of animation.xfade_name),
+    and for a cross blur the blur at each frame (Builder.whip_blur)."""
+    from app.services.animation import CROSS_BLUR
+    kind = transition.kind
+    colour = (transition.color or ('#ffffff' if kind == 'flash' else '#000000')).lower()
+    weights, blur = [], []
+    for i in range(frames):
+        p = 1 - i / frames  # xfade's progress: 1 shows the clip before, 0 this one.
+        if kind in ('dip', 'flash'):
+            before, after = _smooth((p - .8) / .2), _smooth((p - .2) / .8)
+            weights.append([round(p * before, 6), round((1 - p) * (1 - after), 6), round(p * (1 - before) + (1 - p) * after, 6)])
+        else:
+            weights.append([round(p, 6), round(1 - p, 6), 0])
+        blur.append(round(CROSS_BLUR * height * math.sin(math.pi * min(1, (i + 0.5) / frames)), 4) if kind == 'cross-blur' else 0)
+    return {'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
+
+
 def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None) -> dict:
     """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`."""
     fps = timeline.format.fps
@@ -130,13 +169,21 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             for number, item in enumerate(sorted(layer.items, key=lambda text: text.start)):
                 items.append(_title(item, timeline.format, folder or output.parent, f'title-{position}-{number}'))
             continue
-        for clip in layer.items:
-            if not clip.enabled:
-                continue
-            frames = max(1, round(clip.length * fps))
+        clips = sorted((clip for clip in layer.items if clip.enabled), key=lambda clip: clip.start)
+        halves = _halves(clips, fps)
+        for number, clip in enumerate(clips):
+            head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
+            base = max(1, round(clip.length * fps))
             facts = media(clip.media_id)
-            items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps), 'frames': frames, 'source_in': clip.in_, 'speed': clip.speed,
-                          **_frames(clip.transform, clip.enter, clip.exit, frames / fps, frames, fps)})
+            # As the export: a transition is centred on the cut. The clip before plays on for half of it and this one
+            # starts half of it early (its first frame held where the source has nothing earlier); their entrances and
+            # exits give way to it.
+            enter, exit_ = None if head else clip.enter, None if tail else clip.exit
+            items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed,
+                          **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
+            if head:
+                items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height)
     return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(timeline.duration * fps),
             'bitrate': bitrate, 'output': str(output), 'items': items}
 
