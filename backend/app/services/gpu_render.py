@@ -19,9 +19,9 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from app.services.animation import OPACITY_SPAN
+from app.services.animation import BEAT_SLACK, OPACITY_SPAN
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import Timeline, value_at
+from app.services.timeline_schema import Timeline, clip_frames, value_at
 
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'gpu_render.swift'
 FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form'}
@@ -182,11 +182,11 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
 
 def _halves(clips, fps: int) -> list[int]:
     """Frames either side of each clip's opening cut, as Builder.transition_frames (and transitionHalf in model.ts)."""
-    frames = lambda seconds: max(1, round(seconds * fps))
     halves = [0] * len(clips)
     for number, (before, clip) in enumerate(zip(clips, clips[1:]), start=1):
-        if clip.transition_in and round(before.start * fps) + frames(before.length) == round(clip.start * fps):
-            halves[number] = min(round(clip.transition_in.duration * fps / 2), frames(before.length) // 2, frames(clip.length) // 2)
+        (first, length), (start, own) = clip_frames(before, fps), clip_frames(clip, fps)
+        if clip.transition_in and first + length == start:
+            halves[number] = min(round(clip.transition_in.duration * fps / 2), length // 2, own // 2)
     return halves
 
 
@@ -229,13 +229,13 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
         halves = _halves(clips, fps)
         for number, clip in enumerate(clips):
             head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
-            base = max(1, round(clip.length * fps))
+            first, base = clip_frames(clip, fps)
             facts = media(clip.media_id)
             # As the export: a transition is centred on the cut. The clip before plays on for half of it and this one
             # starts half of it early (its first frame held where the source has nothing earlier); their entrances and
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
-            items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
+            items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': first - head, 'frames': base + head + tail,
                           'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             from app.services.gpu_masks import resolve
@@ -249,7 +249,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             if clip.beat_pulse:
                 pulse = clip.beat_pulse
                 for k in range(base + head + tail):
-                    t = (k - head) / fps
+                    t = (k - head) / fps + BEAT_SLACK
                     phase = max(0, t - pulse.offset) % (60 / pulse.bpm)
                     amount = max(0, 1 - phase / .18) if t >= pulse.offset else 0
                     items[-1]['scale'][k] *= 1 + pulse.size * pulse.strength * amount

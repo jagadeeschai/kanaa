@@ -94,7 +94,7 @@ class Accepts(unittest.TestCase):
         self.assertEqual(item['blend'], 'screen')
         self.assertEqual(item['rotation'][0], 12)
         self.assertEqual(len(item['zoom_blur']['scales']), 8)
-        self.assertAlmostEqual(item['scale'][0], .35 * 1.024)
+        self.assertAlmostEqual(item['scale'][0], .35 * 1.024, places=5)  # On the beat (its clock nudged by BEAT_SLACK).
         self.assertEqual(gpu_render.unsupported(work, self.facts), [])
 
     def test_cancellation_terminates_a_blocked_helper(self):

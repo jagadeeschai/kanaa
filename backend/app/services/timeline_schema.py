@@ -1,6 +1,8 @@
 """The editing timeline, version 2. One document drives preview and export."""
 from __future__ import annotations
 
+import math
+
 from typing import Annotated, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -555,6 +557,18 @@ class Timeline(Strict):
     @property
     def duration(self) -> float:
         return max((item.start + item.length for layer in self.layers for item in layer.items), default=0)
+
+
+def frame_at(seconds: float, fps: int) -> int:
+    """The frame a moment falls on, halves rounded up (as Math.round in the preview, not Python's round to even)."""
+    return math.floor(seconds * fps + 0.5)
+
+
+def clip_frames(clip, fps: int) -> tuple[int, int]:
+    """A clip's first frame and how many it covers: from its start's frame to its end's, so clips that meet in seconds
+    meet in frames, with no gap or overlap however their lengths round. Matches clipFrames in model.ts."""
+    first = frame_at(clip.start, fps)
+    return first, max(1, frame_at(clip.start + clip.length, fps) - first)
 
 
 def value_at(transform: Transform, prop: str, t: float) -> float:

@@ -921,12 +921,20 @@ export function removeBlur(timeline: Timeline, id: string): Timeline {
   return items.length ? withItems(timeline, found.layer, items) : { ...timeline, layers: timeline.layers.filter((layer) => layer.id !== found.layer.id) };
 }
 
+/** A clip's first frame and how many it covers: from its start's frame to its end's, so clips that meet in seconds meet
+ * in frames however their lengths round. Matches clip_frames in timeline_schema.py. */
+export function clipFrames(clip: Clip, fps: number): [number, number] {
+  const first = Math.floor(clip.start * fps + 0.5);
+  return [first, Math.max(1, Math.floor((clip.start + clipLength(clip)) * fps + 0.5) - first)];
+}
+
 /** Half the frames of the transition opening `clip`, or 0. Matches transition_frames in timeline_service.py. */
 export function transitionHalf(before: Clip, clip: Clip, fps: number): number {
   if (!clip.transition_in) return 0;
-  const frames = (item: Clip) => Math.max(1, Math.round(clipLength(item) * fps));
-  if (Math.round(before.start * fps) + frames(before) !== Math.round(clip.start * fps)) return 0;
-  return Math.min(Math.round((clip.transition_in.duration * fps) / 2), Math.floor(frames(before) / 2), Math.floor(frames(clip) / 2));
+  const [first, length] = clipFrames(before, fps);
+  const [start, own] = clipFrames(clip, fps);
+  if (first + length !== start) return 0;
+  return Math.min(Math.round((clip.transition_in.duration * fps) / 2), Math.floor(length / 2), Math.floor(own / 2));
 }
 
 export const MAX_VIDEO_LAYERS = 8;  // As timeline_schema.MAX_LAYERS.

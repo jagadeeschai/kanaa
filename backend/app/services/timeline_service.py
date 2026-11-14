@@ -21,13 +21,13 @@ from app.api.schemas import VideoEditRequest
 from app.services.finish_service import finish_filters
 from app.services.cutout_service import make_space_mask
 from app.services.ramp import ramp_time_expression, segments as ramp_segments
-from app.services.animation import chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
+from app.services.animation import BEAT_SLACK, chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
 from app.services import particle_frames, title3d
 from app.services.title3d_render import render_title_frames
 from app.services.moving_transitions import MOVING_KINDS, Moves
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
-from app.services.timeline_schema import value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
+from app.services.timeline_schema import clip_frames, value_at, Adjust, Animation, ShapeMask, BlurBox, BlurLayer, Caption, CaptionLayer, Chroma, Clip, Format, Sound, Text, Timeline, Transform, VideoLayer
 from app.services.video_edit_service import (
     BT709_OUTPUT_ARGS, DEFAULT_LYRIC_FONT, HDR_TO_BT709, LYRIC_FONTS_DIR, ass_timestamp, lyric_font_for, NO_OUTPUT_GRACE_SECONDS, SD_COLOR_SPACES, STALLED_AFTER_SECONDS, TAG_BT709, TO_BT709, run_cancellable, write_lyrics,
 )
@@ -819,8 +819,9 @@ class Builder:
         fps = self.fmt.fps
         halves = [0] * len(clips)
         for number, (before, clip) in enumerate(zip(clips, clips[1:]), start=1):
-            if clip.transition_in and round(before.start * fps) + self.frames(before.length) == round(clip.start * fps):
-                halves[number] = min(round(clip.transition_in.duration * fps / 2), self.frames(before.length) // 2, self.frames(clip.length) // 2)
+            (first, length), (start, own) = clip_frames(before, fps), clip_frames(clip, fps)
+            if clip.transition_in and first + length == start:
+                halves[number] = min(round(clip.transition_in.duration * fps / 2), length // 2, own // 2)
         return halves
 
     def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str, beat_pulse=None) -> str:
@@ -852,8 +853,9 @@ class Builder:
         if beat_pulse:
             interval = 60 / beat_pulse.bpm
             # A fast ease-out zoom at each beat. The phase is stored in clip-local seconds.
-            phase = f'mod(max(0,{clock}-{beat_pulse.offset:.6f}),{interval:.6f})'
-            pulse = f'if(gte({clock},{beat_pulse.offset:.6f}),max(0,1-{phase}/0.180000),0)'
+            beat_clock = f'({clock}+{BEAT_SLACK})'
+            phase = f'mod(max(0,{beat_clock}-{beat_pulse.offset:.6f}),{interval:.9f})'
+            pulse = f'if(gte({beat_clock},{beat_pulse.offset:.6f}),max(0,1-{phase}/0.180000),0)'
             scale = f'({scale})*(1+{beat_pulse.size * beat_pulse.strength:.6f}*{pulse})'
         sized, back, posed = f'{name}_sized', f'{name}_back', f'{name}_posed'
         spread = 1.0
@@ -936,7 +938,7 @@ class Builder:
                     segments.append(f'[{joined_label}]')
                     lengths.append(joined_frames)
                     joined_label = None
-                start = round(clip.start * fps)
+                start = clip_frames(clip, fps)[0]
                 if start > cursor:
                     label = f'gap{position}_{number}'
                     self.transparent_gap(label, start - cursor)
@@ -951,7 +953,7 @@ class Builder:
                     self.graph.append(f'{segments[-1]}trim=end_frame={lengths[-1] - over},setpts=PTS-STARTPTS[{label}]')
                     segments[-1], lengths[-1] = f'[{label}]', lengths[-1] - over
                     cursor -= over
-            base_frames = self.frames(clip.length)
+            base_frames = clip_frames(clip, fps)[1]
             frames = base_frames + head + tail
             # The extra frames come from the source when it has them. Otherwise the first or last frame is held.
             # A ramp's first speed carries on into a transition's extra frames, as in the preview.
