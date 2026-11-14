@@ -23,11 +23,11 @@ class GpuFallback(unittest.TestCase):
         switched_on.start()
         self.addCleanup(switched_on.stop)
 
-    def test_off_by_default(self):
-        with mock.patch.dict(os.environ, {}, clear=False), mock.patch('app.services.gpu_render.render') as render:
+    def test_on_by_default(self):
+        with mock.patch.dict(os.environ, {}, clear=False), mock.patch('app.services.timeline_service._hardware_h264', return_value=False) as hardware:
             os.environ.pop('KANAA_GPU_RENDER', None)
-            self.assertFalse(self.run_export())
-            render.assert_not_called()
+            self.assertFalse(self.run_export())  # No hardware encoder here, so it goes on to ffmpeg, but it looked.
+            hardware.assert_called_once()
 
     def test_disabled_does_not_compile_or_render(self):
         with mock.patch.dict(os.environ, {'KANAA_GPU_RENDER': '0'}), mock.patch('app.services.gpu_render.render') as render:

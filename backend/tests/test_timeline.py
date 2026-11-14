@@ -174,6 +174,25 @@ class FrameRates(Clips):
             self.assertLess(np.abs(got - want).max(), 40, f'frame {number}: {got}')
         self.assertEqual(self.frame_count(path), 76)
 
+    def test_a_clip_after_a_chain_of_transitions_keeps_its_own_frames(self):
+        # As in கற்கண்டு at 107 s, in a slice: a cross blur, then a crossfade into a beat-pulsing clip. The crossfade's
+        # offset (in seconds, six places) could land just after its frame, so the clip and its beats came a frame late.
+        rng = np.random.default_rng(5)
+        detail = self.root / 'chain-detail.png'
+        Image.fromarray(np.kron(rng.integers(0, 255, (24, 36, 3)), np.ones((20, 20, 1))).astype(np.uint8)).save(detail)
+        self.facts[85] = MediaFacts(path=detail, media_type='image', width=720, height=480)
+        starts = [0, 3.9617, 8.7687, 13.5977, 15.9617, 18.4047, 24.2367, 31.3097]
+        kinds = [None, 'cross-blur', 'cross-blur', 'cross-blur', None, 'cross-blur', 'crossfade']
+        items = [{'id': f'k{n}', 'media_id': 6 if n < 6 else 85, 'start': start, 'in': 0, 'out': round(starts[n + 1] - start, 4),
+                  **({'transition_in': {'kind': kinds[n], 'duration': 0.8}} if kinds[n] else {}),
+                  **({'beat_pulse': {'strength': 0.6, 'size': 0.04, 'bpm': 120, 'offset': 0}} if n == 6 else {})} for n, start in enumerate(starts[:-1])]
+        path = self.render({'format': {'width': 426, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': items}]}, 'chain.mp4')
+        first = math.floor(24.2367 * 30 + 0.5)  # The pulsing clip's own first frame (727); a beat each 15 frames.
+        for beat in (first + 30, first + 45):
+            before, on = self.frame(path, beat - 1, (426, 240)), self.frame(path, beat, (426, 240))
+            after = self.frame(path, beat + 1, (426, 240))
+            self.assertGreater(np.abs(on - before).mean(), 3 * np.abs(after - on).mean(), f'the beat jumps in on frame {beat}, not later')
+
     def test_clips_that_meet_in_seconds_meet_in_frames_and_keep_their_transition(self):
         # As in கற்கண்டு: 32.885 + 10.693 = 43.578 s, but round(10.693 s) is 321 frames from frame 987, one past 43.578's
         # frame 1307. The clips still meet, so there is no black frame and the cross-blur between them is kept.

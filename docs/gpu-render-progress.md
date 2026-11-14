@@ -62,3 +62,21 @@ The comparison test explicitly identifies the known first-word karaoke timing fr
 - **Merged with GPU export off by default** (`KANAA_GPU_RENDER=1` to use it). To turn it on: fix the ffmpeg drift
   (start each clip at its own rounded time, trimming the previous one), re-run the full-song comparison, and check
   that frames under 30 dB are only known karaoke/particle frames.
+
+## ffmpeg drift fixed, GPU on by default — 14 November 2026 (Claude)
+
+The differences were the ffmpeg export's own timing, fixed in turn (each with a test):
+
+- Clips start on their own frame; one that rounding puts a frame early cuts the last one short (`bfc4703`).
+- A slice cut through an eased move keeps the move's own first key (before zero), so the curve carries on; `concat`
+  frames are renumbered, so a one-frame gap no longer pulls later clips a frame early (`a1ecc59`).
+- A clip covers the frames from its start's frame to its end's (`clip_frames`, `clipFrames` in model.ts), halves rounded
+  up: touching clips no longer get a black frame or lose their transition; slices trim clocks by whole frames;
+  `BEAT_SLACK` makes a frame exactly on a beat the beat in both engines (`8098ee6`).
+- An `xfade` offset a hair early: written to six places it could start a transition (and all after it) a frame late.
+
+Full song, கற்கண்டு (8,665 frames): GPU 4:20–4:36, ffmpeg about 24 minutes with nothing else running. Average
+33.4 dB at merge → 35.5 dB before the xfade fix; the 107–114 s beat-pulse run it fixed (58 frames under 30 dB in a
+82.9–112 s slice) is now 3 frames at 29.0–29.8 dB. Of the rest under 30 dB, 81 frames are particle titles coming in or
+going and karaoke word changes; 10 single frames sit at 29.5–29.96 dB and one at 27.5 dB (107.17 s, the start of the
+crossfade the xfade fix moved). GPU export is now on by default; `KANAA_GPU_RENDER=0` keeps ffmpeg.

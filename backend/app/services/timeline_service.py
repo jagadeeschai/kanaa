@@ -998,7 +998,9 @@ class Builder:
                 if clip.transition_in.kind in MOVING_KINDS:
                     self.moving_transition(clip.transition_in.kind, joined_label, joined_frames, shown, frames, 2 * head, merged)
                 else:
-                    self.graph.append(f'[{joined_label}][{shown}]xfade=transition={xfade_name(clip.transition_in)}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps:.6f}[{merged}]')
+                    # The offset a hair early (far less than a frame): written to six places, it can land just after
+                    # the frame it means, and xfade then starts a frame late, with everything after it.
+                    self.graph.append(f'[{joined_label}][{shown}]xfade=transition={xfade_name(clip.transition_in)}:duration={2 * head / fps:.6f}:offset={(joined_frames - 2 * head) / fps - 1e-4:.6f}[{merged}]')
                 if clip.transition_in.kind == 'whip':
                     merged = self.whip_blur(merged, joined_frames - 2 * head, 2 * head, joined_frames + frames - 2 * head)
                 elif clip.transition_in.kind == 'cross-blur':
