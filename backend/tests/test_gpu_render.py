@@ -72,6 +72,14 @@ class Accepts(unittest.TestCase):
         missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
         self.assertEqual(missing, ['zoom transition'])
 
+    def test_slide_moves_the_full_posed_frame(self):
+        from app.services.timeline_schema import Animation, Transform
+        sampled = gpu_render._frames(Transform(), Animation(preset='slide-right', duration=1), None, 2, 60, 30)
+        self.assertEqual(sampled['dx'][0], -1)
+        self.assertEqual(sampled['dx'][30], 0)
+        self.assertEqual(sampled['x'][0], .5)
+        self.assertEqual(sampled['opacity'][0], 1)
+
     def test_a_transition_is_centred_on_the_cut(self):
         with mock.patch('app.services.timeline_service.render_text_image'):
             work = gpu_render.plan(timeline(), self.facts, Path('out.mp4'), 1, Path('/tmp'))
@@ -89,8 +97,8 @@ class Accepts(unittest.TestCase):
 
     def test_titles_that_need_more_stay_with_ffmpeg(self):
         data = timeline().model_dump(by_alias=True, mode='json')
-        data['layers'][3]['items'][0]['enter'] = {'preset': 'pop', 'duration': 0.5}
-        self.assertEqual(gpu_render.unsupported(Timeline.model_validate(data), self.facts), ['pop animation'])
+        data['layers'][3]['items'][0]['enter'] = {'preset': 'prism', 'duration': 0.5}
+        self.assertIn('prism animation', gpu_render.unsupported(Timeline.model_validate(data), self.facts))
 
     def test_plan_matches_the_schema_maths(self):
         with mock.patch('app.services.timeline_service.render_text_image'):
@@ -137,6 +145,10 @@ class MatchesFfmpeg(unittest.TestCase):
     def test_same_picture_and_faster(self):
         work = timeline(int(os.environ.get('GPU_BENCH_SECONDS', '30')), look='warm', dreamy_glow={'intensity': .5, 'softness': .5, 'warmth': .5},
                         adjust={'brightness': 1.03, 'gamma': 1.1, 'fade': 0.03, 'contrast': 1.04, 'saturation': 1.08, 'temperature': 1.02, 'tint': 0.98})
+        presets = os.environ.get('GPU_ANIMATION_PRESETS', 'slide-right,pop,blur,blast,particle-form').split(',')
+        for item, preset in zip(work.layers[3].items, presets):
+            from app.services.timeline_schema import Animation
+            item.enter = Animation(preset=preset, duration=.6)
         ffmpeg_out, gpu_out = self.root / 'ffmpeg.mp4', self.root / 'gpu.mp4'
         began = time.monotonic()
         with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0'}):
@@ -155,7 +167,22 @@ class MatchesFfmpeg(unittest.TestCase):
         self.assertGreater(sum(values) / len(values), 35)
         # Only the frame where a karaoke line's first word lights may differ: the ffmpeg export lights it a frame late
         # (its concat timing), the GPU engine on the word's own frame, as the preview does.
-        self.assertLessEqual(sum(value < 30 for value in values), len(titles(30)) - 1)
+        from app.services.particle_frames import has_particles
+        words = work.layers[3].items
+        karaoke_frames = {round((item.start + item.karaoke.words[0]) * FPS) + 1 for item in words
+                          if item.karaoke and item.karaoke.words and not has_particles(item)}
+        unexpected = []
+        for number, value in enumerate(values, start=1):
+            if value >= 30 or number in karaoke_frames:
+                continue
+            # The handoff permits Core Image/bicubic edge differences. During a moving/scaled title's entrance,
+            # those thin glyph edges can lower full-frame PSNR by up to two further dB; never exempt severe errors.
+            t = (number - 1) / FPS
+            moving_edges = value >= 28 and any(item.enter and item.enter.preset != 'fade' and
+                item.start <= t <= item.start + item.enter.duration for item in words)
+            if not moving_edges:
+                unexpected.append((number, round(t, 3), value))
+        self.assertEqual(unexpected, [], f'Unexpected low-PSNR frames: {unexpected[:20]}')
         self.assertLess(gpu_seconds, ffmpeg_seconds)
 
 

@@ -23,7 +23,7 @@ from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import Timeline, value_at
 
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'gpu_render.swift'
-FADES = {'fade'}  # Entrance and exit presets drawn so far.
+FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 'pop', 'blur', 'bounce', 'ground-rise', 'blast', 'magic-form', 'magic-vanish', 'particle-form'}
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
@@ -105,8 +105,10 @@ def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead:
     """Per frame of an item: where it sits, how big and how see-through, as the ffmpeg export's pose() works it out."""
     from app.services.timeline_service import shared_fit
     first, last = shared_fit(enter, exit_, length)
-    first_fade = first * OPACITY_SPAN['fade'] if enter else 0
-    last_fade = last * OPACITY_SPAN['fade'] if exit_ else 0
+    from app.services.animation import look_at
+    first_fade = first * OPACITY_SPAN.get(enter.preset, 0) if enter else 0
+    last_fade = last * OPACITY_SPAN.get(exit_.preset, 0) if exit_ else 0
+    dx, dy, zoom, blur = [], [], [], []
     xs, ys, sizes, seen = [], [], [], []
     for k in range(frames):
         t = (k - lead) / fps  # A transition's extra frames before the clip's own start come first.
@@ -119,7 +121,13 @@ def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead:
         if last_fade:
             alpha *= min(1, max(0, (length - t) / last_fade))
         seen.append(round(alpha, 5))
-    return {'x': xs, 'y': ys, 'scale': sizes, 'opacity': seen}
+        moves = ([look_at(enter.preset, t / first)] if enter else []) + ([look_at(exit_.preset, (length - t) / last)] if exit_ else [])
+        dx.append(sum(m['dx'] for m in moves))
+        dy.append(sum(m['dy'] for m in moves))
+        zoom.append(math.prod(m['scale'] for m in moves))
+        # CI's Gaussian radius differs from ffmpeg's one-step recursive sigma; calibrated on animated glyph edges.
+        blur.append(.5 * max([m['blur'] for m in moves] or [0]))
+    return {'x': xs, 'y': ys, 'scale': sizes, 'opacity': seen, 'dx': dx, 'dy': dy, 'zoom': zoom, 'blur': blur}
 
 
 def _title(item, fmt, folder: Path, name: str) -> dict:
@@ -142,6 +150,13 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
         # Each frame shows the state its moment falls in, as the concat reader and fps filter pick it.
         found['paths'] = paths
         found['shown'] = [max(n for n, (start, _, _) in enumerate(states) if start <= k / fps + 1e-6) for k in range(frames)]
+    from app.services import particle_frames
+    if particle_frames.has_particles(item):
+        paths = found.get('paths', [str(image)])
+        shown = found.get('shown', [0] * frames)
+        listing = particle_frames.listing(item, fps, frames, lambda t: Path(paths[shown[min(frames - 1, round(t * fps))]]), folder, name)
+        found['paths'] = [str(path) for path, _ in listing]
+        found['shown'] = [index for index, (_, count) in enumerate(listing) for _ in range(count)]
     return found
 
 

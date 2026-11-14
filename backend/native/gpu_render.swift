@@ -25,6 +25,10 @@ struct Item: Decodable {
     let y: [Double]
     let scale: [Double]  // Of the picture fitted inside the frame.
     let opacity: [Double]
+    let dx: [Double]?
+    let dy: [Double]?
+    let zoom: [Double]?
+    let blur: [Double]?
     let transition: Transition?  // Mixes this item with the one before it (same layer) over its first frames.
 }
 
@@ -169,6 +173,7 @@ writer.startSession(atSourceTime: .zero)
 
 let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: frameRect)
 var pictures: [String: CIImage] = [:]
+var changingPictures: [Int: String] = [:]
 var videos: [Int: VideoSource] = [:]
 
 /// Scales a picture's alpha (Core Image keeps colour premultiplied, so this scales every channel evenly).
@@ -183,6 +188,10 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     var picture: CIImage?
     if item.kind == "image" {
         let path = item.paths.map { $0[item.shown![k]] } ?? item.path
+        if item.paths != nil, let previous = changingPictures[index], previous != path {
+            pictures.removeValue(forKey: previous)
+        }
+        if item.paths != nil { changingPictures[index] = path }
         if pictures[path] == nil {
             pictures[path] = CIImage(contentsOf: URL(fileURLWithPath: path), options: [.colorSpace: NSNull(), .applyOrientationProperty: true])
         }
@@ -201,12 +210,22 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
         let blurred = shown.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: g.radius]).cropped(to: shown.extent)
         shown = glowKernel.apply(extent: shown.extent, arguments: [shown, blurred, g.amount, g.lift, g.saturation, g.red, g.blue])!
     }
+    if let blur = item.blur, blur[k] > 0 {
+        shown = shown.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blur[k] * Double(H)]).cropped(to: shown.extent)
+    }
     let e = shown.extent
     let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]
     shown = shown.transformed(by: CGAffineTransform(translationX: -e.midX, y: -e.midY))
         .transformed(by: CGAffineTransform(scaleX: size, y: size))
         .transformed(by: CGAffineTransform(translationX: item.x[k] * Double(W), y: (1 - item.y[k]) * Double(H)))
-    return weighted(shown, item.opacity[k])
+    shown = weighted(shown, item.opacity[k])
+    // pose(): blur and crop the posed full frame, then animate that frame about its centre.
+    shown = shown.cropped(to: frameRect)
+    let zoom = item.zoom?[k] ?? 1
+    shown = shown.transformed(by: CGAffineTransform(translationX: -Double(W) / 2, y: -Double(H) / 2))
+        .transformed(by: CGAffineTransform(scaleX: zoom, y: zoom))
+        .transformed(by: CGAffineTransform(translationX: Double(W) * (0.5 + (item.dx?[k] ?? 0)), y: Double(H) * (0.5 - (item.dy?[k] ?? 0))))
+    return shown.cropped(to: frameRect)
 }
 
 /// Whether item `index` is the clip before a transition that is under way at frame `f` (then the next item draws both).
@@ -220,7 +239,10 @@ for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
         let k = f - item.start
-        if k >= item.frames { videos[index] = nil }  // Finished: let its decoder go.
+        if k >= item.frames {
+            videos[index] = nil
+            if let path = changingPictures.removeValue(forKey: index) { pictures.removeValue(forKey: path) }
+        }  // Finished: let its decoder go.
         guard k >= 0, k < item.frames, !givesWay(index, f) else { continue }
         if let mix = item.transition, k < mix.frames {
             // The two clips mixed as one layer (xfade), with the fill colour for a dip or flash, then blurred.

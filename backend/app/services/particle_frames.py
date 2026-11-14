@@ -12,6 +12,7 @@ between stay the title's own picture.
 from __future__ import annotations
 
 from pathlib import Path
+from functools import lru_cache
 from typing import Callable
 
 import numpy as np
@@ -34,6 +35,16 @@ def _smoothstep(edge0, edge1, x):
     return t * t * (3 - 2 * t)
 
 
+@lru_cache(maxsize=2)
+def _fields(width: int, height: int):
+    """The preview's random grid depends only on output size, never on the title or animation moment."""
+    u = (np.arange(width, dtype=np.float32) + 0.5) / width
+    v = 1 - (np.arange(height, dtype=np.float32) + 0.5) / height
+    cell_x = np.floor(u * GRID[0])[None, :]
+    cell_y = np.floor(v * GRID[1])[:, None]
+    return u, v, _hash(cell_x + 13, cell_y + 13), _hash(cell_y + 71, cell_x + 71), _hash(cell_x + 109, cell_y + 109)
+
+
 def particle_frame(rgba: np.ndarray, progress: float, mode: int) -> np.ndarray:
     """The title picture `rgba` (H x W x 4, uint8, straight alpha) part of the way (`progress`, 1 at rest) into its
     particles. mode 1 is particle-form, 2 is magic."""
@@ -41,15 +52,10 @@ def particle_frame(rgba: np.ndarray, progress: float, mode: int) -> np.ndarray:
     if progress >= 0.999:
         return rgba
     # Texture coordinates as the shader sees them: x to the right, y up from the bottom.
-    u = (np.arange(width, dtype=np.float32) + 0.5) / width
-    v = 1 - (np.arange(height, dtype=np.float32) + 0.5) / height
-    cell_x = np.floor(u * GRID[0])[None, :]
-    cell_y = np.floor(v * GRID[1])[:, None]
-    rx, ry = _hash(cell_x + 13, cell_y + 13), _hash(cell_y + 71, cell_x + 71)
+    u, v, rx, ry, hue = _fields(width, height)
     travel = (1 - progress) ** 1.7 * (0.20 if mode == 2 else 0.34)
     su = u[None, :] + (rx - 0.5) * travel
     sv = v[:, None] + (ry - 0.5) * travel
-    hue = _hash(cell_x + 109, cell_y + 109)
     # Nearest sample of the title at the shifted place; outside the picture is clear.
     columns = np.floor(su * width).astype(np.int32)
     rows = np.floor((1 - sv) * height).astype(np.int32)
