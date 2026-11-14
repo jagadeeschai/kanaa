@@ -46,7 +46,8 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
       {fontsAndSize}
     </Group>
     <Group title="Karaoke" tab="style" startOpen={Boolean(text.karaoke)} changed={Boolean(text.karaoke)} keywords="karaoke highlight sing along words lyrics light up">
-      <label className="ed-check"><input type="checkbox" checked={Boolean(text.karaoke)} onChange={(event) => onKaraoke(event.target.checked ? text.karaoke?.color ?? KARAOKE_COLOUR : null)}/><span>Light the words as they are sung<small>Each word changes colour in time with the line. Turn it on for several lines at once by picking them first (⌘A picks a whole layer).</small></span></label>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(text.karaoke)} onChange={(event) => onKaraoke(event.target.checked ? text.karaoke?.color ?? KARAOKE_COLOUR : null)}/><span>Light the words as they are sung<small>{forLayer ? 'Each word changes colour in time with its line.' : 'Each word changes colour in time with the line. For a whole lyrics layer at once, use the layer’s settings (⋯ on the layer → Layer settings).'}</small></span></label>
+      {forLayer && <p className="ed-group-tip">{t('Turns karaoke on or off for every title on this layer.')}</p>}
       {text.karaoke && <div className="ed-chips" role="group" aria-label="Karaoke colour">{KARAOKE_SWATCHES.map(([colour, name]) => <button key={colour} className={text.karaoke?.color === colour ? 'on' : ''} aria-pressed={text.karaoke?.color === colour} onClick={() => onKaraoke(colour)}><i className="ed-who-dot" style={{ background: colour }}/>{name}</button>)}</div>}
     </Group>
     <Group title="Subtitle" tab="style" startOpen={Boolean(text.subtitle)} changed={Boolean(text.subtitle)} keywords="subtitle small line spacing">

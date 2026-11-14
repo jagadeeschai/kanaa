@@ -1034,7 +1034,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     const keys = sharedKeys(Object.assign({}, ...items)).filter((key) => key !== 'transform' && key !== 'adjust');
     return keys.filter((key) => new Set(items.map((item) => JSON.stringify(item[key] ?? null))).size > 1).slice(0, 6);
   };
-  const setKaraoke = (colour: string | null) => { if (timeline && selectedText) change(setKaraokeFor(timeline, [selectedText.id, ...moreIds], colour)); };
+  // In a text layer's settings, karaoke goes on (or off) for every title on the layer, each timed to its own words.
+  const setKaraoke = (colour: string | null) => { if (timeline && selectedText) change(setKaraokeFor(timeline, settingsLayer?.kind === 'text' ? settingsLayer.items.map((item) => item.id) : [selectedText.id, ...moreIds], colour)); };
   const updateSelectedText = (changes: Partial<TextItem>, group?: string) => {
     if (timeline && selectedText && moreIds.size && styleScope === 'item') {
       // Several titles picked: the change goes to each of them (never their words or timing).
