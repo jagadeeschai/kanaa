@@ -1454,8 +1454,13 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
     if not ffmpeg:
         raise ValueError('Exporting requires ffmpeg on the server.')
     target.parent.mkdir(parents=True, exist_ok=True)
+    if window is None and not draft:
+        from app.services.gpu_export import try_render
+        if try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg):
+            return
     if window is None and not draft and _render_in_slices(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg):
         return
+    logger.info('Exporting as one graph')
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
         if window:
