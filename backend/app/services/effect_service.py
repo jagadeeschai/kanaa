@@ -24,7 +24,7 @@ from app.db.database import get_connection
 from app.services.job_service import JobCancelled
 
 VERSION = 2  # Natural weather rendering; old generated media remains reusable in the library.
-EFFECT_VERSIONS = {'anamorphic': 3}  # Regenerate only effects whose renderer changed independently.
+EFFECT_VERSIONS = {'anamorphic': 3, 'anamorphic-gold': 1}  # Regenerate only effects whose renderer changed independently.
 FPS = 30
 SECONDS = 5.0
 SHORT_SIDE = 720  # Soft light scales up well; this keeps making an effect to a few seconds.
@@ -76,6 +76,7 @@ EFFECTS = [
     Effect('sun-rays', 'Sun rays', 'சூரியக் கதிர்கள்', 'travel', 'Soft beams drifting from one corner'),
     Effect('prism-leak', 'Prism leak', 'வானவில் ஒளி', 'travel', 'A thin rainbow edge moving across the frame'),
     Effect('anamorphic', 'Anamorphic streaks', 'நீல ஒளிக் கோடுகள்', 'travel', 'Fine blue horizontal cinematic flares'),
+    Effect('anamorphic-gold', 'Golden anamorphic streaks', 'தங்க ஒளிக் கோடுகள்', 'travel', 'Warm golden horizontal cinematic flares, like sunset through cinema glass'),
     Effect('light-flicker', 'Light flicker', 'ஒளித் துடிப்பு', 'travel', 'Gentle old-projector brightness variation'),
     Effect('fireflies', 'Fireflies', 'மின்மினிப் பூச்சிகள்', 'travel', 'Slow green-gold lights blinking through an evening scene'),
     Effect('lanterns', 'Floating lanterns', 'வான விளக்குகள்', 'travel', 'Warm sky lanterns drifting up and away'),
@@ -794,7 +795,18 @@ def prism_leak(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
     return image.filter(ImageFilter.GaussianBlur(max(1, unit * 0.01)))
 
 
-def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+# Colours of the streak: broad bloom, fine line, hot core, upper and lower fringes, lens ghosts, aperture glints.
+BLUE_GLASS = {'broad': (28, 74, 175), 'fine': (95, 170, 255), 'core': (225, 238, 255), 'upper': (10, 64, 105), 'lower': (48, 12, 85),
+              'ghosts': ((12, 45, 105), (18, 62, 120), (54, 24, 85)), 'glint': (190, 225, 255)}
+GOLDEN_GLASS = {'broad': (170, 128, 18), 'fine': (255, 220, 96), 'core': (255, 250, 226), 'upper': (112, 84, 6), 'lower': (98, 46, 12),
+                'ghosts': ((105, 80, 12), (120, 96, 18), (92, 50, 18)), 'glint': (255, 236, 170)}
+
+
+def anamorphic_gold(n: int, total: int, size: tuple[int, int], rng: np.random.Generator) -> Image.Image:
+    return anamorphic(n, total, size, rng, GOLDEN_GLASS)
+
+
+def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generator, glass: dict = BLUE_GLASS) -> Image.Image:
     width, height = size
     unit = min(size)
     t = n / FPS
@@ -815,17 +827,17 @@ def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
         broad = np.exp(-((ys - cy) / (0.014 + index * 0.004)) ** 2) * horizontal * strength
         fine = np.exp(-((ys - cy) / 0.0028) ** 2) * np.exp(-np.abs(xs - cx) / 0.38) * strength
         core = np.exp(-(((xs - cx) / 0.026) ** 2 + ((ys - cy) / 0.038) ** 2)) * strength
-        # Blue centre, cyan upper fringe and faint violet lower fringe mimic coated cinema glass.
-        picture += broad[..., None] * np.array((28, 74, 175), np.float32)
-        picture += fine[..., None] * np.array((95, 170, 255), np.float32)
-        picture += core[..., None] * np.array((225, 238, 255), np.float32)
-        picture += (np.exp(-((ys - cy + 0.006) / 0.0035) ** 2) * horizontal * strength)[..., None] * np.array((10, 64, 105), np.float32)
-        picture += (np.exp(-((ys - cy - 0.007) / 0.0045) ** 2) * horizontal * strength)[..., None] * np.array((48, 12, 85), np.float32)
+        # Centre, upper and lower fringes in the glass's colours (blue: cyan above, violet below; gold: amber, orange-red).
+        picture += broad[..., None] * np.array(glass['broad'], np.float32)
+        picture += fine[..., None] * np.array(glass['fine'], np.float32)
+        picture += core[..., None] * np.array(glass['core'], np.float32)
+        picture += (np.exp(-((ys - cy + 0.006) / 0.0035) ** 2) * horizontal * strength)[..., None] * np.array(glass['upper'], np.float32)
+        picture += (np.exp(-((ys - cy - 0.007) / 0.0045) ** 2) * horizontal * strength)[..., None] * np.array(glass['lower'], np.float32)
     image = Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8)).resize(size, Image.BICUBIC)
     ghosts = Image.new('RGB', size)
     draw = ImageDraw.Draw(ghosts)
     hero_x, hero_y = lights[0][0] * width, lights[0][1] * height
-    for share, radius, colour in ((0.32, 0.018, (12, 45, 105)), (0.55, 0.028, (18, 62, 120)), (0.78, 0.012, (54, 24, 85))):
+    for share, radius, colour in zip((0.32, 0.55, 0.78), (0.018, 0.028, 0.012), glass['ghosts']):
         gx = width * 0.5 + (width * 0.5 - hero_x) * share * 1.45
         gy = height * 0.5 + (height * 0.5 - hero_y) * share * 0.42
         r = unit * radius
@@ -834,7 +846,7 @@ def anamorphic(n: int, total: int, size: tuple[int, int], rng: np.random.Generat
     for offset, brightness in ((-0.045, 0.32), (0.036, 0.25), (0.082, 0.16)):
         gx = hero_x + offset * width
         r = unit * 0.004
-        colour = tuple(round(c * brightness) for c in (190, 225, 255))
+        colour = tuple(round(c * brightness) for c in glass['glint'])
         draw.line((gx - r * 5, hero_y, gx + r * 5, hero_y), fill=colour, width=max(1, round(r * 0.45)))
         draw.line((gx, hero_y - r, gx, hero_y + r), fill=colour, width=max(1, round(r * 0.35)))
     return Image.fromarray(np.clip(np.asarray(image, np.int16) + np.asarray(_glow(ghosts, max(1, unit * 0.01), 0.8), np.int16), 0, 255).astype(np.uint8))
@@ -1327,6 +1339,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'sun-rays': sun_rays,
     'prism-leak': prism_leak,
     'anamorphic': anamorphic,
+    'anamorphic-gold': anamorphic_gold,
     'light-flicker': light_flicker,
     'fireflies': fireflies,
     'lanterns': lanterns,

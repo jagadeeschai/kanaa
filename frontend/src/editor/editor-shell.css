@@ -186,6 +186,7 @@
 .fx-sun-rays .ed-quick-art{background:conic-gradient(from 118deg at 0 0,#ffe2a455 0 8deg,transparent 9deg 17deg,#ffe2a433 18deg 26deg,transparent 27deg),radial-gradient(circle at 0 0,#ffe7b877,transparent 48%),#171710}
 .fx-prism-leak .ed-quick-art{background:linear-gradient(72deg,transparent 35%,#e0486666 39%,#ed9b4366 42%,#d8d75366 45%,#55b98666 48%,#5487d666 51%,#9b62c766 54%,transparent 58%),#111319}
 .fx-anamorphic .ed-quick-art{background:linear-gradient(transparent 44%,#5a9fff66 48%,#d8ebff 50%,#5a9fff66 52%,transparent 56%),radial-gradient(circle at 62% 50%,#fff 0 2px,#5a9fff55 8px,transparent 18px),#080d18}
+.fx-anamorphic-gold .ed-quick-art{background:linear-gradient(transparent 44%,#ffcf4a66 48%,#fff2c4 50%,#ffcf4a66 52%,transparent 56%),radial-gradient(circle at 62% 50%,#fff 0 2px,#ffcf4a55 8px,transparent 18px),#14100a}
 .fx-light-flicker .ed-quick-art{background:radial-gradient(circle at 50% 45%,#f8dfae88,transparent 70%),#292419}
 .fx-fireflies .ed-quick-art{background:radial-gradient(circle at 25% 35%,#e8ef72 0 1px,#9fbf4355 4px,transparent 9px),radial-gradient(circle at 72% 62%,#d8e868 0 1px,#7ca53b55 4px,transparent 9px),#0c1710}
 .fx-lanterns .ed-quick-art{background:radial-gradient(ellipse at 28% 68%,#ffe19a 0 3px,#ce5d22 7px,transparent 8px),radial-gradient(ellipse at 66% 34%,#ffe19a 0 3px,#ce5d22 8px,transparent 9px),#15101b}

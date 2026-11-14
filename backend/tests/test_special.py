@@ -154,6 +154,7 @@ class Effects(unittest.TestCase):
         self.assertEqual(found['sun-rays'].mood, 'travel')
         self.assertEqual(found['prism-leak'].mood, 'travel')
         self.assertEqual(found['anamorphic'].mood, 'travel')
+        self.assertEqual(found['anamorphic-gold'].mood, 'travel')
         self.assertEqual(found['light-flicker'].mood, 'travel')
         self.assertEqual(found['fireflies'].mood, 'travel')
         self.assertEqual(found['lanterns'].mood, 'travel')
@@ -309,3 +310,17 @@ class Moments(unittest.TestCase):
             self.assertEqual(api.client.post(f"/api/photos/{media['id']}/reframe", json={'start': 0, 'end': 2}).status_code, 409, 'never downloads without asking')
         finally:
             api.tearDown()
+
+
+class GoldenAnamorphic(unittest.TestCase):
+    def test_same_streaks_in_warm_gold(self):
+        import numpy as np
+        from app.services import effect_service
+        blue = np.asarray(effect_service.anamorphic(60, 150, (640, 360), np.random.default_rng(1)), np.int32)
+        gold = np.asarray(effect_service.anamorphic_gold(60, 150, (640, 360), np.random.default_rng(1)), np.int32)
+        lit = lambda image: image.sum(-1) > 60
+        self.assertGreater((lit(blue) == lit(gold)).mean(), 0.97)  # The same light, where it falls.
+        b, g = blue[lit(blue)].mean(0), gold[lit(gold)].mean(0)
+        self.assertGreater(b[2], b[0])  # Blue glass: more blue than red.
+        self.assertGreater(g[0], g[2] + 40)  # Golden glass: red and green over blue, a yellow-gold.
+        self.assertGreater(g[1], g[2] + 20)
