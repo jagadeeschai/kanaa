@@ -60,6 +60,44 @@ class Accepts(unittest.TestCase):
     def test_turns_remain_unsupported(self):
         self.assertIn('turn adjustments', gpu_render.unsupported(timeline(adjust={'flip_horizontal': True}), self.facts))
 
+    def test_zero_second_freeze_and_hdr_keep_reference_path(self):
+        self.assertIn('freeze', gpu_render.unsupported(timeline(freeze=0), self.facts))
+        hdr = lambda _: MediaFacts(path=Path('hdr.mp4'), media_type='video', width=640, height=360, color_transfer='smpte2084')
+        self.assertIn('HDR tone mapping', gpu_render.unsupported(timeline(), hdr))
+
+    def test_mask_blend_rotation_pulse_and_zoom_blur_reach_the_plan(self):
+        from app.services.timeline_schema import BeatPulse, ZoomBlur
+        work = timeline()
+        clip = work.layers[1].items[0]
+        clip.cutout = 'remove'
+        clip.transform.rotation = 12
+        clip.beat_pulse = BeatPulse()
+        clip.zoom_blur = ZoomBlur(intensity=.3)
+        work.layers[1].blend = 'screen'
+        mask = mock.Mock(return_value=Path('mask.mp4'))
+        with mock.patch('app.services.timeline_service.render_text_image'):
+            item = gpu_render.plan(work, self.facts, Path('out.mp4'), 1, Path('/tmp'), masks=mask)['items'][5]
+        self.assertEqual(item['mask_path'], 'mask.mp4')
+        mask.assert_called_once()
+        self.assertEqual(item['blend'], 'screen')
+        self.assertEqual(item['rotation'][0], 12)
+        self.assertEqual(len(item['zoom_blur']['scales']), 8)
+        self.assertAlmostEqual(item['scale'][0], .35 * 1.024)
+        self.assertEqual(gpu_render.unsupported(work, self.facts), [])
+
+    def test_cancellation_terminates_a_blocked_helper(self):
+        from app.services.job_service import JobCancelled
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            helper = root / 'helper'
+            helper.write_text('#!/bin/sh\nexec sleep 10\n')
+            helper.chmod(0o755)
+            began = time.monotonic()
+            with mock.patch.object(gpu_render, 'unsupported', return_value=[]), mock.patch.object(gpu_render, 'plan', return_value={'frames': 300}):
+                with self.assertRaises(JobCancelled):
+                    gpu_render.render(timeline(), self.facts, root / 'out.mp4', tool=helper, should_cancel=lambda: time.monotonic() - began > .05)
+            self.assertLess(time.monotonic() - began, 3)
+
     def test_glow_constants_and_disabled_glow(self):
         from app.services.timeline_schema import DreamyGlow
         self.assertIsNone(gpu_render.glow_constants(DreamyGlow(intensity=0)))
@@ -68,10 +106,6 @@ class Accepts(unittest.TestCase):
         self.assertEqual(constants['red'], .0112)
         self.assertEqual(constants['blue'], -.0063)
 
-    def test_anything_else_is_named_so_ffmpeg_keeps_it(self):
-        missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
-        self.assertEqual(missing, ['zoom transition'])
-
     def test_slide_moves_the_full_posed_frame(self):
         from app.services.timeline_schema import Animation, Transform
         sampled = gpu_render._frames(Transform(), Animation(preset='slide-right', duration=1), None, 2, 60, 30)
@@ -79,6 +113,10 @@ class Accepts(unittest.TestCase):
         self.assertEqual(sampled['dx'][30], 0)
         self.assertEqual(sampled['x'][0], .5)
         self.assertEqual(sampled['opacity'][0], 1)
+
+    def test_anything_else_is_named_so_ffmpeg_keeps_it(self):
+        missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
+        self.assertEqual(missing, ['zoom transition'])
 
     def test_a_transition_is_centred_on_the_cut(self):
         with mock.patch('app.services.timeline_service.render_text_image'):
@@ -130,6 +168,9 @@ class MatchesFfmpeg(unittest.TestCase):
         logo = cls.root / 'logo.png'
         subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=orange:s=400x400', '-frames:v', '1', str(logo)], check=True)
         cls.facts[5] = MediaFacts(path=logo, media_type='image', width=400, height=400)
+        cls.mask = cls.root / 'mask.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=1280x720:r=30:d=40,drawbox=x=300:y=100:w=500:h=500:color=white:t=fill',
+                        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(cls.mask)], check=True)
         from app.services.cutout_service import helper
         with mock.patch('app.services.cutout_service.settings') as settings:
             settings.data_dir = cls.root
@@ -149,13 +190,21 @@ class MatchesFfmpeg(unittest.TestCase):
         for item, preset in zip(work.layers[3].items, presets):
             from app.services.timeline_schema import Animation
             item.enter = Animation(preset=preset, duration=.6)
+        if os.environ.get('GPU_EXTRA_EFFECTS') == '1':
+            from app.services.timeline_schema import BeatPulse, ZoomBlur
+            clip = work.layers[1].items[0]
+            clip.cutout = 'remove'
+            clip.transform.rotation = 12
+            clip.beat_pulse = BeatPulse()
+            clip.zoom_blur = ZoomBlur(intensity=.3)
+            work.layers[2].blend = 'screen'
         ffmpeg_out, gpu_out = self.root / 'ffmpeg.mp4', self.root / 'gpu.mp4'
         began = time.monotonic()
-        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0'}):
-            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None)
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
         ffmpeg_seconds = time.monotonic() - began
         began = time.monotonic()
-        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool)
+        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
         gpu_seconds = time.monotonic() - began
         frames = lambda path: int(subprocess.run(['ffprobe', '-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames',
                                                   '-of', 'csv=p=0', str(path)], capture_output=True, text=True).stdout.strip())

@@ -13,6 +13,10 @@ import Metal
 struct Item: Decodable {
     let colour: Colour?
     let glow: Glow?
+    let maskPath: String?
+    let blend: String?
+    let rotation: [Double]?
+    let zoomBlur: ZoomBlur?
     let kind: String  // "image" or "video"
     let path: String
     let paths: [String]?  // An image item that changes picture (a karaoke title): the pictures, and which one each frame shows.
@@ -47,6 +51,12 @@ struct Glow: Decodable {
     let saturation: Double
     let red: Double
     let blue: Double
+}
+
+struct ZoomBlur: Decodable {
+    let scales: [Double]
+    let x: Double
+    let y: Double
 }
 
 let glowKernel = CIColorKernel(source: """
@@ -175,6 +185,7 @@ let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: frame
 var pictures: [String: CIImage] = [:]
 var changingPictures: [Int: String] = [:]
 var videos: [Int: VideoSource] = [:]
+var masks: [Int: VideoSource] = [:]
 
 /// Scales a picture's alpha (Core Image keeps colour premultiplied, so this scales every channel evenly).
 func weighted(_ image: CIImage, _ amount: Double) -> CIImage {
@@ -203,8 +214,29 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
         picture = videos[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed)
     }
     guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
+    if let path = item.maskPath {
+        if masks[index] == nil {
+            do { masks[index] = try VideoSource(path: path, from: item.sourceIn) } catch { fail("Could not read mask: \(error)") }
+        }
+        guard let mask = masks[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed) else { fail("Mask has no frames") }
+        let alpha = mask.transformed(by: CGAffineTransform(scaleX: shown.extent.width / mask.extent.width, y: shown.extent.height / mask.extent.height))
+        shown = shown.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: alpha])
+    }
     if let c = item.colour, c.tint != [1, 1, 1] || c.power != 1 || c.fade != 0 || c.contrast != 1 || c.saturation != 1 {
         shown = colourKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: c.tint[0], y: c.tint[1], z: c.tint[2]), c.power, c.fade, c.contrast, c.saturation])!
+    }
+    if let effect = item.zoomBlur {
+        let rect = shown.extent
+        let cx = rect.minX + rect.width * effect.x
+        let cy = rect.minY + rect.height * (1 - effect.y)
+        var mixed = CIImage.empty().cropped(to: rect)
+        for scale in effect.scales {
+            let copy = shown.transformed(by: CGAffineTransform(translationX: -cx, y: -cy))
+                .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                .transformed(by: CGAffineTransform(translationX: cx, y: cy)).cropped(to: rect)
+            mixed = weighted(copy, 1 / Double(effect.scales.count)).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: mixed])
+        }
+        shown = mixed
     }
     if let g = item.glow {
         let blurred = shown.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: g.radius]).cropped(to: shown.extent)
@@ -216,6 +248,7 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     let e = shown.extent
     let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]
     shown = shown.transformed(by: CGAffineTransform(translationX: -e.midX, y: -e.midY))
+        .transformed(by: CGAffineTransform(rotationAngle: -(item.rotation?[k] ?? 0) * .pi / 180))
         .transformed(by: CGAffineTransform(scaleX: size, y: size))
         .transformed(by: CGAffineTransform(translationX: item.x[k] * Double(W), y: (1 - item.y[k]) * Double(H)))
     shown = weighted(shown, item.opacity[k])
@@ -240,9 +273,9 @@ for f in 0..<plan.frames {
     for (index, item) in plan.items.enumerated() {
         let k = f - item.start
         if k >= item.frames {
-            videos[index] = nil
+            videos[index] = nil; masks[index] = nil
             if let path = changingPictures.removeValue(forKey: index) { pictures.removeValue(forKey: path) }
-        }  // Finished: let its decoder go.
+        }  // Finished: let its decoder and changing title textures go.
         guard k >= 0, k < item.frames, !givesWay(index, f) else { continue }
         if let mix = item.transition, k < mix.frames {
             // The two clips mixed as one layer (xfade), with the fill colour for a dip or flash, then blurred.
@@ -260,12 +293,15 @@ for f in 0..<plan.frames {
             if mix.blur[k] > 0.01 {
                 layer = layer.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: mix.blur[k]]).cropped(to: frameRect)
             }
-            frame = layer.composited(over: frame)
+            frame = item.blend == "screen" ? layer.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: frame]) : layer.composited(over: frame)
         } else if let shown = posed(index, k) {
-            frame = shown.composited(over: frame)
+            frame = item.blend == "screen" ? shown.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: frame]) : shown.composited(over: frame)
         }
     }
-    while !input.isReadyForMoreMediaData { usleep(200) }
+    while !input.isReadyForMoreMediaData {
+        if writer.status == .failed || writer.status == .cancelled { fail("Encoder stopped: \(String(describing: writer.error))") }
+        usleep(200)
+    }
     var buffer: CVPixelBuffer?
     guard let pool = adaptor.pixelBufferPool, CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let pixels = buffer else {
         fail("Ran out of frame memory.")

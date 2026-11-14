@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -54,23 +55,29 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.kind != 'video':
             found.add(f'{layer.kind} layers')
             continue
-        if layer.blend != 'normal':
+        if layer.blend not in ('normal', 'screen'):
             found.add(f'{layer.blend} blend')
         for clip in layer.items:
             if not clip.enabled:
                 continue
             data = clip.model_dump()
-            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name))
+            if clip.freeze is not None:
+                found.add('freeze')
+            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur'))
+            if clip.stabilise or clip.shape_mask:
+                found.add('stabilisation or shape mask')
             if clip.transition_in and clip.transition_in.kind not in TRANSITIONS:
                 found.add(f'{clip.transition_in.kind} transition')
             if clip.adjust.rotation or clip.adjust.flip_horizontal or clip.adjust.flip_vertical:
                 found.add('turn adjustments')
-            if clip.transform.rotation or clip.transform.tilt_x or clip.transform.tilt_y or set(clip.transform.keyframes) - {'x', 'y', 'scale', 'opacity'}:
+            if clip.transform.tilt_x or clip.transform.tilt_y or set(clip.transform.keyframes) - {'x', 'y', 'scale', 'opacity', 'rotation'}:
                 found.add('rotation and tilt')
             for move in (clip.enter, clip.exit):
                 if move and move.preset not in FADES:
                     found.add(f'{move.preset} animation')
             facts = media(clip.media_id)
+            if facts.is_hdr:
+                found.add('HDR tone mapping')
             if facts.media_type not in ('image', 'video'):
                 found.add(f'{facts.media_type} media')
             if getattr(facts, 'rotation', 0):
@@ -194,7 +201,7 @@ def _transition(transition, frames: int, height: int) -> dict:
     return {'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
-def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None) -> dict:
+def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:
     """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`."""
     fps = timeline.format.fps
     items = []
@@ -218,6 +225,21 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
                           'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
+            from app.services.gpu_masks import resolve
+            items[-1]['mask_path'] = resolve(clip, facts, masks)
+            items[-1]['blend'] = layer.blend
+            if clip.zoom_blur and clip.zoom_blur.intensity > 0:
+                effect = clip.zoom_blur
+                items[-1]['zoom_blur'] = {'scales': [round(1 + .22 * effect.intensity * k / 7, 6) for k in range(8)],
+                                         'x': effect.center_x, 'y': effect.center_y}
+            items[-1]['rotation'] = [value_at(clip.transform, 'rotation', (k - head) / fps) for k in range(base + head + tail)]
+            if clip.beat_pulse:
+                pulse = clip.beat_pulse
+                for k in range(base + head + tail):
+                    t = (k - head) / fps
+                    phase = max(0, t - pulse.offset) % (60 / pulse.bpm)
+                    amount = max(0, 1 - phase / .18) if t >= pulse.offset else 0
+                    items[-1]['scale'][k] *= 1 + pulse.size * pulse.strength * amount
             if head:
                 items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height)
     return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(timeline.duration * fps),
@@ -225,7 +247,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
 
 
 def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, on_progress: Callable[[int], None] = lambda _: None,
-           bitrate: int = 16_000_000, tool: Path | None = None) -> None:
+           bitrate: int = 16_000_000, tool: Path | None = None, masks=None, should_cancel=lambda: False) -> None:
     """A silent video of `timeline` drawn on the GPU. Raises ValueError naming what it cannot draw yet."""
     missing = unsupported(timeline, media)
     if missing:
@@ -235,21 +257,41 @@ def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path,
         tool = helper(SOURCE)
     import tempfile
     pictures = tempfile.TemporaryDirectory(prefix='.gpu-titles-', dir=output.parent)
-    work = plan(timeline, media, output, bitrate, Path(pictures.name))
+    work = plan(timeline, media, output, bitrate, Path(pictures.name), masks)
     plan_file = output.with_suffix('.plan.json')
     plan_file.write_text(json.dumps(work), encoding='utf-8')
+    process = None
+    errors = tempfile.TemporaryFile(mode='w+')
     try:
-        process = subprocess.Popen([str(tool), str(plan_file)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen([str(tool), str(plan_file)], stdout=subprocess.PIPE, stderr=errors, text=True)
+        from app.services.job_service import stop_process_when, JobCancelled
+        last_frame = [time.monotonic()]
+        stalled = [False]
+        def stop():
+            stalled[0] = time.monotonic() - last_frame[0] > 180
+            return should_cancel() or stalled[0]
+        stop_process_when(process, stop)
         assert process.stdout is not None
         for line in process.stdout:
             if line.startswith('frame '):
+                last_frame[0] = time.monotonic()
                 on_progress(min(99, int(int(line.split()[1]) / max(1, work['frames']) * 100)))
-        error = process.stderr.read() if process.stderr else ''
+        errors.seek(0)
+        error = errors.read()
         process.stdout.close()
         if process.stderr:
             process.stderr.close()
-        if process.wait() or not output.exists():
+        code = process.wait()
+        if should_cancel():
+            raise JobCancelled()
+        if stalled[0]:
+            raise RuntimeError('GPU renderer stopped reporting frames')
+        if code or not output.exists():
             raise RuntimeError(f'The GPU engine failed: {error.strip()[-500:]}')
     finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        errors.close()
         plan_file.unlink(missing_ok=True)
         pictures.cleanup()
