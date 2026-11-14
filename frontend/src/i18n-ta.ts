@@ -71,7 +71,7 @@ export const TAMIL: Record<string, string> = {
   'Advanced motion': 'மேம்பட்ட அசைவு', 'Animate position, size and more': 'இடம், அளவு போன்றவற்றை அசைவூட்டு',
   'One click moves the title the whole time it shows. Stand still stops it.': 'ஒரே சொடுக்கில் தலைப்பு முழு நேரமும் நகரும்.',
   'Fade': 'மங்கல்', 'Slide': 'சறுக்கு', 'Slide up': 'மேலே சறுக்கு', 'Slide down': 'கீழே சறுக்கு', 'Slide left': 'இடப்புறம் சறுக்கு', 'Slide right': 'வலப்புறம் சறுக்கு',
-  'Zoom': 'பெரிதாக்கு', 'Pop': 'துள்ளல்', 'Blur': 'மங்கல்', 'Bounce': 'குதி', 'Blast': 'வெடிப்பு', 'Magic form': 'மாய உருவாக்கம்', 'Magic vanish': 'மாய மறைவு', 'Particle form': 'துகள் உருவாக்கம்',
+  'Zoom': 'பெரிதாக்கு', 'Pop': 'துள்ளல்', 'Blur': 'மங்கல்', 'Bounce': 'குதி', 'Blast': 'வெடிப்பு', 'Magic form': 'மாய உருவாக்கம்', 'Magic vanish': 'மாய மறைவு', 'Particle form': 'துகள் உருவாக்கம்', 'Fly through': 'ஊடே பறத்தல்', 'Rapid zoom': 'வேகப் பெரிதாக்கம்',
   'Reveal': 'வெளிப்படுத்து', 'Soft edge': 'மென் விளிம்பு', 'Line': 'கோடு', 'Chromatic': 'நிறப்பிரிகை', 'Prism': 'பட்டகம்', 'Echo': 'எதிரொலி', 'Pop-up letters': 'துள்ளும் எழுத்துகள்',
   'Gravity': 'ஈர்ப்பு', 'Split': 'பிரி', 'Expand': 'விரி', 'Horizontal blur': 'கிடை மங்கல்', 'Ground rise': 'தரையிலிருந்து எழு', 'Push through': 'ஊடுருவு', 'Push in': 'உள்நோக்கி',
   'Pull out': 'வெளிநோக்கி', 'Drift': 'மிதவை', 'Drifting': 'மிதக்கும்', 'Flash': 'மின்னல்', 'Flashes': 'மின்னல்கள்',

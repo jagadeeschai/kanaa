@@ -1,6 +1,6 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
-  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways';
+  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
   | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right';
@@ -120,7 +120,7 @@ export function dipWeights(p: number): [number, number, number] {
   const q = 1 - p; const before = smooth(0.8, 1, q); const after = smooth(0.2, 1, q);
   return [q * before, (1 - q) * (1 - after), q * (1 - before) + (1 - q) * after];
 }
-const OPACITY_SPAN: Partial<Record<Preset, number>> = { fade: 1, zoom: 1, pop: 1 / 3, blur: 1, bounce: 1 / 3, blast: 0.22, 'magic-form': 0.7, 'magic-vanish': 0.8, 'particle-form': 0.9, 'rise-behind': 0.25, 'push-through': 0.35, chromatic: 0.4, prism: 0.4, echo: 0.5, 'blur-sideways': 0.6 };
+const OPACITY_SPAN: Partial<Record<Preset, number>> = { 'fly-through': 0.55, 'rapid-zoom': 0.15, fade: 1, zoom: 1, pop: 1 / 3, blur: 1, bounce: 1 / 3, blast: 0.22, 'magic-form': 0.7, 'magic-vanish': 0.8, 'particle-form': 0.9, 'rise-behind': 0.25, 'push-through': 0.35, chromatic: 0.4, prism: 0.4, echo: 0.5, 'blur-sideways': 0.6 };
 const SLIDES: Partial<Record<Preset, [number, number]>> = { 'slide-up': [0, 1], 'slide-down': [0, -1], 'slide-left': [1, 0], 'slide-right': [-1, 0] };
 export const LOOKS: Record<LookName, [number, number, number, number, number]> = { none: [1, 1, 1, 1, 1], warm: [1.08, 1, 0.9, 1.02, 1.05], cool: [0.92, 1, 1.1, 1.02, 1], mono: [1, 1, 1, 1.1, 0], vivid: [1, 1, 1, 1.1, 1.35], film: [1.03, 1, 0.96, 0.88, 0.85] };
 export const REST: Look = { dx: 0, dy: 0, scale: 1, opacity: 1, blur: 0 };
@@ -142,6 +142,10 @@ export function lookAt(preset: Preset, progress: number): Look {
   else if (preset === 'magic-form') { look.scale = 0.68 + 0.32 * e; look.blur = 0.035 * (1 - e); look.dy = 0.05 * Math.sin(16 * p) * (1 - p); }
   else if (preset === 'magic-vanish') { look.scale = 1.38 - 0.38 * e; look.blur = 0.04 * (1 - e); }
   else if (preset === 'particle-form') { look.scale = 0.9 + 0.1 * e; look.blur = 0.018 * (1 - e); }
+  // Fly through: the words rush at the camera and pass it (exit), or arrive from behind it (entrance). Capped at 5x, as in the export.
+  else if (preset === 'fly-through') { look.scale = 1 + 4 * (1 - p) ** 2; look.blur = 0.025 * (1 - p); }
+  // Rapid zoom: a crash zoom with a zoom blur that clears as it lands.
+  else if (preset === 'rapid-zoom') { look.scale = 1 + 1.4 * (1 - e); look.blur = 0.045 * (1 - e) ** 2; }
   // Cinema reveals, drawn through title3d.ts. Rise descends gently, then settles onto a floor plane instead of
   // standing upright; the smooth cubic has zero velocity at the landing, avoiding the old snap/flicker.
   else if (preset === 'rise-behind') { look.dy = -0.32 * (1 - e); look.tilt = 68 * e; }

@@ -8,7 +8,7 @@ MAX_BLUR = 0.03  # Of the frame height.
 # beat in both: one engine's 0.5 can be the other's 0.49999999 and show the end of the last beat instead.
 BEAT_SLACK = 1e-4
 # Opacity is always linear, so ffmpeg's fade filter can draw it exactly. The value is the share of the animation it takes.
-OPACITY_SPAN = {'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
+OPACITY_SPAN = {'fly-through': 0.55, 'rapid-zoom': 0.15, 'fade': 1, 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
                 'chromatic': .4, 'prism': .4, 'echo': .5, 'blur-sideways': .6}
 # Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
 PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways'}
@@ -84,6 +84,13 @@ def look_at(preset: str, p: float) -> dict[str, float]:
         look.update(scale=1.38 - .38 * e, blur=.04 * (1 - e))
     elif preset == 'particle-form':
         look.update(scale=.9 + .1 * e, blur=.018 * (1 - e))
+    # Fly through: the words rush at the camera and pass it (as an exit); as an entrance they arrive from behind it.
+    # Capped at 5x: the export scales the whole frame, and they are gone (opacity) well before that.
+    elif preset == 'fly-through':
+        look.update(scale=1 + 4 * (1 - p) ** 2, blur=.025 * (1 - p))
+    # Rapid zoom: a crash zoom, fast at first, with a zoom blur that clears as it lands.
+    elif preset == 'rapid-zoom':
+        look.update(scale=1 + 1.4 * (1 - e), blur=.045 * (1 - e) ** 2)
     # Cinema reveals, drawn through title3d. Rise descends gently and settles onto a floor plane; the cubic reaches
     # zero velocity at the landing, avoiding a visible snap between the last animated frame and the resting title.
     elif preset == 'rise-behind':
@@ -136,6 +143,10 @@ def scale_expression(preset: str, p: str) -> str | None:
         return f'(1.38-0.38*(1-pow(1-{p},3)))'
     if preset == 'particle-form':
         return f'(0.9+0.1*(1-pow(1-{p},3)))'
+    if preset == 'fly-through':
+        return f'(1+4*pow(1-{p},2))'
+    if preset == 'rapid-zoom':
+        return f'(1+1.4*pow(1-{p},3))'
     return None
 
 

@@ -297,7 +297,7 @@ def build_server(api: KanaaApi) -> MCPServer:
     def set_animation(project_id: int, item_id: str, enter: dict | None = None, exit: dict | None = None, clear: bool = False) -> dict:
         """How a clip or title comes in and goes out: {"preset": name, "duration": seconds 0.1-3}. Presets: fade,
         slide-up, slide-down, slide-left, slide-right, zoom, pop, blur, bounce; for titles also reveal, soft-edge, line,
-        chromatic, prism, echo, pop-letters, gravity, split, expand, blur-sideways, blast, magic-form, magic-vanish,
+        chromatic, prism, echo, pop-letters, gravity, split, expand, blur-sideways, blast, magic-form, magic-vanish, fly-through, rapid-zoom,
         particle-form, rise-behind, push-through, ground-rise. clear=true removes both."""
         before = timeline_of(project_id)
         after = copy.deepcopy(before)

@@ -567,6 +567,21 @@ class Animations(Clips):
                     self.assertAlmostEqual(x, 320 * (1 + 2 * look['dx']) - 0.5, delta=3)
                     self.assertAlmostEqual(y, 180 + 360 * look['dy'] - 0.5, delta=3)
 
+    def test_fly_through_and_rapid_zoom_grow_the_picture_as_the_math_says(self):
+        """Measured on the rendered frames: the white square's width follows each preset's scale, in and out."""
+        for preset in ('fly-through', 'rapid-zoom'):
+            for side in ('enter', 'exit'):
+                with self.subTest(preset=preset, side=side):
+                    target = self.render(self.timeline(**{side: {'preset': preset, 'duration': 1}}), f'{preset}-{side}.mp4')
+                    for frame_number in ((12, 24) if side == 'enter' else (36, 45)):
+                        p = frame_number / 30 if side == 'enter' else (60 - frame_number) / 30
+                        look = look_at(preset, p)
+                        frame = self.frame(target, frame_number, self.size())
+                        row = frame[180, :, 1] > 100
+                        if look['opacity'] < 0.5 or 80 * look['scale'] > 600:
+                            continue  # Faded, or wider than the frame: nothing to measure.
+                        self.assertAlmostEqual(row.sum(), 80 * look['scale'], delta=8 + 80 * look['scale'] * 0.08)
+
     def test_zoomed_clip_slides_in_as_a_cropped_frame(self):
         target = self.render(self.timeline(enter={'preset': 'slide-left', 'duration': 1}, transform={'scale': 2}))
         look = look_at('slide-left', 0.3)
