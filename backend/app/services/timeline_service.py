@@ -1125,13 +1125,20 @@ class Builder:
                 # Karaoke: one picture for each word sung so far, shown in turn, then posed and moved as one title.
                 states = karaoke_states(item)
                 listing = self.folder / f'text-{position}-{number}-karaoke.txt'
-                rows = []
+                # Each state starts on the first frame whose time has reached it (as the preview), so its length is whole frames.
+                # 'option framerate' stops each picture's reader from using its own 25 fps clock, which moved the times
+                # onto 1/25 s steps (0.3 s became 0.32 s, a frame late at 30 fps).
+                first = lambda seconds: math.ceil(seconds * fps - 1e-6)
+                rows, picture = [], image
                 for state, (start, end, lit) in enumerate(states):
+                    shown_frames = first(end) - first(start)
+                    if shown_frames <= 0:
+                        continue
                     picture = image if lit is None else self.folder / f'text-{position}-{number}-lit{state}.png'
                     if lit is not None:
                         render_text_image(item, self.fmt, picture, lit=lit)
-                    rows += [f"file '{picture.name}'", f'duration {end - start:.6f}']
-                rows.append(f"file '{(image if states[-1][2] is None else picture).name}'")  # The concat reader needs the last picture twice.
+                    rows += [f"file '{picture.name}'", f'option framerate {fps}', f'duration {shown_frames / fps:.6f}']
+                rows += [f"file '{picture.name}'", f'option framerate {fps}']  # The concat reader needs the last picture twice.
                 listing.write_text('\n'.join(rows) + '\n', encoding='utf-8')
                 index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
                 self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')

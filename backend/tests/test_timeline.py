@@ -1253,6 +1253,26 @@ class MovingTitles(Clips):
         self.assertTrue(0.35 < first < 0.55, f'only the first word lit: {first}')
         self.assertGreater(both, 0.55, 'then both')
 
+    def test_karaoke_words_light_on_the_same_frame_as_the_preview(self):
+        image = self.root / 'grey.png'
+        Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
+        self.facts[50] = MediaFacts(path=image, media_type='image', width=640, height=360)
+        # The preview lights a word once the title's own time reaches it: at 30 fps, frame 9 of the title for 0.3 s.
+        words = [0.3, 1.2, 2.1, 3.0]
+        title = {'id': 't', 'start': 1.0, 'length': 3.5, 'text': 'III III III III', 'style': 'shadow', 'position': 'center', 'size': 60, 'color': '#ffffff',
+                 'karaoke': {'color': '#0000ff', 'words': words}}
+        data = {'format': {'width': 640, 'height': 360, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': [{'id': 'a', 'media_id': 50, 'start': 0, 'in': 0, 'out': 5}]}, {'id': 'words', 'kind': 'text', 'items': [title]}]}
+        path = self.render(data, 'karaoke-frames.mp4')
+
+        def blue_edge(number):
+            frame = self.frame(path, number, (640, 360)).astype(int)
+            columns = np.nonzero(((frame[:, :, 2] > 150) & (frame[:, :, 0] < 120)).any(axis=0))[0]
+            return 0 if not len(columns) else int(columns.max())
+        for word, at in enumerate(words):
+            lit = 30 + math.ceil(at * 30 - 1e-9)
+            before, after = blue_edge(lit - 1), blue_edge(lit)
+            self.assertGreater(after, before + 20, f'word {word + 1} lights on frame {lit}, not later ({before} -> {after})')
+
     def test_karaoke_also_lights_words_on_solid_3d_letters(self):
         image = self.root / 'grey.png'
         Image.new('RGB', (640, 360), (40, 40, 40)).save(image)
