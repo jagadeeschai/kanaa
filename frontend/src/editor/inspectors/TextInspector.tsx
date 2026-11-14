@@ -87,7 +87,7 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
       <AnimationPicker label="Exit" presets={SIMPLE_TITLE_PRESETS} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onExit}/>
     </Group>
     <Group title="Cinematic reveal" tab="motion" startOpen keywords="cinema reveal behind 3d rise push pass uncover film title depth ground skyline people front space flicker" tip="How the title appears, and what passes in front of it." help="cinema-titles">
-      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
+      <CinemaPicker initial={text.enter?.preset === 'push-through' ? 'push' : text.enter?.preset === 'rise-behind' || text.enter?.preset === 'ground-rise' ? 'rise' : text.depth || text.pin || (cover && cover !== 'front') ? 'pass' : 'none'} cover={cover} shapingMode={shapingMode} onClear={onCinemaClear} onFront={onCinemaFront} onPick={onCinema} onShape={onBehindShape}/>
       {(cover === 'people' || cover === 'object') && <>
         <h3 className="ed-sub">3 · Space around them</h3>
         <Chips label="Space around them" options={[{ id: 'none' as const, label: 'None' }, { id: 'close' as const, label: 'Close' }, { id: 'comfortable' as const, label: 'Comfortable' }, { id: 'wide' as const, label: 'Wide' }]} value={titleSpaceOf(groundGap)} onPick={(space) => onGroundGap(TITLE_SPACE[space])}/>

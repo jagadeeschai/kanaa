@@ -464,3 +464,8 @@
 /* Save as my style: a small, quiet button at the end of Layout and look, that says it saved. */
 .ed-save-style{display:flex;justify-content:flex-end;margin-top:10px}.ed-save-style .ed-button{height:26px;padding:0 10px;font-size:11.5px;gap:5px;background:none;box-shadow:inset 0 0 0 1px var(--hairline);color:var(--text-2)}
 .ed-save-style .ed-button:hover{color:var(--text);box-shadow:inset 0 0 0 1px var(--text-2)}.ed-save-style .ed-button.done{color:var(--selected-text);background:var(--selected-bg);box-shadow:none}
+
+/* Drawing what stays in front of a title: a bar of plain buttons under the preview picture. */
+.ed-shape-bar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:4;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:#000000c4;color:#fff;font-size:12px;box-shadow:0 4px 16px #0006;max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center}
+.ed-shape-bar span{padding:0 6px}.ed-shape-bar .ed-button{background:#ffffff1f;color:#fff;box-shadow:none}.ed-shape-bar .ed-button.primary{background:var(--accent);color:#fff}.ed-shape-bar .ed-button:disabled{opacity:.45}
+.ed-shape circle{cursor:grab}
