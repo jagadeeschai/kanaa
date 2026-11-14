@@ -141,6 +141,24 @@ class FrameRates(Clips):
             self.assertEqual(stream['r_frame_rate'], f'{fps}/1', fps)
             self.assertEqual(self.frame_count(path), 2 * fps, fps)
 
+    def test_short_clips_start_on_their_own_frame_without_drifting(self):
+        # 0.36 s clips are 11 frames each at 30 fps, but their rounded starts are only 10-11 frames apart, so a clip
+        # overlaps the last one by a frame now and then. Each must still start on round(start * fps), as the preview.
+        colours = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255), (255, 255, 255), (255, 128, 0)]
+        items = []
+        for number, colour in enumerate(colours):
+            image = self.root / f'drift-{number}.png'
+            Image.new('RGB', (320, 180), colour).save(image)
+            self.facts[70 + number] = MediaFacts(path=image, media_type='image', width=320, height=180)
+            items.append({'id': f'c{number}', 'media_id': 70 + number, 'start': round(number * 0.36, 6), 'in': 0, 'out': 0.36})
+        data = {'format': {'width': 426, 'height': 240, 'fps': 30}, 'layers': [{'id': 'main', 'kind': 'video', 'items': items}]}
+        path = self.render(data, 'drift.mp4')
+        for number, colour in enumerate(colours):
+            first = round(number * 0.36 * 30)
+            got = self.frame(path, first, (426, 240))[120, 213]
+            self.assertLess(np.abs(got - colour).max(), 40, f'clip {number + 1} shows on its own first frame {first}: {got}')
+        self.assertEqual(self.frame_count(path), round(len(colours) * 0.36 * 30))
+
 class Join(Clips):
     FORMAT = {'width': 1280, 'height': 720, 'fps': 30}
 

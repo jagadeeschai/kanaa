@@ -904,6 +904,7 @@ class Builder:
         fps = self.fmt.fps
         halves = self.transition_frames(clips)
         segments: list[str] = []
+        lengths: list[int] = []  # Frames in each segment, so the last one can be cut short.
         cursor = 0  # In frames, so rounding can't accumulate down a long timeline.
         joined_label, joined_frames = None, 0
         for number, clip in enumerate(clips):
@@ -927,13 +928,23 @@ class Builder:
             if not head:
                 if joined_label:
                     segments.append(f'[{joined_label}]')
+                    lengths.append(joined_frames)
                     joined_label = None
                 start = round(clip.start * fps)
                 if start > cursor:
                     label = f'gap{position}_{number}'
                     self.transparent_gap(label, start - cursor)
                     segments.append(f'[{label}]')
+                    lengths.append(start - cursor)
                     cursor = start
+                elif start < cursor and segments:
+                    # Rounding put this clip's start a frame or two before the last one's end: it starts at its own time
+                    # and the last one is cut short (as the preview and the GPU engine draw it), so no drift builds up.
+                    over = min(cursor - start, lengths[-1] - 1)
+                    label = f'cut{position}_{number}'
+                    self.graph.append(f'{segments[-1]}trim=end_frame={lengths[-1] - over},setpts=PTS-STARTPTS[{label}]')
+                    segments[-1], lengths[-1] = f'[{label}]', lengths[-1] - over
+                    cursor -= over
             base_frames = self.frames(clip.length)
             frames = base_frames + head + tail
             # The extra frames come from the source when it has them. Otherwise the first or last frame is held.
@@ -989,14 +1000,17 @@ class Builder:
                 joined_label, joined_frames = shown, frames
             else:
                 segments.append(f'[{shown}]')
+                lengths.append(frames)
             cursor += base_frames
             self.add_clip_audio(clip, sound_facts, layer.muted)
         if joined_label:
             segments.append(f'[{joined_label}]')
+            lengths.append(joined_frames)
         if cursor < self.total_frames:
             label = f'gap{position}_end'
             self.transparent_gap(label, self.total_frames - cursor)
             segments.append(f'[{label}]')
+            lengths.append(self.total_frames - cursor)
         joined = f'layer{position}'
         self.graph.append(f"{''.join(segments)}concat=n={len(segments)}:v=1:a=0[{joined}]")
         if layer.blend != 'normal':
