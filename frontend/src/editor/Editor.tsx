@@ -75,7 +75,7 @@ import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } 
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
-import { dateWords, defocusBox, ENGLISH_FONTS, isDateTemplate, lookOf, MAX_SAVED, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
+import { dateWords, defocusBox, ENGLISH_FONTS, fromTemplate, isDateTemplate, lookOf, MAX_SAVED, motionOf, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
@@ -1148,7 +1148,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
   };
   const saveStyle = (text: TextItem) => {
-    const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text) };
+    const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text), motion: motionOf(text) };
     const next = [style, ...myStyles].slice(0, MAX_SAVED);
     setMyStyles(next); saveStyles(next);
   };
@@ -1165,7 +1165,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (!recorded) setError(under ? 'This clip doesn\'t say when it was filmed, so the title shows today\'s date. Type the right one.' : 'No clip here, so the title shows today\'s date.');
     }
     const current = timelineRef.current ?? timeline;
-    const text: TextItem = { ...title.look, ...dated, ...(words ? { text: words, subtitle: '' } : {}), id: newId(), start: Math.round(at * 1000) / 1000, length: TEXT_SECONDS };
+    const text: TextItem = { ...fromTemplate(title, newId(), Math.round(at * 1000) / 1000, TEXT_SECONDS), ...dated, ...(words ? { text: words, subtitle: '' } : {}) };
     let next = addText(current, text, newId());
     // Pull focus: the picture behind softens while the title sharpens.
     if (title.extra?.defocus) next = addBlur(next, defocusBox(newId(), text.start, text.length, text.enter?.duration ?? 1, text.exit?.duration ?? 0.6), newId());

@@ -5,7 +5,10 @@ export type TitleLook = Omit<TextItem, 'id' | 'start' | 'length' | 'transform'>;
 /** What else a template brings: an effect laid over the video for the title's length (effect_service.py ids), or the
  * picture behind softening while the title sharpens (a full-frame blur box fading in). */
 export type TemplateExtra = { effect?: string; defocus?: boolean };
-export type Template = { id: string; label: string; look: TitleLook; extra?: TemplateExtra };
+/** A saved title's own movement: where it sits, its keyframed moves (in the title's own seconds, so they work at any
+ * point of any video) and how long it shows. Built-in templates have none and use the defaults. */
+export type TitleMotion = { transform: TextItem['transform']; length: number };
+export type Template = { id: string; label: string; look: TitleLook; extra?: TemplateExtra; motion?: TitleMotion };
 
 const fade = (duration: number) => ({ preset: 'fade' as const, duration });
 
@@ -62,6 +65,18 @@ export const TEMPLATES: Template[] = [
   { id: 'date', label: 'Date', look: { design: 'corners', font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'The date', subtitle: 'The day', style: 'shadow', position: 'center', color: '#ffffff', size: 40, enter: fade(0.5), exit: fade(0.5) } },
   { id: 'date-tamil', label: 'Date in Tamil', look: { design: 'corners', font: 'DIN Condensed', tamil_font: 'Catamaran', text: 'தேதி', subtitle: 'நாள்', style: 'shadow', position: 'center', color: '#ffffff', size: 40, enter: fade(0.5), exit: fade(0.5) } },
 ];
+
+/** A title's movement, for saving with its look: so a title designed in one project comes back in the next moving the
+ * same way, with only its words new. */
+export function motionOf(text: TextItem): TitleMotion {
+  return { transform: text.transform ? JSON.parse(JSON.stringify(text.transform)) : text.transform, length: text.length };
+}
+
+/** A new title from a template at `start`: its look, and its own movement and length when it was saved with them. */
+export function fromTemplate(template: Template, id: string, start: number, defaultLength: number): TextItem {
+  const motion = template.motion && template.motion.length > 0 ? template.motion : null;
+  return { ...template.look, id, start, length: motion ? motion.length : defaultLength, ...(motion?.transform ? { transform: JSON.parse(JSON.stringify(motion.transform)) } : {}) } as TextItem;
+}
 
 /** The parts of a title that make its look, for saving as a style. Words and timing stay behind. */
 export function lookOf(text: TextItem): TitleLook {
