@@ -63,10 +63,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name))
             if clip.transition_in and clip.transition_in.kind not in TRANSITIONS:
                 found.add(f'{clip.transition_in.kind} transition')
-            if clip.look != 'none':
-                found.add('looks')
-            if clip.adjust.model_dump() != DEFAULT_ADJUST:
-                found.add('colour and turn adjustments')
+            if clip.adjust.rotation or clip.adjust.flip_horizontal or clip.adjust.flip_vertical:
+                found.add('turn adjustments')
             if clip.transform.rotation or clip.transform.tilt_x or clip.transform.tilt_y or set(clip.transform.keyframes) - {'x', 'y', 'scale', 'opacity'}:
                 found.add('rotation and tilt')
             for move in (clip.enter, clip.exit):
@@ -78,6 +76,18 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             if getattr(facts, 'rotation', 0):
                 found.add('rotated phone video')
     return sorted(found)
+
+
+def colour_constants(adjust, look: str) -> dict:
+    """The reference picture_filters constants, rounded at the same filter boundary."""
+    from app.services.animation import LOOKS
+    r, g, b, contrast, saturation = LOOKS[look]
+    rounded = lambda v: round(v, 5)
+    return {'tint': [rounded(r * adjust.brightness * adjust.temperature),
+                     rounded(g * adjust.brightness * adjust.tint),
+                     rounded(b * adjust.brightness * (2 - adjust.temperature))],
+            'power': rounded(1 / adjust.gamma), 'fade': rounded(adjust.fade),
+            'contrast': rounded(contrast * adjust.contrast), 'saturation': rounded(saturation * adjust.saturation)}
 
 
 def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead: int = 0) -> dict:
@@ -180,7 +190,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': round(clip.start * fps) - head, 'frames': base + head + tail,
-                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed,
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             if head:
                 items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height)

@@ -11,6 +11,7 @@ import Foundation
 import Metal
 
 struct Item: Decodable {
+    let colour: Colour?
     let kind: String  // "image" or "video"
     let path: String
     let paths: [String]?  // An image item that changes picture (a karaoke title): the pictures, and which one each frame shows.
@@ -25,6 +26,28 @@ struct Item: Decodable {
     let opacity: [Double]
     let transition: Transition?  // Mixes this item with the one before it (same layer) over its first frames.
 }
+
+struct Colour: Decodable {
+    let tint: [Double]
+    let power: Double
+    let fade: Double
+    let contrast: Double
+    let saturation: Double
+}
+
+// Same RGB order as picture_filters. Round at the 8-bit intermediate filter boundaries.
+let colourKernel = CIColorKernel(source: """
+kernel vec4 grade(__sample s, vec3 tint, float power, float fade, float contrast, float saturation) {
+    vec3 c = s.a > 0.0 ? s.rgb / s.a : vec3(0.0);
+    c = floor(clamp(c * tint, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+    c = floor(pow(c, vec3(power)) * 255.0) / 255.0;
+    c = floor((c * (1.0 - fade) + fade) * 255.0) / 255.0;
+    c = floor(clamp((c - 0.5) * contrast + 0.5, 0.0, 1.0) * 255.0) / 255.0;
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = clamp(mix(vec3(luma), c, saturation), 0.0, 1.0);
+    return vec4(c * s.a, s.a);
+}
+""")!
 
 struct Transition: Decodable {
     let frames: Int
@@ -149,6 +172,9 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
         picture = videos[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed)
     }
     guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
+    if let c = item.colour, c.tint != [1, 1, 1] || c.power != 1 || c.fade != 0 || c.contrast != 1 || c.saturation != 1 {
+        shown = colourKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: c.tint[0], y: c.tint[1], z: c.tint[2]), c.power, c.fade, c.contrast, c.saturation])!
+    }
     let e = shown.extent
     let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]
     shown = shown.transformed(by: CGAffineTransform(translationX: -e.midX, y: -e.midY))

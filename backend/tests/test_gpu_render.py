@@ -48,9 +48,21 @@ class Accepts(unittest.TestCase):
     def test_moves_size_opacity_and_fades_are_drawn(self):
         self.assertEqual(gpu_render.unsupported(timeline(), self.facts), [])
 
+    def test_colour_plan_combines_look_and_adjustments_before_pose(self):
+        work = timeline(look='warm', adjust={'brightness': 1.1, 'temperature': 1.2, 'tint': .9, 'gamma': 2, 'fade': .1})
+        with mock.patch('app.services.timeline_service.render_text_image'):
+            item = gpu_render.plan(work, self.facts, Path('out.mp4'), 1, Path('/tmp'))['items'][0]
+        self.assertEqual(item['colour']['tint'], [1.4256, .99, .792])
+        self.assertEqual(item['colour']['power'], .5)
+        self.assertEqual(item['colour']['fade'], .1)
+        self.assertEqual(gpu_render.unsupported(work, self.facts), [])
+
+    def test_turns_remain_unsupported(self):
+        self.assertIn('turn adjustments', gpu_render.unsupported(timeline(adjust={'flip_horizontal': True}), self.facts))
+
     def test_anything_else_is_named_so_ffmpeg_keeps_it(self):
         missing = gpu_render.unsupported(timeline(look='warm', transition_in={'kind': 'zoom', 'duration': 0.6}), self.facts)
-        self.assertEqual(missing, ['looks', 'zoom transition'])
+        self.assertEqual(missing, ['zoom transition'])
 
     def test_a_transition_is_centred_on_the_cut(self):
         with mock.patch('app.services.timeline_service.render_text_image'):
@@ -115,7 +127,8 @@ class MatchesFfmpeg(unittest.TestCase):
             print('kept', cls.root)
 
     def test_same_picture_and_faster(self):
-        work = timeline(int(os.environ.get('GPU_BENCH_SECONDS', '30')))
+        work = timeline(int(os.environ.get('GPU_BENCH_SECONDS', '30')), look='warm',
+                        adjust={'brightness': 1.03, 'gamma': 1.1, 'fade': 0.03, 'contrast': 1.04, 'saturation': 1.08, 'temperature': 1.02, 'tint': 0.98})
         ffmpeg_out, gpu_out = self.root / 'ffmpeg.mp4', self.root / 'gpu.mp4'
         began = time.monotonic()
         with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0'}):
