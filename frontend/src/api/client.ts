@@ -162,3 +162,6 @@ export const getSurface = (id: number, body: { t: number; x: number; y: number; 
 export const startDepthMotion = (id: number, seconds: number, move: 'push' | 'drift' | 'rise' = 'push') => requestJson<{ status: 'ready' | 'preparing'; output_photo_id?: number; job_id?: string }>(`/api/photos/${id}/depth-motion`, { method: 'POST', body: JSON.stringify({ seconds, move }) });
 /** The animated brand intro for a logo, at the video's size: ready (media_id) or a job whose result has media_id. */
 export const startBrandIntro = (logoMediaId: number, width: number, height: number, tamil?: string, english?: string) => requestJson<{ status: 'ready' | 'preparing'; media_id?: number; job_id?: string }>('/api/brand-intro', { method: 'POST', body: JSON.stringify({ logo_media_id: logoMediaId, width, height, ...(tamil !== undefined ? { tamil } : {}), ...(english !== undefined ? { english } : {}) }) });
+/** Edit with AI: redraws a picture from a typed request; the job's result names the new picture (the original stays). */
+export const startAiEdit = (id: number, prompt: string, quality: 'low' | 'medium' | 'high' = 'medium') =>
+  requestJson<{ job_id: string }>(`/api/photos/${id}/ai-edit`, { method: 'POST', body: JSON.stringify({ prompt, quality }) });

@@ -29,6 +29,12 @@ export const TAMIL: Record<string, string> = {
 
   'Skimming on: the preview shows where the mouse is over the timeline': 'மேலோட்டம் இயக்கத்தில்: காலவரிசையில் சுட்டி இருக்கும் இடத்தை முன்னோட்டம் காட்டும்', 'Skimming off': 'மேலோட்டம் அணைப்பில்',
 
+  'Edit with AI': 'AI மூலம் திருத்து', 'Edit with AI…': 'AI மூலம் திருத்து…', 'With AI': 'AI உடன்', 'Drawing…': 'வரைகிறது…',
+  'The edited picture shows here': 'திருத்திய படம் இங்கே தெரியும்', 'Say what to change, e.g. make it a golden sunset': 'என்ன மாற்ற வேண்டும் என்று சொல்லுங்கள், எ.கா. பொன்னிற அந்தி வானமாக்கு',
+  'Make it a golden sunset': 'பொன்னிற அந்தி வானமாக்கு', 'Rainy evening with soft lights': 'மென்விளக்குகளுடன் மழை மாலை', 'Add a temple in the distance': 'தொலைவில் ஒரு கோயிலைச் சேர்', 'Turn it into a painting': 'ஓவியமாக மாற்று',
+  'Your picture and request are sent to the AI service in AI settings. The original stays as it is.': 'உங்கள் படமும் கோரிக்கையும் AI அமைப்புகளில் உள்ள AI சேவைக்கு அனுப்பப்படும். மூலப் படம் அப்படியே இருக்கும்.',
+  'Replace in timeline': 'காலவரிசையில் மாற்று', 'Edit picture': 'படத்தைத் திருத்து', 'Keep both': 'இரண்டையும் வைத்திரு',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

@@ -133,3 +133,18 @@ def translate_lines(data: TranslateRequest):
 @router.post('/ai/describe')
 def describe_video(data: DescribeRequest):
     return _ai(lambda: edit_plan_service.describe(data.project, data.language))
+
+
+class AIEditRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=1500)
+    quality: Literal['low', 'medium', 'high'] = 'medium'
+
+
+@router.post('/photos/{identifier}/ai-edit')
+def ai_edit(identifier: int, data: AIEditRequest):
+    """Edit with AI: one job that redraws the picture from the request; its result names the new picture."""
+    from app.services.ai_image_edit import start_edit
+    try:
+        return {'job_id': start_edit(identifier, data.prompt, data.quality)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

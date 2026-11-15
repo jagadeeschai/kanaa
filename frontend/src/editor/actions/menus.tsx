@@ -1,4 +1,5 @@
 import { openPanelTab } from "../layout";
+import { openAiEdit } from "../AiEditDialog";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
@@ -146,6 +147,7 @@ export function createEditorMenuActions(getInput: () => Input) {
     // Animate: unlocks the frame and opens Motion, in one step.
     if (clip) items.push({ label: clip.frame_locked ? 'Unlock frame and animate' : 'Animate', onSelect: () => { if (clip.frame_locked) change(updateClip(timeline, id, { frame_locked: false })); setSelectedId(id); openPanelTab('clip', 'motion'); } });
     if (clip && !clip.frame_locked) items.push({ label: 'Lock frame', onSelect: () => change(updateClip(timeline, id, { frame_locked: true })) });
+    if (clip && clipItem?.media_type === 'image') items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) });
     if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
     if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
     // The tools that study the picture (and take a while) sit together under Smart tools.

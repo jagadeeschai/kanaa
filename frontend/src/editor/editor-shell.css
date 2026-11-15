@@ -486,3 +486,14 @@
 .ed-wheel svg{border-radius:50%;cursor:crosshair;touch-action:none;background:radial-gradient(circle,#8a8a8a 0,rgba(138,138,138,0) 70%),conic-gradient(from 90deg,#f44,#f4f,#44f,#4ff,#4f4,#ff4,#f44);box-shadow:inset 0 0 0 1px var(--hairline)}
 /* Slip and roll: the new in and out frames while dragging. */
 .tl-trim-note{position:absolute;z-index:6;pointer-events:none;padding:3px 8px;border-radius:6px;background:var(--panel);color:var(--text);box-shadow:var(--shade3);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Edit with AI: the picture now and the AI's, side by side, then what to do with it. */
+.ed-ai-edit{width:min(720px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px}
+.ed-ai-edit h2{display:flex;align-items:center;gap:6px;margin:0;font-size:15px}
+.ed-ai-edit-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ed-ai-edit-pair figure{margin:0;display:flex;flex-direction:column;gap:4px}
+.ed-ai-edit-pair img,.ed-ai-edit-wait{width:100%;aspect-ratio:16/10;object-fit:contain;border-radius:8px;background:var(--well)}
+.ed-ai-edit-wait{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text-2);font-size:12px;text-align:center;padding:8px}
+.ed-ai-edit-pair figcaption{font-size:11px;color:var(--text-2)}
+.ed-ai-edit textarea{width:100%;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--hairline);background:var(--well);color:var(--text)}
+.ed-ai-edit-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.ed-ai-edit-modal{position:fixed;inset:0;z-index:60}
