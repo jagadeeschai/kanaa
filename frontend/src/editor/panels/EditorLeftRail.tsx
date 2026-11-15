@@ -1,3 +1,4 @@
+import { MediaTabSection1, MediaTabSection2 } from './tabs/MediaTab';
 import { useEditorPanel } from '../state/EditorContext';
 import type { ActiveEffect } from '../../timeline/effects';
 import type { Layout } from '../layout';
@@ -167,24 +168,7 @@ export function EditorLeftRail() {
         <div className="ed-rail-tabs" role="group" aria-label="Add to your video"><button className={`ed-rail-back ${saved === 'failed' ? 'failed' : ''}`} onClick={() => { void closeEditor(); }} aria-label={t('Back to projects')} data-tip={`${t('Back to projects')} · ${projectName} · ${t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}`}><ArrowLeft size={17}/></button><span className="ed-rail-divider" role="separator"/>{(layout.simple ? LEFT_TABS.filter((tab) => LITE_TABS.has(tab)) : LEFT_TABS).map((tab, index) => { const on = panelOpen && leftTab === tab; return <Fragment key={tab}>{index > 0 && RAIL_BREAK_BEFORE.has(tab) && <span className="ed-rail-divider" role="separator"/>}<button className={on ? 'on' : ''} aria-pressed={on} aria-label={t(LEFT_TAB_LABELS[tab])} data-tip={t(TAB_TIPS[tab])} onClick={() => { if (panelOpen && leftTab === tab) setPanelOpen(false); else { setLeftTab(tab); setPanelOpen(true); } }}>{TAB_ICONS[tab]}</button></Fragment>; })}{layout.simple && <button className="ed-rail-pro" onClick={() => updateLayout({ simple: false })} aria-label={t('More tools in Pro')} data-tip={t('Switch to Pro for transitions, effects, words and Ask AI')}><Sparkles size={15}/></button>}
 </div>
         {panelOpen && <div className="ed-panel-content">
-        {leftTab === 'media' && <>
-          <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
-          <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
-          {folders.length > 0 && (() => {
-            // One picker, however many folders there are: this video's own folder first, then the rest A to Z, each with its count.
-            const own = projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim();
-            const count = (name: string) => media.filter((item) => item.folder === name).length;
-            const ordered = [...folders].sort((x, y) => (x === own ? -1 : y === own ? 1 : x.localeCompare(y)));
-            return <label className="ed-folder-pick" data-keep-panel><span>{t('Folder')}</span><KanaaSelect aria-label={t('Folder')} searchable searchPlaceholder={t('Search folders')} value={folder ?? ''} onChange={(event) => setFolder(event.target.value || null)}>
-              <option value="">{t('All media')} ({media.length})</option>
-              {ordered.map((name) => <option key={name} value={name}>{name === own ? `★ ${name}` : name} ({count(name)})</option>)}
-            </KanaaSelect></label>;
-          })()}
-          {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
-            <button className="ed-tile-add" {...draggableAs({ kind: 'media', id: item.id })} onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}, or drag it onto the timeline. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
-            {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
-            <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
-        </>}
+        <MediaTabSection1/>
         {leftTab === 'words' && <div data-keep-panel><WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
           busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
           onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/></div>}
@@ -248,15 +232,7 @@ export function EditorLeftRail() {
             }
           </div>; })}
         </section>}
-        {leftTab === 'media' && timeline && <section className="ed-add ed-effect-tool" data-keep-panel><button className="ed-effect-category-head" aria-expanded={Boolean(effectNeedle) || effectSection === 'travel-map'} onClick={() => { if (!effectNeedle) setEffectSection(effectSection === 'travel-map' ? null : 'travel-map'); }}><span><b>Travel map</b><small>Animated route between places</small></span>{Boolean(effectNeedle) || effectSection === 'travel-map' ? <Minus size={14}/> : <Plus size={14}/>}</button>{(Boolean(effectNeedle) || effectSection === 'travel-map') && <TravelMapPanel compact format={timeline.format} onMade={async (mediaId) => {
-          const item = await getPhoto(mediaId);
-          setMedia((current) => [item, ...current.filter((each) => each.id !== item.id)]);
-          const current = timelineRef.current;
-          if (!current) return;
-          const clip = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());
-          change(dropClip(current, clip, engineRef.current?.currentTime ?? 0));
-          setSelectedId(clip.id);
-        }}/>}</section>}
+        <MediaTabSection2/>
         {leftTab === 'effects' && (!effectNeedle || matchingOverlayEffects.length > 0 || 'thunder weather sound'.includes(effectNeedle)) && <section className="ed-add" aria-label="Special effects">
           <h3>Add an overlay</h3><p className="ed-tip">Effects sit above your video as layers. Click to add at the playhead, or drag onto the timeline.</p>
           {(['weather', 'celebration', 'wedding', 'festival', 'travel', 'vlog'] as const).map((mood) => { const group = matchingOverlayEffects.filter((effect) => effect.mood === mood); const thunderMatches = mood === 'weather' && (!effectNeedle || 'thunder weather sound'.includes(effectNeedle)); const label = { weather: 'Weather', celebration: 'Celebration', wedding: 'Wedding', festival: 'Festival', travel: 'Travel', vlog: 'Vlog and film' }[mood]; const section = `overlay-${mood}`; const open = Boolean(effectNeedle) || effectSection === section; return (group.length > 0 || thunderMatches) && <div key={mood} className="ed-effect-category">
