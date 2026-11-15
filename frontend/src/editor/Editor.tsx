@@ -1,3 +1,4 @@
+import { FollowPanel } from './preview/FollowPanel';
 import { SoundInspector } from './inspectors/SoundInspector';
 import { TopSettings } from './TopSettings';
 import { FormatDialog } from './dialogs/FormatDialog';
@@ -2626,25 +2627,6 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
 }
 
 const SHORTCUTS: [string, string][] = [['⌘K', 'Find any action or setting'], ['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['⌘C / ⌘X / ⌘V', 'Copy, cut, paste at the playhead'], ['⌘D', 'Duplicate'], ['⌥⌘C / ⌥⌘V', 'Copy style, paste style'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
-
-
-
-
-function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onSize, onStart, onDraw, onContinue, onCancel, onStop }: { blur: boolean; own: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
-  onSize: (on: boolean) => void; onStart: () => void; onDraw: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
-  if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">{job.queued ? 'Waiting for the job ahead of it to finish…' : `Following… ${job.progress}%`}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
-  const what = blur ? 'the blur' : 'it';
-  return <>
-    <p className="ed-tip">{drawing ? 'Drag a box around it in the preview. Esc cancels.' : own ? `Put ${what} over what should be followed, a face or a number plate, then click Follow. Kanaa keeps ${what} on it as it moves.` : 'Place the title where it should sit, then click Follow and drag a box around the person or thing it should move with.'}</p>
-    <button className={`ed-button wide primary ${drawing ? 'on' : ''}`} disabled={busy} onClick={onStart}><Crosshair size={14}/>{own ? (following ? 'Follow again from here' : 'Follow') : following ? 'Track a different subject' : 'Track person or object'}</button>
-    {following && <div className="ed-pair"><button className="ed-button" disabled={busy} onClick={onContinue}>Continue from here</button><button className="ed-button" disabled={busy} onClick={onStop}>Stop following</button></div>}
-    {note && <p className="ed-tip ed-follow-note" role="status">{note}</p>}
-    <More>
-      <label className="ed-check"><input type="checkbox" checked={size} onChange={(event) => onSize(event.target.checked)}/><span>Follow its size too<small>Grows and shrinks as the subject comes closer or moves away.</small></span></label>
-      {own && <button className="ed-button wide" disabled={busy} onClick={onDraw}>Draw around something else</button>}
-    </More>
-  </>;
-}
 
 function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll }: { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void }) {
   const [draft, setDraft] = useState(captionText(caption));
