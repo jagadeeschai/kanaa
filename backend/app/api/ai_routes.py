@@ -148,3 +148,42 @@ def ai_edit(identifier: int, data: AIEditRequest):
         return {'job_id': start_edit(identifier, data.prompt, data.quality)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+class VideoAISettingsUpdate(BaseModel):
+    provider: Literal['atlas', 'openai'] = 'atlas'
+    base_url: str = Field(max_length=500)
+    model: str = Field(min_length=1, max_length=120)
+    resolution: Literal['480p', '720p', '1080p'] = '720p'
+    api_key: str | None = Field(default=None, max_length=500)
+    clear_key: bool = False
+
+
+@router.get('/video-ai-settings')
+def get_video_settings():
+    from app.services.ai_video import public_settings as video_public
+    return video_public()
+
+
+@router.put('/video-ai-settings')
+def update_video_settings(data: VideoAISettingsUpdate):
+    from app.services.ai_video import save_settings as video_save
+    try:
+        return video_save(data.provider, data.base_url, data.model, data.resolution, data.api_key, data.clear_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class BringToLifeRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=1500)
+    seconds: int = Field(default=5, ge=5, le=15)
+
+
+@router.post('/photos/{identifier}/bring-to-life')
+def bring_to_life(identifier: int, data: BringToLifeRequest):
+    """One job that makes the picture a few seconds of video; its result names the new video."""
+    from app.services.ai_video import start
+    try:
+        return {'job_id': start(identifier, data.prompt, data.seconds)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

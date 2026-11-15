@@ -3,6 +3,7 @@
  * by side, then put it in the clip's place, try again, or keep both. The original picture is never changed.
  */
 import { useContext, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { LoaderCircle, Sparkles } from 'lucide-react';
 import { getPhoto, photoThumbUrl, startAiEdit, waitForJob } from '../api/client';
 import { findClip, updateClip } from '../timeline/model';
@@ -48,7 +49,8 @@ export function AiEditHost() {
     store.change(updateClip(timeline, target.clipId, { media_id: result }));
     setTarget(null);
   };
-  return <div className="ed-modal ed-ai-edit-modal" role="dialog" aria-modal="true" aria-label={t('Edit with AI')} onClick={close}>
+  // Drawn at the editor's top (not inside the preview), so it sits above the timeline at every width.
+  return createPortal(<div className="ed-modal ed-ai-edit-modal" role="dialog" aria-modal="true" aria-label={t('Edit with AI')} onClick={close}>
     <div className="ed-card ed-ai-edit" onClick={(event) => event.stopPropagation()}>
       <h2><Sparkles size={16}/> {t('Edit with AI')}</h2>
       <div className="ed-ai-edit-pair">
@@ -67,5 +69,5 @@ export function AiEditHost() {
         <button className="ed-button" disabled={busy !== null} onClick={close}>{t('Close')}</button>
       </div>
     </div>
-  </div>;
+  </div>, document.querySelector('.ed') ?? document.body);
 }

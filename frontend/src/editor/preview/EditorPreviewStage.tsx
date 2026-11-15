@@ -1,4 +1,5 @@
 import { AiEditHost } from '../AiEditDialog';
+import { BringToLifeHost } from '../BringToLifeDialog';
 import { useCallback } from 'react';
 import { useSkimListener } from '../skim';
 import { useEditorPanel } from '../state/EditorContext';
@@ -105,6 +106,7 @@ export function EditorPreviewStage() {
   useSkimListener(skim);
   return (<main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
     <AiEditHost/>
+    <BringToLifeHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !fullScreen && (() => {
       const steps = [

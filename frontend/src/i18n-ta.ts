@@ -35,6 +35,14 @@ export const TAMIL: Record<string, string> = {
   'Your picture and request are sent to the AI service in AI settings. The original stays as it is.': 'உங்கள் படமும் கோரிக்கையும் AI அமைப்புகளில் உள்ள AI சேவைக்கு அனுப்பப்படும். மூலப் படம் அப்படியே இருக்கும்.',
   'Replace in timeline': 'காலவரிசையில் மாற்று', 'Edit picture': 'படத்தைத் திருத்து', 'Keep both': 'இரண்டையும் வைத்திரு',
 
+  'Bring to life': 'உயிர் கொடு', 'Bring to life…': 'உயிர் கொடு…', 'Picture': 'படம்', 'Moving': 'அசையும்', 'Making the video…': 'காணொளி உருவாகிறது…',
+  'The moving version shows here': 'அசையும் பதிப்பு இங்கே தெரியும்', 'Say how it should move, e.g. hair moving in the wind': 'எப்படி அசைய வேண்டும் என்று சொல்லுங்கள், எ.கா. காற்றில் அசையும் கூந்தல்',
+  'Slow camera push in': 'மெதுவாக அருகில் செல்லும் கேமரா', 'Hair and clothes moving in the wind': 'காற்றில் அசையும் கூந்தலும் ஆடையும்', 'Lamps flickering, light rain': 'மின்னும் விளக்குகள், மெல்லிய மழை',
+  'Clouds drifting, leaves swaying': 'நகரும் மேகங்கள், அசையும் இலைகள்', 'Gentle smile and blink': 'மெல்லிய புன்னகையும் இமைப்பும்', 'Make video': 'காணொளி உருவாக்கு',
+  'Your picture and words go to the video AI in AI settings → Video, and use its credits. The picture stays as it is.': 'உங்கள் படமும் சொற்களும் AI அமைப்புகள் → காணொளி-யில் உள்ள காணொளி AI-க்குச் சென்று அதன் கடன்களைப் பயன்படுத்தும். படம் அப்படியே இருக்கும்.',
+
+  'This clip is more than four times longer than the video. Make a longer video, or split the clip first.': 'இந்தக் கிளிப் காணொளியை விட நான்கு மடங்குக்கும் மேல் நீளமானது. நீளமான காணொளியை உருவாக்குங்கள், அல்லது முதலில் கிளிப்பைப் பிரியுங்கள்.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',
