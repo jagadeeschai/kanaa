@@ -2,7 +2,7 @@ import { useSoundEffect as fetchSoundEffect,getFocus,getSongBeats,type LibraryTr
 import { beatSound,timelineBeats } from "../../timeline/beats";
 import { applyClipDrop,clipEffectChanges,dropClip,type DragPayload,type DropTarget } from "../../timeline/drop";
 import { writeValue } from "../../timeline/keyframes";
-import { addOverlay,addSound,clipLength,DEFAULT_BEAT_PULSE,DEFAULT_COLOUR_SPLASH,DEFAULT_DREAMY_GLOW,DEFAULT_LENS_SURFACE,DEFAULT_OLD_FILM,DEFAULT_SIGNAL_DAMAGE,findClip,insertClip,isLocked,mainLayer,markOwn,newClip,OVERLAY_SCALE,replaceBackground,setSpeed,sharedKeys,snapshotFrame,updateClip,type Clip,type Format,type Sound,type SourceFacts,type Timeline } from "../../timeline/model";
+import { addOverlay,addSound,clipLength,fittedSize,DEFAULT_BEAT_PULSE,DEFAULT_COLOUR_SPLASH,DEFAULT_DREAMY_GLOW,DEFAULT_LENS_SURFACE,DEFAULT_OLD_FILM,DEFAULT_SIGNAL_DAMAGE,findClip,insertClip,isLocked,mainLayer,markOwn,newClip,OVERLAY_SCALE,replaceBackground,setSpeed,sharedKeys,snapshotFrame,updateClip,type Clip,type Format,type Sound,type SourceFacts,type Timeline } from "../../timeline/model";
 import { applyMove,focusOnScreen,slotPlacement,type Focus,type MovePreset } from "../../timeline/presets";
 import { TEMPLATES,type Template } from "../../timeline/templates";
 import type { Photo } from "../../types/photo";
@@ -207,7 +207,9 @@ export function createClipToolActions(getInput: () => Input) {
     if (!timeline || !selected) return;
     const clip = selected;
     const aim = move === 'push-in' || move === 'pull-out' ? await aimFor(clip, timeline) : null;
-    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim) });
+    const item = getInput().mediaById.get(clip.media_id);
+    const wide = item?.width && item.height ? fittedSize({ width: item.width, height: item.height }, clip.adjust.rotation, timeline.format).width / timeline.format.width : 1;
+    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim, wide) });
   };
     return invoke(...args);
   };

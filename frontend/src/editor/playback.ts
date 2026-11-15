@@ -1394,7 +1394,25 @@ export class PlaybackEngine {
     for (const layer of layers) this.drawLayer(layer);
   }
 
+  /** Where the playhead really is while skimming shows another moment; null when not skimming. */
+  private skimHome: number | null = null;
+
+  /** Shows the frame at `t` without moving the playhead (skimming the timeline); null goes back to the playhead. */
+  skim(t: number | null) {
+    if (this.playing) return;
+    if (t === null) {
+      if (this.skimHome === null) return;
+      this.time = this.skimHome; this.skimHome = null;
+    } else {
+      this.skimHome ??= this.time;
+      this.time = Math.max(0, Math.min(t, this.timeline ? duration(this.timeline) : 0));
+    }
+    this.syncSlots();
+    this.requestDraw();
+  }
+
   seek(t: number) {
+    this.skimHome = null;  // A real move of the playhead ends any skim.
     this.time = Math.max(0, Math.min(t, this.timeline ? duration(this.timeline) : 0));
     if (this.playing) this.startClock();
     this.syncSlots();
@@ -1494,6 +1512,7 @@ export class PlaybackEngine {
 
   play(rate = 1) {
     if (!this.timeline || duration(this.timeline) === 0) return;
+    if (this.skimHome !== null) { this.time = this.skimHome; this.skimHome = null; }  // Plays from the playhead, not the skim.
     this.stopAt = Infinity;
     this.lastTick = 0;
     this.rate = rate;

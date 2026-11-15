@@ -22,6 +22,13 @@ export const TAMIL: Record<string, string> = {
   'Clip guides on: dashed lines at every cut': 'கிளிப் வழிகாட்டிகள் இயக்கத்தில்: ஒவ்வொரு வெட்டிலும் புள்ளிக்கோடுகள்', 'Clip guides off': 'கிளிப் வழிகாட்டிகள் அணைப்பில்',
   'Unlock frame and animate': 'சட்டகத்தைத் திறந்து அசைவூட்டு', 'Animate': 'அசைவூட்டு',
 
+  'Pan left to right': 'இடமிருந்து வலமாக நகர்வு', 'Pan right to left': 'வலமிருந்து இடமாக நகர்வு', 'Ken Burns': 'கென் பர்ன்ஸ்', 'Lock frame': 'சட்டகத்தைப் பூட்டு',
+  'Slowly travels across the picture over the whole clip': 'கிளிப் முழுவதும் படத்தின் குறுக்கே மெதுவாக நகரும்',
+  'Slowly travels across the picture the other way': 'படத்தின் குறுக்கே எதிர்த் திசையில் மெதுவாக நகரும்',
+  'A slow push in while drifting across: the classic photo move': 'குறுக்கே நகர்ந்தபடி மெதுவாக நெருங்கும்: புகைப்படங்களுக்கான பாரம்பரிய அசைவு',
+
+  'Skimming on: the preview shows where the mouse is over the timeline': 'மேலோட்டம் இயக்கத்தில்: காலவரிசையில் சுட்டி இருக்கும் இடத்தை முன்னோட்டம் காட்டும்', 'Skimming off': 'மேலோட்டம் அணைப்பில்',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

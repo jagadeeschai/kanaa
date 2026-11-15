@@ -24,6 +24,8 @@ export const EFFECT_INTENSITIES = [{ id: 'subtle', label: 'Subtle' }, { id: 'med
 export const EFFECT_INTENSITY_VALUE: Record<string, number> = { subtle: 0.4, medium: 0.7, strong: 1 };
 
 export const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
+  { id: 'pan-right', label: 'Pan left to right', tip: 'Slowly travels across the picture over the whole clip' }, { id: 'pan-left', label: 'Pan right to left', tip: 'Slowly travels across the picture the other way' },
+  { id: 'ken-burns', label: 'Ken Burns', tip: 'A slow push in while drifting across: the classic photo move' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 
 export const PULL_SPEEDS: { id: string; label: string }[] = [{ id: '0.4', label: 'Quick' }, { id: '1', label: 'Smooth' }, { id: '2', label: 'Slow' }];

@@ -2,10 +2,12 @@ import { valueAt, type AnimatedProperty, type Ease, type Keyframe, type Transfor
 import { fittedSize, type Format } from './model.ts';
 
 /** One-click moves. Each is ordinary keyframes, so it can be adjusted, undone and exported like any other. */
-export type MovePreset = 'push-in' | 'pull-out' | 'punch-in' | 'shake';
+export type MovePreset = 'push-in' | 'pull-out' | 'punch-in' | 'shake' | 'pan-right' | 'pan-left' | 'ken-burns';
 
 const PUSH = 1.15;
 const PUNCH = 1.25;
+const PAN_ZOOM = 1.2;  // Big enough that a pan never shows the picture's edge.
+const PAN_REACH = 0.07;  // How far a pan travels each way from the middle, of the frame (within (PAN_ZOOM - 1) / 2).
 const PUNCH_SECONDS = 0.12;
 const SHAKE_SECONDS = 0.5;
 const SHAKE_STEP = 1 / 15;
@@ -42,8 +44,22 @@ export function focusOnScreen(transform: Transform, focus: Focus, source: { widt
     y: clamp(valueAt(transform, 'y', 0) + (focus.y - 0.5) * fitted.height * scale / format.height) };
 }
 
-/** `local` is the playhead's time in the item; `length` is the item's. `aim`, a point on screen, is what a push-in moves towards (usually faces). */
-export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number, aim?: Focus | null): Transform {
+/** `local` is the playhead's time in the item; `length` is the item's. `aim`, a point on screen, is what a push-in moves towards (usually faces).
+ * `wide`: the picture's width as a share of the frame's at size 1 (a 3:2 photo in a 16:9 video is 0.84), so a pan zooms enough to never show an edge. */
+export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number, aim?: Focus | null, wide = 1): Transform {
+  if (preset === 'pan-right' || preset === 'pan-left' || preset === 'ken-burns') {
+    // Over the whole clip: the camera travels across the picture (it moves the other way on screen), slightly zoomed so
+    // no edge shows. Ken Burns also pushes in slowly while it drifts.
+    const base = round(Math.max(valueAt(transform, 'scale', 0), PAN_ZOOM, (1 + 2 * PAN_REACH + 0.02) / Math.max(0.1, wide)));
+    const x = valueAt(transform, 'x', 0);
+    const toRight = preset !== 'pan-left';
+    const [from, to] = toRight ? [x + PAN_REACH, x - PAN_REACH] : [x - PAN_REACH, x + PAN_REACH];
+    const ease: Ease = preset === 'ken-burns' ? 'easeInOut' : 'linear';
+    const drift = preset === 'ken-burns' ? [x + PAN_REACH / 2, x - PAN_REACH / 2] : [from, to];
+    const sizes = preset === 'ken-burns' ? [base, base * PUSH] : [base, base];
+    const moved = place(transform, 'x', 0, length, [key(0, drift[0], ease), key(length, drift[1], ease)]);
+    return place(moved, 'scale', 0, length, [key(0, sizes[0], ease), key(length, sizes[1], ease)]);
+  }
   if (preset === 'push-in' || preset === 'pull-out') {
     const base = valueAt(transform, 'scale', 0);
     const [first, last] = preset === 'push-in' ? [base, base * PUSH] : [base * PUSH, base];

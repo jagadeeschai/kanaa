@@ -8,6 +8,7 @@ import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, 
 import { addAdjust, newAdjust } from '../timeline/adjust';
 import { rollCut, slipClip } from '../timeline/trims';
 import { clipGuidesOn } from './clipGuides';
+import { skimOn, skimTo } from './skim';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type AdjustItem, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
@@ -75,6 +76,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   /** While slipping or rolling: the new in and out frames, shown over the timeline (a ghost of the edit). */
   const [trimNote, setTrimNote] = useState<{ x: number; y: number; text: string } | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  /** Where the mouse is skimming, in seconds, shown as a thin line; null when not over the timeline. */
+  const skimAt = useRef<number | null>(null);
   const liftRef = useRef<Lift | null>(null);
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
   const lastHead = useRef(Number.NaN);
@@ -140,6 +143,16 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       context.restore();
       drawName(clip, x, y, width);
+      if (clip.frame_locked === false && width > 40) {
+        // An open padlock: this clip's frame can be moved and animated (most clips are locked).
+        const bx = x + 6; const by = y + h * 0.72 - 16;
+        context.save(); context.fillStyle = colors.current.veil; context.globalAlpha = 0.85;
+        context.beginPath(); context.roundRect(bx - 2, by - 2, 16, 16, 4); context.fill(); context.globalAlpha = 1;
+        context.strokeStyle = colors.current.name; context.fillStyle = colors.current.name; context.lineWidth = 1.4;
+        context.beginPath(); context.arc(bx + 4, by + 5, 3, Math.PI, Math.PI * 1.9); context.stroke();
+        context.fillRect(bx + 2, by + 6, 10, 6);
+        context.restore();
+      }
       if (clip.enabled === false) { context.save(); context.globalAlpha = 0.58; context.fillStyle = colors.current.veil; context.fillRect(x, y, width, h); context.globalAlpha = 1; context.fillStyle = colors.current.name; context.font = '600 11px Inter, system-ui, sans-serif'; context.fillText('Off', x + 8, y + h - 10); context.restore(); }
       context.lineWidth = picked(clip.id) ? 2 : 1;
       context.strokeStyle = picked(clip.id) ? colors.current.selected : colors.current.clipEdge;
@@ -398,6 +411,10 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
           context.fillStyle = colors.current.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, top + 11);
         }
       }
+      if (skimAt.current !== null && !dragRef.current) {
+        context.save(); context.globalAlpha = 0.45; context.fillStyle = colors.current.head;
+        context.fillRect(xOf(skimAt.current), top, 1, height - top); context.restore();
+      }
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
       context.beginPath(); context.moveTo(head - 6, top); context.lineTo(head + 6, top); context.lineTo(head, top + 9); context.fill();
@@ -458,6 +475,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const x = pointerTime(event); const y = pointerY(event);
     event.currentTarget.setPointerCapture(event.pointerId);
     onScrubStart();
+    skimAt.current = null;
     if (y < rulerTop() + RULER) { dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return; }
     const found = hit(x, y);
     const group = `drag-${groupCount.current += 1}`;
@@ -502,6 +520,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (pinch(event, 'move')) return;
     const x = pointerTime(event); const drag = dragRef.current;
+    if (!drag && skimOn() && event.pointerType === 'mouse') { skimAt.current = timeOf(x); skimTo(skimAt.current); }
     if (!drag) {
       const over = hit(x, pointerY(event)) ?? hitSound(x, pointerY(event));
       const hovered = over && 'clip' in over ? over.clip : over && isClip(over.sound) ? over.sound : null;
@@ -752,7 +771,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (skimAt.current !== null) { skimAt.current = null; skimTo(null); } if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         {trimNote && <div className="tl-trim-note" role="status" style={{ left: Math.max(4, trimNote.x), top: trimNote.y - 22 }}>{trimNote.text}</div>}
         <div className="tl-clip-layer">{(() => {
