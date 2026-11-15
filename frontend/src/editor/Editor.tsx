@@ -1,3 +1,4 @@
+import { useSceneJob } from './hooks/useSceneJob';
 import { useReframeJob } from './hooks/useReframeJob';
 import { CircleHelp,Download,Trash2,TriangleAlert,X } from 'lucide-react';
 import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from 'react';
@@ -1038,23 +1039,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     : selectedText ? { id: selectedText.id, start: selectedText.start, length: selectedText.length, transform: selectedText.transform ?? REST_TRANSFORM } : null;
   const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
   useReframeJob(() => ({ reframeJob, setError, setReframeJob, timelineRef, mediaById, setFaceNote, change, setSelectedId }), [reframeJob, change, mediaById]);
-  useEffect(() => {
-    if (!sceneJob) return;
-    const timer = setTimeout(async () => {
-      try {
-        const status = await getJobStatus(sceneJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; cuts?: number[] };
-        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not look for scene changes.'); setSceneJob(null); return; }
-        if (status.status !== 'done' || !status.cuts) { setSceneJob({ ...sceneJob, progress: status.progress }); return; }
-        setSceneJob(null);
-        const current = timelineRef.current;
-        if (!current) return;
-        const result = splitAtCuts(current, sceneJob.clipId, status.cuts, newId);
-        if (result.splits) change(result.timeline);
-        setFaceNote(result.splits ? `Split into ${result.splits + 1} scenes. Select one and press Delete to drop it; ⌘Z puts them back together.` : 'No scene changes found in this clip.');
-      } catch (problem) { setError((problem as Error).message); setSceneJob(null); }
-    }, 700);
-    return () => clearTimeout(timer);
-  }, [sceneJob, change]);
+  useSceneJob(() => ({ sceneJob, setError, setSceneJob, timelineRef, change, setFaceNote }), [sceneJob, change]);
   useEffect(() => {
     if (!faceJob) return;
     const timer = setTimeout(async () => {
