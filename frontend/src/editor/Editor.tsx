@@ -1,3 +1,4 @@
+import { createTitleEditingActions } from './actions/title-editing';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
 import { createThemeActions } from './actions/themes-and-stories';
@@ -769,17 +770,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   // In a text layer's settings, karaoke goes on (or off) for every title on the layer, each timed to its own words.
   const setKaraoke = (colour: string | null) => { if (timeline && selectedText) change(setKaraokeFor(timeline, settingsLayer?.kind === 'text' ? settingsLayer.items.map((item) => item.id) : [selectedText.id, ...moreIds], colour)); };
-  const updateSelectedText = (changes: Partial<TextItem>, group?: string) => {
-    if (timeline && selectedText && moreIds.size && styleScope === 'item') {
-      // Several titles picked: the change goes to each of them (never their words or timing).
-      const shared = Object.fromEntries(Object.entries(changes).filter(([key]) => sharedKeys({ [key]: 0 }).length)) as Partial<TextItem>;
-      let next = updateText(timeline, selectedText.id, changes);
-      for (const id of moreIds) if (findText(next, id) && Object.keys(shared).length) next = markOwn(updateText(next, id, shared), id, shared);
-      change(markOwn(next, selectedText.id, changes), group);
-      return;
-    }
-    if (timeline && selectedText) scopedUpdate(selectedText.id, changes, (t) => updateText(t, selectedText.id, changes), group);
-  };
+  const { saveStyle, forgetStyle, addTitle, updateSelectedText, titleRect, decorateTitle, titleAt, finishShape } = createTitleEditingActions(() => ({ get timeline() { return timeline; }, get selectedText() { return selectedText; }, get moreIds() { return moreIds; }, get styleScope() { return styleScope; }, get change() { return change; }, get scopedUpdate() { return scopedUpdate; }, get myStyles() { return myStyles; }, get setMyStyles() { return setMyStyles; }, get engineRef() { return engineRef; }, get setError() { return setError; }, get timelineRef() { return timelineRef; }, get addEffect() { return addEffect; }, get setSelectedId() { return setSelectedId; }, get shaping() { return shaping; }, get setShaping() { return setShaping; }, get now() { return now; } }));
   const [myStyles, setMyStyles] = useState<Template[]>(savedStyles);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   // Each template's picture, drawn by the server like any title, small.
@@ -807,35 +798,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const { listen, librarySong, chooseTheme, makeStory, buildStoryVideo, changeThemeMusic, addLibraryTrack } = createThemeActions(() => ({ listenRef, listening, setListening, timeline, setError, themeBusy, projectName, setThemeBusy, mediaById, aimFor, newId, themeWithMusic, loadLibrary, setThemeTrack, change, story, facts, timelineRef, setMomentProgress, setStory, library, themeTrack, setAddingMusic, engineRef, MIN_MUSIC_SECONDS, setSelectedId }));
   useEffect(() => () => { listenRef.current?.pause(); }, []);
   const storyMedia = media.filter((item) => item.media_type === 'video' || item.media_type === 'image');
-  const saveStyle = (text: TextItem) => {
-    const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text), motion: motionOf(text) };
-    const next = [style, ...myStyles].slice(0, MAX_SAVED);
-    setMyStyles(next); saveStyles(next);
-  };
-  const forgetStyle = (id: string) => { const next = myStyles.filter((style) => style.id !== id); setMyStyles(next); saveStyles(next); };
-  const addTitle = async (title: Template, dropAt?: number, words?: string) => {
-    if (!timeline) return;
-    const at = dropAt ?? engineRef.current?.currentTime ?? 0;
-    // A date title says when the clip under it was filmed (or the photo taken); today when the file doesn't say.
-    let dated: Partial<TextItem> = {};
-    if (isDateTemplate(title.id) && !words) {
-      const under = mainLayer(timeline).items.find((item) => item.start <= at && at < item.start + clipLength(item));
-      const recorded = under ? await fetchRecorded(under.media_id).catch(() => null) : null;
-      dated = dateWords(recorded, title.id === 'date-tamil' ? 'ta' : 'en');
-      if (!recorded) setError(under ? 'This clip doesn\'t say when it was filmed, so the title shows today\'s date. Type the right one.' : 'No clip here, so the title shows today\'s date.');
-    }
-    const current = timelineRef.current ?? timeline;
-    const text: TextItem = { ...fromTemplate(title, newId(), title.extra?.transition ? cinematicJoinTime(current,at) : Math.round(at * 1000) / 1000, TEXT_SECONDS), ...dated, ...(words ? { text: words, subtitle: '' } : {}) };
-    let next = cinematicJoinFor(title, addText(current, text, newId()), text.start);
-    // Pull focus: the picture behind softens while the title sharpens.
-    if (title.extra?.defocus) next = addBlur(next, defocusBox(newId(), text.start, text.length, text.enter?.duration ?? 1, text.exit?.duration ?? 0.6), newId());
-    change(next);
-    // A title that brings an effect (lens flare, sparkles, bokeh) lays it over the video for the title's length.
-    void addTemplateEffects(title, text.start, text.length, addEffect, current, getSongBeats);
-    setSelectedId(text.id);
-    // A title starts hidden behind its enter animation, so show it at rest.
-    setTimeout(() => engineRef.current?.seek(text.start + TEXT_SECONDS / 2), 0);
-  };
   const showEnter = (start: number, seconds: number) => engineRef.current?.playRange(start, start + seconds);
   const showExit = (end: number, seconds: number) => engineRef.current?.playRange(Math.max(0, end - seconds), Math.max(0, end - 0.02));
   const clipsInOrder = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start) : [];
@@ -1053,19 +1015,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (next === timeline) setError('Put the cut-out clip over the main track first.');
       else change(next);
     } catch (problem) { setError((problem as Error).message); }
-  };
-
-  /** Puts the title behind what was drawn: a line along the ground or mountains, or the outline of a shape. */
-  const finishShape = () => {
-    if (!timeline || !shaping) return;
-    const enough = shaping.mode === 'ground' ? shaping.points.length >= 2 : shaping.points.length >= 3;
-    if (!enough) { setError(shaping.mode === 'ground' ? 'Click at least two points along the top of the ground.' : 'Click at least three points around the shape.'); return; }
-    const mask: ShapeMask = { points: shaping.mode === 'ground' ? groundShape(shaping.points) : shaping.points, feather: SHAPE_FEATHER };
-    const next = shaping.reveal
-      ? cinemaRevealShape(timeline, shaping.textId, shaping.reveal, mask, [newId(), newId()])
-      : putBehindShape(timeline, shaping.textId, mask, [newId(), newId()]);
-    setShaping(null);
-    if (next === timeline) setError('Put the title over a video clip or picture on the main track first.'); else change(next);
   };
   /** Cuts every chosen pause and filler at once. Captions, if any, are made again from what's left, in the same Undo. */
   const removePauses = useCallback(() => {
@@ -1342,32 +1291,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   // The title picked by clicking it in the preview: only then does the preview show its box and toolbar.
   const [pickedInPreview, setPickedInPreview] = useState<string | null>(null);
-  const titleRect = (text: TextItem): { left: number; top: number; right: number; bottom: number } | null => {
-    const box = engineRef.current?.titleBox(text);
-    if (!box) return null;
-    const transform = text.transform ?? REST_TRANSFORM, at = Math.max(0, Math.min(text.length, now - text.start));
-    const x = valueAt(transform, 'x', at), y = valueAt(transform, 'y', at), size = valueAt(transform, 'scale', at);
-    return { left: x + (box[0] - 0.5) * size, top: y + (box[1] - 0.5) * size, right: x + (box[2] - 0.5) * size, bottom: y + (box[3] - 0.5) * size };
-  };
-  /** Bubbles or a shine around the selected title's words, for as long as it shows. */
-  const decorateTitle = (effectId: 'bubbles' | 'shine') => {
-    if (!selectedText) return;
-    const rect = titleRect(selectedText);
-    const [cx, cy, wide] = rect ? [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2, rect.right - rect.left] : [selectedText.transform?.x ?? 0.5, selectedText.position === 'bottom' ? 0.85 : selectedText.position === 'top' ? 0.15 : 0.5, 0.5];
-    // Bubbles rise from a little below the words and need room; the shine only crosses the letters.
-    const scale = Math.min(1, Math.max(0.2, wide * (effectId === 'bubbles' ? 1.4 : 1.15)));
-    void addEffect(effectId, selectedText.start, selectedText.length, { x: Math.round(cx * 1000) / 1000, y: Math.round((effectId === 'bubbles' ? cy - 0.05 : cy) * 1000) / 1000, scale: Math.round(scale * 1000) / 1000 });
-  };
-  const titleAt = (fx: number, fy: number): TextItem | null => {
-    if (!timeline) return null;
-    const layers = timeline.layers.filter((layer): layer is Extract<typeof layer, { kind: 'text' }> => layer.kind === 'text' && !layer.hidden).reverse();  // Topmost first.
-    for (const layer of layers) for (const text of layer.items) {
-      if (now < text.start || now >= text.start + text.length) continue;
-      const rect = titleRect(text);
-      if (rect && fx >= rect.left - 0.01 && fx <= rect.right + 0.01 && fy >= rect.top - 0.01 && fy <= rect.bottom + 0.01) return text;
-    }
-    return null;
-  };
   const previewDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (placing && !placing.busy && timeline) {
       const rect = event.currentTarget.getBoundingClientRect();
