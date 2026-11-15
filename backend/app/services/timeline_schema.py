@@ -519,13 +519,31 @@ class CaptionLayer(LayerBase):
     items: List[Caption] = Field(default_factory=list)
 
 
+class AdjustItem(Strict):
+    """A span of an adjustment layer: its look, colour and glow change everything drawn below it, fading in and out."""
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(default='', max_length=80)
+    start: float = Field(ge=0)
+    length: float = Field(gt=0, le=86400)
+    look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
+    adjust: Adjust = Field(default_factory=Adjust)
+    dreamy_glow: Optional[DreamyGlow] = None
+    fade_in: float = Field(default=0.5, ge=0, le=5)
+    fade_out: float = Field(default=0.5, ge=0, le=5)
+
+
+class AdjustLayer(LayerBase):
+    kind: Literal['adjust']
+    items: List[AdjustItem] = Field(default_factory=list)
+
+
 class AudioLayer(LayerBase):
     kind: Literal['audio']
     items: List[Sound] = Field(default_factory=list)
     volume: float = Field(default=1, ge=0, le=1.5)  # The whole track's level, multiplied into each sound.
 
 
-Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, CaptionLayer, AudioLayer], Field(discriminator='kind')]
+Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, AdjustLayer, CaptionLayer, AudioLayer], Field(discriminator='kind')]
 
 
 class Finish(Strict):

@@ -66,8 +66,12 @@ def _trim(item: dict, by: float, gone: float | None = None) -> dict[str, list[di
         if item.get('beat_pulse'):
             pulse = item['beat_pulse']
             pulse['offset'] = round((pulse['offset'] - by) % (60 / pulse['bpm']), 6)
-    else:  # A title, caption or blur box: shorter, and what is said in it carries on.
+    else:  # A title, caption, blur box or adjustment: shorter, and what is said in it carries on.
         item['length'] = round(item['length'] - gone, 6)
+        if 'fade_in' in item:  # An adjustment span: already faded in, or it can't be cut exactly.
+            if by < item['fade_in'] or item['length'] / 2 < item.get('fade_out', 0):
+                raise _Whole()
+            item['fade_in'] = 0
         if item.get('karaoke'):
             item['karaoke']['words'] = [round(max(0.0, at - by), 6) for at in item['karaoke']['words']]
         for word in item.get('words') or []:

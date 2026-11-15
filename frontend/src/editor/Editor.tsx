@@ -71,6 +71,7 @@ import { TopSettings } from './TopSettings';
 import { TRANSITIONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
 import { useClipboard } from './useClipboard';
+import { findAdjust, removeAdjust } from '../timeline/adjust';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -924,11 +925,11 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       let next = timeline;
       for (const id of [selectedId, ...moreIds]) {
         if (isLocked(next, id)) continue;
-        next = findSound(next, id) ? removeSound(next, id) : findText(next, id) ? removeText(next, id) : findBlur(next, id) ? removeBlur(next, id) : findCaption(next, id) ? removeCaption(next, id) : findClip(next, id) ? removeClip(next, id) : next;
+        next = findSound(next, id) ? removeSound(next, id) : findText(next, id) ? removeText(next, id) : findBlur(next, id) ? removeBlur(next, id) : findAdjust(next, id) ? removeAdjust(next, id) : findCaption(next, id) ? removeCaption(next, id) : findClip(next, id) ? removeClip(next, id) : next;
       }
       change(next); setSelectedId(null); return;
     }
-    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
+    change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findAdjust(timeline, selectedId) ? removeAdjust(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, moreIds, change]);
   const clipboard = useClipboard({ timeline, selectedId, moreIds, change, removeSelected, newId, note: setNote, fail: setError,

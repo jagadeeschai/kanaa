@@ -4,7 +4,7 @@ import { cancelRenderJob } from "../../api/client";
 import { t } from "../../i18n";
 import type { Transform } from '../../timeline/evaluate';
 import { isFollowed } from "../../timeline/keyframes";
-import type { BlurLayer,TextLayer } from '../../timeline/model';
+import type { AdjustLayer,BlurLayer,TextLayer } from '../../timeline/model';
 import { clipLength,REST_TRANSFORM,timecode,type AudioLayer,type BlurBox,type CaptionLayer,type CinemaReveal,type Clip,type TextItem,type Timeline,type VideoLayer } from "../../timeline/model";
 import { ON_ITEM } from "../editor-constants";
 import { ARTICLES } from "../guide-articles";
@@ -63,7 +63,7 @@ export type EditorPreviewStageBindings = {
   seek: (t: number) => void | undefined;
   selected: Clip | null;
   selectedBlur: BlurBox | null;
-  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | undefined;
+  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer | undefined;
   selectedText: TextItem | null;
   setDrawing: React.Dispatch<React.SetStateAction<{ mode: "start" | "continue"; from?: [number, number]; to?: [number, number]; onBox?: (box: Box) => void; } | null>>;
   setEditingTitle: React.Dispatch<React.SetStateAction<string | null>>;

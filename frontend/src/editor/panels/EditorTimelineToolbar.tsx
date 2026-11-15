@@ -3,7 +3,7 @@ import { Camera,X as Close,Magnet,Minus,MoreHorizontal,Paintbrush,Plus,Redo2,Sci
 import { t } from "../../i18n";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { type History } from "../../timeline/history";
-import type { BlurLayer,TextLayer } from '../../timeline/model';
+import type { AdjustLayer,BlurLayer,TextLayer } from '../../timeline/model';
 import { mainLayer,type AudioLayer,type BlurBox,type Caption,type CaptionLayer,type Clip,type Sound,type TextItem,type Timeline,type VideoLayer } from "../../timeline/model";
 import { type MenuItem } from "../ContextMenu";
 import { ZOOM_MAX,ZOOM_MIN,ZOOM_STEP } from "../editor-constants";
@@ -21,7 +21,7 @@ export type EditorTimelineToolbarBindings = {
   selectedBlur: BlurBox | null;
   selectedCaption: { caption: Caption; layer: CaptionLayer; } | null;
   selectedId: string | null;
-  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | undefined;
+  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer | undefined;
   selectedSound: { sound: Sound; layer: AudioLayer; } | null;
   selectedText: TextItem | null;
   setSnapping: React.Dispatch<React.SetStateAction<boolean>>;

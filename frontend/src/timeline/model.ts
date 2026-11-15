@@ -62,13 +62,16 @@ export type Caption = { id: string; start: number; length: number; words: Captio
 export type CaptionLook = { style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; highlight: string | null; size: number };
 export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
 export const DEFAULT_CAPTION_LOOK: CaptionLook = { style: 'outline', position: 'bottom', color: '#ffffff', highlight: '#ffd400', size: 48 };
-export type TrackLayer = VideoLayer | TextLayer | CaptionLayer | BlurLayer | AudioLayer;
-export type TrackItem = TextItem | Caption | BlurBox | Sound | Clip;
+/** A span of an adjustment layer: its look, colour and glow change everything below it, fading in and out (adjust_layer.py). */
+export type AdjustItem = { id: string; name?: string; start: number; length: number; look?: LookName; adjust: Adjust; dreamy_glow?: DreamyGlow | null; fade_in: number; fade_out: number };
+export type AdjustLayer = { id: string; kind: 'adjust'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: AdjustItem[] };
+export type TrackLayer = VideoLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer | AudioLayer;
+export type TrackItem = TextItem | Caption | BlurBox | AdjustItem | Sound | Clip;
 export type Format = { width: number; height: number; fps: number };
 /** A cinematic look over the whole video, under the captions. Each amount 0 (off) to 1. */
 export type Finish = { letterbox: boolean; grade: number; glow: number; vignette: number; grain: number };
 export const CINEMATIC: Finish = { letterbox: false, grade: 0.7, glow: 0.35, vignette: 0.55, grain: 0.3 };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer)[]; normalize_audio?: boolean; finish?: Finish | null; lut?: string | null; lut_amount?: number };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer)[]; normalize_audio?: boolean; finish?: Finish | null; lut?: string | null; lut_amount?: number };
 
 /** Each letterbox bar's height as a share of the frame: bars to 2.39:1, only on a landscape or square frame. Matches bar_share in finish_service.py. */
 export function barShare(format: { width: number; height: number }): number {
@@ -123,7 +126,7 @@ export const captionLayers = (timeline: Timeline) => timeline.layers.filter((lay
 export const blurLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is BlurLayer => layer.kind === 'blur');
 /** The rows under the main track: text first, then blur boxes, overlays and sound. */
 export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...captionLayers(timeline), ...textLayers(timeline), ...blurLayers(timeline), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
+export const trackLayers = (timeline: Timeline): TrackLayer[] => [...captionLayers(timeline), ...textLayers(timeline), ...blurLayers(timeline), ...timeline.layers.filter((layer): layer is AdjustLayer => layer.kind === 'adjust'), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
 export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
 export const isClip = (item: TrackItem): item is Clip => 'media_id' in item && 'transform' in item;
 export const isBlur = (item: TrackItem): item is BlurBox => 'shape' in item;
@@ -876,7 +879,9 @@ function rekaraoke(next: TextItem, before: TextItem): TextItem {
 export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at: number): Timeline {
   const blur = findBlur(timeline, id);
   const caption = findCaption(timeline, id);
-  const found: { text: TextItem | BlurBox | Caption; layer: TextLayer | BlurLayer | CaptionLayer } | null = findText(timeline, id) ?? (blur && { text: blur.blur, layer: blur.layer }) ?? (caption && { text: caption.caption, layer: caption.layer });
+  const adjustLayer = timeline.layers.find((layer): layer is AdjustLayer => layer.kind === 'adjust' && layer.items.some((item) => item.id === id));
+  const adjust = adjustLayer && { text: adjustLayer.items.find((item) => item.id === id)!, layer: adjustLayer };
+  const found: { text: TextItem | BlurBox | Caption | AdjustItem; layer: TextLayer | BlurLayer | CaptionLayer | AdjustLayer } | null = findText(timeline, id) ?? (blur && { text: blur.blur, layer: blur.layer }) ?? (caption && { text: caption.caption, layer: caption.layer }) ?? adjust ?? null;
   if (!found) return timeline;
   const { text, layer } = found;
   const set = (changes: { start?: number; length: number }) => withItems(timeline, layer, (layer.items as TrackItem[]).map((item) => (item.id === id ? { ...item, ...changes } as TrackItem : item)));

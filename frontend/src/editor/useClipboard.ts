@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import { clipboardEnd, copyItems, copyStyle, pasteItems, pasteStyle, styleFor, type Clipboard, type CopiedStyle, type StyleKind } from '../timeline/clipboard';
 import { duplicateItem, findBlur, findSound, findText, isLocked, removeBlur, removeClip, removeSound, removeText, type Timeline } from '../timeline/model';
 import type { MenuItem } from './ContextMenu';
+import { findAdjust, removeAdjust } from '../timeline/adjust';
 
 type Deps = {
   timeline: Timeline | null; selectedId: string | null; moreIds: ReadonlySet<string>;
@@ -73,7 +74,7 @@ export function useClipboard({ timeline, selectedId, moreIds, select, change, re
       const copied = copyItems(timeline, [id]);
       if (!copied) return;
       writeClipboard(copied);
-      if (cut) change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : removeClip(timeline, id));
+      if (cut) change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findAdjust(timeline, id) ? removeAdjust(timeline, id) : removeClip(timeline, id));
     };
     return ['divider', { label: 'Cut', hint: '⌘X', onSelect: () => copyOne(true) }, { label: 'Copy', hint: '⌘C', onSelect: () => copyOne(false) },
       { label: 'Paste', hint: '⌘V', disabled: !readClipboard(), onSelect: () => pasteAt(at) },

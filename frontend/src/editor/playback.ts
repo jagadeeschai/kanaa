@@ -7,8 +7,9 @@ import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
-import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type AdjustLayer, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
+import { adjustStrength } from '../timeline/adjust';
 import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
@@ -26,7 +27,8 @@ export type PlaybackSource = { url: string; kind: 'video' | 'image'; width: numb
 type Slot = { video: HTMLVideoElement; texture: WebGLTexture; clipId: string | null; url: string | null; fresh: boolean };
 type LayerSlots = { slots: [Slot, Slot] };
 type Crossing = { before: Clip; after: Clip; p: number };
-type Pose = { look?: Look; opacity?: number; scale?: number; sideways?: boolean };
+/** `bound`: draw this already-bound texture (the composite so far, for an adjustment layer) instead of the clip's media. */
+type Pose = { look?: Look; opacity?: number; scale?: number; sideways?: boolean; bound?: WebGLTexture };
 
 const DRIFT_RESEEK_SECONDS = 0.25;
 const DRIFT_NUDGE_SECONDS = 0.02;
@@ -821,15 +823,16 @@ export class PlaybackEngine {
     return true;
   }
 
-  private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1, sideways = false }: Pose) {
+  private drawClip(layer: VideoLayer, clip: Clip, { look = REST, opacity = 1, scale: zoom = 1, sideways = false, bound }: Pose) {
     const { gl, uniforms } = this;
     gl.uniform1i(uniforms.titleParticle, 0);
     const { format } = this.timeline!;
-    const source = this.sources(clip.media_id, clip);
+    const source = bound ? undefined : this.sources(clip.media_id, clip);
     // A foreground copy used by "Behind people" must never fall back to the opaque original while its transparent
     // person copy is being made: that would cover both the title and the main video and look like the title vanished.
     if (source?.pendingCutout && layer !== this.videoLayers()[0]) return;
-    if (!source || !this.bindClip(layer, clip, source)) return;
+    if (bound) gl.bindTexture(gl.TEXTURE_2D, bound);
+    else if (!source || !this.bindClip(layer, clip, source)) return;
     const local = this.time - clip.start;
     const frame = look.scale * zoom;
     const moved = look.scale !== 1 || look.dx !== 0 || look.dy !== 0;
@@ -838,7 +841,7 @@ export class PlaybackEngine {
     const phase = pulse && local >= pulse.offset ? (local - pulse.offset) % interval : 1;
     const beatZoom = pulse ? 1 + pulse.size * pulse.strength * Math.max(0, 1 - phase / 0.18) : 1;
     const scale = valueAt(clip.transform, 'scale', local) * frame * beatZoom;
-    const fitted = fittedSize(source, clip.adjust.rotation, format);
+    const fitted = source ? fittedSize(source, clip.adjust.rotation, format) : { width: format.width, height: format.height };
     const [red, green, blue, contrast, saturation] = LOOKS[clip.look ?? 'none'];
     const height = fitted.height * scale;
     // The clip is cropped to the frame, and that whole frame moves, as in the export.
@@ -1314,6 +1317,26 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.hideMode, 0);
   }
 
+  private adjustTexture: WebGLTexture | null = null;
+
+  /** An adjustment span: the picture so far, graded with the span's look, colour and glow through the clip shader and
+   * laid back over itself at the span's fade strength. Matches adjust_layer.py. */
+  private drawAdjust(layer: AdjustLayer) {
+    const span = layer.items.find((item) => this.time >= item.start && this.time < item.start + item.length);
+    const strength = span ? adjustStrength(span, this.time) : 0;
+    if (!span || strength <= 0) return;
+    const { gl } = this;
+    this.adjustTexture ??= this.newTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.adjustTexture);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, this.canvas.width, this.canvas.height, 0);  // The canvas has no alpha.
+    // The copy has the frame's bottom row first: flipped upright, as a picture is.
+    const graded: Clip = { id: span.id, media_id: -1, start: span.start, in: 0, out: span.length, speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0,
+      transform: { x: 0.5, y: 0.5, scale: 1, opacity: strength, rotation: 0 }, adjust: { ...span.adjust, rotation: 0, flip_horizontal: false, flip_vertical: true },
+      look: span.look, dreamy_glow: span.dreamy_glow };
+    this.drawClip(this.videoLayers()[0], graded, { bound: this.adjustTexture });
+  }
+
   /** The cinematic finish over everything drawn so far, as the export does it, before the captions. */
   private drawFinish() {
     const finish = this.timeline?.finish;
@@ -1352,6 +1375,7 @@ export class PlaybackEngine {
       if (layer.kind === 'video') this.drawLayer(layer);
       else if (layer.kind === 'text') this.drawText(layer);
       else if (layer.kind === 'blur') this.drawBlur(layer);
+      else if (layer.kind === 'adjust') this.drawAdjust(layer);
       else if (layer.kind === 'captions') this.drawCaptions(layer);
     }
     if (!finished) { this.drawFinish(); this.drawBrand(brand); }

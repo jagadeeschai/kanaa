@@ -1292,6 +1292,9 @@ class Builder:
                 current = self.add_text_layer(layer, position, current)
             elif layer.kind == 'blur':
                 current = self.add_blur_layer(layer, position, current)
+            elif layer.kind == 'adjust':
+                from app.services.adjust_layer import add_adjust_layer
+                current = add_adjust_layer(self.graph, layer, position, current)
             elif layer.kind == 'captions':
                 current = self.add_caption_layer(layer, position, current)
             else:

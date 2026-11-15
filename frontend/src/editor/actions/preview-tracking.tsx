@@ -3,7 +3,7 @@ import { startFaces,startTracking } from "../../api/client";
 import { DEFAULT_CHROMA } from "../../timeline/chroma";
 import { valueAt } from "../../timeline/evaluate";
 import { writeValue } from "../../timeline/keyframes";
-import type { BlurLayer,TextLayer } from '../../timeline/model';
+import type { AdjustLayer,BlurLayer,TextLayer } from '../../timeline/model';
 import { clipLength,findBlur,findClip,findText,mainLayer,MIN_CLIP_SECONDS,REST_TRANSFORM,timecode,updateBlur,updateClip,updateText,type AudioLayer,type BlurBox,type CaptionLayer,type CinemaReveal,type Clip,type SurfaceKind,type TextItem,type Timeline,type VideoLayer } from "../../timeline/model";
 import { localAt,sourceAt } from "../../timeline/ramp";
 import { clipBox } from "../../timeline/resize";
@@ -35,7 +35,7 @@ type Input = {
   selected: Clip | null;
   selectedBlur: BlurBox | null;
   selectedId: string | null;
-  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | undefined;
+  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer | undefined;
   setDrawing: React.Dispatch<React.SetStateAction<{ mode: "start" | "continue"; from?: [number, number]; to?: [number, number]; onBox?: (box: Box) => void; } | null>>;
   setError: React.Dispatch<React.SetStateAction<string>>;
   setFollowJob: React.Dispatch<React.SetStateAction<FollowJob | null>>;

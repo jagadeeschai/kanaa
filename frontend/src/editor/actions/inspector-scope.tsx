@@ -2,7 +2,7 @@ import { Link2 } from "lucide-react";
 import LyricSyncFix from "../../components/LyricSyncFix";
 import { LANGUAGE,t } from "../../i18n";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
-import type { BlurLayer,TextLayer } from '../../timeline/model';
+import type { AdjustLayer,BlurLayer,TextLayer } from '../../timeline/model';
 import { clipLength,duration,findClip,findText,followsLayer,layerLines,mainLayer,moveItem,overriddenCount,overrideLayerItems,ownOverLayer,retimeLayerLines,setFollowLayer,sharedKeys,soundLength,styledLayerOf,trimClip,trimSound,trimText,useLayerStyle,type AudioLayer,type BlurBox,type Caption,type CaptionLayer,type Clip,type Sound,type SourceFacts,type TextItem,type Timeline,type VideoLayer } from "../../timeline/model";
 import { TEMPLATES,type Template } from "../../timeline/templates";
 import type { Photo } from "../../types/photo";
@@ -35,7 +35,7 @@ type Input = {
   renderPreview: () => Promise<void>;
   seek: (t: number) => void | undefined;
   selectedId: string | null;
-  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | undefined;
+  selectedLayer: VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer | undefined;
   setExporting: React.Dispatch<React.SetStateAction<boolean>>;
   setLanguage: React.Dispatch<React.SetStateAction<string>>;
   setLayerSettings: React.Dispatch<React.SetStateAction<string | null>>;

@@ -5,7 +5,8 @@ import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { t } from '../i18n';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
-import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
+import { addAdjust, newAdjust } from '../timeline/adjust';
+import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type AdjustItem, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
 type Props = {
@@ -178,6 +179,26 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
     };
+    /** An adjustment span: a soft gradient bar named by its look, so it reads as "this changes what is below". */
+    const drawAdjust = (span: AdjustItem, row: number) => {
+      const { zoom: scale } = props.current;
+      const x = xOf(span.start); const width = Math.max(2, span.length * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
+      context.save();
+      context.beginPath(); context.roundRect(x, y, width, h, 6); context.clip();
+      const fill = context.createLinearGradient(x, y, x + width, y);
+      fill.addColorStop(0, colors.current.band); fill.addColorStop(0.5, colors.current.text); fill.addColorStop(1, colors.current.band);
+      context.fillStyle = fill; context.fillRect(x, y, width, h);
+      context.fillStyle = colors.current.name; context.font = '12px Inter, system-ui, sans-serif';
+      context.fillText(span.name || 'Adjustment', x + 8, y + h / 2);
+      context.restore();
+      context.lineWidth = picked(span.id) ? 2 : 1;
+      context.strokeStyle = picked(span.id) ? colors.current.selected : colors.current.textEdge;
+      context.beginPath(); context.roundRect(x + .5, y + .5, width - 1, h - 1, 6); context.stroke();
+      if (picked(span.id)) {
+        context.fillStyle = colors.current.selected;
+        for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
+      }
+    };
     const drawBlur = (blur: BlurBox, row: number) => {
       const { selectedId: selected, zoom: scale } = props.current;
       const x = xOf(blur.start); const width = Math.max(2, blur.length * scale); const y = topOf(row); const h = rowHeight(trackLayers(props.current.timeline)[row], collapsedLayers);
@@ -294,6 +315,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         if (layer.kind === 'video') for (const clip of layer.items) drawOverlay(clip, row);
         else if (layer.kind === 'text') for (const text of layer.items) drawText(text, row);
         else if (layer.kind === 'blur') for (const blur of layer.items) drawBlur(blur, row);
+        else if (layer.kind === 'adjust') for (const span of layer.items) drawAdjust(span, row);
         else if (layer.kind === 'captions') for (const caption of layer.items) drawCaption(caption, row);
         else for (const sound of layer.items) drawSound(sound, row, Boolean(layer.muted));
         veil(layer.hidden, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers));
@@ -656,6 +678,14 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     if (next !== timeline) change(next);
     setAddingLayer(false);
   };
+  /** An adjustment span at the playhead, warming the whole scene, selected so its one-click looks show at once. */
+  const addAdjustment = () => {
+    const unique = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${groupCount.current += 1}`;
+    const span = newAdjust(`adjust-${unique()}`, Math.max(0, playhead.current));
+    change(addAdjust(timeline, span, `layer-${unique()}`));
+    onSelect(span.id);
+    setAddingLayer(false);
+  };
   const deleteTrack = (layer: TrackLayer) => {
     const name = layer.name || (layer.kind === 'video' ? 'Overlay' : layer.kind === 'text' ? 'Text' : layer.kind === 'audio' ? 'Sound' : 'layer');
     const count = layer.items.length;
@@ -679,6 +709,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
           <button role="menuitem" onClick={() => addTrack('video')}><Video size={14}/>Video</button>
           <button role="menuitem" onClick={() => addTrack('text')}><Type size={14}/>Title</button>
           <button role="menuitem" onClick={() => addTrack('audio')}><Music size={14}/>Sound</button>
+          <button role="menuitem" title="Changes the look of everything below it" onClick={addAdjustment}><SlidersHorizontal size={14}/>Adjustment</button>
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
