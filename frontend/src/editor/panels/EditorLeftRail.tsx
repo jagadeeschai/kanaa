@@ -1,3 +1,4 @@
+import { AskTabSection1 } from './tabs/AskTab';
 import { TransitionsTabSection1 } from './tabs/TransitionsTab';
 import { WordsTabSection1 } from './tabs/WordsTab';
 import { AudioTabSection1 } from './tabs/AudioTab';
@@ -180,7 +181,7 @@ export function EditorLeftRail() {
         <TemplatesTabSection1/>
         <ThemesTabSection1/>
         <TransitionsTabSection1/>
-        {leftTab === 'ask' && timeline && <div data-keep-panel><AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/></div>}
+        <AskTabSection1/>
         <EffectsTabSection1/>
         <EffectsTabSection2/>
         <MediaTabSection2/>
