@@ -1,5 +1,6 @@
-import { EditorLeftRail } from './panels/EditorLeftRail';
 import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
+import { createThemeActions } from './actions/themes-and-stories';
+import { EditorLeftRail } from './panels/EditorLeftRail';
 import { createTitleSceneActions } from './actions/title-scene';
 import { BlurInspector } from './inspectors/BlurInspector';
 import { CaptionInspector } from './inspectors/CaptionInspector';
@@ -802,83 +803,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     .then((found) => { setLibrary(found.tracks); setLibraryFolder(found.folder); return found.tracks; })
     .catch(() => { setLibrary([]); return [] as LibraryTrack[]; })), []);
   useEffect(() => { if (leftTab === 'themes' || leftTab === 'audio') void loadLibrary(); }, [leftTab, loadLibrary]);
-  const listen = (id: string) => {
-    const player = listenRef.current ?? (listenRef.current = new Audio());
-    if (listening === id) { player.pause(); setListening(null); return; }
-    player.src = musicListenUrl(id);
-    player.onended = () => setListening(null);
-    void player.play().catch(() => setListening(null));
-    setListening(id);
-  };
+  const { listen, librarySong, chooseTheme, makeStory, buildStoryVideo, changeThemeMusic, addLibraryTrack } = createThemeActions(() => ({ listenRef, listening, setListening, timeline, setError, themeBusy, projectName, setThemeBusy, mediaById, aimFor, newId, themeWithMusic, loadLibrary, setThemeTrack, change, story, facts, timelineRef, setMomentProgress, setStory, library, themeTrack, setAddingMusic, engineRef, MIN_MUSIC_SECONDS, setSelectedId }));
   useEffect(() => () => { listenRef.current?.pause(); }, []);
-  /** A library track as a song: copied into Kanaa once, then used like an uploaded one. */
-  const librarySong = async (track: LibraryTrack) => ({ ...(await takeLibraryTrack(track.id)), name: track.genre && /^track\b/i.test(track.name) ? `${track.name} · ${track.genre}` : track.name });
-  /** Dresses the whole video in a theme. The opening title keeps the words already typed there, or the project's name. */
-  const chooseTheme = async (look: VideoTheme, base = timeline, busy = look.id) => {
-    if (!base || !mainLayer(base).items.length) { setError('Add a clip to your video first.'); return; }
-    if (themeBusy) return;
-    const words = openingWords(base) ?? projectName;
-    setThemeBusy(busy);
-    const isPhoto = (clip: Clip) => mediaById.get(clip.media_id)?.media_type === 'image';
-    const aims = new Map(await Promise.all(mainLayer(base).items.filter(isPhoto).map(async (clip) => [clip.id, await aimFor(clip, base)] as const)));
-    let next = applyTheme(base, look, words, isPhoto, [newId(), newId(), newId()], (clip) => aims.get(clip.id) ?? null);
-    try {
-      const track = themeWithMusic ? pickTrack(await loadLibrary(), look, duration(next)) : null;
-      if (track) {
-        try { next = addThemeMusic(next, await librarySong(track), [newId(), newId()]); setThemeTrack(track.id); } catch (problem) { setError((problem as Error).message); }
-      }
-      change(next);
-    } finally { setThemeBusy(null); }
-  };
   const storyMedia = media.filter((item) => item.media_type === 'video' || item.media_type === 'image');
-  /** The story's clips in its order, then its theme and music, as one change. */
-  const makeStory = async () => {
-    if (!timeline || !story) return;
-    await buildStoryVideo(story.story, story.fills.map((id) => (id === null ? null : facts(id) ?? null)));
-  };
-  /** A story's video from its filled moments: best moments, then its theme and music. */
-  const buildStoryVideo = async (chosenStory: (typeof STORIES)[number], fills: (SourceFacts | null)[]) => {
-    const base = timelineRef.current;
-    if (!base) return;
-    const story = { story: chosenStory };
-    if (!fills.some(Boolean)) { setError('Put a clip or photo in at least one moment.'); return; }
-    const look = THEMES.find((item) => item.id === story.story.theme) ?? THEMES[0];
-    // Each video's best stretch (sharp, steady, well lit, with faces) instead of its middle. If that fails, the middle still works.
-    let best: (number | null)[] = [];
-    const wanted = story.story.slots.map((slot, index) => ({ slot, source: fills[index] })).filter(({ slot, source }) => source?.media_type === 'video' && (source.duration ?? 0) > slot.seconds);
-    if (wanted.length) {
-      setMomentProgress(0);
-      try {
-        const { job_id } = await startBestMoments(wanted.map(({ slot, source }) => ({ media_id: source!.media_id, length: slot.seconds })));
-        const { starts } = await waitForJob<{ starts: (number | null)[] }>(job_id, setMomentProgress);
-        best = story.story.slots.map((slot) => { const at = wanted.findIndex((entry) => entry.slot === slot); return at < 0 ? null : starts[at]; });
-      } catch { best = []; } finally { setMomentProgress(null); }
-    }
-    await chooseTheme(look, buildStory(base, story.story, fills, newId, best), `story-${story.story.id}`);
-    setStory(null);
-  };
-  /** The theme's music: the next suitable track, or none. */
-  const changeThemeMusic = async (on: boolean) => {
-    const look = timeline && activeTheme(timeline);
-    if (!timeline || !look) return;
-    if (!on) { change(removeThemeMusic(timeline)); return; }
-    const track = library && pickTrack(library, look, duration(timeline), themeTrack);
-    if (!track) { setError('No music in your library suits this theme yet.'); return; }
-    try { change(addThemeMusic(timeline, await librarySong(track), [newId(), newId()])); setThemeTrack(track.id); } catch (problem) { setError((problem as Error).message); }
-  };
-  const addLibraryTrack = async (track: LibraryTrack, dropAt?: number) => {
-    if (!timeline) return;
-    setAddingMusic(true);
-    try {
-      const song = await librarySong(track);
-      const at = Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000;
-      const left = duration(timeline) - at;
-      const length = left >= MIN_MUSIC_SECONDS ? Math.min(left, song.duration) : song.duration;
-      const sound: Sound = { id: newId(), asset_id: song.asset_id, start: at, in: 0, out: length, speed: 1, volume: MUSIC_VOLUME, muted: false, fade_in: 0, fade_out: 0, duck: true, name: song.name.slice(0, 120), source_length: song.duration };
-      change(addSound(timeline, sound, newId()));
-      setSelectedId(sound.id);
-    } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
-  };
   const saveStyle = (text: TextItem) => {
     const style: Template = { id: `mine-${Date.now().toString(36)}`, label: text.text.slice(0, 18), look: lookOf(text), motion: motionOf(text) };
     const next = [style, ...myStyles].slice(0, MAX_SAVED);
