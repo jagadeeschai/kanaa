@@ -84,8 +84,8 @@ export function lyricEditorTimeline(input: Handoff): Timeline {
   const closing: TextItem = { id: 'closing-credit', start: CREDIT_SECONDS + input.duration, length: CREDIT_SECONDS, text: 'Credits', subtitle: 'Add names and details here', style: 'band', band_color: '#111827', position: 'center', color: '#ffffff', size: 56, enter: { preset: 'fade', duration: .4 }, exit: { preset: 'fade', duration: .4 }, transform: { ...REST_TRANSFORM }, align: 'center' };
   return { version: 2, format: formatFor(input.canvas), layers: [
     { id: 'main', kind: 'video', name: 'Main', magnetic: true, items: clips },
-    { id: 'song', kind: 'audio', name: 'Song', items: [{ id: 'lyric-song', asset_id: input.song.id, start: CREDIT_SECONDS, in: 0, out: input.song.duration, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: input.song.name, source_length: input.song.duration }] },
-    { id: 'lyric-titles', kind: 'text', name: 'Lyrics & credits', items: [opening, ...lines, closing] },
+    { id: 'song', kind: 'audio', name: 'Song', ripple: false, items: [{ id: 'lyric-song', asset_id: input.song.id, start: CREDIT_SECONDS, in: 0, out: input.song.duration, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, duck: false, name: input.song.name, source_length: input.song.duration }] },
+    { id: 'lyric-titles', kind: 'text', name: 'Lyrics & credits', ripple: false, items: [opening, ...lines, closing] },
     // Lyrics in the scene: the same 3D scenes again, showing only what stands up in them, above the lyrics (as people in front of a title).
     ...(input.inScene && input.depthVideos ? [{ id: 'lyric-in-front', kind: 'video' as const, name: 'In front', items: clips.filter((clip) => clip.id.startsWith('lyric-scene-') && Object.values(input.depthVideos!).includes(clip.media_id))
       .map((clip) => ({ ...clip, id: `${clip.id}-front`, start: CREDIT_SECONDS + (input.slideStarts[Number(clip.id.split('-').pop()) - 1] ?? 0), cutout: 'remove' as const, cutout_pick: null, depth_gap: 1 as const, transition_in: null })) }] : []),

@@ -128,7 +128,13 @@ export const captionLayers = (timeline: Timeline) => timeline.layers.filter((lay
 export const blurLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is BlurLayer => layer.kind === 'blur');
 /** The rows under the main track: text first, then blur boxes, overlays and sound. */
 export const overlayLayers = (timeline: Timeline) => timeline.layers.filter((layer): layer is VideoLayer => layer.kind === 'video' && layer !== mainLayer(timeline));
-export const trackLayers = (timeline: Timeline): TrackLayer[] => [...captionLayers(timeline), ...textLayers(timeline), ...blurLayers(timeline), ...timeline.layers.filter((layer): layer is AdjustLayer => layer.kind === 'adjust'), ...[...overlayLayers(timeline)].reverse(), ...audioLayers(timeline)];
+/** The timeline's rows under the main track. In a song video the sound rows come right after the titles, so the song's
+ * waveform sits under the lyrics it is timed with; elsewhere they come last. Rows are only layout: sound has no stacking. */
+export const trackLayers = (timeline: Timeline): TrackLayer[] => {
+  const song = timeline.layers.some((layer) => layer.kind === 'audio' && layer.id === 'song');
+  const adjust = timeline.layers.filter((layer): layer is AdjustLayer => layer.kind === 'adjust');
+  return [...captionLayers(timeline), ...textLayers(timeline), ...(song ? audioLayers(timeline) : []), ...blurLayers(timeline), ...adjust, ...[...overlayLayers(timeline)].reverse(), ...(song ? [] : audioLayers(timeline))];
+};
 export const itemLength = (item: TrackItem) => ('length' in item ? item.length : (item.out - item.in) / item.speed);
 export const isClip = (item: TrackItem): item is Clip => 'media_id' in item && 'transform' in item;
 export const isBlur = (item: TrackItem): item is BlurBox => 'shape' in item;
@@ -288,8 +294,12 @@ const SOUND_DEFAULTS = { speed: 1, volume: 1, muted: false, fade_in: 0, fade_out
 export const MUSIC_VOLUME = 0.6;
 
 // The server omits optional clip fields; everything here relies on them being present.
+/** A lyric video's song and lyric layers follow the song, not the pictures (see songSafe.ts), unless set otherwise. */
+const SONG_TIMED_LAYERS = new Set(['song', 'lyric-titles', 'lyrics-answer']);
+
 export function normalizeTimeline(timeline: Timeline): Timeline {
-  const layers = timeline.layers.map((layer) => {
+  const layers = timeline.layers.map((given) => {
+    const layer = given.ripple === undefined && SONG_TIMED_LAYERS.has(given.id) ? { ...given, ripple: false } : given;
     if (layer.kind === 'audio') return { ...layer, volume: layer.volume ?? 1, items: layer.items.map((item) => ({ ...SOUND_DEFAULTS, ...item })) };
     if (layer.kind === 'text') return { ...layer, items: layer.items.map((item) => ({ ...item, transform: { ...REST_TRANSFORM, ...item.transform } })) };
     if (layer.kind === 'captions') return { ...DEFAULT_CAPTION_LOOK, ...layer };

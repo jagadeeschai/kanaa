@@ -463,7 +463,7 @@ def house_style(timeline: dict, title: str, poet: str | None) -> None:
     if lyric_layer is None:
         return
     lines = sorted((item for item in lyric_layer['items'] if item['id'].startswith('lyric-line-')), key=lambda item: item['start'])
-    answer = {'id': 'lyrics-answer', 'kind': 'text', 'name': 'Lyrics (answer)', 'items': []}
+    answer = {'id': 'lyrics-answer', 'kind': 'text', 'name': 'Lyrics (answer)', 'ripple': False, 'items': []}  # Timed to the song, not the pictures.
     for number, line in enumerate(lines, start=1):
         side = number % 2
         x, y = HOUSE_GLIDE[side]

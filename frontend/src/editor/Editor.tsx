@@ -72,6 +72,7 @@ import { TRANSITIONS } from './transition-catalog';
 import TransitionPopover from './TransitionPopover';
 import { useClipboard } from './useClipboard';
 import { findAdjust, removeAdjust } from '../timeline/adjust';
+import { deleteAndStretch, factsFrom, isSongVideo } from '../timeline/songSafe';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -929,6 +930,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       }
       change(next); setSelectedId(null); return;
     }
+    const stretched = isSongVideo(timeline) && findClip(timeline, selectedId) && mainLayer(timeline).items.some((clip) => clip.id === selectedId) ? deleteAndStretch(timeline, selectedId, factsFrom(mediaById)) : null;
+    if (stretched) { change(stretched); setSelectedId(null); return; }
     change(findSound(timeline, selectedId) ? removeSound(timeline, selectedId) : findText(timeline, selectedId) ? removeText(timeline, selectedId) : findBlur(timeline, selectedId) ? removeBlur(timeline, selectedId) : findAdjust(timeline, selectedId) ? removeAdjust(timeline, selectedId) : findCaption(timeline, selectedId) ? removeCaption(timeline, selectedId) : removeClip(timeline, selectedId));
     setSelectedId(null);
   }, [timeline, selectedId, moreIds, change]);
@@ -1036,6 +1039,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
   useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
+    get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; },
     get history(): typeof history { return history; },
     get dispatch(): typeof dispatch { return dispatch; },
     get setMenu(): typeof setMenu { return setMenu; },

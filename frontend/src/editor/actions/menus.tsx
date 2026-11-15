@@ -1,11 +1,12 @@
 import { openPanelTab } from "../layout";
+import { deleteAndStretch, factsFrom, isSongVideo, replaceClips } from "../../timeline/songSafe";
 import { openAiEdit } from "../AiEditDialog";
 import { openBringToLife } from "../BringToLifeDialog";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
 import { type History } from "../../timeline/history";
-import { findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type Timeline } from "../../timeline/model";
+import { clipLength,findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type Timeline } from "../../timeline/model";
 import { canReframe } from "../../timeline/reframe";
 import type { Photo } from "../../types/photo";
 import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
@@ -37,6 +38,9 @@ type Input = {
   isRendered: boolean;
   isVideo: (id: number) => boolean;
   mediaById: Map<number, Photo>;
+  selectedId: string | null;
+  moreIds: ReadonlySet<string>;
+  setError: (message: string) => void;
   ownBox: () => Box | null;
   playing: boolean;
   reframeClip: (clipId: string) => Promise<void>;
@@ -116,10 +120,20 @@ export function createEditorMenuActions(getInput: () => Input) {
   };
 
   const openMediaMenu = (...args: Parameters<(event: React.MouseEvent, item: Photo) => void>) => {
-    const { setMenu, addMedia, addOverlayMedia, setFiling, usedIds, timeline, change, setSelectedId, setDeleting } = getInput();
+    const { setMenu, addMedia, addOverlayMedia, setFiling, usedIds, timeline, change, setSelectedId, setDeleting, selectedId, moreIds, setError } = getInput();
     const invoke = (event: React.MouseEvent, item: Photo) => {
     event.preventDefault(); event.stopPropagation();
+    // Replace the selected main clips with this one, in exactly their time: nothing else moves.
+    const mainIds = timeline ? mainLayer(timeline).items.map((clip) => clip.id) : [];
+    const picked = [selectedId, ...moreIds].filter((id): id is string => Boolean(id) && mainIds.includes(id as string));
+    const replace = () => {
+      if (!timeline) return;
+      const result = replaceClips(timeline, picked, { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height }, newId());
+      if ('problem' in result) { setError(result.problem); return; }
+      change(result.timeline); setSelectedId(null);
+    };
     setMenu({ x: event.clientX, y: event.clientY, items: [
+      ...(picked.length ? [{ label: picked.length > 1 ? `Replace the ${picked.length} selected clips` : 'Replace the selected clip', onSelect: replace }, 'divider' as const] : []),
       { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }, { label: 'Move to folder…', onSelect: () => setFiling(item) },
       ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
       'divider', { label: 'Delete from Kanaa…', danger: true, onSelect: () => setDeleting(item) },
@@ -188,7 +202,13 @@ export function createEditorMenuActions(getInput: () => Input) {
     const overlays = overlayLayers(timeline);
     const stack = overlays.findIndex((entry) => entry.id === layer.id);
     if (stack >= 0) items.push({ label: 'Bring forward', disabled: stack === overlays.length - 1, onSelect: () => change(reorderLayer(timeline, layer.id, 'forward')) }, { label: 'Send back', disabled: stack === 0, onSelect: () => change(reorderLayer(timeline, layer.id, 'back')) });
-    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findAdjust(timeline, id) ? removeAdjust(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
+    const stretchable = clip && layer === mainLayer(timeline) ? deleteAndStretch(timeline, id, factsFrom(mediaById)) : null;
+    items.push(lockItem, 'divider');
+    // Which neighbour grows: the one before when it could, otherwise the one after.
+    const main = mainLayer(timeline).items; const at = main.findIndex((each) => each.id === id);
+    const grewBefore = Boolean(stretchable && at > 0 && clipLength(mainLayer(stretchable).items[at - 1]) > clipLength(main[at - 1]) + 1e-6);
+    if (stretchable) items.push({ label: grewBefore ? 'Delete and stretch the clip before' : 'Delete and stretch the clip after', hint: isSongVideo(timeline) ? '⌫' : undefined, onSelect: () => { change(stretchable); setSelectedId(null); } });
+    items.push({ label: stretchable ? 'Delete and close the gap' : 'Delete', hint: stretchable && isSongVideo(timeline) ? undefined : '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findAdjust(timeline, id) ? removeAdjust(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
     setMenu({ ...place, items });
   };
     return invoke(...args);
