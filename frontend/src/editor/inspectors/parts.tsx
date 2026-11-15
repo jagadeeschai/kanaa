@@ -130,7 +130,7 @@ export type TitleCover = 'front' | 'people' | 'object' | 'land' | 'drawn' | null
 export function CinemaPicker({ initial, cover, shapingMode, onClear, onFront, onPick, onShape }: { initial: CinemaReveal | 'none'; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; onClear: () => void; onFront: (reveal: CinemaReveal) => void; onPick: (reveal: CinemaReveal, what: CoverKind) => void; onShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void }) {
   const [reveal, setReveal] = useState<CinemaReveal | 'none'>(initial);
   useEffect(() => { setReveal(initial); }, [initial]);
-  const choose = (next: CinemaReveal | 'none') => { setReveal(next); if (next === 'none') onClear(); };
+  const choose = (next: CinemaReveal | 'none') => { setReveal(next); if (next === 'none') onClear(); else if(next==='fly') onFront(next); };
   const chosen = CINEMA_REVEALS.find((item) => item.id === reveal);
   const [drawing, setDrawing] = useState(cover === 'drawn');
   useEffect(() => { if (cover && cover !== 'drawn') setDrawing(false); }, [cover]);

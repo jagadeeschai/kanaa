@@ -206,6 +206,12 @@ def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, p
         if key is not None and key in cache:
             return key, cache[key]
         frame = frame_at(text, local, showing, box, shares, depth, colour, size, pin_at(text.start + local) if pin_at else None, lettered)
+        from app.services.fly_reveal import state_at, overlay
+        fly = state_at(text, local)
+        if fly is not None:
+            bare = text.model_copy(update={'depth': None})
+            window = frame_at(bare, local, showing, box, [0.0], None, None, size, pin_at(text.start+local) if pin_at else None, lettered)
+            frame = overlay(frame, window, fly)
         if key is not None:
             cache[key] = frame
         return key, frame
@@ -290,7 +296,7 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
             front_crop = moving_letters(front_crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)
     crop = picture_tricks(crop, look, (x0, y0), letters, text_colour(text))
     front_crop = picture_tricks(front_crop, look, (x0, y0), letters, text_colour(text))
-    shift = np.array([[1, 0, x0], [0, 1, y0], [0, 0, 1]], np.float64)
+    shift = np.array([[1, 0, x0 + .5], [0, 1, y0 + .5], [0, 0, 1]], np.float64)
     placed = []
     for index in range(len(shares) - 1, -1, -1):  # Back to front.
         try:
@@ -309,7 +315,7 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     if right <= left or bottom <= top:
         return out
     region = np.zeros((bottom - top, right - left, 4), np.float32)
-    offset = np.array([[1, 0, -left], [0, 1, -top], [0, 0, 1]], np.float64)
+    offset = np.array([[1, 0, -left - .5], [0, 1, -top - .5], [0, 0, 1]], np.float64)
     for index, _, matrix in placed:
         layer = cv2.warpPerspective(front_crop if index == 0 else crop, offset @ matrix, (right - left, bottom - top), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
         if index > 0 and depth is not None:

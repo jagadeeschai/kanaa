@@ -14,7 +14,7 @@ export const EXTRUDE_Z = 1;
 export const EXTRUDE_XY = Math.hypot(0.25, 0.55);  // The fixed screen-plane slant magnitude; its direction is `angle`.
 export const DEFAULT_DEPTH_ANGLE = (Math.atan2(0.25, 0.55) * 180) / Math.PI;  // The old fixed slant, as an angle from straight-down towards the right.
 export const ALPHA_EDGE = 8;
-const TILTING = new Set(['rise-behind', 'push-through']);
+const TILTING = new Set(['rise-behind', 'push-through', 'fly-reveal', 'fly-through-3d']);
 
 export type Point = [number, number];
 export type Matrix = [[number, number, number], [number, number, number], [number, number, number]];

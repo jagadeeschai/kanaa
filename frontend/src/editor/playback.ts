@@ -87,11 +87,12 @@ void main(){
 }`;
 /** A title in 3D: every frame pixel is taken back into the title picture through the inverse of its homography
  * (title3d.ts), so perspective is exact. Matches title3d_render.py, which warps the same way with OpenCV. */
+import { flyState } from '../timeline/flyReveal';
 import { MATERIAL_FRAGMENT, MATERIAL_LOOKS, sweepAt } from '../timeline/titleMaterial';
 
 const TITLE_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPicture; uniform vec2 frame, viewport;
-uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
+uniform vec4 bounds; uniform float opacity; uniform vec4 shade; uniform vec2 matte;
 // Picture tricks (PictureLook in animation.ts), in the title picture's pixels; picture_tricks in title3d_render.py does the same.
 uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineColour; uniform float streak;
 // Letter by letter (letterLook in animation.ts; moving_letters in title3d_render.py): the letter map's red is each
@@ -122,6 +123,10 @@ void main(){
   vec3 q = toPicture * vec3(at, 1.);
   if (q.z <= 0.) discard;
   vec2 p = q.xy / q.z;
+  if (matte.x > .5) {
+    float window = p.x>=0. && p.y>=0. && p.x<frame.x && p.y<frame.y ? texture(tex,p/frame).a : 0.;
+    color=vec4(0.,0.,0.,(1.-window)*(1.-matte.y)); return;
+  }
   if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.z || p.y > bounds.w) discard;
   vec4 c = pm(p);
   float lw = letters.z - letters.x, lh = letters.w - letters.y;
@@ -586,7 +591,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak', 'material']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak', 'material', 'matte']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     const moving = gl.createProgram()!;
     gl.attachShader(moving, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
     gl.attachShader(moving, shader(gl.FRAGMENT_SHADER, TRANSITION_FRAGMENT));
@@ -1196,6 +1201,14 @@ export class PlaybackEngine {
     gl.uniform1f(u.streak, tricks.streak);
     gl.uniform3f(u.lineColour, ...hexColour(item.color));
     this.setLetters(item, local, letters);
+    const fly=flyState(item,local);
+    gl.uniform2f(u.matte,0,0);
+    if(fly){
+      const m=invert(homography(source,corners(pose,frameBox,[width,height],0,0,pin)));
+      gl.uniformMatrix3fv(u.toPicture,false,[m[0][0],m[1][0],m[2][0],m[0][1],m[1][1],m[2][1],m[0][2],m[1][2],m[2][2]]);
+      gl.uniform2f(u.matte,1,fly[0]);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.uniform2f(u.matte,0,0);
+      gl.uniform1f(u.opacity,opacity*fly[1]);
+    }
     for (let index = shades.length - 1; index >= 0; index -= 1) {
       const share = shades[index];
       let toPicture: Matrix;

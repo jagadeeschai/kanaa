@@ -90,6 +90,8 @@ def look_at(preset: str, p: float) -> dict[str, float]:
     elif preset == 'fly-through':
         look.update(scale=1 + 4 * (1 - p) ** 2, blur=.025 * (1 - p))
     # Rapid zoom: a crash zoom, fast at first, with a zoom blur that clears as it lands.
+    elif preset in ('fly-reveal', 'fly-through-3d'):
+        look.update(scale=1 + 11 * (1-p)**3, tilt=12*(1-e))
     elif preset == 'rapid-zoom':
         look.update(scale=1 + 1.4 * (1 - e), blur=.045 * (1 - e) ** 2)
     # Cinema reveals, drawn through title3d. Rise descends gently and settles onto a floor plane; the cubic reaches

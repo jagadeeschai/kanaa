@@ -465,8 +465,9 @@ export function groundRiseBehind(timeline: Timeline, textId: string, what: Cover
   return updateText(behind, textId, { enter: { preset: 'ground-rise', duration }, exit: found.text.exit ?? { preset: 'fade', duration: 0.5 } });
 }
 
-export type CinemaReveal = 'rise' | 'pass' | 'push';
+export type CinemaReveal = 'rise' | 'pass' | 'push' | 'fly';
 export const CINEMA_REVEALS: { id: CinemaReveal; label: string; tamil: string; about: string }[] = [
+  {id:'fly',label:'Through the letters',tamil:'எழுத்துகளின் வழியே',about:'The scene opens through huge 3D letters as the camera pulls back.'},
   { id: 'rise', label: 'Settle on floor', tamil: 'தரையில் அமரும்', about: 'Descends smoothly and settles in perspective, as if written on the floor.' },
   { id: 'pass', label: 'Uncovered as they pass', tamil: 'கடந்ததும் தெரியும்', about: 'Stands in the scene; they walk in front and uncover it.' },
   { id: 'push', label: 'Push through', tamil: 'முன்னே பாய்', about: 'Flies in from far away in perspective and settles.' },
@@ -479,7 +480,7 @@ export function cinemaReveal(timeline: Timeline, textId: string, reveal: CinemaR
   if (!before) return timeline;
   const behind = groundRiseBehind(timeline, textId, what, ids);
   if (behind === timeline) return timeline;
-  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter?.preset === 'ground-rise' ? null : before.text.enter ?? null;
+  const enter: Animation | null = reveal === 'fly' ? {preset:'fly-reveal',duration:2} : reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter?.preset === 'ground-rise' ? null : before.text.enter ?? null;
   const depth = reveal === 'pass' ? before.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
   // People and objects get comfortable space by default: steady room around them stops letters at their edges flickering.
   const spaced = what === 'land' || groundRiseGap(behind, textId) ? behind : setGroundRiseGap(behind, textId, TITLE_SPACE.comfortable);
@@ -503,7 +504,7 @@ export function cinemaRevealFront(timeline: Timeline, textId: string, reveal: Ci
     end += 1;
   }
   const layers = [...timeline.layers.slice(0, index + 1), ...timeline.layers.slice(end)];
-  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : found.text.enter ?? null;
+  const enter: Animation | null = reveal === 'fly' ? {preset:'fly-reveal',duration:2} : reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : found.text.enter ?? null;
   const depth = reveal === 'pass' ? found.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : found.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
   return updateText({ ...timeline, layers }, textId, { enter, depth });
 }
@@ -530,7 +531,7 @@ export function cinemaRevealShape(timeline: Timeline, textId: string, reveal: Ci
   if (!before) return timeline;
   const behind = putBehindShape(timeline, textId, mask, ids);
   if (behind === timeline) return timeline;
-  const enter: Animation | null = reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter ?? null;
+  const enter: Animation | null = reveal === 'fly' ? {preset:'fly-reveal',duration:2} : reveal === 'rise' ? { preset: 'rise-behind', duration: 1.2 } : reveal === 'push' ? { preset: 'push-through', duration: 1.4 } : before.text.enter ?? null;
   const depth = reveal === 'pass' ? before.text.depth ?? null : reveal === 'rise' ? { ...DEFAULT_TITLE_DEPTH } : before.text.depth ?? { ...DEFAULT_TITLE_DEPTH, amount: 0.32 };
   return updateText(behind, textId, { enter, depth });
 }

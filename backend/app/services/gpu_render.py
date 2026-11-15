@@ -44,6 +44,9 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             for item in layer.items:
                 if item.keep_clear or item.stay_with:
                     found.add('titles that move with people')
+                from app.services.fly_reveal import PRESETS
+                if any(move and move.preset in PRESETS for move in (item.enter, item.exit)):
+                    found.add('letter-window matte compositing')
                 if title3d.is_3d(item):
                     # Drawn frame by frame by the export's own title renderer (title3d_render), then laid on as pictures;
                     # a pinned title follows the camera through the clip, which only the ffmpeg path does.

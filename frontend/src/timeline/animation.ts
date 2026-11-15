@@ -1,6 +1,6 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
-  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom';
+  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom' | 'fly-reveal' | 'fly-through-3d';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
   | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right';
@@ -145,6 +145,7 @@ export function lookAt(preset: Preset, progress: number): Look {
   // Fly through: the words rush at the camera and pass it (exit), or arrive from behind it (entrance). Capped at 5x, as in the export.
   else if (preset === 'fly-through') { look.scale = 1 + 4 * (1 - p) ** 2; look.blur = 0.025 * (1 - p); }
   // Rapid zoom: a crash zoom with a zoom blur that clears as it lands.
+  else if (preset === 'fly-reveal' || preset === 'fly-through-3d') { look.scale=1+11*(1-p)**3; look.tilt=12*(1-e); }
   else if (preset === 'rapid-zoom') { look.scale = 1 + 1.4 * (1 - e); look.blur = 0.045 * (1 - e) ** 2; }
   // Cinema reveals, drawn through title3d.ts. Rise descends gently, then settles onto a floor plane instead of
   // standing upright; the smooth cubic has zero velocity at the landing, avoiding the old snap/flicker.

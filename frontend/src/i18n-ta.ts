@@ -3,6 +3,8 @@
  * one sentence. Names (YouTube, VHS, LUT, font names) stay as they are. A label missing here simply shows in English.
  */
 export const TAMIL: Record<string, string> = {
+  'Through the letters': 'எழுத்துகளின் வழியே',
+
   'Material': 'பொருள்', 'Chrome / silver': 'குரோம் / வெள்ளி', 'Stone / carved': 'கல் / செதுக்கு', 'Neon glow': 'நியான் ஒளி', 'Glass': 'கண்ணாடி', 'Light sweep on letters': 'எழுத்துகளில் ஒளி வருடல்', 'Bevel': 'சாய்வான விளிம்பு',
 
   // Common

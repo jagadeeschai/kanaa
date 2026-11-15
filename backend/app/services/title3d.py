@@ -32,7 +32,7 @@ def is_3d(text) -> bool:
     return bool(tilts or presets or (text.depth and text.depth.amount > 0) or text.pin)
 
 
-TILTING = {'rise-behind', 'push-through'}
+TILTING = {'rise-behind', 'push-through', 'fly-reveal', 'fly-through-3d'}
 
 
 def animated_look(enter, exit_, local: float, length: float) -> dict[str, float]:
