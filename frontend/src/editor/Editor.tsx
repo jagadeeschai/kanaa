@@ -1,3 +1,4 @@
+import { useFullscreen } from './hooks/useFullscreen';
 import { useFollowJob } from './hooks/useFollowJob';
 import { useFaceJob } from './hooks/useFaceJob';
 import { useSceneJob } from './hooks/useSceneJob';
@@ -116,20 +117,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // The preview alone, filling the screen. Esc or the same button leaves it.
   const stageRef = useRef<HTMLElement>(null);
   const [fullScreen, setFullScreen] = useState(false);
-  useEffect(() => {
-    // Leaving the screen's full screen (Esc, or the green button) leaves this too.
-    const changed = () => { if (!document.fullscreenElement) setFullScreen(false); };
-    document.addEventListener('fullscreenchange', changed);
-    return () => document.removeEventListener('fullscreenchange', changed);
-  }, []);
+  const toggleFullScreen = useFullscreen(stageRef, setFullScreen);
   /** Fills the window at once, and the whole screen where the system allows it. */
-  const toggleFullScreen = useCallback(() => {
-    setFullScreen((on) => {
-      if (on) { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); return false; }
-      void stageRef.current?.requestFullscreen?.().catch(() => { /* The window-filling view still works. */ });
-      return true;
-    });
-  }, []);
+  
   // The person's own music, read once when Themes or Audio is first opened.
   const [library, setLibrary] = useState<LibraryTrack[] | null>(null);
   const [libraryFolder, setLibraryFolder] = useState('');
