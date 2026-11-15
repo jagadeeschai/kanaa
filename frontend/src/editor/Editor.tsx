@@ -1,3 +1,4 @@
+import { createAudioToolActions } from './actions/audio-tools';
 import { createClipToolActions } from './actions/clip-tools';
 import { createTitleEditingActions } from './actions/title-editing';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
@@ -803,54 +804,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const showExit = (end: number, seconds: number) => engineRef.current?.playRange(Math.max(0, end - seconds), Math.max(0, end - 0.02));
   const clipsInOrder = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start) : [];
   const clipIndex = selected ? clipsInOrder.findIndex((clip) => clip.id === selected.id) : -1;
-  const applyStems = (result: Stems) => {
-    const current = timelineRef.current; const job = stemJob;
-    const found = current && job ? findSound(current, job.soundId) : null;
-    setStemJob(null);
-    if (!current || !job || !found) return;
-    const { sound } = found;
-    const as = (id: string, label: string): Partial<Sound> => ({ asset_id: id, media_id: undefined, name: `${sound.name} (${label})`.slice(0, 120) });
-    if (job.choice === 'vocals') change(updateSound(current, sound.id, as(result.vocals, 'vocals only')));
-    else {
-      const next = updateSound(current, sound.id, as(result.music, 'no vocals'));
-      change(job.choice === 'music' ? next : addSound(next, { ...sound, ...as(result.vocals, 'vocals only'), id: newId() }, newId()));
-    }
-  };
-  const separate = async (choice: StemChoice) => {
-    if (!selectedSound) return;
-    const { sound } = selectedSound;
-    try {
-      const { job_id } = await startStems(sound.asset_id ? { asset_id: sound.asset_id } : { media_id: sound.media_id });
-      setStemJob({ soundId: sound.id, jobId: job_id, choice, progress: 0 });
-    } catch (problem) { setError((problem as Error).message); }
-  };
-  const updateSelectedSound = (changes: Partial<Sound>, group?: string) => { if (timeline && selectedSound) change(changes.speed !== undefined ? setSpeed(timeline, selectedSound.sound.id, changes.speed) : updateSound(timeline, selectedSound.sound.id, changes), group); };
-  const hasSound = (id: number) => Boolean(visuals.current.get(id)?.peaks?.peaks.some(Boolean));
+  const { applyStems, separate, updateSelectedSound, hasSound, detach, addMusic, addSoundEffects, addThunder, loopSelectedSound, cutClipsToBeat } = createAudioToolActions(() => ({ get timelineRef() { return timelineRef; }, get stemJob() { return stemJob; }, get setStemJob() { return setStemJob; }, get change() { return change; }, get selectedSound() { return selectedSound; }, get setError() { return setError; }, get timeline() { return timeline; }, get visuals() { return visuals; }, get selected() { return selected; }, get mediaById() { return mediaById; }, get setSelectedId() { return setSelectedId; }, get setAddingMusic() { return setAddingMusic; }, get engineRef() { return engineRef; }, get sfxBusy() { return sfxBusy; }, get setSfxNote() { return setSfxNote; }, get setSfxBusy() { return setSfxBusy; }, get sfxChoice() { return sfxChoice; }, get thunderBusy() { return thunderBusy; }, get setThunderBusy() { return setThunderBusy; }, get looping() { return looping; }, get setLooping() { return setLooping; }, get setBeatNote() { return setBeatNote; }, get setBeatBusy() { return setBeatBusy; }, get facts() { return facts; } }));
   const hasAudibleAudio = Boolean(timeline?.layers.some((layer) => {
     if (layer.muted) return false;
     if (layer.kind === 'audio') return layer.items.some((sound) => !sound.muted && sound.volume > 0);
     if (layer.kind === 'video') return layer.items.some((clip) => !clip.muted && clip.volume > 0 && hasSound(clip.media_id));
     return false;
   }));
-  const detach = (clip = selected) => {
-    if (!timeline || !clip) return;
-    const soundId = newId();
-    change(detachAudio(timeline, clip.id, soundId, newId(), `${mediaById.get(clip.media_id)?.filename ?? 'Clip'} sound`.slice(0, 120), mediaById.get(clip.media_id)?.duration ?? undefined));
-    setSelectedId(soundId);
-  };
-  const addMusic = async (file: File) => {
-    if (!timeline) return;
-    setAddingMusic(true);
-    try {
-      const song = await uploadVideoAudio(file);
-      const at = Math.round(engineRef.current ? engineRef.current.currentTime * 1000 : 0) / 1000;
-      const left = duration(timeline) - at;
-      const length = left >= MIN_MUSIC_SECONDS ? Math.min(left, song.duration) : song.duration;
-      const sound: Sound = { id: newId(), asset_id: song.asset_id, start: at, in: 0, out: length, speed: 1, volume: MUSIC_VOLUME, muted: false, fade_in: 0, fade_out: 0, duck: true, name: file.name.slice(0, 120), source_length: song.duration };
-      change(addSound(timeline, sound, newId()));
-      setSelectedId(sound.id);
-    } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
-  };
   const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen } = createClipToolActions(() => ({ get timeline() { return timeline; }, get selected() { return selected; }, get moreIds() { return moreIds; }, get styleScope() { return styleScope; }, get change() { return change; }, get scopedUpdate() { return scopedUpdate; }, get updateLayout() { return updateLayout; }, get playhead() { return playhead; }, get setError() { return setError; }, get setSelectedId() { return setSelectedId; }, get engineRef() { return engineRef; }, get mediaById() { return mediaById; }, get myStyles() { return myStyles; }, get addTitle() { return addTitle; }, get library() { return library; }, get addLibraryTrack() { return addLibraryTrack; }, get addEffect() { return addEffect; }, get focusCache() { return focusCache; }, get local() { return local; }, get setChoosingFormat() { return setChoosingFormat; }, get sourceFor() { return sourceFor; } }));
   const fps = timeline?.format.fps ?? 30;
   const sourceLimit = (mediaId: number) => { const item = mediaById.get(mediaId); return item?.media_type === 'video' ? item.duration ?? undefined : MAX_PHOTO_SECONDS; };
@@ -1060,64 +1020,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [sfxBusy, setSfxBusy] = useState<'whoosh' | 'hit' | null>(null);
   const [sfxNote, setSfxNote] = useState<string | null>(null);
   useEffect(() => { if (leftTab === 'audio' && soundEffects === null) listSoundEffects().then((found) => setSoundEffects(found.effects)).catch(() => setSoundEffects([])); }, [leftTab, soundEffects]);
-  /** Whooshes on every transition, or hits on every title reveal, peaking on the moment. Again replaces the earlier ones. */
-  const addSoundEffects = async (kind: 'whoosh' | 'hit') => {
-    const current = timelineRef.current;
-    if (!current || sfxBusy) return;
-    const times = kind === 'whoosh' ? transitionTimes(current) : titleTimes(current);
-    if (!times.length) { setSfxNote(kind === 'whoosh' ? 'Add transitions between clips first (Themes tab, or a clip\'s Motion tab).' : 'Add a title first (Text tab).'); return; }
-    setSfxBusy(kind); setSfxNote(null);
-    try {
-      const effect = await fetchSoundEffect(sfxChoice[kind]);
-      const result = placeEffects(timelineRef.current ?? current, effect, times, newId);
-      change(result.timeline);
-      setSfxNote(`${result.placed} ${kind === 'whoosh' ? (result.placed === 1 ? 'whoosh' : 'whooshes') : (result.placed === 1 ? 'hit' : 'hits')} added. Each is a sound you can move, trim or mute; ⌘Z undoes them all.`);
-    } catch (problem) { setSfxNote((problem as Error).message); } finally { setSfxBusy(null); }
-  };
   const [thunderBusy, setThunderBusy] = useState(false);
-  /** Adds Kanaa's locally generated thunder at the playhead as a normal, editable sound clip. */
-  const addThunder = async () => {
-    const current = timelineRef.current;
-    if (!current || thunderBusy) return;
-    setThunderBusy(true);
-    try {
-      const effect = await fetchSoundEffect('kanaa-thunder');
-      const at = Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000;
-      const sound: Sound = { id: newId(), asset_id: effect.asset_id, start: at, in: 0, out: effect.duration, speed: 1, volume: 0.8, muted: false,
-        fade_in: 0, fade_out: 0.8, duck: false, name: 'Thunder', source_length: effect.duration };
-      change(addSound(timelineRef.current ?? current, sound, newId()));
-      setSelectedId(sound.id);
-    } catch (problem) { setError((problem as Error).message); } finally { setThunderBusy(false); }
-  };
   const [looping, setLooping] = useState(false);
-  /** Repeats a short song on the beat until the picture ends. */
-  const loopSelectedSound = async (soundId: string) => {
-    const current = timelineRef.current;
-    const sound = current && findSound(current, soundId)?.sound;
-    if (!current || !sound?.asset_id || looping) return;
-    setLooping(true);
-    try {
-      let beats: number[] = [];
-      try { beats = (await getSongBeats(sound.asset_id)).beats; } catch { beats = []; } // Without beats it still loops, end to start.
-      const result = loopSound(timelineRef.current ?? current, soundId, beats, newId);
-      if (result.repeats) change(result.timeline);
-    } catch (problem) { setError((problem as Error).message); } finally { setLooping(false); }
-  };
   const [beatBusy, setBeatBusy] = useState(false);
   const [beatNote, setBeatNote] = useState<string | null>(null);
-  /** Ends every main-track clip on the music's nearest beat, in one Undo. */
-  const cutClipsToBeat = async () => {
-    if (!timeline) return;
-    const sound = beatSound(timeline);
-    if (!sound) { setBeatNote('Add a song first. The cuts follow its beat.'); return; }
-    setBeatBusy(true); setBeatNote(null);
-    try {
-      const { beats, bpm } = await getSongBeats(sound.asset_id);
-      const result = cutToBeats(timeline, timelineBeats(sound, beats), facts);
-      if (result.changed) change(result.timeline);
-      setBeatNote(result.changed ? `${result.changed} clip${result.changed === 1 ? '' : 's'} now end on the beat (about ${Math.round(bpm)} beats a minute). ⌘Z undoes it.` : 'Your clips already end on the beat, or the song has no clear beat where they are.');
-    } catch (problem) { setBeatNote((problem as Error).message); } finally { setBeatBusy(false); }
-  };
   /** "Same as my clip": the first clip on the main track, not the project's starting file (a blank project has none). */
   const firstClip = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start)[0] : undefined;
   const firstMedia = firstClip ? mediaById.get(firstClip.media_id) : undefined;
