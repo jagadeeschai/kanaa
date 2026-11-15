@@ -82,7 +82,7 @@ class Effects(unittest.TestCase):
         for effect in effect_service.EFFECTS:
             paint = effect_service.EFFECT_PAINTERS[effect.id]
             rng = np.random.default_rng(1)
-            frames = [np.asarray(paint(n, 150, size, rng).convert('RGB')) for n in (30, 75)]
+            frames = [np.asarray(paint(n, 150, size, rng).convert('RGB')) for n in (3, 30, 75)]
             for frame in frames:
                 self.assertEqual(frame.shape, (160, 90, 3), effect.id)
             self.assertGreater(max(frame.max() for frame in frames), 60, f'{effect.id} shows some light')

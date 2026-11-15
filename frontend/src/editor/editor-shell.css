@@ -469,3 +469,13 @@
 .ed-shape-bar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:4;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:#000000c4;color:#fff;font-size:12px;box-shadow:0 4px 16px #0006;max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center}
 .ed-shape-bar span{padding:0 6px}.ed-shape-bar .ed-button{background:#ffffff1f;color:#fff;box-shadow:none}.ed-shape-bar .ed-button.primary{background:var(--accent);color:#fff}.ed-shape-bar .ed-button:disabled{opacity:.45}
 .ed-shape circle{cursor:grab}
+
+/* Cinematic light tiles; generated overlays use the existing Screen compositing path. */
+.fx-volumetric-rays .ed-quick-art{background:repeating-conic-gradient(from 10deg at 0 0,#ffe6aa55 0deg 5deg,transparent 7deg 15deg),#15131a}
+.fx-beam-sparkle-dust .ed-quick-art{background:radial-gradient(circle at 30% 40%,#ffe7aa 1px,transparent 3px),repeating-conic-gradient(from 10deg at 0 0,#ffe6aa44 0deg 5deg,transparent 7deg 15deg),#15131a}
+.fx-frame-light-sweep .ed-quick-art{background:linear-gradient(115deg,#090d18 25%,#fff2c9 48%,#090d18 65%)}
+.fx-bloom-hit .ed-quick-art{background:radial-gradient(ellipse,#fffbdc,#bb883955 35%,#090d18 75%)}
+.fx-light-trails .ed-quick-art{background:repeating-linear-gradient(175deg,#09101d 0 9px,#7ebdff 10px,#09101d 12px 22px)}
+.fx-burnt-edge-leak .ed-quick-art{background:radial-gradient(ellipse at left,#ffc55a,#df431f88 25%,transparent 65%),#140b10}
+.fx-optical-flare-warm .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 1px,#ffd36c55 8px,transparent 18px),linear-gradient(transparent 39%,#ffe0a2aa 40%,transparent 42%),#14100a}
+.fx-optical-flare-cool .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 1px,#83bdff55 8px,transparent 18px),linear-gradient(transparent 39%,#add6ffaa 40%,transparent 42%),#080d18}

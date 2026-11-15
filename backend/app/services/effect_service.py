@@ -85,6 +85,9 @@ EFFECTS = [
     Effect('shine', 'Shine sweep', 'மின்னும் ஒளிக்கோடு', 'any', 'A bright streak of light passing across, twice; lay it over a title'),
     Effect('sea-sparkle', 'Sea sparkle', 'கடல் மினுமினுப்பு', 'travel', 'Sun glints dancing across the water'),
 ]
+from app.services.cinematic_lights import LIGHTS, PAINTERS
+EFFECTS.extend(Effect(id, label, tamil, 'any', about) for id, label, tamil, about in LIGHTS)
+
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
 
@@ -1359,6 +1362,8 @@ EFFECT_PAINTERS: dict[str, Painter] = {
     'light-leak': light_leak,
     'film-burn': film_burn,
 }
+
+EFFECT_PAINTERS.update(PAINTERS)
 
 
 def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progress: Callable[[int], None] = lambda _: None, should_cancel: Callable[[], bool] = lambda: False, options: dict | None = None) -> Path:
