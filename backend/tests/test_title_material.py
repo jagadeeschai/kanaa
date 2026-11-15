@@ -46,3 +46,7 @@ class TitleMaterials(unittest.TestCase):
             draw=_drawer(text,path,(160,90),30,120,None,None)
             self.assertIsNone(draw(40)[0]); self.assertIsNone(draw(50)[0])
             self.assertEqual(draw(70)[0],draw(90)[0]); np.testing.assert_array_equal(draw(70)[1],draw(90)[1])
+
+    def test_face_material_keeps_the_3d_path_at_zero_depth(self):
+        text=Text(id='z',start=0,length=2,text='A',depth=TitleDepth(amount=0,material='gold'))
+        self.assertTrue(title3d.is_3d(text))

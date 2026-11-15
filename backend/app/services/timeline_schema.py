@@ -85,7 +85,7 @@ class Animation(Strict):
 class Transition(Strict):
     kind: Literal['crossfade', 'wipe', 'slide', 'zoom', 'flash', 'dip', 'whip', 'circle-open', 'circle-close', 'cross-blur',
                   'spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom',
-                  'cube', 'swap', 'page-curl-left', 'page-curl-right']
+                  'cube', 'swap', 'page-curl-left', 'page-curl-right', 'light-wipe']
     duration: float = Field(default=0.6, ge=0.1, le=2)
     # Which way a wipe's edge or a slide's pictures travel; none is left. Mirrors Transition in animation.ts.
     direction: Optional[Literal['left', 'right', 'up', 'down']] = None
@@ -280,6 +280,8 @@ class Clip(Strict):
     def valid_range(self):
         if self.out <= self.in_:
             raise ValueError('A clip must end after it starts.')
+        if any(move and move.preset in ('fly-reveal', 'fly-through-3d') for move in (self.enter, self.exit)):
+            raise ValueError('Letter-window reveals are for titles only.')
         if self.ramp is not None and (len(self.ramp) < 2 or self.ramp[0].t != 0 or self.ramp[-1].t != 1 or any(b.t <= a.t for a, b in zip(self.ramp, self.ramp[1:]))):
             raise ValueError('A speed ramp must run from the start of the clip to its end.')
         if self.cutout_pick is not None and self.cutout is None:
@@ -366,6 +368,7 @@ class Text(Strict):
     enter: Optional[Animation] = None
     exit: Optional[Animation] = None
     transform: Transform = Field(default_factory=Transform)  # Moves the whole title from where `position` puts it.
+    glint: bool = False
     depth: Optional[TitleDepth] = None
     pin: Optional[TitlePin] = None
     keep_clear: Optional[KeepClear] = None

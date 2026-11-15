@@ -15,6 +15,7 @@ export function sweepAt(text: TextItem, local: number) {
 }
 // Same material_face maths as title_material.py. raw sampling occurs before letter/picture tricks.
 export const MATERIAL_FRAGMENT = `
+uniform float glint;
 uniform vec4 material; // kind, bevel, shine, sweep position
 vec4 face(vec2 at, vec4 c) {
   if (material.x < .5 || shade.a > .5) return c;
@@ -42,4 +43,11 @@ vec4 face(vec2 at, vec4 c) {
     return vec4(rgb+halo*tint*(1.-c.a),c.a+halo*(1.-c.a));
   }
   return vec4(rgb,c.a);
+}
+vec4 titleGlint(vec2 at, vec4 c){
+  if(glint<0. || shade.a>.5)return c;
+  float h=max(1.,letters.w-letters.y);
+  vec2 d=(at-vec2(letters.z-.12*h,letters.y+.2*h))/h;
+  float a=clamp((exp(-pow(d.x/.22,2.)-pow(d.y/.012,2.))+exp(-pow(d.x/.012,2.)-pow(d.y/.16,2.))+.4*exp(-pow(d.x/.07,2.)-pow(d.y/.07,2.)))*(.25+.75*pow(sin(glint*2.4),4.)),0.,1.);
+  return vec4(vec3(1.,.92,.68)*a+c.rgb*(1.-a),a+c.a*(1.-a));
 }`;

@@ -42,7 +42,7 @@ PRISM_DIRECTION = (0.94, 0.34)
 def trick_margins(text, letters: tuple[float, float, float, float]) -> tuple[float, float]:
     """Room needed beside and above/below the letters' box for copies or letters that move out. Same as trickMargins in title3d.ts."""
     w, h = letters[2] - letters[0], letters[3] - letters[1]
-    across = along = .06 * h if text.depth and text.depth.material else 0.0
+    across = along = .3*h if text.glint else .06 * h if text.depth and text.depth.material else 0.0
     for animation in (text.enter, text.exit):
         preset = animation.preset if animation else None
         if preset in COPY_TRICKS:
@@ -164,7 +164,7 @@ def text_colour(text) -> tuple[float, float, float]:
 def still_from(text, length: float) -> tuple[float, float] | None:
     """When every frame of the title looks the same (its own seconds, from, to): after its entrance and before its exit,
     for a title with no keyframes and no pin. None when it can change on any frame."""
-    if text.pin or (text.transform and text.transform.keyframes):
+    if text.glint or text.pin or (text.transform and text.transform.keyframes):
         return None
     first, last = (text.enter.duration if text.enter else 0), (text.exit.duration if text.exit else 0)
     excess = max(1, (first + last) / length)  # As animated_look shares an overlong entrance and exit.
@@ -184,7 +184,7 @@ def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, p
     premultiplied = load(picture)
     box = alpha_box((premultiplied[..., 3] * 255).astype(np.uint8))
     loaded = [(start, end, load(path)) for start, end, path in states or []]
-    depth = text.depth if text.depth and text.depth.amount > 0 else None
+    depth = text.depth if text.depth and (text.depth.amount > 0 or text.depth.material) else None
     shares = title3d.layers(depth)
     # Letter by letter: where each letter is, found once (title_letters.py), as the preview fetches it.
     lettered = None
@@ -209,7 +209,7 @@ def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, p
         from app.services.fly_reveal import state_at, overlay
         fly = state_at(text, local)
         if fly is not None:
-            bare = text.model_copy(update={'depth': None})
+            bare = text.model_copy(update={'depth': None, 'glint': False})
             window = frame_at(bare, local, showing, box, [0.0], None, None, size, pin_at(text.start+local) if pin_at else None, lettered)
             frame = overlay(frame, window, fly)
         if key is not None:
@@ -286,7 +286,9 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     x0, y0, x1, y1 = (round(v) for v in frame_box)
     crop = np.ascontiguousarray(premultiplied[y0:y1, x0:x1])
     from app.services.title_material import material_face, sweep_at
+    from app.services.title_glint import glint_face
     front_crop = material_face(crop, depth, (x0, y0), letters, sweep_at(text, local))
+    if text.glint: front_crop = glint_face(front_crop, (x0,y0), letters, local)
     if lettered is not None:
         labels, boxes = lettered
         middle, wide = (letters[0] + letters[2]) / 2, max(1.0, letters[2] - letters[0])

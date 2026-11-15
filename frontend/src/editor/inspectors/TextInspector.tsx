@@ -107,6 +107,7 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
     <Group title="Moves" tab="motion" keywords="drift drifting sideways vertical ticker news crawl credits scroll roll story moving slow" tip="One click moves the title the whole time it shows. Stand still stops it." help="animations-and-moves">
       <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
       <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
+      <label className="ed-check"><input type="checkbox" checked={Boolean(text.glint)} onChange={(event) => onChange({ glint: event.target.checked })}/><span>{t('Glint')}</span></label>
       <div className="ed-chips" role="group" aria-label="Around the words">
         <button disabled={decorating} title="Soap bubbles rising around the words, for as long as the title shows" onClick={() => onDecorate('bubbles')}>Bubbles around it</button>
         <button disabled={decorating} title="A streak of light crossing the words every few seconds" onClick={() => onDecorate('shine')}>Shine across it</button>

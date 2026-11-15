@@ -28,7 +28,7 @@ FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
-TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
+TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
 
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
@@ -234,7 +234,7 @@ def _transition(transition, frames: int, height: int) -> dict:
         else:
             weights.append([round(p, 6), round(1 - p, 6), 0])
         blur.append(round(CROSS_BLUR * height * math.sin(math.pi * min(1, (i + 0.5) / frames)), 4) if kind == 'cross-blur' else 0)
-    return {'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
+    return {'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
 def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:

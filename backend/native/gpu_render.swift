@@ -86,6 +86,7 @@ kernel vec4 grade(__sample s, vec3 tint, float power, float fade, float contrast
 """)!
 
 struct Transition: Decodable {
+    let kind: String?
     let frames: Int
     let weights: [[Double]]  // Per frame: the item before, this item, the fill colour.
     let blur: [Double]  // Per frame: Gaussian blur of the mix, in pixels (cross blur), or 0.
@@ -268,6 +269,16 @@ func givesWay(_ index: Int, _ f: Int) -> Bool {
     return into >= 0 && into < mix.frames
 }
 
+// Same diagonal white-gold band as cinematic_transition.py and TRANSITION_FRAGMENT.
+let lightWipeKernel = CIColorKernel(source: """
+kernel vec4 lightWipe(__sample a, __sample b, float width, float height, float q) {
+    vec2 xy = destCoord();
+    float d=(xy.x-.5)/width+.2*(height-xy.y-.5)/height-(-.25+1.5*q);
+    float m=clamp(.5-d/.1,0.0,1.0);
+    float glow=.9*exp(-pow(d/.08,2.0))*sin(3.14159265359*q);
+    return mix(mix(a,b,m),vec4(1.0,242.0/255.0,205.0/255.0,1.0),glow);
+}
+""")
 for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
@@ -286,8 +297,15 @@ for f in 0..<plan.frames {
                 (posed(index - 1, f - before.start), w[0]), (posed(index, k), w[1]),
                 (CIImage(color: CIColor(red: CGFloat(mix.fill[0]), green: CGFloat(mix.fill[1]), blue: CGFloat(mix.fill[2]))).cropped(to: frameRect), w[2]),
             ]
-            for (picture, amount) in parts where amount > 0.0005 {
-                if let picture { layer = weighted(picture, amount).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: layer]) }
+            if mix.kind == "light-wipe", let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+                guard let kernel = lightWipeKernel, let wiped = kernel.apply(extent: frameRect, arguments: [a, b, Double(plan.width), Double(plan.height), Double(k)/Double(mix.frames)]) else {
+                    fatalError("Could not draw the light wipe; use the FFmpeg fallback")
+                }
+                layer = wiped
+            } else {
+                for (picture, amount) in parts where amount > 0.0005 {
+                    if let picture { layer = weighted(picture, amount).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: layer]) }
+                }
             }
             layer = layer.cropped(to: frameRect)
             if mix.blur[k] > 0.01 {

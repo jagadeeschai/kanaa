@@ -3,9 +3,9 @@ export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-
   | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom' | 'fly-reveal' | 'fly-through-3d';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
-  | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right';
+  | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right' | 'light-wipe';
 /** Transitions that move pixels (moving_transitions.py), drawn in the preview by TRANSITION_FRAGMENT, by these numbers. */
-export const MOVING_KINDS: TransitionKind[] = ['spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom', 'cube', 'swap', 'page-curl-left', 'page-curl-right'];
+export const MOVING_KINDS: TransitionKind[] = ['spin-in', 'spin-out', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple', 'cross-zoom', 'cube', 'swap', 'page-curl-left', 'page-curl-right', 'light-wipe'];
 /** Their constants: the same as moving_transitions.py. */
 export const MOVING = { spinTurns: 1, doorBack: 0.75, puzzleCols: 4, puzzleRows: 3, puzzleStagger: 0.5, mosaicCols: 8, mosaicRows: 5, mosaicStagger: 0.6, mosaicStep: 7,
   rippleAmp: 0.012, rippleWaves: 12, rippleSpeed: 18, zoomReach: 1.8, zoomBlur: 0.25, zoomTaps: 5,

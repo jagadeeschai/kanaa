@@ -99,7 +99,7 @@ uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineC
 // pixel's letter (0: none, it stays); letterA is a letter's middle and how far it moves, letterB its size and opacity.
 uniform sampler2D labels; uniform int letterCount; uniform vec4 letterA[${MAX_LETTERS}]; uniform vec4 letterB[${MAX_LETTERS}];
 ${MATERIAL_FRAGMENT}
-vec4 raw(vec2 at) { vec4 c = texture(tex, at / frame); return face(at, vec4(c.rgb * c.a, c.a)); }
+vec4 raw(vec2 at) { vec4 c = texture(tex, at / frame); return titleGlint(at,face(at, vec4(c.rgb * c.a, c.a))); }
 float letterAt(vec2 at) {
   if (at.x < 0. || at.y < 0. || at.x >= frame.x || at.y >= frame.y) return 0.;
   return floor(texelFetch(labels, ivec2(at), 0).r * 255. + .5);
@@ -125,7 +125,7 @@ void main(){
   vec2 p = q.xy / q.z;
   if (matte.x > .5) {
     float window = p.x>=0. && p.y>=0. && p.x<frame.x && p.y<frame.y ? texture(tex,p/frame).a : 0.;
-    color=vec4(0.,0.,0.,(1.-window)*(1.-matte.y)); return;
+    color=vec4(0.,0.,0.,(1.-window*opacity)*(1.-matte.y)); return;
   }
   if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.z || p.y > bounds.w) discard;
   vec4 c = pm(p);
@@ -199,6 +199,12 @@ vec2 inScaled(vec2 at, float s) {
 void main() {
   vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport - .5;
   if (kind == 0) { color = vec4(texture(under, gl_FragCoord.xy / viewport).rgb, 1.); return; }
+  if(kind==13){
+    float d=at.x/frame.x+.2*at.y/frame.y-(-.25+1.5*q);
+    float m=clamp(.5-d/.1,0.,1.);
+    float glow=.9*exp(-pow(d/.08,2.))*sin(PI*q);
+    color=mix(mix(A(at),B(at),m),vec4(1.,242./255.,205./255.,1.),glow);return;
+  }
   float e = q * q * (3. - 2. * q);
   vec2 mid = frame / 2.;
   if (kind == 1 || kind == 2) {
@@ -591,7 +597,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak', 'material', 'matte']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak', 'material', 'matte', 'glint']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     const moving = gl.createProgram()!;
     gl.attachShader(moving, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
     gl.attachShader(moving, shader(gl.FRAGMENT_SHADER, TRANSITION_FRAGMENT));
@@ -1184,7 +1190,7 @@ export class PlaybackEngine {
     const opacity = look.opacity * Math.max(0, Math.min(1, valueAt(item.transform ?? REST_TRANSFORM, 'opacity', local))) * (pin && item.pin?.region ? pinFade(pin, pose.cx * width, pose.cy * height) : 1);
     if (opacity <= 0) return;
     const source: Point[] = [[frameBox[0], frameBox[1]], [frameBox[2], frameBox[1]], [frameBox[2], frameBox[3]], [frameBox[0], frameBox[3]]];
-    const depth = item.depth && item.depth.amount > 0 ? item.depth : null;
+    const depth = item.depth && (item.depth.amount > 0 || item.depth.material) ? item.depth : null;
     const shades = layers(depth);
     const colour = depth ? [1, 3, 5].map((at) => parseInt(depth.color.slice(at, at + 2), 16) / 255) : [0, 0, 0];
     gl.useProgram(this.titleProgram);
@@ -1200,6 +1206,7 @@ export class PlaybackEngine {
     gl.uniform2f(u.copies, tricks.split, tricks.trick);
     gl.uniform1f(u.streak, tricks.streak);
     gl.uniform3f(u.lineColour, ...hexColour(item.color));
+    gl.uniform1f(u.glint,item.glint ? local : -1);
     this.setLetters(item, local, letters);
     const fly=flyState(item,local);
     gl.uniform2f(u.matte,0,0);

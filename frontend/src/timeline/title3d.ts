@@ -26,14 +26,14 @@ export function is3d(text: TextItem): boolean {
   const t = text.transform;
   const tilts = Boolean(t?.tilt_x || t?.tilt_y || t?.keyframes?.tilt_x?.length || t?.keyframes?.tilt_y?.length);
   const presets = [text.enter, text.exit].some((animation) => animation && (TILTING.has(animation.preset) || PICTURE_PRESETS.has(animation.preset)));
-  return tilts || presets || Boolean(text.depth && text.depth.amount > 0) || Boolean(text.pin);
+  return Boolean(text.glint) || tilts || presets || Boolean(text.depth && (text.depth.amount > 0 || text.depth.material)) || Boolean(text.pin);
 }
 
 const COPY_TRICKS = new Set(['chromatic', 'prism', 'echo']);
 /** Room beside and above/below the letters' box for copies or letters that move out. Same as trick_margins in title3d_render.py. */
 export function trickMargins(text: TextItem, letters: Box): [number, number] {
   const w = letters[2] - letters[0], h = letters[3] - letters[1];
-  const materialPad = text.depth?.material ? .06 * h : 0;
+  const materialPad = text.glint ? .3*h : text.depth?.material ? .06 * h : 0;
   let across = materialPad, along = materialPad;
   for (const animation of [text.enter, text.exit]) {
     const preset = animation?.preset;

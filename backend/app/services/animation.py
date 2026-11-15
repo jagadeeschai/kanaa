@@ -32,6 +32,9 @@ def xfade_name(transition) -> str:
     """ffmpeg's xfade transition for a timeline transition: a wipe or slide goes the chosen way (left when none).
     A dip or flash through a chosen colour is a custom blend with the same weights as fadeblack/fadewhite and the
     preview's dipWeights, on RGB planes (G, B, R, A as ffmpeg's gbrap orders them)."""
+    if transition.kind == 'light-wipe':
+        from app.services.cinematic_transition import xfade
+        return xfade()
     colour = getattr(transition, 'color', None)
     if transition.kind in ('dip', 'flash') and colour and colour.lower() not in ('#000000', '#ffffff'):
         r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))

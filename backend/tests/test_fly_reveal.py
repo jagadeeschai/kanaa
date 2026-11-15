@@ -1,7 +1,8 @@
 import unittest
 import numpy as np
 from app.services.fly_reveal import state_at,overlay
-from app.services.timeline_schema import Text,Timeline
+from app.services.timeline_schema import Text,Timeline,Clip
+from pydantic import ValidationError
 from app.services import title3d,gpu_render
 class FlyReveal(unittest.TestCase):
  def test_matte_cuts_only_layers_below_then_opens(self):
@@ -15,3 +16,7 @@ class FlyReveal(unittest.TestCase):
  def test_gpu_fallback_names_matte(self):
   timeline=Timeline.model_validate({'layers':[{'id':'t','kind':'text','items':[{'id':'x','start':0,'length':3,'text':'A','enter':{'preset':'fly-reveal','duration':2}}]}]})
   self.assertIn('letter-window matte compositing',gpu_render.unsupported(timeline,lambda _:None))
+
+ def test_letter_mattes_are_title_only(self):
+  with self.assertRaises(ValidationError):
+   Clip.model_validate({'id':'x','media_id':1,'start':0,'in':0,'out':2,'enter':{'preset':'fly-reveal','duration':1}})

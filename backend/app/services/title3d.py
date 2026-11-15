@@ -29,7 +29,7 @@ def is_3d(text) -> bool:
     transform = text.transform
     tilts = any(getattr(transform, name) for name in ('tilt_x', 'tilt_y')) or any(transform.keyframes.get(name) for name in ('tilt_x', 'tilt_y'))
     presets = any(animation and (animation.preset in TILTING or animation.preset in PICTURE_PRESETS) for animation in (text.enter, text.exit))
-    return bool(tilts or presets or (text.depth and text.depth.amount > 0) or text.pin)
+    return bool(text.glint or tilts or presets or (text.depth and (text.depth.amount > 0 or text.depth.material)) or text.pin)
 
 
 TILTING = {'rise-behind', 'push-through', 'fly-reveal', 'fly-through-3d'}
