@@ -71,8 +71,8 @@ person would look for it, once, under one name. Status: ✅ done, 🚧 in progre
 
 Must be done before Kanaa is publicly available:
 
-- **B1 finished:** Editor.tsx split until no file is a grab-bag (aim: under ~1,200 lines, each panel or tool in its own file).
-- **B2 finished:** one shared editor store, so panels stop taking 30+ inputs.
+- **B1 done (2026-11-15):** Editor.tsx reduced from 2,823 to 1,195 lines. Tabs, preview, inspector rail, dialogs, keyboard handling, tool actions and job pollers live in focused modules; no new module exceeds 800 lines.
+- **B2 done (2026-11-15):** inspectors take no props and read selected state/actions from the shared editor store. History, autosave and outside-change handling retain their existing coordinator lifecycle. Model tests, 46 UI tests and type checks pass. The scratch app on ports 8011/5191 passed clip/title editing, undo/redo, a short draft render, reopening autosaved edits, and an external-update/Undo check.
 - New features keep landing in their own modules (as clipboard, karaoke, scene_motion and lyric_touches do).
 
 ## Architect review (third pass)
