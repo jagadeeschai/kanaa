@@ -1,3 +1,4 @@
+import { createClipToolActions } from './actions/clip-tools';
 import { createTitleEditingActions } from './actions/title-editing';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
@@ -850,53 +851,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setSelectedId(sound.id);
     } catch (problem) { setError((problem as Error).message); } finally { setAddingMusic(false); }
   };
-  const updateSelected = (changes: Partial<Clip>, group?: string) => {
-    if (timeline && selected && moreIds.size && styleScope === 'item' && changes.speed === undefined) {
-      const shared = Object.fromEntries(Object.entries(changes).filter(([key]) => sharedKeys({ [key]: 0 }).length)) as Partial<Clip>;
-      let next = updateClip(timeline, selected.id, changes);
-      for (const id of moreIds) if (findClip(next, id) && Object.keys(shared).length) next = markOwn(updateClip(next, id, shared), id, shared);
-      change(markOwn(next, selected.id, changes), group);
-      return;
-    }
-    if (timeline && selected) scopedUpdate(selected.id, changes, (t) => changes.speed !== undefined ? setSpeed(t, selected.id, changes.speed) : updateClip(t, selected.id, changes), group); };
-  const clipEffectApplied = (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => Boolean(selected && (
-    id === 'colour-splash' ? selected.colour_splash
-      : id === 'dreamy-glow' ? selected.dreamy_glow
-      : id === 'beat-pulse' ? selected.beat_pulse
-      : id === 'split-tone' || id === 'duotone' ? selected.tone_grade?.mode === (id === 'duotone' ? 'duotone' : 'split')
-      : id === 'mirror' ? selected.mirror && selected.mirror.mode !== 'kaleido'
-      : id === 'kaleidoscope' ? selected.mirror?.mode === 'kaleido'
-      : id === 'zoom-blur' ? selected.zoom_blur
-      : id === 'tilt-shift' ? selected.tilt_shift
-      : id === 'echo' ? selected.echo
-      : id === 'old-film' ? selected.old_film
-      : id === 'glitch' || id === 'vhs' ? selected.signal_damage?.mode === id
-        : selected.lens_surface?.mode === (id === 'lens-dirt' ? 'dirt' : 'raindrops')
-  ));
-  const applyClipEffect = async (id: (typeof CLIP_EFFECT_PRESETS)[number]['id']) => {
-    if (!selected) return;
-    if (clipEffectApplied(id)) { updateLayout({ inspectorOpen: true }); return; }
-    if (id === 'beat-pulse') {
-      let beat_pulse = { ...DEFAULT_BEAT_PULSE };
-      const song = timeline && beatSound(timeline);
-      if (song) try {
-        const found = await getSongBeats(song.asset_id);
-        const beats = timelineBeats(song, found.beats);
-        const first = beats.find((beat) => beat >= selected.start && beat < selected.start + clipLength(selected));
-        beat_pulse = { ...beat_pulse, bpm: Math.max(30, Math.min(300, found.bpm)), offset: first === undefined ? 0 : first - selected.start };
-      } catch { /* The editable 120 BPM default remains available when analysis fails. */ }
-      updateSelected({ beat_pulse }); updateLayout({ inspectorOpen: true }); return;
-    }
-    const shaping = clipEffectChanges(id);
-    if (shaping) { updateSelected(shaping); updateLayout({ inspectorOpen: true }); return; }
-    const changes: Partial<Clip> = id === 'colour-splash' ? { colour_splash: { ...DEFAULT_COLOUR_SPLASH } }
-      : id === 'dreamy-glow' ? { dreamy_glow: { ...DEFAULT_DREAMY_GLOW } }
-      : id === 'old-film' ? { old_film: { ...DEFAULT_OLD_FILM } }
-      : id === 'glitch' || id === 'vhs' ? { signal_damage: { ...DEFAULT_SIGNAL_DAMAGE, mode: id } }
-        : { lens_surface: { ...DEFAULT_LENS_SURFACE, mode: id === 'lens-dirt' ? 'dirt' : 'raindrops' } };
-    updateSelected(changes);
-    updateLayout({ inspectorOpen: true });
-  };
+  const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen } = createClipToolActions(() => ({ get timeline() { return timeline; }, get selected() { return selected; }, get moreIds() { return moreIds; }, get styleScope() { return styleScope; }, get change() { return change; }, get scopedUpdate() { return scopedUpdate; }, get updateLayout() { return updateLayout; }, get playhead() { return playhead; }, get setError() { return setError; }, get setSelectedId() { return setSelectedId; }, get engineRef() { return engineRef; }, get mediaById() { return mediaById; }, get myStyles() { return myStyles; }, get addTitle() { return addTitle; }, get library() { return library; }, get addLibraryTrack() { return addLibraryTrack; }, get addEffect() { return addEffect; }, get focusCache() { return focusCache; }, get local() { return local; }, get setChoosingFormat() { return setChoosingFormat; }, get sourceFor() { return sourceFor; } }));
   const fps = timeline?.format.fps ?? 30;
   const sourceLimit = (mediaId: number) => { const item = mediaById.get(mediaId); return item?.media_type === 'video' ? item.duration ?? undefined : MAX_PHOTO_SECONDS; };
   const clipTiming = (clip: Clip): TimeFieldProps[] => {
@@ -942,17 +897,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (next === timeline) { setError('Put the playhead on a video clip in the main track to freeze a frame.'); return; }
     change(next);
   }, [timeline, playhead, change]);
-  const snapshot = async (t = playhead.current) => {
-    if (!timeline || mainLayer(timeline).locked) return;
-    let next = snapshotFrame(timeline, t, [newId(), newId()], FREEZE_SECONDS);
-    if (next === timeline) { setError('Put the playhead inside a video clip to make a snapshot.'); return; }
-    try {
-      const shutter = await fetchSoundEffect('kanaa-shutter');
-      const sound: Sound = { id: newId(), asset_id: shutter.asset_id, start: Math.max(0, t), in: 0, out: shutter.duration, speed: 1, volume: 0.72, muted: false, fade_in: 0, fade_out: 0, duck: false, name: 'Camera shutter', source_length: shutter.duration };
-      next = addSound(next, sound, newId());
-    } catch { /* The visual snapshot remains useful if its generated sound cannot be prepared. */ }
-    change(next);
-  };
   const mainClips = useMemo(() => (timeline ? mainLayer(timeline).items : []), [timeline]);
   const spokenIds = useMemo(() => [...new Set(mainClips.map((clip) => clip.media_id))].filter((id) => mediaById.get(id)?.media_type === 'video'), [mainClips, mediaById]);
   const missingWords = spokenIds.filter((id) => !transcripts[`${id}:${language}`]);
@@ -1006,16 +950,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     change(setCaptions(timeline, items, newId()));
   }, [timeline, missingWords.length, wordJob, mainClips, transcripts, language, captionWords, change]);
   useEffect(() => { if (captionsWaiting && !wordJob && !missingWords.length) makeCaptions(); }, [captionsWaiting, wordJob, missingWords.length, makeCaptions]);
-  /** A picture or video behind a cut-out clip, filling the frame. */
-  const newBackground = (clip: Clip, item: Photo) => {
-    if (!timeline) return;
-    const source = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' as const : 'image' as const, duration: item.duration, width: item.width || 1920, height: item.height || 1080 };
-    try {
-      const next = replaceBackground(timeline, clip.id, source, [newId(), newId()]);
-      if (next === timeline) setError('Put the cut-out clip over the main track first.');
-      else change(next);
-    } catch (problem) { setError((problem as Error).message); }
-  };
   /** Cuts every chosen pause and filler at once. Captions, if any, are made again from what's left, in the same Undo. */
   const removePauses = useCallback(() => {
     if (!timeline || mainLayer(timeline).locked || !tidy.keys.size) return;
@@ -1040,69 +974,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline, selectedId, moreIds, change]);
   const clipboard = useClipboard({ timeline, selectedId, moreIds, change, removeSelected, newId, note: setNote, fail: setError,
     select: (ids) => { setSelectedId(ids[0] ?? null); setMoreIds(new Set(ids.slice(1))); } });
-  const addMedia = (item: Photo) => {
-    if (!timeline) return;
-    const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
-    const clip = newClip(source, newId());
-    change(insertClip(timeline, clip));
-    setSelectedId(clip.id);
-  };
-  const addOverlayMedia = (item: Photo, dropAt?: number) => {
-    if (!timeline) return;
-    const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
-    const base = newClip(source, newId());
-    const clip = { ...base, start: Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000, transform: { ...base.transform, scale: OVERLAY_SCALE } };
-    try {
-      change(addOverlay(timeline, clip, newId()));
-      setSelectedId(clip.id);
-    } catch (problem) { setError((problem as Error).message); }
-  };
-  /** Something dragged from the side panel landed on the timeline. */
-  const onDropPayload = (payload: DragPayload, target: DropTarget) => {
-    if (!timeline) return;
-    if (payload.kind === 'media') {
-      const item = mediaById.get(payload.id);
-      if (!item) return;
-      if (target.zone === 'above') { addOverlayMedia(item, target.time); return; }
-      const source: SourceFacts = { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height };
-      const clip = newClip(source, newId());
-      change(dropClip(timeline, clip, target.time));
-      setSelectedId(clip.id);
-    } else if (payload.kind === 'look' || payload.kind === 'transition' || payload.kind === 'clip_effect') {
-      if (!target.clipId || isLocked(timeline, target.clipId)) return;
-      const next = applyClipDrop(timeline, payload, target.clipId);
-      if (next !== timeline) { change(next); setSelectedId(target.clipId); }
-    } else if (payload.kind === 'title') {
-      const template = [...TEMPLATES, ...myStyles].find((each) => each.id === payload.template);
-      if (template) addTitle(template, target.time);
-    } else if (payload.kind === 'track') {
-      const track = library?.find((each) => each.id === payload.track);
-      if (track) void addLibraryTrack(track, target.time);
-    } else void addEffect(payload.effect, target.time);
-  };
   /** Where faces are in each picture (0 to 1), found once per picture and moment. Null: none, or the face finder isn't on this Mac yet. */
   const focusCache = useRef(new Map<string, Focus | null>());
-  const aimFor = async (clip: Clip, base: Timeline): Promise<Focus | null> => {
-    const item = mediaById.get(clip.media_id);
-    if (!item?.width || !item.height) return null;
-    const at = item.media_type === 'video' ? clip.in : 0;
-    const cacheKey = `${item.id}@${at.toFixed(2)}`;
-    if (!focusCache.current.has(cacheKey)) {
-      try {
-        const found = await getFocus(item.id, at);
-        focusCache.current.set(cacheKey, found.x === null || found.y === null ? null : { x: found.x, y: found.y });
-      } catch { return null; } // Moves still work, towards the middle.
-    }
-    const focus = focusCache.current.get(cacheKey);
-    return focus ? focusOnScreen(clip.transform, focus, { width: item.width, height: item.height }, clip.adjust.rotation, base.format) : null;
-  };
-  /** Quick moves on the selected clip. Push in and Pull out aim at faces when there are any. */
-  const moveSelected = async (move: MovePreset) => {
-    if (!timeline || !selected) return;
-    const clip = selected;
-    const aim = move === 'push-in' || move === 'pull-out' ? await aimFor(clip, timeline) : null;
-    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim) });
-  };
   const [effects, setEffects] = useState<EffectInfo[]>([]);
   const [effectBusy, setEffectBusy] = useState<{ id: string; progress: number } | null>(null);
   const [effectSection, setEffectSection] = useState<string | null>('clip-Film');
@@ -1245,22 +1118,10 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       setBeatNote(result.changed ? `${result.changed} clip${result.changed === 1 ? '' : 's'} now end on the beat (about ${Math.round(bpm)} beats a minute). ⌘Z undoes it.` : 'Your clips already end on the beat, or the song has no clear beat where they are.');
     } catch (problem) { setBeatNote((problem as Error).message); } finally { setBeatBusy(false); }
   };
-  /** Clicking a look or transition tile applies it to the selected clip; dragging puts it on any clip. */
-  const applyToSelected = (payload: DragPayload) => {
-    if (!timeline || !selected) { setError('Select a clip first, or drag this onto a clip in the timeline.'); return; }
-    if (isLocked(timeline, selected.id)) return;
-    const next = applyClipDrop(timeline, payload, selected.id);
-    if (next === timeline) setError('A transition goes on a clip that comes after another one on the main track.'); else change(next);
-  };
   /** "Same as my clip": the first clip on the main track, not the project's starting file (a blank project has none). */
   const firstClip = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start)[0] : undefined;
   const firstMedia = firstClip ? mediaById.get(firstClip.media_id) : undefined;
   const firstClipFormat: Format | null = firstMedia?.width && firstMedia.height ? { width: firstMedia.width - firstMedia.width % 2, height: firstMedia.height - firstMedia.height % 2, fps: 30 } : null;
-  const chooseFormat = (format: Format) => {
-    if (!timeline) return;
-    change({ ...timeline, format });
-    setChoosingFormat(false);
-  };
 
   // What Alt+arrows nudge: set below, once the selection's transform is known.
   const movingRef = useRef<{ transform: Clip['transform']; update: (transform: Clip['transform'], group?: string) => void } | null>(null);
@@ -1271,21 +1132,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     : selectedBlur ? { transform: selectedBlur.transform, local: blurLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedBlur({ transform }, group) }
     : selectedText ? { transform: selectedText.transform ?? REST_TRANSFORM, local: textLocal, update: (transform: Clip['transform'], group?: string) => updateSelectedText({ transform }, group) } : null;
   movingRef.current = moving;
-  /** The selected overlay takes one half of the frame and the main clip under it the other. */
-  const splitScreen = (layout: 'side' | 'stack') => {
-    if (!timeline || !selected) return;
-    const main = mainLayer(timeline).items.find((clip) => selected.start >= clip.start && selected.start < clip.start + clipLength(clip));
-    const place = (clip: Clip, slot: 'left' | 'right' | 'top' | 'bottom', at: number) => {
-      const source = sourceFor(clip.media_id);
-      if (!source) return clip.transform;
-      const spot = slotPlacement(source, clip.adjust.rotation, timeline.format, slot);
-      return writeValue(writeValue(writeValue(clip.transform, 'x', at, spot.x), 'y', at, spot.y), 'scale', at, spot.scale);
-    };
-    const [mine, theirs] = layout === 'side' ? ['right', 'left'] as const : ['bottom', 'top'] as const;
-    let next = updateClip(timeline, selected.id, { transform: place(selected, mine, local) });
-    if (main && !mainLayer(timeline).locked) next = updateClip(next, main.id, { transform: place(main, theirs, selected.start - main.start) });
-    change(next);
-  };
   const startPicking = () => { if (selected) { engineRef.current?.pause(); engineRef.current?.showUnkeyed(selected.id); setPickingKey(true); } };
   // Titles in the preview: where each visible title's letters sit in the frame (shares), for picking and editing it there.
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
