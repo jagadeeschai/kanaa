@@ -59,7 +59,7 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.kind != 'video':
             found.add(f'{layer.kind} layers')
             continue
-        if layer.blend not in ('normal', 'screen'):
+        if layer.blend not in ('normal', 'screen', 'add'):
             found.add(f'{layer.blend} blend')
         for clip in layer.items:
             if not clip.enabled:

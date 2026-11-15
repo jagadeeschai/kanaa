@@ -279,6 +279,21 @@ kernel vec4 lightWipe(__sample a, __sample b, float width, float height, float q
     return mix(mix(a,b,m),vec4(1.0,242.0/255.0,205.0/255.0,1.0),glow);
 }
 """)
+// Addition is evaluated on straight RGB, clamped, then mixed by the overlay's alpha,
+// matching Builder.blended and the preview (including partially transparent bright lights).
+let opaqueBlendKernel = CIColorKernel(source: "kernel vec4 opaqueBlend(__sample s) { return vec4(unpremultiply(s).rgb, 1.0); }")
+let additionClampKernel = CIColorKernel(source: "kernel vec4 additionClamp(__sample s) { return vec4(clamp(s.rgb, 0.0, 1.0), 1.0); }")
+func compositeLayer(_ image: CIImage, over base: CIImage, mode: String?) -> CIImage {
+    if mode == "screen" { return image.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: base]) }
+    if mode == "add" {
+        guard let opaque = opaqueBlendKernel?.apply(extent: frameRect, arguments: [image]) else { fatalError("Could not draw Add blend; use FFmpeg") }
+        let sum = opaque.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: base])
+        // Addition also adds alpha (to 2); preserve its summed RGB while restoring an opaque alpha.
+        guard let added = additionClampKernel?.apply(extent: frameRect, arguments: [sum]) else { fatalError("Could not clamp Add blend") }
+        return added.applyingFilter("CIBlendWithAlphaMask", parameters: [kCIInputBackgroundImageKey: base, kCIInputMaskImageKey: image])
+    }
+    return image.composited(over: base)
+}
 for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
@@ -311,9 +326,9 @@ for f in 0..<plan.frames {
             if mix.blur[k] > 0.01 {
                 layer = layer.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: mix.blur[k]]).cropped(to: frameRect)
             }
-            frame = item.blend == "screen" ? layer.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: frame]) : layer.composited(over: frame)
+            frame = compositeLayer(layer, over: frame, mode: item.blend)
         } else if let shown = posed(index, k) {
-            frame = item.blend == "screen" ? shown.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: frame]) : shown.composited(over: frame)
+            frame = compositeLayer(shown, over: frame, mode: item.blend)
         }
     }
     while !input.isReadyForMoreMediaData {

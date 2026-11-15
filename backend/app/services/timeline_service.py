@@ -1080,6 +1080,7 @@ class Builder:
 
     def blended(self, base: str, top: str, position: int, mode: str) -> str:
         """Blend the color, then let the layer's own alpha decide how much of that shows. Matches the preview shader."""
+        mode = 'addition' if mode == 'add' else mode
         n = f'b{position}'
         self.graph += [f'[{top}]split=2[{n}_color][{n}_shape]', f'[{n}_shape]alphaextract[{n}_mask]', f'[{n}_color]format=gbrp[{n}_rgb]',
                        f'[{base}]format=gbrp,split=2[{n}_under][{n}_base]', f'[{n}_under][{n}_rgb]blend=all_mode={mode},format=gbrp[{n}_mixed]',

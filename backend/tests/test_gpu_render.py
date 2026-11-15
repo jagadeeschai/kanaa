@@ -249,6 +249,29 @@ class MatchesFfmpeg(unittest.TestCase):
         self.assertEqual(unexpected, [], f'Unexpected low-PSNR frames: {unexpected[:20]}')
         self.assertLess(gpu_seconds, ffmpeg_seconds)
 
+    def test_add_blend_matches_ffmpeg(self):
+        """F1: an "Add (bright light)" layer looks the same on the GPU as in the ffmpeg export, and differs from Screen."""
+        work = timeline(12)
+        work.layers[2].blend = 'add'
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        ffmpeg_out, gpu_out = self.root / 'add-ffmpeg.mp4', self.root / 'add-gpu.mp4'
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
+        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(gpu_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        values = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
+        self.assertTrue(values)
+        self.assertGreater(sum(values) / len(values), 35)
+        work.layers[2].blend = 'screen'
+        screen_out = self.root / 'screen-ffmpeg.mp4'
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, screen_out, lambda _: None, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(screen_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        brighter = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
+        self.assertLess(min(brighter), 60)  # Add is not quietly drawn as Screen.
+
 
 if __name__ == '__main__':
     unittest.main()

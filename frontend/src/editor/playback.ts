@@ -38,7 +38,7 @@ const OVERLAY_NUDGE = 0.5;
 const SEEK_NUDGE_SECONDS = 0.25 / 30;
 const MAX_BUFFER_SIDE = 1280;
 
-const BLEND_NUMBERS = { normal: 0, multiply: 1, screen: 2, overlay: 3, darken: 4, lighten: 5 };
+const BLEND_NUMBERS = { add: 6, normal: 0, multiply: 1, screen: 2, overlay: 3, darken: 4, lighten: 5 };
 const STRUGGLE_WINDOW_MS = 5000;
 const STRUGGLE_EVENTS = 6;
 const SLOW_FRAME_MS = 100;
@@ -513,6 +513,7 @@ void main(){
     if (blendMode == 1) rgb = b * rgb;
     else if (blendMode == 2) rgb = 1. - (1. - b) * (1. - rgb);
     else if (blendMode == 3) rgb = mix(2. * b * rgb, 1. - 2. * (1. - b) * (1. - rgb), step(.5, b));
+    else if (blendMode == 6) rgb = min(vec3(1.), b + rgb);
     else if (blendMode == 4) rgb = min(b, rgb);
     else rgb = max(b, rgb);
   }

@@ -489,7 +489,7 @@ class LayerBase(Strict):
 class VideoLayer(LayerBase):
     kind: Literal['video'] = 'video'
     magnetic: bool = False
-    blend: Literal['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] = 'normal'
+    blend: Literal['add', 'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] = 'normal'
     # The layer's style: settings every item takes unless it sets its own (its `own`). Each item already holds the
     # result, so the export needs nothing from here; the editor keeps it to restyle the layer.
     style: Dict[Annotated[str, Field(max_length=40)], object] = Field(default_factory=dict, max_length=80)
