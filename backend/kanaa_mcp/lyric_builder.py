@@ -178,7 +178,11 @@ def build_lyric_video(api, media, list_media, timeline_of, save, look_up, intro_
         roles = [(tamil, english, who) for tamil, english, who in (('பாடல் வரிகள்', 'Lyrics', song_by), ('இசை', 'Music', music), ('இசை வடிவமைப்பு', 'Arrangement & Style', arranged_by),
                                                                   ('பாடியவர்', 'Singers', singers), ('தயாரிப்பு', 'Produced by', presented_by)) if (who or '').strip()]
         if roles:
-            timeline['layers'] = [layer for layer in timeline['layers'] if not any(item['id'].startswith(('opening-', 'closing-')) for item in layer['items'] if layer['kind'] == 'text')]
+            # Only the built credit cards go; the lyric lines share their layer and must stay.
+            for layer in timeline['layers']:
+                if layer['kind'] == 'text':
+                    layer['items'] = [item for item in layer['items'] if not item['id'].startswith(('opening-', 'closing-'))]
+            timeline['layers'] = [layer for layer in timeline['layers'] if layer['kind'] != 'text' or layer['items']]
             ticker = '   •   '.join([name] + [f'{tamil}: {who}' for tamil, _, who in roles[:2]] + ([presented_by] if presented_by else []) + ([footer.split('·')[0].strip()] if footer else []))
             credit_package.add(timeline, name, name, roles, ticker, rights=f'℗ {time.strftime("%Y")} {presented_by}' if presented_by else None)
     if signature:
