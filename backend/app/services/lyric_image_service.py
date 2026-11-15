@@ -1,4 +1,5 @@
 import asyncio
+import re
 import base64
 import io
 import json
@@ -69,12 +70,19 @@ def require_project(identifier):
         raise ValueError('Choose an existing video project.')
 
 
+# Text in quotes is what to draw in the picture (a Tamil word carved in a field, a name on a sign), so any script is
+# fine there. Typographic punctuation is English too. Everything else must be English: lyrics are not prompts.
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"|‘[^’]*’|“[^”]*”")
+TYPOGRAPHY = str.maketrans('', '', '‘’“”–—…•·×°')
+
+
 def require_english_visual_prompt(value, label='visual brief'):
     text = value.strip()
     if not text:
         raise ValueError(f'Add an English {label} before building scenes.')
-    if not any('a' <= character.lower() <= 'z' for character in text) or any(ord(character) > 127 for character in text):
-        raise ValueError(f'Write the {label} in English. Lyrics stay separate and are not used as image prompts.')
+    described = QUOTED.sub(' ', text).translate(TYPOGRAPHY)
+    if not any('a' <= character.lower() <= 'z' for character in described) or any(ord(character) > 127 for character in described):
+        raise ValueError(f'Write the {label} in English. To show Tamil words in the picture, put them in quotes, e.g. the word \'தமிழ்\' carved in a rice field. Lyrics are not used as image prompts.')
     return text
 
 
