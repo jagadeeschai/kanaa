@@ -1,3 +1,4 @@
+import { EditorPreviewStage } from './preview/EditorPreviewStage';
 import { createAskActions } from './actions/ask';
 import { createInspectorScopeActions } from './actions/inspector-scope';
 import { createEditorMenuActions } from './actions/menus';
@@ -978,72 +979,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     <div className="ed-workspace"><div className="ed-body">
       <EditorLeftRail bindings={{ saved, closeEditor, projectName, layout, LEFT_TABS, LITE_TABS, panelOpen, leftTab, RAIL_BREAK_BEFORE, LEFT_TAB_LABELS, TAB_TIPS, setPanelOpen, setLeftTab, TAB_ICONS, updateLayout, timeline, setCreatingAIImage, setMedia, folders, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia, tokens, mainClips, language, setLanguage, setWordSelection, missingWords, wordJob, transcribeClips, seek, cutWords, playhead, wordSelection, tidy, pauseLength, setPauseLength, removeFillers, setRemoveFillers, removePauses, setMenu, story, setStory, mediaById, storyMedia, facts, themeBusy, momentProgress, makeStory, chooseTheme, thumbs, themeWithMusic, setThemeWithMusic, library, changeThemeMusic, change, transitionPick, setTransitionPick, applyToSelected, setConfirmingClear, askOptions, askProject, runAsk, effectSearch, setEffectSearch, selected, activeClipEffects, matchingClipEffects, effectNeedle, effectSection, setEffectSection, clipEffectApplied, applyClipEffect, timelineRef, newId, engineRef, setSelectedId, matchingOverlayEffects, weather, setWeather, effectBusy, total, addEffect, thunderBusy, addThunder, effects, addBlurBox, faceJob, setFaceJob, blurFaces, faceNote, addTitle, myStyles, forgetStyle, captionsWaiting, makeCaptions, captionWords, setCaptionWords, clearing, keepClearOfFaces, clearNote, libraryFolder, musicSearch, musicMood, setMusicSearch, MOODS, setMusicMood, MOOD_LABELS, listening, listen, addingMusic, addLibraryTrack, addMusic, soundEffects, sfxChoice, setSfxChoice, sfxBusy, addSoundEffects, sfxNote, beatBusy, cutClipsToBeat, beatNote }}/>
       {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
-      <main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
-      {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
-    {timeline && !firstRunClosed && !fullScreen && (() => {
-      const steps = [
-        { done: total > 0, label: 'Add your clips or photos', go: () => { setLeftTab('media'); setPanelOpen(true); }, guide: 'getting-started' },
-        { done: timeline.layers.some((layer) => layer.kind === 'text' && layer.items.length > 0), label: 'Add a title', go: () => { setLeftTab('text'); setPanelOpen(true); }, guide: 'titles' },
-        { done: exportedOnce, label: 'Export your video', go: () => { if (total) { engineRef.current?.pause(); setExporting(true); } }, guide: 'getting-started' },
-      ];
-      if (steps.every((step) => step.done)) return null;
-      const close = () => { setFirstRunClosed(true); try { localStorage.setItem('kanaa-first-run-closed', '1'); } catch { /* ignore */ } };
-      return <aside className="ed-first-run" aria-label={t('First steps')}>
-        <div className="ed-first-run-head"><b>{t('First steps')}</b><button className="ed-icon small" aria-label={t('Close')} onClick={close}><X size={12}/></button></div>
-        <ol>{steps.map((step) => <li key={step.label} className={step.done ? 'done' : ''}><span className="ed-first-run-tick">{step.done ? <Check size={11}/> : null}</span>
-          <button className="ed-link" disabled={step.done} onClick={step.go}>{t(step.label)}</button>
-          <button className="ed-icon small" aria-label={t('How')} title={t('How')} onClick={() => openGuide(ARTICLES.some((article) => article.id === step.guide) ? step.guide : 'getting-started')}><CircleHelp size={11}/></button></li>)}</ol>
-        <p>{t('Press ⌘K any time to find an action.')}</p>
-      </aside>;
-    })()}
-        <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
-          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setPickedInPreview(hit.id); setSelectedId(hit.id); setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
-          {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
-          {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
-          {selectedText && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
-          {selectedText && pickedInPreview === selectedText.id && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && (() => {
-            const rect = titleRect(selectedText);
-            if (!rect) return null;
-            const box = { left: `${rect.left * 100}%`, top: `${rect.top * 100}%`, width: `${(rect.right - rect.left) * 100}%`, height: `${(rect.bottom - rect.top) * 100}%` };
-            return <>
-              {editingTitle === selectedText.id
-                ? <TitleEditBox key={selectedText.id} text={selectedText} style={box} onDone={(words) => { setEditingTitle(null); if (words !== null && words.trim() && words !== selectedText.text) updateSelectedText({ text: words }, `text-${selectedText.id}`); }}/>
-                : <div className="ed-title-box" style={box} onDoubleClick={() => { engineRef.current?.pause(); setEditingTitle(selectedText.id); }} title={t('Double-click to type')}/>}
-              <TitleToolbar text={selectedText} top={rect.top} left={(rect.left + rect.right) / 2} onChange={(changes, group) => updateSelectedText(changes, group)} onEdit={() => { engineRef.current?.pause(); setEditingTitle(selectedText.id); }}/>
-            </>;
-          })()}
-          {selectedBlur && !selectedLayer?.locked && <MotionPath transform={selectedBlur.transform} length={selectedBlur.length} onChange={(transform, group) => updateSelectedBlur({ transform }, group)} onSeek={(t) => seek(selectedBlur.start + t)}/>}
-          {followTarget && !selectedLayer?.locked && !selected?.frame_locked && !followJob && !drawing && !shaping && !pickingKey && now >= followTarget.start - ON_ITEM && now < followTarget.start + followTarget.length && !isFollowed(followTarget.transform) && (() => {
-            const box = ownBox();
-            if (!box) return null;
-            return <button className="ed-follow-chip" style={{ left: `clamp(48px, ${box[0] * 100}%, calc(100% - 48px))`, top: `clamp(20px, ${(box[1] + box[3] / 2) * 100}%, calc(100% - 20px))` }} onPointerDown={(event) => event.stopPropagation()} onClick={() => { void followHere('start'); }} title="Kanaa finds what is under it and keeps it covered as it moves"><Crosshair size={13}/>Follow</button>;
-          })()}
-          {(renderJob || reframeJob || sceneJob || faceJob || followJob || faceNote || (followNote && followTarget?.id === followNote.itemId)) && <div className="ed-status" role="status">
-            {renderJob ? <><span>Rendering preview… {renderJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${renderJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(renderJob.id); setRenderJob(null); setHeavy(false); }}>Cancel</button></>
-            : reframeJob ? <><span>Finding who to follow… {reframeJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${reframeJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(reframeJob.jobId); setReframeJob(null); }}>Cancel</button></>
-            : sceneJob ? <><span>Finding scene changes… {sceneJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${sceneJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(sceneJob.jobId); setSceneJob(null); }}>Cancel</button></>
-            : faceJob ? <><span>Finding faces… {faceJob.progress}%</span><i className="ed-status-bar"><b style={{ width: `${faceJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(faceJob.jobId); setFaceJob(null); }}>Cancel</button></>
-              : followJob ? <><span>{followJob.queued ? 'Waiting for the job ahead of it to finish…' : `Following… ${followJob.progress}%`}</span><i className="ed-status-bar"><b style={{ width: `${followJob.progress}%` }}/></i><button onClick={() => { void cancelRenderJob(followJob.jobId); setFollowJob(null); }}>Cancel</button></>
-              : <><span>{faceNote || followNote?.text}</span><button aria-label="Close" onClick={() => { setFaceNote(''); setFollowNote(null); }}>×</button></>}
-          </div>}
-          {pickingKey && <div className="ed-pick-note" role="status">Click the colour to remove</div>}
-          {shaping && <ShapeDrawing mode={shaping.mode} points={shaping.points} onPoints={(points) => setShaping({ ...shaping, points })} onDone={finishShape} onCancel={() => setShaping(null)}/>}
-          {drawing && <div className="ed-draw" aria-label={drawing.onBox ? "Drag a box around the light" : "Drag a box around what to follow"} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const at = frameAt(event); drawStart.current = at; setDrawing({ ...drawing, from: at, to: at }); }}
-            onPointerMove={(event) => { const from = drawStart.current; const to = frameAt(event); if (from) setDrawing((state) => state && { ...state, from, to }); }} onPointerUp={finishDrawing}>
-            <div className="ed-pick-note" role="status">Drag a box around what to follow. Esc cancels.</div>
-            {(() => { const box = drawnBox(drawing); return box && <i style={{ left: `${(box[0] - box[2] / 2) * 100}%`, top: `${(box[1] - box[3] / 2) * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }}/>; })()}
-          </div>}
-          {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
-          {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick videos or photos in the Media panel</span></div>}
-        </div>
-        <div className="ed-transport">
-          <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
-          <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
-          <span className="ed-transport-end">
-            <button className="ed-icon ed-safe-toggle" aria-pressed={fullScreen} onClick={toggleFullScreen} title={fullScreen ? 'Leave full screen (F or Esc)' : 'Full screen preview (F)'} aria-label={fullScreen ? 'Leave full screen' : 'Full screen preview'}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen ? 'Exit' : 'Full screen'}</button>
-          </span>
-        </div>
-      </main>
+      <EditorPreviewStage bindings={{ fullScreen, stageRef, saved, projectName, timeline, firstRunClosed, total, setLeftTab, setPanelOpen, exportedOnce, engineRef, setExporting, setFirstRunClosed, openGuide, ratio, canvasRef, openPreviewMenu, previewDown, previewMove, dragPreview, titleAt, setPickedInPreview, setSelectedId, setEditingTitle, placing, pickingKey, selected, selectedLayer, shaping, drawing, now, sourceFor, local, updateSelected, seek, selectedText, updateSelectedText, pickedInPreview, titleRect, editingTitle, selectedBlur, updateSelectedBlur, followTarget, followJob, ownBox, followHere, renderJob, reframeJob, sceneJob, faceJob, faceNote, followNote, setRenderJob, setHeavy, setReframeJob, setSceneJob, setFaceJob, setFollowJob, setFaceNote, setFollowNote, setShaping, finishShape, frameAt, drawStart, setDrawing, finishDrawing, drawnBox, safeArea, isEmpty, choosingFormat, clockRef, togglePlay, playing, toggleFullScreen }}/>
       {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
