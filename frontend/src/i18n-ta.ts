@@ -19,6 +19,9 @@ export const TAMIL: Record<string, string> = {
   'A touch more body, softer highs.': 'சற்று கூடுதல் கனம், மென்மையான உயர் ஒலிகள்.',
   'Gently brings loud and quiet parts closer.': 'உரத்த, மெல்லிய பகுதிகளை மெதுவாக நெருக்கமாக்கும்.',
 
+  'Clip guides on: dashed lines at every cut': 'கிளிப் வழிகாட்டிகள் இயக்கத்தில்: ஒவ்வொரு வெட்டிலும் புள்ளிக்கோடுகள்', 'Clip guides off': 'கிளிப் வழிகாட்டிகள் அணைப்பில்',
+  'Unlock frame and animate': 'சட்டகத்தைத் திறந்து அசைவூட்டு', 'Animate': 'அசைவூட்டு',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

@@ -1,3 +1,4 @@
+import { openPanelTab } from "../layout";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
@@ -142,6 +143,8 @@ export function createEditorMenuActions(getInput: () => Input) {
     const items: MenuItem[] = [];
     if (clip || sound) items.push({ label: 'Split here', hint: 'S', onSelect: () => { const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) change(next); } });
     const clipItem = clip ? mediaById.get(clip.media_id) : undefined;
+    // Animate: unlocks the frame and opens Motion, in one step.
+    if (clip) items.push({ label: clip.frame_locked ? 'Unlock frame and animate' : 'Animate', onSelect: () => { if (clip.frame_locked) change(updateClip(timeline, id, { frame_locked: false })); setSelectedId(id); openPanelTab('clip', 'motion'); } });
     if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
     if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
     // The tools that study the picture (and take a while) sit together under Smart tools.

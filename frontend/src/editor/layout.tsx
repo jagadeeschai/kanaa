@@ -84,6 +84,12 @@ type PanelState = { tab: string; query: string };
 const PanelContext = createContext<PanelState | null>(null);
 export type PanelTab = { id: string; label: string; Icon: LucideIcon; changed?: boolean };
 const lastTab = new Map<string, string>();
+const OPEN_TAB = 'ed-open-panel-tab';
+/** Shows `tab` in panel `panel` (now if it is open, or when it next opens). */
+export function openPanelTab(panel: string, tab: string) {
+  lastTab.set(panel, tab);
+  window.dispatchEvent(new CustomEvent(OPEN_TAB, { detail: { panel, tab } }));
+}
 
 /** The right-hand settings panel folds to its icon rail. Provided by the editor around the workspace. */
 export const RailContext = createContext<{ folded: boolean; setOpen: (open: boolean) => void; tools?: ReactNode }>({ folded: false, setOpen: () => {} });
@@ -109,6 +115,11 @@ export function Panel({ id, tabs: allTabs, header, children }: { id: string; tab
   const folded = rail.folded;
   const shown = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? '';
   const pick = (next: string) => { lastTab.set(id, next); setTab(next); setQuery(''); };
+  useEffect(() => {
+    const open = (event: Event) => { const { panel, tab: next } = (event as CustomEvent<{ panel: string; tab: string }>).detail; if (panel === id) { setTab(next); setQuery(''); } };
+    window.addEventListener(OPEN_TAB, open);
+    return () => window.removeEventListener(OPEN_TAB, open);
+  }, [id]);
   return <PanelContext.Provider value={{ tab: shown, query: query.trim().toLowerCase() }}>
     <div className="ed-panel-rail-host">
       {!folded && <div className="ed-panel-main">

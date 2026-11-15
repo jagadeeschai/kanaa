@@ -1,5 +1,6 @@
 import { useEditorPanel } from '../state/EditorContext';
-import { Camera,X as Close,Magnet,Minus,MoreHorizontal,Paintbrush,Plus,Redo2,Scissors,Snowflake,Trash2,Undo2 } from "lucide-react";
+import { useClipGuides } from '../clipGuides';
+import { Camera,X as Close,Magnet,SeparatorVertical,Minus,MoreHorizontal,Paintbrush,Plus,Redo2,Scissors,Snowflake,Trash2,Undo2 } from "lucide-react";
 import { t } from "../../i18n";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { type History } from "../../timeline/history";
@@ -36,6 +37,7 @@ export type EditorTimelineToolbarBindings = {
 
 export function EditorTimelineToolbar() {
   const { dispatch, history, clipboard, selectedId, split, total, freeze, timeline, snapshot, removeSelected, selected, selectedSound, selectedText, selectedBlur, selectedCaption, selectedLayer, fitZoom, snapping, setSnapping, setZoom, zoom, openViewMenu } = useEditorPanel<EditorTimelineToolbarBindings>('toolbar');
+  const [guides, setGuides] = useClipGuides();
   return (<div className="ed-tools">
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
         <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} title={`${t('Undo')} (⌘Z)`}><Undo2 size={15}/></button>
@@ -51,6 +53,7 @@ export function EditorTimelineToolbar() {
       <span className="ed-tool-group" role="group" aria-label="Timeline view">
         <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
         <button className={`ed-button ${snapping ? 'on' : ''}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} title={`${t(snapping ? 'Snapping on: edges lock to clips, the playhead and beats' : 'Snapping off')} (N)`}><Magnet size={14}/></button>
+        <button className={`ed-button ${guides ? 'on' : ''}`} aria-pressed={guides} onClick={() => setGuides(!guides)} title={t(guides ? 'Clip guides on: dashed lines at every cut' : 'Clip guides off')}><SeparatorVertical size={14}/></button>
         <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
         <input className="ed-zoom" type="range" min={Math.log(ZOOM_MIN)} max={Math.log(ZOOM_MAX)} step={0.01} value={Math.log(zoom)} onChange={(event) => setZoom(Math.exp(Number(event.target.value)))} aria-label={t('Timeline zoom')} title={t('Timeline zoom')}/>
         <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>

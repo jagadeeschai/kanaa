@@ -7,6 +7,7 @@ import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { addAdjust, newAdjust } from '../timeline/adjust';
 import { rollCut, slipClip } from '../timeline/trims';
+import { clipGuidesOn } from './clipGuides';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type AdjustItem, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
@@ -33,7 +34,6 @@ type Props = {
   /** The clip whose cut has its popover open. */
   openCut?: string | null;
   /** Double-click on an item: split it at time `t`. */
-  onSplitAt?: (id: string, t: number) => void;
   /** A pinch or Ctrl/⌘ + scroll: multiply the zoom by `factor`. */
   onZoom?: (factor: number) => void;
   /** The file a clip shows, for its label when it has no name of its own. */
@@ -62,7 +62,7 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onSplitAt, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true, onSelectMany }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true, onSelectMany }: Props) {
   // Where the item being dragged has just snapped to, drawn as a line so the snap is visible.
   const snapLine = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -381,9 +381,26 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.save(); context.strokeStyle = colors.current.selected; context.lineWidth = 1; context.setLineDash([4, 3]);
         context.beginPath(); context.moveTo(at + 0.5, RULER); context.lineTo(at + 0.5, height); context.stroke(); context.restore();
       }
+      if (clipGuidesOn()) {
+        // Clip guides: a dashed line at every cut on the main track, down through all the layers.
+        context.save(); context.strokeStyle = colors.current.tick; context.globalAlpha = 0.9; context.lineWidth = 1; context.setLineDash([3, 4]);
+        const cuts = new Set(mainLayer(shown).items.flatMap((clip) => [clip.start, clip.start + clipLength(clip)]).map((t) => Math.round(xOf(t))));
+        for (const at of cuts) { context.beginPath(); context.moveTo(at + 0.5, TRACK_TOP); context.lineTo(at + 0.5, height); context.stroke(); }
+        context.restore();
+      }
+      // The ruler stays at the top of what is showing while the layers scroll up and down under it.
+      const top = rulerTop();
+      if (top > 0) {
+        context.fillStyle = colors.current.rulerBg; context.fillRect(0, top, width, RULER);
+        context.font = '11px Inter, system-ui, sans-serif'; context.textBaseline = 'middle';
+        for (let t = 0; xOf(t) < width; t += step) {
+          context.fillStyle = colors.current.tick; context.fillRect(xOf(t), top + RULER - 8, 1, 8);
+          context.fillStyle = colors.current.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, top + 11);
+        }
+      }
       const head = xOf(playhead.current);
       context.fillStyle = colors.current.head; context.fillRect(head - 1, 0, 2, height);
-      context.beginPath(); context.moveTo(head - 6, 0); context.lineTo(head + 6, 0); context.lineTo(head, 9); context.fill();
+      context.beginPath(); context.moveTo(head - 6, top); context.lineTo(head + 6, top); context.lineTo(head, top + 9); context.fill();
       // Keep the playhead in view while it moves (playing or a jump): scroll only when it has just moved out of the
       // visible range. Never while it stands still, or scrolling the timeline away from it would snap straight back.
       const hostEl = hostRef.current!;
@@ -401,6 +418,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     return () => cancelAnimationFrame(frame);
   }, [playhead, collapsedLayers]);
 
+  /** How far the layers have scrolled up: where the pinned ruler is drawn. */
+  const rulerTop = () => (hostRef.current?.closest('.tl-host') as HTMLElement | null)?.scrollTop ?? 0;
   /** Down from the canvas's top, from the pointer's place on screen (offsetY can be wrong for some events). */
   const pointerY = (event: { clientY: number }) => event.clientY - canvasRef.current!.getBoundingClientRect().top;
   const pointerTime = (event: React.PointerEvent) => {
@@ -439,6 +458,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const x = pointerTime(event); const y = pointerY(event);
     event.currentTarget.setPointerCapture(event.pointerId);
     onScrubStart();
+    if (y < rulerTop() + RULER) { dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return; }
     const found = hit(x, y);
     const group = `drag-${groupCount.current += 1}`;
     const foundSound = hitSound(x, y);
@@ -446,6 +466,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     if (foundSound) {
       const { sound, zone } = foundSound;
       onSelect(sound.id, how);
+      if (zone === 'body') onSeek(timeOf(x));
       if (how) return;  // Picking more, not dragging.
       if (trackLayers(props.current.timeline)[rowAt(y)]?.locked) return;
       if (zone === 'body') liftRef.current = { id: sound.id, x, y, sx: x, sy: y, dx: x - xOf(sound.start), dy: y - topOf(rowAt(y)), w: Math.max(4, itemLength(sound) * props.current.zoom), h: rowHeight(trackLayers(props.current.timeline)[rowAt(y)], collapsedLayers), picture: null, target: null };
@@ -606,12 +627,6 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     picture.getContext('2d')!.drawImage(canvas, left * dpr, top * dpr, lift.w * dpr, lift.h * dpr, 0, 0, picture.width, picture.height);
     return picture;
   };
-  const onDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!onSplitAt) return;
-    const x = event.clientX - canvasRef.current!.getBoundingClientRect().left; const y = pointerY(event);
-    const id = hitSound(x, y)?.sound.id ?? hit(x, y)?.clip.id;
-    if (id) onSplitAt(id, timeOf(x));
-  };
   // Zoom by pinching a trackpad (Ctrl + wheel in Chrome and Firefox, gesture events in Safari), Ctrl/⌘ + mouse wheel,
   // or two fingers on a touch screen; the time under the pointer stays under it.
   const pinchRef = useRef<{ pointers: Map<number, number>; distance: number } >({ pointers: new Map(), distance: 0 });
@@ -737,7 +752,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         {trimNote && <div className="tl-trim-note" role="status" style={{ left: Math.max(4, trimNote.x), top: trimNote.y - 22 }}>{trimNote.text}</div>}
         <div className="tl-clip-layer">{(() => {
