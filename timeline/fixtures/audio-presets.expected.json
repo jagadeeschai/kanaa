@@ -1,0 +1,42 @@
+{
+"remove-rumble": [
+{
+"type": "highpass",
+"frequency": 80
+}
+],
+"clearer-voice": [
+{
+"type": "highpass",
+"frequency": 100
+},
+{
+"type": "peaking",
+"frequency": 3000,
+"gain": 3,
+"q": 1
+}
+],
+"warmer-music": [
+{
+"type": "lowshelf",
+"frequency": 200,
+"gain": 2
+},
+{
+"type": "highshelf",
+"frequency": 8000,
+"gain": -2
+}
+],
+"even-out": [
+{
+"type": "compressor",
+"threshold": -18,
+"ratio": 2,
+"attack": 0.02,
+"release": 0.25,
+"knee": 6
+}
+]
+}

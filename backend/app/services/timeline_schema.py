@@ -270,6 +270,7 @@ class Clip(Strict):
     colour_splash: Optional[ColourSplash] = None
     dreamy_glow: Optional[DreamyGlow] = None
     wheels: Optional[ColourWheels] = None
+    audio_presets: List[Literal['remove-rumble', 'clearer-voice', 'warmer-music', 'even-out']] = Field(default_factory=list, max_length=4)  # audio_presets.py
     beat_pulse: Optional[BeatPulse] = None
     tone_grade: Optional[ToneGrade] = None
     mirror: Optional[Mirror] = None
@@ -477,6 +478,7 @@ class Sound(Strict):
     name: str = Field(default='', max_length=120)
     source_length: Optional[float] = Field(default=None, gt=0)  # Limits trimming in the editor.
     clean_voice: bool = False  # Plays from the cleaned copy.
+    audio_presets: List[Literal['remove-rumble', 'clearer-voice', 'warmer-music', 'even-out']] = Field(default_factory=list, max_length=4)  # audio_presets.py
 
     @model_validator(mode='after')
     def one_source(self):

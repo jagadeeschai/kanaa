@@ -1,3 +1,4 @@
+import { presetSteps, type AudioPresetId, type AudioStep } from '../timeline/audioPresets';
 import { audioLayers, fadeGain, soundLength, type Clip, type Sound, type Timeline } from '../timeline/model';
 
 const DRIFT_RESEEK_SECONDS = 0.25;
@@ -10,7 +11,43 @@ const DUCK_RATIO = 2;
 const DUCK_ATTACK = 0.02;
 const DUCK_RELEASE = 0.4;
 
-type Player = { element: HTMLAudioElement; gain: GainNode; url: string };
+/** A source wired through its preset nodes (EQ, compressor) into its gain; rewired when the presets change. */
+type Chain = { source: MediaElementAudioSourceNode; gain: GainNode; nodes: AudioNode[]; key: string };
+type Player = Chain & { element: HTMLAudioElement; url: string };
+
+const COMPRESSOR_MAKEUP_DB = 4.55;
+
+/** One preset step as a Web Audio node, matching audio_presets.step_filter. A compressor's output is its `out`. */
+export function stepNode(context: AudioContext, step: AudioStep): AudioNode {
+  if (step.type === 'compressor') {
+    const node = context.createDynamicsCompressor();
+    node.threshold.value = step.threshold; node.ratio.value = step.ratio; node.attack.value = step.attack; node.release.value = step.release; node.knee.value = step.knee;
+    // Web Audio's compressor adds its own make-up gain; ffmpeg's acompressor (makeup=1) does not. Taken back out, so
+    // quiet parts stay as they were in both (measured: +4.55 dB for these settings).
+    const back = context.createGain();
+    back.gain.value = 10 ** (-COMPRESSOR_MAKEUP_DB / 20);
+    node.connect(back);
+    return Object.assign(node, { out: back });
+  }
+  const node = context.createBiquadFilter();
+  node.type = step.type; node.frequency.value = step.frequency;
+  if (step.type === 'highpass') node.Q.value = Math.SQRT1_2;
+  else { node.gain.value = step.gain; if (step.type === 'peaking') node.Q.value = step.q; }
+  return node;
+}
+
+
+function wire(context: AudioContext, chain: Chain, presets: readonly AudioPresetId[] | undefined) {
+  const key = (presets ?? []).join(',');
+  if (key === chain.key) return;
+  chain.source.disconnect();
+  for (const node of chain.nodes) { node.disconnect(); (node as AudioNode & { out?: AudioNode }).out?.disconnect(); }
+  chain.nodes = presetSteps(presets).map((step) => stepNode(context, step));
+  const outOf = (node: AudioNode) => (node as AudioNode & { out?: AudioNode }).out ?? node;
+  const last = chain.nodes.reduce<AudioNode>((from, to) => { from.connect(to); return outOf(to); }, chain.source);
+  last.connect(chain.gain);
+  chain.key = key;
+}
 
 /** Mixes preview sound with Web Audio. Video elements feed it too, so ducking hears their sound. */
 export class AudioMixer {
@@ -20,7 +57,7 @@ export class AudioMixer {
   private meter!: AnalyserNode;
   private samples = new Float32Array(1024);
   private players = new Map<string, Player>();
-  private videos = new WeakMap<HTMLVideoElement, GainNode>();
+  private videos = new WeakMap<HTMLVideoElement, Chain>();
 
   /** Must first be called from a click: browsers keep audio off until then. */
   private ensure(): AudioContext {
@@ -39,15 +76,16 @@ export class AudioMixer {
 
   resume() { void this.ensure().resume(); }
 
-  setVideoGain(video: HTMLVideoElement, volume: number) {
+  setVideoGain(video: HTMLVideoElement, volume: number, presets?: readonly AudioPresetId[]) {
     const context = this.ensure();
-    let gain = this.videos.get(video);
-    if (!gain) {
-      gain = context.createGain();
-      context.createMediaElementSource(video).connect(gain).connect(this.main);
-      this.videos.set(video, gain);
+    let chain = this.videos.get(video);
+    if (!chain) {
+      chain = { source: context.createMediaElementSource(video), gain: context.createGain(), nodes: [], key: '-' };
+      chain.gain.connect(this.main);
+      this.videos.set(video, chain);
     }
-    gain.gain.setTargetAtTime(volume, context.currentTime, 0.008);
+    wire(context, chain, presets);
+    chain.gain.gain.setTargetAtTime(volume, context.currentTime, 0.008);
   }
 
   clipGain(clip: Clip, t: number, layerMuted: boolean) {
@@ -61,11 +99,10 @@ export class AudioMixer {
     if (!player) {
       const element = new Audio();
       element.preload = 'auto';
-      const gain = context.createGain();
-      context.createMediaElementSource(element).connect(gain);
-      player = { element, gain, url: '' };
+      player = { element, source: context.createMediaElementSource(element), gain: context.createGain(), nodes: [], key: '-', url: '' };
       this.players.set(sound.id, player);
     }
+    wire(context, player, sound.audio_presets);
     player.gain.disconnect();
     player.gain.connect(sound.duck ? this.under : this.main);
     if (player.url !== url) { player.url = url; player.element.src = url; }

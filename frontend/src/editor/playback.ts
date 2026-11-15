@@ -751,7 +751,7 @@ export class PlaybackEngine {
         slot.video.muted = false;
         // A clip with Clean voice is heard from its cleaned copy, played by the mixer, so the video itself stays silent.
         const cleaned = Boolean(item.clean_voice && this.cleanVoice(item.media_id));
-        if (this.playing) this.mixer.setVideoGain(slot.video, item === clip && !cleaned ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0);
+        if (this.playing) this.mixer.setVideoGain(slot.video, item === clip && !cleaned ? this.mixer.clipGain(item, t, Boolean(layer.muted)) : 0, item.audio_presets);
         // While playing, keepInStep owns the rate. Setting it here too would undo each nudge.
         if (slot.video.paused) slot.video.playbackRate = Math.min(16, Math.max(0.0625, this.rateAt(item, t) * this.rate));
         const finished = slot.video.duration > 0 && at >= slot.video.duration - 0.05;

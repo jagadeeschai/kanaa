@@ -13,6 +13,12 @@ export const TAMIL: Record<string, string> = {
   'Shadows brightness': 'நிழல் ஒளிர்வு', 'Midtones brightness': 'நடுத்தொனி ஒளிர்வு', 'Highlights brightness': 'ஒளிப்பகுதி ஒளிர்வு',
   'Tint the dark, middle and bright parts of the picture. Pick a grade, or drag a wheel toward a colour under More.': 'படத்தின் இருண்ட, நடுத்தர, ஒளிரும் பகுதிகளுக்கு வண்ணம் சேர்க்கவும். ஒரு தரத்தைத் தேர்ந்தெடுக்கவும், அல்லது மேலும் என்பதில் சக்கரத்தை ஒரு வண்ணத்தை நோக்கி இழுக்கவும்.',
 
+  'Sound presets': 'ஒலி முன்னமைவுகள்', 'Remove rumble': 'உறுமலை நீக்கு', 'Clearer voice': 'தெளிவான குரல்', 'Warmer music': 'இதமான இசை', 'Even out': 'சமன் செய்',
+  'Takes out low hum, wind and handling noise.': 'தாழ்ந்த ரீங்காரம், காற்று, கை அசைவு ஒலிகளை நீக்கும்.',
+  'Words stand out: a little more presence, less boom.': 'சொற்கள் தெளிவாகக் கேட்கும்: சற்று கூடுதல் அருகாமை, குறைந்த அதிர்வு.',
+  'A touch more body, softer highs.': 'சற்று கூடுதல் கனம், மென்மையான உயர் ஒலிகள்.',
+  'Gently brings loud and quiet parts closer.': 'உரத்த, மெல்லிய பகுதிகளை மெதுவாக நெருக்கமாக்கும்.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

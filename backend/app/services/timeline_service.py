@@ -516,6 +516,8 @@ def sound_steps(item: Clip | Sound, layer_volume: float = 1) -> list[str]:
     excess = max(1, (item.fade_in + item.fade_out) / length)
     fade_in, fade_out = item.fade_in / excess, item.fade_out / excess
     steps = [AUDIO_FORMAT, *atempo_chain(item.speed), f'volume={item.volume * layer_volume:.4f}']
+    from app.services.audio_presets import preset_filters
+    steps += preset_filters(item.audio_presets)  # One-click EQ and evening out, after the level, as the preview.
     if fade_in:
         steps.append(f'afade=t=in:st=0:d={fade_in}')
     if fade_out:

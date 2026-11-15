@@ -5,6 +5,7 @@ import { soundLength, type AudioLayer, type Sound } from "../../timeline/model";
 import { ValueSlider, type TimeFieldProps } from "../controls";
 import { Timing, timingSummary } from "../Timing";
 import { Group, More, Panel } from "../layout";
+import { AudioPresets } from './AudioPresetsGroup';
 
 type StemChoice = 'music' | 'vocals' | 'both';
 
@@ -15,7 +16,7 @@ export type SoundInspectorBindings = { onLoop: (() => void) | null; looping: boo
 
 export function SoundInspector() {
   const { onLoop, looping, sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems } = useEditorPanel<SoundInspectorBindings>('sound');
-  return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
+  return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 || Boolean(sound.audio_presets?.length) }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
     <p className="ed-name" title={sound.name}>{sound.name}</p>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration trim loop repeat" help="timing-and-trimming">
     <Timing fields={timing}/>
@@ -27,6 +28,7 @@ export function SoundInspector() {
       <button className={`ed-button ${sound.muted ? 'on' : ''}`} aria-pressed={sound.muted} onClick={() => onChange({ muted: !sound.muted })}>{sound.muted ? <VolumeX size={14}/> : <Volume2 size={14}/>}Mute</button>
     </div>
     <SoundControls item={sound} length={soundLength(sound)} onChange={onChange}/>
+    <AudioPresets value={sound.audio_presets} onChange={(audio_presets) => onChange({ audio_presets })}/>
     <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
       <More>
     <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
