@@ -497,3 +497,6 @@
 .ed-ai-edit textarea{width:100%;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--hairline);background:var(--well);color:var(--text)}
 .ed-ai-edit-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .ed-ai-edit-modal{position:fixed;inset:0;z-index:60}
+/* The preview area keeps dark controls in every theme (.ed-stage above), but the menus and cards that float over it
+   follow the theme: in light, light panels with dark text (they were near-white text on white). */
+[data-ed-theme=light] .ed-stage :is(.ed-first-run,.ed-title-toolbar,.ed-card,.ed-stage-title,.ed-pick-note,.ed-status-bar,.ed-menu,.ed-follow-chip-menu){--text:#23212f;--text-2:#57536a;--muted:#625e77;--raised:#fff;--control-line:#8d899f;--wash:#23212f0f;--selected-bg:#ebe6ff;--selected-text:#3f2bb0;color:var(--text)}
