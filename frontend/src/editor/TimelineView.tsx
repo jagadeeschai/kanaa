@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { addAdjust, newAdjust } from '../timeline/adjust';
+import { rollCut, slipClip } from '../timeline/trims';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type AdjustItem, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
 export type ClipVisuals = { filmstrip?: { image: HTMLImageElement; tiles: number; tile_width: number; tile_height: number }; peaks?: { peaks_per_second: number; peaks: number[] } };
@@ -44,7 +45,7 @@ type Props = {
 /** A held item: a picture of it follows the pointer, and where it would land. */
 type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
   target: { kind: 'main'; index: number } | { kind: 'layer'; layerId: string; start: number } | null };
-type Drag = { kind: 'box'; x0: number; y0: number; x1: number; y1: number } | { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string };
+type Drag = { kind: 'box'; x0: number; y0: number; x1: number; y1: number } | { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string } | { kind: 'slip'; id: string; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'roll'; left: Clip; right: Clip; startX: number; base: Timeline; group: string };
 
 /** 0.6 → "0.6", 1.25 → "1.25", 1 → "1". */
 const seconds = (value: number) => String(Number(value.toFixed(2)));
@@ -71,6 +72,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const picked = (id: string) => id === props.current.selectedId || Boolean(props.current.selectedIds?.has(id));
   /** The clip under the pointer, for its hover card and on/off button. */
   const [hover, setHover] = useState<{ id: string; x: number } | null>(null);
+  /** While slipping or rolling: the new in and out frames, shown over the timeline (a ghost of the edit). */
+  const [trimNote, setTrimNote] = useState<{ x: number; y: number; text: string } | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const liftRef = useRef<Lift | null>(null);
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
@@ -462,6 +465,13 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     onSelect(found.clip.id, how);
     if (how) return;
     if (mainLayer(props.current.timeline).locked) { onSeek(timeOf(x)); return; }
+    // Option-drag: inside a clip slips it (same place, another part of its source); on a cut, rolls the cut.
+    if (event.altKey) {
+      const clips = mainLayer(props.current.timeline).items; const index = clips.findIndex((clip) => clip.id === found.clip.id);
+      if (found.zone === 'body') { dragRef.current = { kind: 'slip', id: found.clip.id, startX: x, origin: found.clip, base: props.current.timeline, group }; return; }
+      const [left, right] = found.zone === 'in' ? [clips[index - 1], clips[index]] : [clips[index], clips[index + 1]];
+      if (left && right) { dragRef.current = { kind: 'roll', left, right, startX: x, base: props.current.timeline, group }; return; }
+    }
     if (found.zone === 'body') {
       dragRef.current = { kind: 'move', id: found.clip.id, startX: x, moved: false, base: props.current.timeline, group }; onSeek(timeOf(x));
       liftRef.current = { id: found.clip.id, x, y, sx: x, sy: y, dx: x - xOf(found.clip.start), dy: y - TRACK_TOP, w: Math.max(4, clipLength(found.clip) * props.current.zoom), h: TRACK_HEIGHT, picture: null, target: null };
@@ -526,6 +536,19 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         const limit = facts ? (facts.media_type === 'image' ? MAX_PHOTO_SECONDS : facts.duration ?? undefined) : undefined;
         onChange(trimSound(base, id, edge, edge === 'in' ? origin.in + (snapped - origin.start) * origin.speed : origin.out + (snapped - end) * origin.speed, limit), drag.group);
       }
+    } else if (drag.kind === 'slip') {
+      // The picture follows the pointer: dragging right shows earlier footage.
+      const { origin, base, id } = drag;
+      const next = slipClip(base, id, -((x - drag.startX) / props.current.zoom) * origin.speed, props.current.source(origin.media_id));
+      const now = mainLayer(next).items.find((clip) => clip.id === id) ?? origin;
+      if (next !== props.current.timeline) onChange(next, drag.group);
+      setTrimNote({ x: xOf(origin.start), y: TRACK_TOP, text: `Slip · in ${timecode(now.in)} · out ${timecode(now.out)}` });
+    } else if (drag.kind === 'roll') {
+      const { left, right, base } = drag;
+      const next = rollCut(base, left.id, right.id, (x - drag.startX) / props.current.zoom, props.current.source(left.media_id), props.current.source(right.media_id));
+      const items = mainLayer(next).items; const a = items.find((clip) => clip.id === left.id) ?? left; const b = items.find((clip) => clip.id === right.id) ?? right;
+      if (next !== props.current.timeline) onChange(next, drag.group);
+      setTrimNote({ x: xOf(b.start), y: TRACK_TOP, text: `Roll · ${timecode(a.out)} | ${timecode(b.in)}` });
     } else if (drag.kind === 'trim') {
       const { origin, edge, base, id } = drag;
       const shift = ((x - drag.startX) / props.current.zoom) * origin.speed;
@@ -556,6 +579,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     snapLine.current = null;
     const drag = dragRef.current; const lift = liftRef.current;
     dragRef.current = null; liftRef.current = null;
+    setTrimNote(null);
     if (drag?.kind === 'box') {
       if (Math.abs(drag.x1 - drag.x0) < 5 && Math.abs(drag.y1 - drag.y0) < 5) return;  // A click, not a box.
       const [t0, t1] = [timeOf(Math.min(drag.x0, drag.x1)), timeOf(Math.max(drag.x0, drag.x1))];
@@ -713,8 +737,9 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
+        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onPointerLeave={(event) => { if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
+        {trimNote && <div className="tl-trim-note" role="status" style={{ left: Math.max(4, trimNote.x), top: trimNote.y - 22 }}>{trimNote.text}</div>}
         <div className="tl-clip-layer">{(() => {
           // Each clip's place: on the main track or its video layer's row.
           const place = (id: string) => {
