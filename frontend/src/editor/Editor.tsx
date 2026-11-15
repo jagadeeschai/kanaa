@@ -1,3 +1,4 @@
+import { createEffectJobActions } from './actions/effect-jobs';
 import { createAudioToolActions } from './actions/audio-tools';
 import { createClipToolActions } from './actions/clip-tools';
 import { createTitleEditingActions } from './actions/title-editing';
@@ -622,14 +623,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
   const selectedLayer = timeline ? layerOf(timeline, selectedId) : undefined;
   const isRendered = Boolean(timeline && rendered && rendered.key === JSON.stringify(timeline));
-  const renderPreview = async () => {
-    if (!timeline) return;
-    engineRef.current?.pause();
-    try {
-      const { job_id } = await startPreviewRender(projectId, { ...coverBrand(timeline), format: exportFormat(timeline.format, PREVIEW_SHORT_SIDE) });
-      setRenderJob({ id: job_id, key: JSON.stringify(timeline), progress: 0 });
-    } catch (problem) { setError((problem as Error).message); }
-  };
+  const { addEffect, keepClearOfFaces, reframeClip, splitScenes, blurFaces, askForFaceFinder, renderPreview, addBlurBox } = createEffectJobActions(() => ({ get timeline() { return timeline; }, get engineRef() { return engineRef; }, get projectId() { return projectId; }, get setRenderJob() { return setRenderJob; }, get setError() { return setError; }, get change() { return change; }, get setSelectedId() { return setSelectedId; }, get effectBusy() { return effectBusy; }, get setEffectBusy() { return setEffectBusy; }, get weather() { return weather; }, get setMedia() { return setMedia; }, get timelineRef() { return timelineRef; }, get effects() { return effects; }, get clearing() { return clearing; }, get isVideo() { return isVideo; }, get setClearNote() { return setClearNote; }, get setClearing() { return setClearing; }, get mediaById() { return mediaById; }, get reframeJob() { return reframeJob; }, get setFaceNote() { return setFaceNote; }, get setReframeJob() { return setReframeJob; }, get setSceneJob() { return setSceneJob; }, get playhead() { return playhead; }, get setFaceJob() { return setFaceJob; } }));
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
   const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
@@ -642,12 +636,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
           : selectedCaption ? { kind: 'Caption', name: captionText(selectedCaption.caption) || 'Empty caption' } : null;
   const blurLocal = selectedBlur ? Math.max(0, Math.min(now - selectedBlur.start, selectedBlur.length)) : 0;
   const updateSelectedBlur = (changes: Partial<BlurBox>, group?: string) => { if (timeline && selectedBlur) change(updateBlur(timeline, selectedBlur.id, changes), group); };
-  const addBlurBox = (style: BlurBox['style'], at?: [number, number]) => {
-    if (!timeline) return;
-    const blur: BlurBox = { ...DEFAULT_BLUR, style, id: newId(), start: Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000, length: BLUR_SECONDS, transform: { ...DEFAULT_BLUR.transform, ...(at ? { x: at[0], y: at[1] } : {}) } };
-    change(addBlur(timeline, blur, newId()));
-    setSelectedId(blur.id);
-  };
   const textLocal = selectedText ? Math.max(0, Math.min(now - selectedText.start, selectedText.length)) : 0;
   // Edits go to this item alone (and become its own, over the layer's style), or to the whole layer's style.
   // The settings panel can show a whole text or video layer (its icon on the timeline): edits then go to the layer's style.
@@ -943,78 +931,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [weather, setWeather] = useState({ rainDensity: 1, rainSpeed: 1, rainDirection: 'left' as 'left' | 'straight' | 'right', frequency: 3, brightness: 0.8,
     fogDensity: 0.65, fogSpeed: 0.55, fogDirection: 'right' as 'left' | 'straight' | 'right', snowDensity: 0.8, snowSpeed: 0.8, snowDirection: 'right' as 'left' | 'straight' | 'right', seed: 0 });
   useEffect(() => { if (leftTab === 'effects' && !effects.length) listEffects().then(setEffects).catch((problem) => setError((problem as Error).message)); }, [leftTab, effects.length]);
-  /** Makes the effect once in this project's shape (later uses are instant), then lays it over the video at `dropAt` or the playhead. */
-  const addEffect = async (effectId: string, dropAt?: number, length?: number, around?: Partial<Clip['transform']>) => {
-    if (!timeline || effectBusy) return;
-    const at = Math.round((dropAt ?? engineRef.current?.currentTime ?? 0) * 1000) / 1000;
-    const format = timeline.format;
-    setEffectBusy({ id: effectId, progress: 0 });
-    try {
-      const direction = { left: -0.35, straight: 0, right: 0.35 } as const;
-      const options = effectId === 'rain' ? { density: weather.rainDensity, speed: weather.rainSpeed, direction: direction[weather.rainDirection], seed: weather.seed }
-        : effectId === 'lightning' ? { frequency: weather.frequency, brightness: weather.brightness, seed: weather.seed }
-          : effectId === 'fog' ? { density: weather.fogDensity, speed: weather.fogSpeed, direction: direction[weather.fogDirection], seed: weather.seed }
-            : effectId === 'snow' ? { density: weather.snowDensity, speed: weather.snowSpeed, direction: direction[weather.snowDirection], seed: weather.seed } : undefined;
-      const made = await makeEffect(effectId, { width: format.width, height: format.height }, options);
-      let item = made.media;
-      if (!item && made.job_id) {
-        for (;;) {
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          const status = await getJobStatus(made.job_id) as unknown as { status?: string; progress: number; error?: string | null; media_id?: number };
-          if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not make this effect.');
-          if (status.status === 'done' && status.media_id) { item = await getPhoto(status.media_id); break; }
-          setEffectBusy({ id: effectId, progress: status.progress });
-        }
-      }
-      if (!item) throw new Error('Could not make this effect.');
-      const made2 = item;
-      setMedia((current) => (current.some((each) => each.id === made2.id) ? current : [made2, ...current]));
-      const source: SourceFacts = { media_id: made2.id, media_type: 'video', duration: made2.duration, width: made2.width, height: made2.height };
-      const current = timelineRef.current ?? timeline;
-      // A film leader opens the video: an ordinary clip at the very start of the main track, with its beep.
-      const opening = effects.find((effect) => effect.id === effectId)?.placement === 'start';
-      const whole = { ...newClip(source, newId()), start: opening ? 0 : at, muted: !opening };
-      if (around && length) {
-        // Around a title's words: the 5-second effect repeats for as long as the title shows, sized to its letters.
-        let next = current; let first: string | null = null;
-        for (let offset = 0; offset < length - 0.05; offset += whole.out - whole.in) {
-          const piece = { ...whole, id: newId(), start: Math.round((at + offset) * 1000) / 1000, out: Math.round(Math.min(whole.out, whole.in + length - offset) * 1000) / 1000, transform: { ...whole.transform, ...around } };
-          next = placeEffect(next, piece, newId()); first ??= piece.id;
-        }
-        change(next); setSelectedId(first);
-        return;
-      }
-      // For a title's effect: only as long as the title.
-      const clip = length && !opening ? { ...whole, out: Math.min(whole.out, Math.round((whole.in + length) * 1000) / 1000) } : whole;
-      change(opening ? dropClip(current, clip, 0) : placeEffect(current, clip, newId()));
-      setSelectedId(clip.id);
-    } catch (problem) { setError((problem as Error).message); } finally { setEffectBusy(null); }
-  };
   const [momentProgress, setMomentProgress] = useState<number | null>(null);
   const [clearNote, setClearNote] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
-  /** Moves each caption that would cover a face to the top (or middle), for that caption only. */
-  const keepClearOfFaces = async () => {
-    if (!timeline || clearing) return;
-    const captions = captionLayers(timeline).flatMap((layer) => layer.items);
-    const clips = mainLayer(timeline).items.filter((clip) => isVideo(clip.media_id) && captions.some((caption) => caption.start < clip.start + clipLength(clip) && clip.start < caption.start + caption.length));
-    if (!clips.length) { setClearNote('No videos under the captions to look at.'); return; }
-    try {
-      if (!await askForFaceFinder('Keep captions clear of faces')) return;
-      setClearing(true);
-      const faces = new Map<string, FacePath[]>();
-      for (const [number, clip] of clips.entries()) {
-        setClearNote(`Looking for faces… clip ${number + 1} of ${clips.length}`);
-        const { job_id } = await startFaces(clip.media_id, { start: clip.in, end: clip.out });
-        const found = await waitForJob<{ faces: FacePath[] }>(job_id, (progress) => setClearNote(`Looking for faces… clip ${number + 1} of ${clips.length}, ${progress}%`));
-        faces.set(clip.id, found.faces);
-      }
-      const current = timelineRef.current ?? timeline;
-      const result = keepCaptionsClear(current, faces, (id) => { const item = mediaById.get(id); return item?.width && item.height ? { width: item.width, height: item.height } : undefined; });
-      if (result.moved) change(result.timeline);
-      setClearNote(result.moved ? `Moved ${result.moved} caption${result.moved === 1 ? '' : 's'} clear of faces. ⌘Z undoes it. Making captions again puts them all back in place.` : 'No caption covers a face.');
-    } catch (problem) { setClearNote((problem as Error).message); } finally { setClearing(false); }
-  };
   const [soundEffects, setSoundEffects] = useState<SoundEffectInfo[] | null>(null);
   const [sfxChoice, setSfxChoice] = useState<{ whoosh: string; hit: string }>({ whoosh: 'kanaa-whoosh', hit: 'kanaa-hit' });
   const [sfxBusy, setSfxBusy] = useState<'whoosh' | 'hit' | null>(null);
@@ -1094,24 +1013,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     : selectedBlur ? { id: selectedBlur.id, start: selectedBlur.start, length: selectedBlur.length, transform: selectedBlur.transform }
     : selectedText ? { id: selectedText.id, start: selectedText.start, length: selectedText.length, transform: selectedText.transform ?? REST_TRANSFORM } : null;
   const isVideo = useCallback((id: number) => mediaById.get(id)?.media_type === 'video', [mediaById]);
-  // Blur faces: every face in the clip at the playhead gets its own blur box that follows it.
-  /** The face finder is fetched once, from OpenCV's model zoo, only after asking (the owner's rule: ask before downloading). */
-  const askForFaceFinder = async (what: string) => {
-    if ((await faceFinderReady()).ready) return true;
-    return window.confirm(`${what} uses OpenCV's face finder (YuNet, about 230 KB). It isn't on this Mac yet. Download it once now? It stays on this Mac and Blur faces uses it too.`);
-  };
-  /** Auto-reframe: the clip fills the frame and pans to keep the main person in the middle. */
-  const reframeClip = async (clipId: string) => {
-    const clip = timeline && findClip(timeline, clipId);
-    if (!clip || !isVideo(clip.media_id) || reframeJob) return;
-    engineRef.current?.pause();
-    try {
-      if (!await askForFaceFinder('Follow the person')) return;
-      setFaceNote('');
-      const { job_id } = await startReframe(clip.media_id, { start: clip.in, end: clip.out, allow_download: true });
-      setReframeJob({ jobId: job_id, clipId, progress: 0 });
-    } catch (problem) { setError((problem as Error).message); }
-  };
   useEffect(() => {
     if (!reframeJob) return;
     const timer = setTimeout(async () => {
@@ -1133,17 +1034,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, 700);
     return () => clearTimeout(timer);
   }, [reframeJob, change, mediaById]);
-  /** Finds where a long video changes shot, then splits it there, so dull parts can be deleted. */
-  const splitScenes = async (clipId: string) => {
-    const clip = timeline && findClip(timeline, clipId);
-    if (!clip || !isVideo(clip.media_id)) return;
-    engineRef.current?.pause();
-    setFaceNote('');
-    try {
-      const { job_id } = await startScenes(clip.media_id, { start: clip.in, end: clip.out });
-      setSceneJob({ jobId: job_id, clipId, progress: 0 });
-    } catch (problem) { setError((problem as Error).message); }
-  };
   useEffect(() => {
     if (!sceneJob) return;
     const timer = setTimeout(async () => {
@@ -1161,17 +1051,6 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, 700);
     return () => clearTimeout(timer);
   }, [sceneJob, change]);
-  const blurFaces = async () => {
-    if (!timeline) return;
-    engineRef.current?.pause();
-    const clip = videoAt(timeline, playhead.current, isVideo);
-    if (!clip) { setError('Move the playhead onto a video first.'); return; }
-    setFaceNote('');
-    try {
-      const { job_id } = await startFaces(clip.media_id, { start: clip.in, end: clip.out });
-      setFaceJob({ jobId: job_id, clipId: clip.id, progress: 0 });
-    } catch (problem) { setError((problem as Error).message); }
-  };
   useEffect(() => {
     if (!faceJob) return;
     const timer = setTimeout(async () => {
