@@ -1,3 +1,4 @@
+import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
 import { createThemeActions } from './actions/themes-and-stories';
 import { EditorLeftRail } from './panels/EditorLeftRail';
@@ -1314,77 +1315,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   // What Alt+arrows nudge: set below, once the selection's transform is known.
   const movingRef = useRef<{ transform: Clip['transform']; update: (transform: Clip['transform'], group?: string) => void } | null>(null);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette((value) => !value); return; }
-      if (event.key === '?' && !isTyping(event.target)) { setShowingHelp((value) => !value); return; }
-      if (event.key === 'Escape' && fullScreen) { toggleFullScreen(); return; }
-      if (event.key === 'Escape' && pickingKey) { stopPicking(); return; }
-      if (event.key === 'Escape' && drawing) { setDrawing(null); return; }
-      if (shaping && event.key === 'Escape') { setShaping(null); return; }
-      if (shaping && event.key === 'Enter') { event.preventDefault(); finishShape(); return; }
-      if (shaping && event.key === 'Backspace') { event.preventDefault(); setShaping({ ...shaping, points: shaping.points.slice(0, -1) }); return; }
-      if (isTyping(event.target) || !timeline || exporting || choosingFormat || showingHelp || menu) return;
-      if (event.key === ' ' && buttonTakesSpace(event.target)) return;
-      // Arrows on a focused slider change the slider, not the playhead.
-      if (event.target instanceof HTMLInputElement && event.target.type === 'range' && event.key.startsWith('Arrow')) return;
-      const command = event.metaKey || event.ctrlKey;
-      const engine = engineRef.current;
-      const frame = 1 / timeline.format.fps;
-      const clip = () => mainLayer(timeline).items.find((item) => playhead.current >= item.start && playhead.current < item.start + clipLength(item));
-      if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); dispatch({ type: event.shiftKey ? 'redo' : 'undo' }); return; }
-      if (command && event.key.toLowerCase() === 'a' && selectedId) {
-        // ⌘A: everything on the selected item's layer.
-        const layer = timeline.layers.find((l) => (l.items as { id: string }[]).some((item) => item.id === selectedId));
-        if (layer) { event.preventDefault(); setMoreIds(new Set((layer.items as { id: string }[]).map((item) => item.id).filter((id) => id !== selectedId))); }
-        return;
-      }
-      if (command && !event.altKey && (event.key === 'c' || event.key === 'x') && selectedId) { event.preventDefault(); clipboard.copy(event.key === 'x'); return; }
-      if (command && !event.altKey && event.key === 'v') { event.preventDefault(); clipboard.pasteAt(playhead.current); return; }
-      if (command && event.key === 'd' && selectedId) { event.preventDefault(); clipboard.duplicate(); return; }
-      // ⌥⌘C / ⌥⌘V: Option changes the letter on a Mac keyboard, so read the key's place.
-      if (command && event.altKey && (event.code === 'KeyC' || event.key.toLowerCase() === 'c')) { event.preventDefault(); clipboard.copyStyleOf(); return; }
-      if (command && event.altKey && (event.code === 'KeyV' || event.key.toLowerCase() === 'v')) { event.preventDefault(); clipboard.pasteStyleOnto(); return; }
-      if (command) return;
-      switch (event.key) {
-        case ' ': event.preventDefault(); togglePlay(); break;
-        case 'k': engine?.pause(); fastRate.current = 0; break;
-        case 'l': fastRate.current = Math.min(FAST_RATES.length - 1, engine?.playing ? fastRate.current + 1 : 0); engine?.play(FAST_RATES[fastRate.current]); break;
-        case 'j': engine?.pause(); seek(playhead.current - 1); break;
-        case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight': {
-          if (!event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) break;
-          event.preventDefault();
-          if (event.altKey) {
-            // Alt+arrows nudge the selected title, clip or blur in the frame (Shift: further).
-            const moving = movingRef.current;
-            if (!moving) break;
-            const step = event.shiftKey ? 0.05 : 0.01;
-            const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
-            const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
-            moving.update({ ...moving.transform, x: Math.round((moving.transform.x + dx) * 1000) / 1000, y: Math.round((moving.transform.y + dy) * 1000) / 1000 }, `nudge-${selectedId}`);
-            break;
-          }
-          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') break;
-          engine?.pause(); seek(playhead.current + (event.key === 'ArrowLeft' ? -1 : 1) * frame * (event.shiftKey ? 10 : 1)); break;
-        }
-        case 's': split(); break;
-        case 'n': setSnapping((value) => !value); break;
-        case 'f': toggleFullScreen(); break;
-        case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
-        case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
-        case 'Escape': setWordSelection(new Set()); setSelectedId(null); break;
-        case 'Enter': case 'F2': {
-          // Type into the selected title.
-          const box = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Title"]');
-          if (selectedText && box) { event.preventDefault(); box.focus(); box.select(); }
-          break;
-        }
-        default: break;
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText, clipboard]);
+  useEditorShortcuts(() => ({ setPalette, setShowingHelp, fullScreen, toggleFullScreen, pickingKey, stopPicking, drawing, setDrawing, shaping, setShaping, finishShape, timeline, exporting, choosingFormat, showingHelp, menu, engineRef, playhead, dispatch, selectedId, setMoreIds, clipboard, togglePlay, fastRate, seek, movingRef, split, setSnapping, change, facts, wordSelection, cutWords, removeSelected, setWordSelection, setSelectedId, selectedText }), [toggleFullScreen, fullScreen, timeline, exporting, choosingFormat, showingHelp, menu, pickingKey, drawing, shaping, stopPicking, wordSelection, cutWords, togglePlay, split, removeSelected, seek, change, playhead, facts, selectedId, selectedText, clipboard]);
 
   const dragPreview = useRef<{ x: number; y: number; clipX: number; clipY: number; group: string } | null>(null);
   const moving = selected ? { transform: selected.transform, local, update: (transform: Clip['transform'], group?: string) => updateSelected({ transform }, group) }
