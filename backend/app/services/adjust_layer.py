@@ -9,7 +9,8 @@ from app.services.timeline_schema import AdjustItem, AdjustLayer
 
 def grade_filters(item: AdjustItem) -> list[str]:
     from app.services.timeline_service import dreamy_glow_filters, picture_filters
-    return [*picture_filters(item.adjust, item.look), *dreamy_glow_filters(item.dreamy_glow)]
+    from app.services.colour_wheels import wheel_filters
+    return [*picture_filters(item.adjust, item.look), *wheel_filters(item.wheels), *dreamy_glow_filters(item.dreamy_glow)]
 
 
 def fade_filters(item: AdjustItem) -> list[str]:

@@ -182,6 +182,9 @@ def write_blur_mask(item: BlurBox, fmt: Format, target: Path) -> None:
     Image.fromarray(picture, 'RGBA').save(target)
 
 
+from app.services.colour_wheels import wheel_filters  # noqa: E402
+
+
 def picture_filters(adjust: Adjust, look: str) -> list[str]:
     """The preview shader's steps in its order, on RGB values, so the two can't disagree."""
     red, green, blue, contrast, saturation = LOOKS[look]
@@ -459,7 +462,7 @@ def source_steps(facts: MediaFacts) -> list[str]:
 def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None, sourced: bool = False, tag: str = 'clip') -> str:
     """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame. `sourced` skips source_steps, already done."""
     W, H = canvas
-    steps = [*([] if sourced else source_steps(facts)), *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look)]
+    steps = [*([] if sourced else source_steps(facts)), *(chroma_filters(clip.chroma, facts.media_type == 'image') if clip.chroma else []), *adjust_filters(clip.adjust), *picture_filters(clip.adjust, clip.look), *wheel_filters(clip.wheels)]
     if timing:
         steps.append(f"setpts='{timing}'")
     elif clip.speed != 1:

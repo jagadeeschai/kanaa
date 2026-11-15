@@ -8,6 +8,7 @@ import { Timing, timingSummary } from '../Timing';
 import { Group, More, Panel } from '../layout';
 import { Chips } from './parts';
 import { LOOK_NAMES } from './clip-parts';
+import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { t } from '../../i18n';
 
 export function AdjustInspector() {
@@ -39,5 +40,6 @@ export function AdjustInspector() {
         <ValueSlider label="Fade out" value={span.fade_out} min={0} max={5} step={0.1} defaultValue={0.5} unit="s" decimals={1} onChange={(fade_out, group) => set({ fade_out }, group)}/>
       </More>
     </Group>
+    <ColourWheelsGroup wheels={span.wheels} onChange={(wheels, group) => set({ wheels }, group)}/>
   </Panel>;
 }

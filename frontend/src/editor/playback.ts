@@ -10,6 +10,7 @@ import { lutAtlasUrl } from '../api/client';
 import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type AdjustLayer, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
 import { adjustStrength } from '../timeline/adjust';
+import { wheelVectors } from '../timeline/colourWheels';
 import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
@@ -313,6 +314,8 @@ uniform int signalMode; uniform float signalAmount, signalSplit, signalJitter, s
 uniform int lensMode; uniform float lensAmount, lensCount, lensRefraction, lensSoftness;
 uniform float splashAmount, splashTolerance, splashSoftness; uniform vec3 splashColor;
 uniform float dreamyAmount, dreamySoftness, dreamyWarmth;
+// Colour wheels (colourWheels.ts): lift, gamma, gain per channel. useWheels 0 leaves the picture as it is.
+uniform int useWheels; uniform vec3 wheelLift, wheelGamma, wheelGain;
 uniform int titleParticle; uniform float titleParticleProgress;
 // Mirrored in timeline_service.py: mirror_filters, zoom_blur_filters, tilt_shift_filters, tone_grade_filters (ZOOM_TAPS, TILT_SIGMA).
 uniform int mirrorMode; uniform float mirrorSegments, mirrorTurn, picAspect;
@@ -452,6 +455,7 @@ void main(){
   rgb = (clamp(rgb, 0., 1.) - .5) * contrast + .5;
   float luma = dot(clamp(rgb, 0., 1.), vec3(.2126, .7152, .0722));
   rgb = clamp(mix(vec3(luma), clamp(rgb, 0., 1.), saturation), 0., 1.);
+  if (useWheels == 1) rgb = clamp(pow(max(rgb + wheelLift * (1. - rgb), 0.), 1. / wheelGamma) * wheelGain, 0., 1.);
   if (tiltSat > 0.) rgb = clamp(mix(vec3(dot(rgb, vec3(.2126, .7152, .0722))), rgb, 1. + tiltSat), 0., 1.);
   if (splashAmount > 0.) {
     float targetLuma = dot(splashColor, vec3(.2126, .7152, .0722));
@@ -585,7 +589,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh', 'useWheels', 'wheelLift', 'wheelGamma', 'wheelGain']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -897,6 +901,9 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.splashTolerance, splash?.tolerance ?? 0);
     gl.uniform1f(uniforms.splashSoftness, splash?.softness ?? 0.001);
     gl.uniform3f(uniforms.splashColor, splashRgb[0], splashRgb[1], splashRgb[2]);
+    const wheels = wheelVectors(clip.wheels);
+    gl.uniform1i(uniforms.useWheels, wheels ? 1 : 0);
+    if (wheels) { gl.uniform3f(uniforms.wheelLift, ...wheels.lift); gl.uniform3f(uniforms.wheelGamma, ...wheels.gamma); gl.uniform3f(uniforms.wheelGain, ...wheels.gain); }
     const dreamy = clip.dreamy_glow;
     gl.uniform1f(uniforms.dreamyAmount, dreamy?.intensity ?? 0);
     gl.uniform1f(uniforms.dreamySoftness, dreamy?.softness ?? 0);
@@ -932,7 +939,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); this.clearShaping(); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); gl.uniform1i(uniforms.useWheels, 0); this.clearShaping(); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -944,6 +951,7 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.lensMode, 0);
     gl.uniform1f(uniforms.splashAmount, 0);
     gl.uniform1f(uniforms.dreamyAmount, 0);
+    gl.uniform1i(uniforms.useWheels, 0);
     this.clearShaping();
     gl.uniform1i(uniforms.useShape, 0);
     if (moved) gl.disable(gl.SCISSOR_TEST);
@@ -1333,7 +1341,7 @@ export class PlaybackEngine {
     // The copy has the frame's bottom row first: flipped upright, as a picture is.
     const graded: Clip = { id: span.id, media_id: -1, start: span.start, in: 0, out: span.length, speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0,
       transform: { x: 0.5, y: 0.5, scale: 1, opacity: strength, rotation: 0 }, adjust: { ...span.adjust, rotation: 0, flip_horizontal: false, flip_vertical: true },
-      look: span.look, dreamy_glow: span.dreamy_glow };
+      look: span.look, dreamy_glow: span.dreamy_glow, wheels: span.wheels };
     this.drawClip(this.videoLayers()[0], graded, { bound: this.adjustTexture });
   }
 

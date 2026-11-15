@@ -179,6 +179,19 @@ class ColourSplash(Strict):
     softness: float = Field(default=0.08, ge=0.001, le=0.3)
 
 
+class Wheel(Strict):
+    hue: float = Field(default=0, ge=0, le=360)
+    amount: float = Field(default=0, ge=0, le=1)
+    brightness: float = Field(default=0, ge=-1, le=1)
+
+
+class ColourWheels(Strict):
+    """Shadows, midtones and highlights (lift, gamma, gain), after the look and adjustments. See colour_wheels.py."""
+    shadows: Wheel = Field(default_factory=Wheel)
+    midtones: Wheel = Field(default_factory=Wheel)
+    highlights: Wheel = Field(default_factory=Wheel)
+
+
 class DreamyGlow(Strict):
     intensity: float = Field(default=0.45, ge=0, le=1)
     softness: float = Field(default=0.5, ge=0, le=1)
@@ -256,6 +269,7 @@ class Clip(Strict):
     lens_surface: Optional[LensSurface] = None
     colour_splash: Optional[ColourSplash] = None
     dreamy_glow: Optional[DreamyGlow] = None
+    wheels: Optional[ColourWheels] = None
     beat_pulse: Optional[BeatPulse] = None
     tone_grade: Optional[ToneGrade] = None
     mirror: Optional[Mirror] = None
@@ -528,6 +542,7 @@ class AdjustItem(Strict):
     look: Literal['none', 'warm', 'cool', 'mono', 'vivid', 'film'] = 'none'
     adjust: Adjust = Field(default_factory=Adjust)
     dreamy_glow: Optional[DreamyGlow] = None
+    wheels: Optional[ColourWheels] = None
     fade_in: float = Field(default=0.5, ge=0, le=5)
     fade_out: float = Field(default=0.5, ge=0, le=5)
 

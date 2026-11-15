@@ -12,6 +12,7 @@ import Metal
 
 struct Item: Decodable {
     let colour: Colour?
+    let wheels: Wheels?
     let glow: Glow?
     let maskPath: String?
     let blend: String?
@@ -42,6 +43,13 @@ struct Colour: Decodable {
     let fade: Double
     let contrast: Double
     let saturation: Double
+}
+
+/// Colour wheels (colour_wheels.py): lift, gamma and gain per channel, after the colour constants.
+struct Wheels: Decodable {
+    let lift: [Double]
+    let gamma: [Double]
+    let gain: [Double]
 }
 
 struct Glow: Decodable {
@@ -81,6 +89,17 @@ kernel vec4 grade(__sample s, vec3 tint, float power, float fade, float contrast
     c = floor(clamp((c - 0.5) * contrast + 0.5, 0.0, 1.0) * 255.0) / 255.0;
     float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = clamp(mix(vec3(luma), c, saturation), 0.0, 1.0);
+    return vec4(c * s.a, s.a);
+}
+""")!
+
+// As the export's lutrgb: each channel's 8-bit value through the curve, rounded back to 8 bits.
+let wheelsKernel = CIColorKernel(source: """
+kernel vec4 wheels(__sample s, vec3 lift, vec3 gamma, vec3 gain) {
+    vec3 c = s.a > 0.0 ? s.rgb / s.a : vec3(0.0);
+    c = floor(clamp(c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+    c = clamp(pow(max(c + lift * (1.0 - c), 0.0), 1.0 / gamma) * gain, 0.0, 1.0);
+    c = floor(c * 255.0 + 0.5) / 255.0;
     return vec4(c * s.a, s.a);
 }
 """)!
@@ -225,6 +244,9 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     }
     if let c = item.colour, c.tint != [1, 1, 1] || c.power != 1 || c.fade != 0 || c.contrast != 1 || c.saturation != 1 {
         shown = colourKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: c.tint[0], y: c.tint[1], z: c.tint[2]), c.power, c.fade, c.contrast, c.saturation])!
+    }
+    if let w = item.wheels {
+        shown = wheelsKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: w.lift[0], y: w.lift[1], z: w.lift[2]), CIVector(x: w.gamma[0], y: w.gamma[1], z: w.gamma[2]), CIVector(x: w.gain[0], y: w.gain[1], z: w.gain[2])])!
     }
     if let effect = item.zoomBlur {
         let rect = shown.extent

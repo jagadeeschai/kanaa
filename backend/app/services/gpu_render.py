@@ -89,6 +89,9 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
     return sorted(found)
 
 
+from app.services.colour_wheels import vectors as wheel_vectors  # noqa: E402
+
+
 def colour_constants(adjust, look: str) -> dict:
     """The reference picture_filters constants, rounded at the same filter boundary."""
     from app.services.animation import LOOKS
@@ -256,7 +259,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': first - head, 'frames': base + head + tail,
-                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'wheels': wheel_vectors(clip.wheels), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             from app.services.gpu_masks import resolve
             items[-1]['mask_path'] = resolve(clip, facts, masks)

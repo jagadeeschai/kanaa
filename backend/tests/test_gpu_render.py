@@ -272,6 +272,25 @@ class MatchesFfmpeg(unittest.TestCase):
         brighter = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
         self.assertLess(min(brighter), 60)  # Add is not quietly drawn as Screen.
 
+    def test_colour_wheels_match_ffmpeg(self):
+        """F3: colour wheels on clips look the same on the GPU as in the ffmpeg export."""
+        from app.services.timeline_schema import ColourWheels
+        work = timeline(12)
+        wheels = ColourWheels.model_validate({'shadows': {'hue': 190, 'amount': .55}, 'midtones': {'hue': 40, 'amount': .3, 'brightness': .1}, 'highlights': {'hue': 30, 'amount': .45}})
+        for clip in work.layers[0].items:
+            clip.wheels = wheels
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        ffmpeg_out, gpu_out = self.root / 'wheels-ffmpeg.mp4', self.root / 'wheels-gpu.mp4'
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
+        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(gpu_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        values = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
+        self.assertTrue(values)
+        print(f'\nwheels PSNR average {sum(values) / len(values):.1f} dB, worst {min(values):.1f} dB')
+        self.assertGreater(sum(values) / len(values), 35)
+
 
 if __name__ == '__main__':
     unittest.main()

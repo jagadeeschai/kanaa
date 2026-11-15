@@ -8,6 +8,11 @@ export const TAMIL: Record<string, string> = {
   'Changes everything below it while it plays, then fades away.': 'ஓடும்போது கீழே உள்ள அனைத்தையும் மாற்றும், பிறகு மெல்ல மறையும்.',
   'Changes the look of everything below it': 'கீழே உள்ள அனைத்தின் தோற்றத்தையும் மாற்றும்',
 
+  'Colour wheels': 'வண்ணச் சக்கரங்கள்', 'Grade': 'வண்ணத் தரம்', 'Warm shadows': 'வெதுவெதுப்பான நிழல்கள்', 'Teal and orange': 'நீலப்பச்சையும் ஆரஞ்சும்',
+  'Cool highlights': 'குளிர்ந்த ஒளிப்பகுதிகள்', 'Reset': 'மீட்டமை', 'Shadows': 'நிழல்கள்', 'Midtones': 'நடுத்தொனிகள்', 'Highlights': 'ஒளிப்பகுதிகள்',
+  'Shadows brightness': 'நிழல் ஒளிர்வு', 'Midtones brightness': 'நடுத்தொனி ஒளிர்வு', 'Highlights brightness': 'ஒளிப்பகுதி ஒளிர்வு',
+  'Tint the dark, middle and bright parts of the picture. Pick a grade, or drag a wheel toward a colour under More.': 'படத்தின் இருண்ட, நடுத்தர, ஒளிரும் பகுதிகளுக்கு வண்ணம் சேர்க்கவும். ஒரு தரத்தைத் தேர்ந்தெடுக்கவும், அல்லது மேலும் என்பதில் சக்கரத்தை ஒரு வண்ணத்தை நோக்கி இழுக்கவும்.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

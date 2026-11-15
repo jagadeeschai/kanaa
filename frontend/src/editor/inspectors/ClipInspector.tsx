@@ -23,6 +23,7 @@ import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
 import { AudioLines, Crop, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
+import { ColourWheelsGroup } from './ColourWheelsGroup';
 
 export type InspectorBindings = { onReframe: (() => void) | null; reframing: boolean; onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; logos: Photo[]; clipBrandMarks: { id: string; name: string }[]; onClipBrand: (item: Photo) => void; onRemoveClipBrand: (id: string) => void; clip: Clip; source?: PlaybackSource; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void };
 
@@ -96,6 +97,7 @@ export function Inspector() {
     <p className="ed-group-tip">Above 100% warms, below cools. Tint leans green or magenta. Fade lifts blacks into a soft matte.</p>
     </More>
     </Group>
+    <ColourWheelsGroup wheels={clip.wheels} onChange={(wheels, group) => onChange({ wheels }, group)}/>
     {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
     <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
