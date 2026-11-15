@@ -1,3 +1,4 @@
+import { createAskActions } from './actions/ask';
 import { createInspectorScopeActions } from './actions/inspector-scope';
 import { createEditorMenuActions } from './actions/menus';
 import { createPreviewTrackingActions } from './actions/preview-tracking';
@@ -959,56 +960,9 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     formats: FORMATS.map((format) => ({ id: format.id, label: `${format.label} (${format.ratio})` })), stories: STORIES.map((item) => ({ id: item.id, label: item.label })),
     title_styles: TEMPLATES.map((template) => ({ id: template.id, label: template.label })),
   };
-  /** What the AI is told about the project: shape, clips, titles and captions as text. Never the media itself. */
-  const askProject = () => {
-    const current = timelineRef.current;
-    if (!current) return {};
-    const clips = [...mainLayer(current).items].sort((a, b) => a.start - b.start);
-    const format = FORMATS.find((item) => item.width === current.format.width && item.height === current.format.height);
-    const theme = activeTheme(current);
-    return {
-      format: format ? `${format.label} (${format.ratio})` : `${current.format.width}×${current.format.height}`, duration: duration(current), clip_count: clips.length,
-      clips: clips.map((clip) => ({ kind: mediaById.get(clip.media_id)?.media_type ?? 'clip', name: mediaById.get(clip.media_id)?.filename ?? '', length: clipLength(clip), start: clip.start })),
-      theme: theme?.label ?? '', music: audioLayers(current).flatMap((layer) => layer.items.map((sound) => sound.name)),
-      titles: textLayers(current).flatMap((layer) => layer.items.map((text) => text.text)),
-      captions: captionLayers(current).flatMap((layer) => layer.items.slice(0, 30).map((caption) => captionText(caption))),
-      media: media.filter((item) => !usedIds.has(item.id) && item.folder !== 'Effects').slice(0, 20).map((item) => item.filename),
-    };
-  };
+  const { askProject, runAsk } = createAskActions(() => ({ get timelineRef() { return timelineRef; }, get mediaById() { return mediaById; }, get media() { return media; }, get usedIds() { return usedIds; }, get actions() { return actions; }, get askOptions() { return askOptions; }, get setCaptionWords() { return setCaptionWords; } }));
   const actions = useRef({ chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change });
   actions.current = { chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change };
-  /** Runs Ask AI's ticked edits one by one, each on the timeline as the edit before left it. */
-  const runAsk = async (commands: Proposed[]): Promise<string[]> => {
-    const done: string[] = [];
-    const settle = () => new Promise((resolve) => setTimeout(resolve, 120)); // Lets the editor redraw with the last edit before the next.
-    for (const command of commands) {
-      const current = timelineRef.current;
-      const act = actions.current;
-      if (!current) break;
-      try {
-        const pure = applyPure(current, command);
-        if (pure) { if (pure !== current) act.change(pure); done.push(`✓ ${describeCommand(command, askOptions)}`); }
-        else if (command.name === 'set_theme') { const theme = THEMES.find((item) => item.id === command.args.theme); if (theme) { await act.chooseTheme(theme, current); done.push(`✓ ${theme.label} theme`); } }
-        else if (command.name === 'add_title') { act.addTitle(TEMPLATES.find((item) => item.id === command.args.style) ?? TEMPLATES[0], command.args.at, command.args.text); done.push(`✓ Title “${command.args.text}”`); }
-        else if (command.name === 'add_effect') { await act.addEffect(command.args.effect, command.args.at); done.push(`✓ ${describeCommand(command, askOptions)}`); }
-        else if (command.name === 'cut_to_beat') { await act.cutClipsToBeat(); done.push('✓ Cut to the beat (see the Audio tab for details)'); }
-        else if (command.name === 'add_captions') { setCaptionWords(command.args.words); act.makeCaptions(command.args.words); done.push('✓ Captions: they appear once Kanaa has listened to the speech'); }
-        else if (command.name === 'keep_captions_clear') { await act.keepClearOfFaces(); done.push('✓ Captions checked against faces'); }
-        else if (command.name === 'make_story') {
-          const chosen = STORIES.find((item) => item.id === command.args.story);
-          const pool = act.storyMedia.map((item) => act.facts(item.id)).filter((item): item is SourceFacts => Boolean(item));
-          if (chosen) { await act.buildStoryVideo(chosen, fillRest(chosen, chosen.slots.map(() => null), pool)); done.push(`✓ Made as “${chosen.label}”`); }
-        } else if (command.name === 'translate_captions') {
-          const captions = captionLayers(current).flatMap((layer) => layer.items);
-          const { lines } = await translateLines(captions.map((caption) => captionText(caption)), command.args.to);
-          act.change(translateCaptions(timelineRef.current ?? current, new Map(captions.map((caption, index) => [caption.id, lines[index]]))));
-          done.push(`✓ ${captions.length} captions translated`);
-        }
-      } catch (problem) { done.push(`✗ ${(problem as Error).message}`); }
-      await settle();
-    }
-    return done;
-  };
 const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} own={Boolean(selectedBlur || (selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline)))} onDraw={() => startDrawing('start')} drawing={Boolean(drawing)} job={followJob?.itemId === followTarget.id ? followJob : null} busy={Boolean(followJob)} note={followNote?.itemId === followTarget.id ? followNote.text : null}
     following={Boolean(followTarget.transform.keyframes?.x?.length)} size={followSize} onSize={setFollowSize} onStart={() => { void followHere('start'); }} onContinue={() => { void followHere('continue'); }}
     onCancel={() => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }} onStop={() => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); }}/>;
