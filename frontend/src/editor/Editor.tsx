@@ -1,3 +1,4 @@
+import { useFollowJob } from './hooks/useFollowJob';
 import { useFaceJob } from './hooks/useFaceJob';
 import { useSceneJob } from './hooks/useSceneJob';
 import { useReframeJob } from './hooks/useReframeJob';
@@ -1042,20 +1043,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useReframeJob(() => ({ reframeJob, setError, setReframeJob, timelineRef, mediaById, setFaceNote, change, setSelectedId }), [reframeJob, change, mediaById]);
   useSceneJob(() => ({ sceneJob, setError, setSceneJob, timelineRef, change, setFaceNote }), [sceneJob, change]);
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
-  useEffect(() => {
-    if (!followJob) return;
-    const timer = setTimeout(async () => {
-      try {
-        const status = await getJobStatus(followJob.jobId) as unknown as { status?: string; progress: number; error?: string | null; track?: { points: TrackPoint[]; lost_before: boolean; lost_after: boolean }; faces?: TrackPoint[][] };
-        if (status.status === 'failed' || status.status === 'cancelled') { if (status.status === 'failed') setError(status.error ?? 'Could not follow that.'); setFollowJob(null); return; }
-        if (followJob.faces && status.status === 'done') { setFollowJob(null); applyFaces(followJob, status.faces ?? []); return; }
-        if (status.status !== 'done' || !status.track) { setFollowJob({ ...followJob, progress: status.progress, queued: status.status === 'queued' }); return; }
-        setFollowJob(null);
-        applyFollow(followJob, status.track);
-      } catch (problem) { setError((problem as Error).message); setFollowJob(null); }
-    }, 600);
-    return () => clearTimeout(timer);
-  });
+  useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
     get history(): typeof history { return history; },
     get dispatch(): typeof dispatch { return dispatch; },
