@@ -155,6 +155,7 @@ class VideoAISettingsUpdate(BaseModel):
     base_url: str = Field(max_length=500)
     model: str = Field(min_length=1, max_length=120)
     resolution: Literal['480p', '720p', '1080p'] = '720p'
+    text_model: str | None = Field(default=None, max_length=120)
     api_key: str | None = Field(default=None, max_length=500)
     clear_key: bool = False
 
@@ -169,7 +170,7 @@ def get_video_settings():
 def update_video_settings(data: VideoAISettingsUpdate):
     from app.services.ai_video import save_settings as video_save
     try:
-        return video_save(data.provider, data.base_url, data.model, data.resolution, data.api_key, data.clear_key)
+        return video_save(data.provider, data.base_url, data.model, data.resolution, data.api_key, data.clear_key, data.text_model)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -185,5 +186,22 @@ def bring_to_life(identifier: int, data: BringToLifeRequest):
     from app.services.ai_video import start
     try:
         return {'job_id': start(identifier, data.prompt, data.seconds)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class TextToVideoRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    seconds: int = Field(default=5, ge=5, le=15)
+    shape: Literal['landscape', 'portrait', 'square'] = 'landscape'
+    folder: str | None = Field(default=None, max_length=200)
+
+
+@router.post('/ai-video/from-text')
+def video_from_text(data: TextToVideoRequest):
+    """Text-to-video: one job that makes a scene from words; its result names the new video."""
+    from app.services.ai_video import start_text
+    try:
+        return {'job_id': start_text(data.prompt, data.seconds, data.shape, data.folder)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

@@ -1,4 +1,4 @@
-"""Bring to life: a picture on the timeline made into a few seconds of video by an image-to-video API.
+"""Video with AI: a picture brought to life (image-to-video), or a scene from words alone (text-to-video).
 
 Providers differ, so each style of API is a small adapter with the same two steps, submit and wait:
 - 'atlas':  POST {base}/model/generateVideo, then GET {base}/model/prediction/{id} until its outputs are ready
@@ -25,7 +25,12 @@ from app.services.media_service import get_media, index_media
 from app.services.render_queue_service import enqueue_render
 
 PROVIDERS = ('atlas', 'openai')
-DEFAULTS = {'provider': 'atlas', 'base_url': 'https://api.atlascloud.ai/api/v1', 'model': 'alibaba/wan-2.6/image-to-video-flash', 'resolution': '720p'}
+DEFAULTS = {'provider': 'atlas', 'base_url': 'https://api.atlascloud.ai/api/v1', 'model': 'alibaba/wan-2.6/image-to-video-flash', 'resolution': '720p',
+            'text_model': 'alibaba/wan-2.6/text-to-video'}
+# A text-to-video frame size for each shape and quality: Atlas takes "W*H", OpenAI "WxH".
+SIZES = {'landscape': {'480p': (848, 480), '720p': (1280, 720), '1080p': (1920, 1080)},
+         'portrait': {'480p': (480, 848), '720p': (720, 1280), '1080p': (1080, 1920)},
+         'square': {'480p': (640, 640), '720p': (960, 960), '1080p': (1440, 1440)}}
 LOCAL_HOSTS = {'localhost', '127.0.0.1', '::1'}
 POLL_SECONDS = 4
 GIVE_UP_SECONDS = 20 * 60
@@ -47,7 +52,7 @@ def public_settings() -> dict:
             'key_source': 'environment' if os.getenv('KANAA_VIDEO_API_KEY') else 'local' if config['api_key'] else None}
 
 
-def save_settings(provider: str, base_url: str, model: str, resolution: str, api_key: str | None = None, clear_key: bool = False) -> dict:
+def save_settings(provider: str, base_url: str, model: str, resolution: str, api_key: str | None = None, clear_key: bool = False, text_model: str | None = None) -> dict:
     url = urlsplit(base_url.strip().rstrip('/'))
     if (url.scheme != 'https' and not (url.scheme == 'http' and url.hostname in LOCAL_HOSTS)) or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError('Use an HTTPS API URL, or a local HTTP provider.')
@@ -57,7 +62,8 @@ def save_settings(provider: str, base_url: str, model: str, resolution: str, api
         raise ValueError('Enter a video model.')
     current = json.loads(_path().read_text()) if _path().exists() else {}
     key = '' if clear_key else api_key.strip() if api_key else current.get('api_key', '')
-    config = {'provider': provider, 'base_url': base_url.strip().rstrip('/'), 'model': model.strip(), 'resolution': resolution, 'api_key': key}
+    words = (text_model if text_model is not None else current.get('text_model', DEFAULTS['text_model'])).strip() or DEFAULTS['text_model']
+    config = {'provider': provider, 'base_url': base_url.strip().rstrip('/'), 'model': model.strip(), 'resolution': resolution, 'text_model': words, 'api_key': key}
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix='.video-ai-settings-', dir=settings.data_dir)
     try:
@@ -106,9 +112,14 @@ def _wait(should_cancel, job_id, check):
             time.sleep(0.25)
 
 
-def _atlas(client, config, picture: bytes, mime: str, prompt: str, seconds: int, should_cancel, job_id) -> bytes:
-    body = {'model': config['model'], 'image': f'data:{mime};base64,' + base64.b64encode(picture).decode(), 'prompt': instruction(prompt),
-            'resolution': config['resolution'], 'duration': seconds, 'generate_audio': False, 'shot_type': 'single'}
+def _atlas(client, config, picture: bytes | None, mime: str, prompt: str, seconds: int, should_cancel, job_id, shape: str = 'landscape') -> bytes:
+    if picture is not None:
+        body = {'model': config['model'], 'image': f'data:{mime};base64,' + base64.b64encode(picture).decode(), 'prompt': instruction(prompt),
+                'resolution': config['resolution'], 'duration': seconds, 'generate_audio': False, 'shot_type': 'single'}
+    else:
+        width, height = SIZES[shape][config['resolution']]
+        body = {'model': config['text_model'], 'prompt': prompt.strip(), 'size': f'{width}*{height}', 'duration': text_seconds(seconds),
+                'generate_audio': False, 'shot_type': 'single'}
     response = client.post(config['base_url'] + '/model/generateVideo', json=body)
     _fail_on(response, 'start the video')
     prediction = (response.json().get('data') or {}).get('id')
@@ -130,9 +141,13 @@ def _atlas(client, config, picture: bytes, mime: str, prompt: str, seconds: int,
     return downloaded.content
 
 
-def _openai(client, config, picture: bytes, mime: str, prompt: str, seconds: int, should_cancel, job_id) -> bytes:
-    files = {'input_reference': ('picture' + ('.png' if mime == 'image/png' else '.jpg'), picture, mime)}
-    response = client.post(config['base_url'] + '/videos', data={'model': config['model'], 'prompt': instruction(prompt), 'seconds': str(seconds)}, files=files)
+def _openai(client, config, picture: bytes | None, mime: str, prompt: str, seconds: int, should_cancel, job_id, shape: str = 'landscape') -> bytes:
+    if picture is not None:
+        files = {'input_reference': ('picture' + ('.png' if mime == 'image/png' else '.jpg'), picture, mime)}
+        response = client.post(config['base_url'] + '/videos', data={'model': config['model'], 'prompt': instruction(prompt), 'seconds': str(seconds)}, files=files)
+    else:
+        width, height = SIZES[shape][config['resolution']]
+        response = client.post(config['base_url'] + '/videos', json={'model': config['text_model'], 'prompt': prompt.strip(), 'seconds': str(seconds), 'size': f'{width}x{height}'})
     _fail_on(response, 'start the video')
     video = response.json().get('id')
     if not video:
@@ -152,6 +167,49 @@ def _openai(client, config, picture: bytes, mime: str, prompt: str, seconds: int
 
 
 ADAPTERS = {'atlas': _atlas, 'openai': _openai}
+
+
+def text_seconds(seconds: int) -> int:
+    """Text-to-video models take 5, 10 or 15 seconds: the nearest."""
+    return min((5, 10, 15), key=lambda allowed: abs(allowed - seconds))
+
+
+def _fetch(config, picture, prompt, seconds, should_cancel, job_id, shape='landscape') -> bytes:
+    with httpx.Client(timeout=httpx.Timeout(300, connect=20), headers={'Authorization': 'Bearer ' + config['api_key']}, follow_redirects=True) as client:
+        video = ADAPTERS[config['provider']](client, config, picture, 'image/jpeg', prompt, seconds, should_cancel, job_id, shape)
+    if should_cancel():
+        raise JobCancelled()
+    if len(video) < 1000:
+        raise ValueError('The video provider sent back an empty video.')
+    return video
+
+
+def start_text(prompt: str, seconds: int = 5, shape: str = 'landscape', folder: str | None = None) -> str:
+    """Text-to-video: a scene from words alone, in the project's shape. One job; its result names the new video."""
+    if not prompt.strip():
+        raise ValueError('Describe the scene first.')
+    if shape not in SIZES:
+        raise ValueError('Choose landscape, portrait or square.')
+    config = read_settings()
+    if not config['api_key']:
+        raise ValueError('Add a video API key in AI settings → Video first.')
+    name = ' '.join(prompt.split())[:48].rstrip(' ,.')
+
+    def run(should_cancel):
+        update_job(job_id, phase='Sending the description to the video AI', progress=5)
+        target = settings.data_dir / 'media' / f'ai-video-{uuid.uuid4().hex}.mp4'
+        try:
+            video = _fetch(config, None, prompt, seconds, should_cancel, job_id, shape)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(video)
+            media = index_media(target, f'{name} (AI video).mp4', folder=folder)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        return {'progress': 100, 'media_id': media['id']}
+
+    job_id = enqueue_render('ai_video', f'Video from words · {name}', run, total=100)
+    return job_id
 
 
 def start(media_id: int, prompt: str, seconds: int = 5) -> str:
@@ -178,12 +236,7 @@ def start(media_id: int, prompt: str, seconds: int = 5) -> str:
             picture.save(buffer, 'JPEG', quality=92)
         target = settings.data_dir / 'media' / f'ai-video-{uuid.uuid4().hex}.mp4'
         try:
-            with httpx.Client(timeout=httpx.Timeout(300, connect=20), headers={'Authorization': 'Bearer ' + config['api_key']}, follow_redirects=True) as client:
-                video = ADAPTERS[config['provider']](client, config, buffer.getvalue(), 'image/jpeg', prompt, seconds, should_cancel, job_id)
-            if should_cancel():
-                raise JobCancelled()
-            if len(video) < 1000:
-                raise ValueError('The video provider sent back an empty video.')
+            video = _fetch(config, buffer.getvalue(), prompt, seconds, should_cancel, job_id)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(video)
             media = index_media(target, f'{name} (AI motion).mp4', folder=item.get('folder'))

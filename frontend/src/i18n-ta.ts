@@ -43,6 +43,15 @@ export const TAMIL: Record<string, string> = {
 
   'This clip is more than four times longer than the video. Make a longer video, or split the clip first.': 'இந்தக் கிளிப் காணொளியை விட நான்கு மடங்குக்கும் மேல் நீளமானது. நீளமான காணொளியை உருவாக்குங்கள், அல்லது முதலில் கிளிப்பைப் பிரியுங்கள்.',
 
+  'Create video with AI': 'AI மூலம் காணொளி உருவாக்கு', 'Describe a scene; the video shows here': 'ஒரு காட்சியை விவரியுங்கள்; காணொளி இங்கே தெரியும்',
+  'Describe the scene and how the camera moves': 'காட்சியையும் கேமரா எப்படி நகர்கிறது என்பதையும் விவரியுங்கள்',
+  'A village temple at dawn, mist over the pond, slow camera glide': 'விடியலில் கிராமக் கோயில், குளத்தின் மேல் பனி, மெதுவாக நகரும் கேமரா',
+  'Monsoon rain on a coconut grove, warm evening light': 'தென்னந்தோப்பில் பருவமழை, இதமான மாலை ஒளி', 'Lamps floating on a river at night, gentle drift': 'இரவில் ஆற்றில் மிதக்கும் விளக்குகள், மெல்லிய நகர்வு',
+  'A palm-leaf manuscript, pages turning in candlelight': 'மெழுகுவர்த்தி ஒளியில் புரளும் ஓலைச்சுவடி',
+  'Landscape, like this video': 'இந்தக் காணொளி போல அகலவாக்கில்', 'Portrait, like this video': 'இந்தக் காணொளி போல நீளவாக்கில்', 'Square, like this video': 'இந்தக் காணொளி போல சதுரமாக',
+  'Your description goes to the video AI in AI settings → Video, and uses its credits. It comes back silent: your song stays the soundtrack.': 'உங்கள் விவரிப்பு AI அமைப்புகள் → காணொளி-யில் உள்ள காணொளி AI-க்குச் சென்று அதன் கடன்களைப் பயன்படுத்தும். அது ஒலியின்றி வரும்: உங்கள் பாடலே பின்னணி இசை.',
+  'Keep in media': 'ஊடகத்தில் வைத்திரு',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

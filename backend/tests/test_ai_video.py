@@ -84,6 +84,43 @@ class Flows(unittest.TestCase):
             result, _ = self.run_job()
         self.assertEqual(result['media_id'], 77)
 
+    def test_text_to_video_atlas_sends_words_and_a_frame_size(self):
+        def handler(request: httpx.Request):
+            if request.url.path.endswith('/model/generateVideo'):
+                self.body = json.loads(request.content)
+                return httpx.Response(200, json={'data': {'id': 'p2', 'status': 'processing'}})
+            if request.url.path.endswith('/model/prediction/p2'):
+                return httpx.Response(200, json={'data': {'status': 'succeeded', 'outputs': ['https://cdn.example/t.mp4']}})
+            return httpx.Response(200, content=VIDEO)
+        with self.provider(handler, 'atlas'):
+            ai_video.start_text('A temple pond at dawn, mist over the water', seconds=8, shape='portrait', folder='Song')
+            with mock.patch.object(ai_video, 'index_media', return_value={'id': 88}) as index:
+                self.assertEqual(self.jobs[0](lambda: False)['media_id'], 88)
+        self.assertNotIn('image', self.body)
+        self.assertEqual((self.body['model'], self.body['size'], self.body['duration'], self.body['generate_audio']), ('alibaba/wan-2.6/text-to-video', '720*1280', 10, False))
+        self.assertEqual(self.body['prompt'], 'A temple pond at dawn, mist over the water')
+        self.assertEqual((index.call_args.args[1], index.call_args.kwargs['folder']), ('A temple pond at dawn, mist over the water (AI video).mp4', 'Song'))
+
+    def test_text_to_video_openai_style(self):
+        def handler(request: httpx.Request):
+            if request.method == 'POST':
+                self.body = json.loads(request.content)
+                return httpx.Response(200, json={'id': 'v2'})
+            if request.url.path.endswith('/videos/v2'):
+                return httpx.Response(200, json={'status': 'completed'})
+            return httpx.Response(200, content=VIDEO)
+        with self.provider(handler, 'openai'):
+            ai_video.start_text('rain on a window', seconds=5, shape='square')
+            with mock.patch.object(ai_video, 'index_media', return_value={'id': 89}):
+                self.jobs[0](lambda: False)
+        self.assertEqual((self.body['size'], self.body['seconds']), ('960x960', '5'))
+
+    def test_text_settings_keep_their_own_model(self):
+        shown = ai_video.save_settings('atlas', 'https://a.example', 'image/model', '1080p', api_key='k', text_model='words/model')
+        self.assertEqual((shown['model'], shown['text_model']), ('image/model', 'words/model'))
+        self.assertEqual(ai_video.save_settings('atlas', 'https://a.example', 'image/model', '720p')['text_model'], 'words/model')  # Kept when not sent.
+        self.assertEqual([ai_video.text_seconds(s) for s in (5, 7, 8, 12, 15)], [5, 5, 10, 10, 15])
+
     def test_failures_are_plain_and_leave_nothing(self):
         cases = [(lambda r: httpx.Response(402, text='no balance'), 'balance'),
                  (lambda r: httpx.Response(401), 'key'),

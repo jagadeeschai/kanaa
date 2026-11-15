@@ -502,3 +502,5 @@
 [data-ed-theme=light] .ed-stage :is(.ed-first-run,.ed-title-toolbar,.ed-card,.ed-stage-title,.ed-pick-note,.ed-status-bar,.ed-menu,.ed-follow-chip-menu){--text:#23212f;--text-2:#57536a;--muted:#625e77;--raised:#fff;--control-line:#8d899f;--wash:#23212f0f;--selected-bg:#ebe6ff;--selected-text:#3f2bb0;color:var(--text)}
 .ed-ai-edit-pair video{width:100%;aspect-ratio:16/10;object-fit:contain;border-radius:8px;background:var(--well)}
 .ed-ai-seconds{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2)}.ed-ai-seconds select{height:26px;border-radius:6px;border:1px solid var(--hairline);background:var(--well);color:var(--text)}
+.ed-ai-edit-single video,.ed-ai-edit-single .ed-ai-edit-wait{width:100%;aspect-ratio:16/9;max-height:42vh;object-fit:contain;border-radius:8px;background:var(--well)}
+.ed-ai-seconds span{color:var(--muted)}

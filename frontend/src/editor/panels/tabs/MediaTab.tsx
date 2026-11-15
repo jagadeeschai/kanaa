@@ -1,4 +1,5 @@
-import { Check,Layers,Minus,Plus,WandSparkles } from "lucide-react";
+import { Check,Clapperboard,Layers,Minus,Plus,WandSparkles } from "lucide-react";
+import { openTextToVideo } from "../../TextToVideoDialog";
 import { getPhoto,photoThumbUrl } from "../../../api/client";
 import ImportArea from "../../../components/ImportArea";
 import KanaaSelect from "../../../components/KanaaSelect";
@@ -12,7 +13,7 @@ import type { EditorLeftRailBindings } from '../EditorLeftRail';
 export function MediaTabSection1() {
   const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'media' && <>
-          <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button></div>
+          <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button><button className="ed-button wide" disabled={!timeline} onClick={() => openTextToVideo({ addToTimeline: addMedia, folder: projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim() || null })}><Clapperboard size={15}/>{t('Create video with AI')}</button></div>
           <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
           {folders.length > 0 && (() => {
             // One picker, however many folders there are: this video's own folder first, then the rest A to Z, each with its count.

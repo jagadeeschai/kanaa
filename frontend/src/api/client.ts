@@ -166,9 +166,12 @@ export const startBrandIntro = (logoMediaId: number, width: number, height: numb
 export const startAiEdit = (id: number, prompt: string, quality: 'low' | 'medium' | 'high' = 'medium') =>
   requestJson<{ job_id: string }>(`/api/photos/${id}/ai-edit`, { method: 'POST', body: JSON.stringify({ prompt, quality }) });
 /** Bring to life: image-to-video. Settings are separate from the image AI's; the key is never sent back. */
-export type VideoAISettings = { provider: 'atlas' | 'openai'; base_url: string; model: string; resolution: '480p' | '720p' | '1080p'; configured: boolean; key_source: 'environment' | 'local' | null };
+export type VideoAISettings = { provider: 'atlas' | 'openai'; base_url: string; model: string; text_model: string; resolution: '480p' | '720p' | '1080p'; configured: boolean; key_source: 'environment' | 'local' | null };
 export const getVideoAISettings = () => requestJson<VideoAISettings>('/api/video-ai-settings');
-export const saveVideoAISettings = (body: { provider: string; base_url: string; model: string; resolution: string; api_key?: string; clear_key?: boolean }) =>
+export const saveVideoAISettings = (body: { provider: string; base_url: string; model: string; text_model?: string; resolution: string; api_key?: string; clear_key?: boolean }) =>
   requestJson<VideoAISettings>('/api/video-ai-settings', { method: 'PUT', body: JSON.stringify(body) });
 export const startBringToLife = (id: number, prompt: string, seconds: number) =>
   requestJson<{ job_id: string }>(`/api/photos/${id}/bring-to-life`, { method: 'POST', body: JSON.stringify({ prompt, seconds }) });
+/** Text-to-video: a scene from words alone, in the project's shape. */
+export const startTextToVideo = (body: { prompt: string; seconds: number; shape: 'landscape' | 'portrait' | 'square'; folder?: string | null }) =>
+  requestJson<{ job_id: string }>('/api/ai-video/from-text', { method: 'POST', body: JSON.stringify(body) });
