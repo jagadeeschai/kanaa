@@ -77,7 +77,7 @@ import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } 
 import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
 import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
 import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
-import { dateWords, defocusBox, ENGLISH_FONTS, fromTemplate, isDateTemplate, lookOf, MAX_SAVED, motionOf, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
+import { cinematicJoinFor, cinematicJoinTime, addTemplateEffects, dateWords, defocusBox, ENGLISH_FONTS, fromTemplate, isDateTemplate, lookOf, MAX_SAVED, motionOf, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
 import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
 import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
@@ -1167,13 +1167,13 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       if (!recorded) setError(under ? 'This clip doesn\'t say when it was filmed, so the title shows today\'s date. Type the right one.' : 'No clip here, so the title shows today\'s date.');
     }
     const current = timelineRef.current ?? timeline;
-    const text: TextItem = { ...fromTemplate(title, newId(), Math.round(at * 1000) / 1000, TEXT_SECONDS), ...dated, ...(words ? { text: words, subtitle: '' } : {}) };
-    let next = addText(current, text, newId());
+    const text: TextItem = { ...fromTemplate(title, newId(), title.extra?.transition ? cinematicJoinTime(current,at) : Math.round(at * 1000) / 1000, TEXT_SECONDS), ...dated, ...(words ? { text: words, subtitle: '' } : {}) };
+    let next = cinematicJoinFor(title, addText(current, text, newId()), text.start);
     // Pull focus: the picture behind softens while the title sharpens.
     if (title.extra?.defocus) next = addBlur(next, defocusBox(newId(), text.start, text.length, text.enter?.duration ?? 1, text.exit?.duration ?? 0.6), newId());
     change(next);
     // A title that brings an effect (lens flare, sparkles, bokeh) lays it over the video for the title's length.
-    if (title.extra?.effect) void addEffect(title.extra.effect, text.start, text.length);
+    void addTemplateEffects(title, text.start, text.length, addEffect, current, getSongBeats);
     setSelectedId(text.id);
     // A title starts hidden behind its enter animation, so show it at rest.
     setTimeout(() => engineRef.current?.seek(text.start + TEXT_SECONDS / 2), 0);

@@ -4,11 +4,14 @@ import type { TextItem } from './model.ts';
 export type TitleLook = Omit<TextItem, 'id' | 'start' | 'length' | 'transform'>;
 /** What else a template brings: an effect laid over the video for the title's length (effect_service.py ids), or the
  * picture behind softening while the title sharpens (a full-frame blur box fading in). */
-export type TemplateExtra = { effect?: string; defocus?: boolean };
+export type TemplateExtra = { effect?: string; effects?: string[]; transition?: boolean; defocus?: boolean };
 /** A saved title's own movement: where it sits, its keyframed moves (in the title's own seconds, so they work at any
  * point of any video) and how long it shows. Built-in templates have none and use the defaults. */
 export type TitleMotion = { transform: TextItem['transform']; length: number };
 export type Template = { id: string; label: string; look: TitleLook; extra?: TemplateExtra; motion?: TitleMotion };
+
+import { CINEMATIC_TEMPLATES } from './cinematicTemplates.ts';
+export { cinematicJoinFor, cinematicJoinTime, addTemplateEffects } from './cinematicTemplates.ts';
 
 const fade = (duration: number) => ({ preset: 'fade' as const, duration });
 
@@ -29,6 +32,7 @@ export const TAMIL_FONTS: FontChoice[] = [
 
 /** Designed to read well in Tamil and English, on phones. Sizes are at a 720-wide frame and grow with the video. */
 export const TEMPLATES: Template[] = [
+  ...CINEMATIC_TEMPLATES,
   // A credit as labels show it: the role in Tamil and English above the name, gold title alone, no box behind.
   // Song credits in one title: type the lines in order (title, its English name, then label · ROLE, name, English name,
   // a blank line between credits); each line is styled by what it is.

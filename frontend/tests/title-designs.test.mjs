@@ -39,5 +39,5 @@ test('pull focus softens the picture behind while the title sharpens, then lets 
 test('the effect titles say what they bring', async () => {
   const { TEMPLATES } = await import('../src/timeline/templates.ts');
   const extra = Object.fromEntries(TEMPLATES.filter((template) => template.extra).map((template) => [template.id, template.extra]));
-  assert.deepEqual(extra, { 'lens-flare': { effect: 'lens-flare' }, 'pixie-dust': { effect: 'sparkles' }, 'boogie-lights': { effect: 'bokeh' }, 'pull-focus': { defocus: true } });
+  assert.deepEqual(extra, { 'cinematic-opener': { effects: ['volumetric-rays','beam-sparkle-dust'] }, 'golden-title-card': { effects: ['frame-light-sweep','optical-flare-warm'] }, 'verse-change': { effects: ['bloom-hit'], transition: true }, 'lens-flare': { effect: 'lens-flare' }, 'pixie-dust': { effect: 'sparkles' }, 'boogie-lights': { effect: 'bokeh' }, 'pull-focus': { defocus: true } });
 });
