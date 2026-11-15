@@ -1,3 +1,4 @@
+import { TransitionsTabSection1 } from './tabs/TransitionsTab';
 import { WordsTabSection1 } from './tabs/WordsTab';
 import { AudioTabSection1 } from './tabs/AudioTab';
 import { TextTabSection1 } from './tabs/TextTab';
@@ -178,15 +179,7 @@ export function EditorLeftRail() {
         <WordsTabSection1/>
         <TemplatesTabSection1/>
         <ThemesTabSection1/>
-        {leftTab === 'transitions' && <>
-          <p className="ed-tip">Drag onto a clip, or click to apply to the selected clip.</p>
-          <div className="ed-quick" role="group" aria-label="Transitions">{TRANSITIONS.map((item) => <button key={item.id} className={`ed-quick-tile transition ${transitionPick === item.id ? 'on' : ''}`} {...draggableAs({ kind: 'transition', transition: item.id })} onClick={() => { setTransitionPick(item.id); applyToSelected({ kind: 'transition', transition: item.id }); }} title={`${item.label} into a clip`}>{TRANSITION_ICONS[item.id]}{item.label}</button>)}</div>
-          {timeline && mainLayer(timeline).items.length > 1 && !mainLayer(timeline).locked && <>
-            <button className="ed-button wide" onClick={() => change(transitionEverywhere(timeline, transitionPick, 0.6), 'transition-all')} title={`Put a ${transitionPick} on every cut`}><Shuffle size={14}/>Every cut: {TRANSITIONS.find((item) => item.id === transitionPick)?.label ?? transitionPick}</button>
-            {mainLayer(timeline).items.some((clip) => clip.transition_in) && <button className="ed-button wide" onClick={() => setConfirmingClear(true)}><X size={14}/>Remove all transitions</button>}
-          </>}
-          <p className="ed-tip">{t('To change one cut’s length or direction, click the cut between two clips on the timeline.')}</p>
-        </>}
+        <TransitionsTabSection1/>
         {leftTab === 'ask' && timeline && <div data-keep-panel><AskPanel timeline={timeline} options={askOptions} project={askProject} onApply={runAsk}/></div>}
         <EffectsTabSection1/>
         <EffectsTabSection2/>
