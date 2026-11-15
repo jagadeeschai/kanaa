@@ -13,9 +13,10 @@ class FlyReveal(unittest.TestCase):
   self.assertIsNone(state_at(text,2));self.assertIsNotNone(state_at(text,3.5))
   self.assertEqual(title3d.pose_at(text,0)[0]['size'],12)
   self.assertAlmostEqual(title3d.pose_at(text,2)[0]['size'],1)
- def test_gpu_fallback_names_matte(self):
+ def test_gpu_draws_the_reveal(self):
+  # Its frames are pictures (black outside the letters, clear inside), laid on like any 3D title.
   timeline=Timeline.model_validate({'layers':[{'id':'t','kind':'text','items':[{'id':'x','start':0,'length':3,'text':'A','enter':{'preset':'fly-reveal','duration':2}}]}]})
-  self.assertIn('letter-window matte compositing',gpu_render.unsupported(timeline,lambda _:None))
+  self.assertEqual(gpu_render.unsupported(timeline,lambda _:None),[])
 
  def test_letter_mattes_are_title_only(self):
   with self.assertRaises(ValidationError):
