@@ -1,3 +1,4 @@
+import { EditorTimelineToolbar } from './panels/EditorTimelineToolbar';
 import { EditorPreviewStage } from './preview/EditorPreviewStage';
 import { createAskActions } from './actions/ask';
 import { createInspectorScopeActions } from './actions/inspector-scope';
@@ -1014,27 +1015,7 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
       </HelpContext.Provider>
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
-    <div className="ed-lower"><div className="ed-tools">
-      <span className="ed-tool-group" role="group" aria-label="Edit tools">
-        <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} title={`${t('Undo')} (⌘Z)`}><Undo2 size={15}/></button>
-        <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'redo' })} disabled={!history.future.length} aria-label={t('Redo')} title={`${t('Redo')} (⇧⌘Z)`}><Redo2 size={15}/></button>
-        {clipboard.styleCopy && <span className="ed-brush"><button className="ed-button ed-icon-button on" onClick={() => clipboard.pasteStyleOnto()} disabled={!selectedId} aria-label={t('Paste style')} title={`${t('Paste style')} (⌥⌘V)`}><Paintbrush size={15}/></button><button className="ed-brush-off" onClick={clipboard.clearStyle} aria-label={t('Stop pasting style')} title={t('Stop pasting style')}><Close size={11}/></button></span>}
-        <span className="ed-tool-sep" aria-hidden="true"/>
-        <button className="ed-button" onClick={split} disabled={!total} title="Split at playhead (S)"><Scissors size={15}/>Split</button>
-        <button className="ed-button" onClick={() => freeze()} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Hold the frame at the playhead for 2 seconds"><Snowflake size={15}/>Freeze</button>
-        <button className="ed-button" onClick={() => { void snapshot(); }} disabled={!total || Boolean(timeline && mainLayer(timeline).locked)} title="Flash, shutter sound and a two-second printed-photo freeze"><Camera size={15}/>Snapshot</button>
-        <button className="ed-button" onClick={removeSelected} disabled={(!selected && !selectedSound && !selectedText && !selectedBlur && !selectedCaption) || Boolean(selectedLayer?.locked)} title="Delete (⌫)"><Trash2 size={15}/>Delete</button>
-      </span>
-      <div className="ed-spacer"/>
-      <span className="ed-tool-group" role="group" aria-label="Timeline view">
-        <button className="ed-button" disabled={!total} onClick={fitZoom} title="Show the whole video on the timeline">Fit</button>
-        <button className={`ed-button ${snapping ? 'on' : ''}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} title={`${t(snapping ? 'Snapping on: edges lock to clips, the playhead and beats' : 'Snapping off')} (N)`}><Magnet size={14}/></button>
-        <button className="ed-icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(ZOOM_MIN, value / ZOOM_STEP))}><Minus size={15}/></button>
-        <input className="ed-zoom" type="range" min={Math.log(ZOOM_MIN)} max={Math.log(ZOOM_MAX)} step={0.01} value={Math.log(zoom)} onChange={(event) => setZoom(Math.exp(Number(event.target.value)))} aria-label={t('Timeline zoom')} title={t('Timeline zoom')}/>
-        <button className="ed-icon" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value * ZOOM_STEP))}><Plus size={15}/></button>
-        <button className="ed-button" aria-label="View" onClick={openViewMenu}><MoreHorizontal size={15}/>{t('View')}</button>
-      </span>
-    </div>
+    <div className="ed-lower"><EditorTimelineToolbar bindings={{ dispatch, history, clipboard, selectedId, split, total, freeze, timeline, snapshot, removeSelected, selected, selectedSound, selectedText, selectedBlur, selectedCaption, selectedLayer, fitZoom, snapping, setSnapping, setZoom, zoom, openViewMenu }}/>
     {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} snapping={snapping} onSelectMany={(ids) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); if (!ids.length) { setSelectedId(null); return; } setSelectedId(ids[0]); setMoreIds(new Set(ids.slice(1))); }} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       onSplitAt={(id, t) => { if (!timeline || isLocked(timeline, id)) return; const sound = findSound(timeline, id); const layer = layerOf(timeline, id); const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) { change(next); seek(t); } }}
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
