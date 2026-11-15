@@ -87,6 +87,8 @@ void main(){
 }`;
 /** A title in 3D: every frame pixel is taken back into the title picture through the inverse of its homography
  * (title3d.ts), so perspective is exact. Matches title3d_render.py, which warps the same way with OpenCV. */
+import { MATERIAL_FRAGMENT, MATERIAL_LOOKS, sweepAt } from '../timeline/titleMaterial';
+
 const TITLE_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D tex; uniform mat3 toPicture; uniform vec2 frame, viewport;
 uniform vec4 bounds; uniform float opacity; uniform vec4 shade;
@@ -95,7 +97,8 @@ uniform vec4 letters; uniform vec4 wipe; uniform vec2 copies; uniform vec3 lineC
 // Letter by letter (letterLook in animation.ts; moving_letters in title3d_render.py): the letter map's red is each
 // pixel's letter (0: none, it stays); letterA is a letter's middle and how far it moves, letterB its size and opacity.
 uniform sampler2D labels; uniform int letterCount; uniform vec4 letterA[${MAX_LETTERS}]; uniform vec4 letterB[${MAX_LETTERS}];
-vec4 raw(vec2 at) { vec4 c = texture(tex, at / frame); return vec4(c.rgb * c.a, c.a); }
+${MATERIAL_FRAGMENT}
+vec4 raw(vec2 at) { vec4 c = texture(tex, at / frame); return face(at, vec4(c.rgb * c.a, c.a)); }
 float letterAt(vec2 at) {
   if (at.x < 0. || at.y < 0. || at.x >= frame.x || at.y >= frame.y) return 0.;
   return floor(texelFetch(labels, ivec2(at), 0).r * 255. + .5);
@@ -583,7 +586,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(titles, position, 'p');
     gl.linkProgram(titles);
     this.titleProgram = titles;
-    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
+    for (const name of ['tex', 'toPicture', 'frame', 'viewport', 'bounds', 'opacity', 'shade', 'letters', 'wipe', 'copies', 'lineColour', 'labels', 'letterCount', 'letterA', 'letterB', 'streak', 'material']) this.titleUniforms[name] = gl.getUniformLocation(titles, name);
     const moving = gl.createProgram()!;
     gl.attachShader(moving, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
     gl.attachShader(moving, shader(gl.FRAGMENT_SHADER, TRANSITION_FRAGMENT));
@@ -1201,6 +1204,7 @@ export class PlaybackEngine {
       // The front layer is the title itself; layers behind it are its sides, in the depth colour, darker further back.
       if (index === 0 || !depth) gl.uniform4f(u.shade, 0, 0, 0, 0);
       else { const light = layerShade(depth, share); gl.uniform4f(u.shade, colour[0] * light, colour[1] * light, colour[2] * light, 1); }
+      gl.uniform4f(u.material, MATERIAL_LOOKS.findIndex((look) => look.id === depth?.material) + 1, depth?.bevel ?? 0, depth?.shine ?? 0, sweepAt(item, local));
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
     gl.useProgram(this.main);

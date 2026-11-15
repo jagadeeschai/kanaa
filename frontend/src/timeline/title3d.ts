@@ -33,7 +33,8 @@ const COPY_TRICKS = new Set(['chromatic', 'prism', 'echo']);
 /** Room beside and above/below the letters' box for copies or letters that move out. Same as trick_margins in title3d_render.py. */
 export function trickMargins(text: TextItem, letters: Box): [number, number] {
   const w = letters[2] - letters[0], h = letters[3] - letters[1];
-  let across = 0, along = 0;
+  const materialPad = text.depth?.material ? .06 * h : 0;
+  let across = materialPad, along = materialPad;
   for (const animation of [text.enter, text.exit]) {
     const preset = animation?.preset;
     if (preset && COPY_TRICKS.has(preset)) { across = Math.max(across, TRICK_MARGIN * h); along = Math.max(along, TRICK_MARGIN * h); }

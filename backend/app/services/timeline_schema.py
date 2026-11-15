@@ -298,6 +298,10 @@ class TitleDepth(Strict):
     amount: float = Field(default=0.5, ge=0, le=1)
     color: str = Field(default='#6b4a1f', pattern=r'^#[0-9a-fA-F]{6}$')  # The sides of the letters.
     light: float = Field(default=0.55, ge=0, le=1)  # How much the sides catch the light.
+    material: Optional[Literal['gold', 'chrome', 'stone', 'neon', 'glass']] = None
+    bevel: float = Field(default=0, ge=0, le=1)
+    shine: float = Field(default=0, ge=0, le=1)
+    sweep: bool = False
     angle: float = Field(default=24.44, ge=-180, le=180)  # Extrusion direction: degrees from straight-down towards the right.
 
 

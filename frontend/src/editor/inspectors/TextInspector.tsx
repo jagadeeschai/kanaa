@@ -14,6 +14,8 @@ import { ALargeSmall, Bookmark, Check, Crosshair, Lock, Move, Type, Users } from
 import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
 
+import { MATERIAL_LOOKS } from '../../timeline/titleMaterial';
+
 const KARAOKE_SWATCHES: [string, string][] = [['#ffd54a', 'Gold'], ['#ff7aa8', 'Rose'], ['#7dd3fc', 'Sky'], ['#86efac', 'Leaf'], ['#ffffff', 'White']];
 
 export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stayNote, onStay, onStopStay, onStayCover, text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, placing, onPlace, onSurface, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, follow, onChange, onEnter, onExit }: { onKaraoke: (colour: string | null) => void; onDecorate: (effect: 'bubbles' | 'shine') => void; decorating: boolean; staying: number | null; stayNote: string | null; onStay: () => void; onStopStay: () => void; onStayCover: (banner: boolean) => void; text: TextItem; groundGap: 0 | 1 | 2 | 3 | 4 | 5; onGroundGap: (gap: 0 | 1 | 2 | 3 | 4 | 5) => void; onSaveStyle: () => void; onCinema: (reveal: CinemaReveal, what: CoverKind) => void; onCinemaFront: (reveal: CinemaReveal) => void; onCinemaClear: () => void; pinning: number | null; onPin: (on: boolean) => void; placing: 'waiting' | 'busy' | null; onPlace: () => void; onSurface: (kind: SurfaceKind) => void; clearing: number | null; clearNote: string | null; clearUnder: Clip | null; onKeepClear: (settings: Pick<KeepClear, 'gap' | 'direction' | 'max_move' | 'who'>) => void; onRemoveClear: () => void; onBehindShape: (reveal: CinemaReveal, mode: 'ground' | 'outline') => void; cover: TitleCover; shapingMode: 'ground' | 'outline' | null; timing: TimeFieldProps[]; follow: React.ReactNode; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; onExit: () => void }) {
@@ -71,9 +73,15 @@ export function TextInspector({ onKaraoke, onDecorate, decorating, staying, stay
       </div>}
     </Group>
     <Group title="3D" tab="style" startOpen={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} changed={Boolean(text.depth || text.transform?.tilt_x || text.transform?.tilt_y)} keywords="3d depth extrude tilt perspective lean turn cinema solid letters" tip="Lean the title back or turn it in true perspective, and give the letters solid sides." help="cinema-titles">
+      <Chips label="Material" options={MATERIAL_LOOKS} value={text.depth?.material ?? ''} onPick={(id) => onChange({ style: 'plain', depth: { ...MATERIAL_LOOKS.find((look) => look.id === id)!.depth, sweep: text.depth?.sweep ?? false } })}/>
+      {text.depth?.material && <label className="ed-check"><input type="checkbox" checked={Boolean(text.depth.sweep)} onChange={(event) => onChange({ depth: { ...text.depth!, sweep: event.target.checked } })}/><span>{t('Light sweep on letters')}</span></label>}
+      <More>
       <ValueSlider label="Lean back" value={text.transform?.tilt_x ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_x, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_x } }, group)}/>
       <ValueSlider label="Turn" value={text.transform?.tilt_y ?? 0} min={-80} max={80} step={1} defaultValue={0} unit="°" onChange={(tilt_y, group) => onChange({ transform: { ...(text.transform ?? REST_TRANSFORM), tilt_y } }, group)}/>
+      </More>
       {text.depth && <More>
+        <ValueSlider label="Bevel" value={text.depth.bevel ?? 0} min={0} max={1} step={0.01} defaultValue={0} onChange={(bevel, group) => onChange({ depth: { ...text.depth!, bevel } }, group)}/>
+        <ValueSlider label="Shine" value={text.depth.shine ?? 0} min={0} max={1} step={0.01} defaultValue={0} onChange={(shine, group) => onChange({ depth: { ...text.depth!, shine } }, group)}/>
         <ValueSlider label="Distance" value={text.depth.amount} min={0} max={1} step={0.01} defaultValue={0} unit="%" factor={100} onChange={(amount, group) => onChange({ depth: { ...text.depth!, amount } }, group)}/>
         <label className="ed-color"><span>Sides</span><input type="color" aria-label="Colour of the letters' sides" value={text.depth.color} onChange={(event) => onChange({ depth: { ...text.depth!, color: event.target.value } }, `depth-colour-${text.id}`)}/></label>
         <ValueSlider label="Light on the sides" value={text.depth.light} min={0} max={1} step={0.01} defaultValue={DEFAULT_TITLE_DEPTH.light} unit="%" factor={100} onChange={(light, group) => onChange({ depth: { ...text.depth!, light } }, group)}/>

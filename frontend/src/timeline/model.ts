@@ -35,7 +35,7 @@ export type Sound = { id: string; asset_id?: string; media_id?: number; start: n
 export type AudioLayer = { id: string; kind: 'audio'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; muted?: boolean; hidden?: boolean; locked?: boolean; volume?: number; items: Sound[] };
 /** `transform` moves the whole title from where `position` puts it: x and y are its frame's centre, 0.5 when it hasn't moved. */
 /** Extruded letters (sides in `color`), and a title locked to the scene of a clip. Match timeline_schema.py. */
-export type TitleDepth = { amount: number; color: string; light: number; angle?: number };
+export type TitleDepth = { amount: number; color: string; light: number; material?: 'gold' | 'chrome' | 'stone' | 'neon' | 'glass' | null; bevel?: number; shine?: number; sweep?: boolean; angle?: number };
 /** region: the spot it was placed on (x, y of the source picture, 0..1) and `surface` what that is; see timeline_schema.py. */
 export type SurfaceKind = 'floor' | 'wall' | 'upright' | 'sky';
 export type TitlePin = { clip_id: string; at: number; region?: [number, number] | null; surface?: SurfaceKind | null };

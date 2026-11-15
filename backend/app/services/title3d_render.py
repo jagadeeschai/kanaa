@@ -42,7 +42,7 @@ PRISM_DIRECTION = (0.94, 0.34)
 def trick_margins(text, letters: tuple[float, float, float, float]) -> tuple[float, float]:
     """Room needed beside and above/below the letters' box for copies or letters that move out. Same as trickMargins in title3d.ts."""
     w, h = letters[2] - letters[0], letters[3] - letters[1]
-    across = along = 0.0
+    across = along = .06 * h if text.depth and text.depth.material else 0.0
     for animation in (text.enter, text.exit):
         preset = animation.preset if animation else None
         if preset in COPY_TRICKS:
@@ -168,7 +168,7 @@ def still_from(text, length: float) -> tuple[float, float] | None:
         return None
     first, last = (text.enter.duration if text.enter else 0), (text.exit.duration if text.exit else 0)
     excess = max(1, (first + last) / length)  # As animated_look shares an overlong entrance and exit.
-    return first / excess, length - last / excess
+    return first / excess + (.9 if text.depth and text.depth.sweep else 0), length - last / excess
 
 
 def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, pin_at: PinAt | None, states):
@@ -279,13 +279,17 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     source = [(frame_box[0], frame_box[1]), (frame_box[2], frame_box[1]), (frame_box[2], frame_box[3]), (frame_box[0], frame_box[3])]
     x0, y0, x1, y1 = (round(v) for v in frame_box)
     crop = np.ascontiguousarray(premultiplied[y0:y1, x0:x1])
+    from app.services.title_material import material_face, sweep_at
+    front_crop = material_face(crop, depth, (x0, y0), letters, sweep_at(text, local))
     if lettered is not None:
         labels, boxes = lettered
         middle, wide = (letters[0] + letters[2]) / 2, max(1.0, letters[2] - letters[0])
         looks = letter_looks(text.enter, text.exit, local, text.length, [((b[0] + b[2]) / 2 - middle) / wide for b in boxes])
         if any(look != LETTER_REST for look in looks):
             crop = moving_letters(crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)
+            front_crop = moving_letters(front_crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)
     crop = picture_tricks(crop, look, (x0, y0), letters, text_colour(text))
+    front_crop = picture_tricks(front_crop, look, (x0, y0), letters, text_colour(text))
     shift = np.array([[1, 0, x0], [0, 1, y0], [0, 0, 1]], np.float64)
     placed = []
     for index in range(len(shares) - 1, -1, -1):  # Back to front.
@@ -307,7 +311,7 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     region = np.zeros((bottom - top, right - left, 4), np.float32)
     offset = np.array([[1, 0, -left], [0, 1, -top], [0, 0, 1]], np.float64)
     for index, _, matrix in placed:
-        layer = cv2.warpPerspective(crop, offset @ matrix, (right - left, bottom - top), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+        layer = cv2.warpPerspective(front_crop if index == 0 else crop, offset @ matrix, (right - left, bottom - top), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
         if index > 0 and depth is not None:
             # The sides: the letters' shape in the depth colour, darker further back (premultiplied, like the preview's mix).
             layer[..., :3] = layer[..., 3:4] * colour * title3d.layer_shade(depth, shares[index])
