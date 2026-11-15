@@ -1,3 +1,4 @@
+import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
 import { createTitleSceneActions } from './actions/title-scene';
 import { BlurInspector } from './inspectors/BlurInspector';
 import { CaptionInspector } from './inspectors/CaptionInspector';
@@ -96,75 +97,12 @@ import { nextTabIndex } from './tab-navigation';
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
-const LEFT_TABS = ['media', 'audio', 'text', 'words', 'transitions', 'effects', 'templates', 'themes', 'ask'] as const;
-/** Where a thin line separates the rail into groups: add · words · style · ask. */
-const RAIL_BREAK_BEFORE = new Set<string>(['text', 'transitions', 'ask']);
-const LITE_TABS = new Set<string>(['media', 'audio', 'text', 'templates', 'themes']);
-const LEFT_TAB_LABELS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media', ask: 'Ask AI', templates: 'Stories', themes: 'Themes', transitions: 'Transitions', effects: 'Effects', text: 'Text', audio: 'Audio', words: 'Words' };
-const TAB_ICONS: Record<(typeof LEFT_TABS)[number], React.ReactNode> = { media: <ImageIcon size={17}/>, ask: <Sparkles size={17}/>, templates: <Bookmark size={17}/>, themes: <Palette size={17}/>, transitions: <Shuffle size={17}/>, effects: <WandSparkles size={17}/>, text: <Type size={17}/>, audio: <Music size={17}/>, words: <MessageSquareText size={17}/> };
-const TAB_TIPS: Record<(typeof LEFT_TABS)[number], string> = { media: 'Media — your clips, photos, folders and travel maps', ask: 'Ask AI — describe an edit in words', templates: 'Stories — ready-made stories with music and titles', themes: 'Themes — dress the whole video in one click', transitions: 'Transitions — how clips join each other', effects: 'Effects — clip effects, weather and light overlays, and privacy blur', text: 'Text — titles and captions', audio: 'Audio — music library, songs and whooshes', words: 'Words — transcript, pauses and caption cuts' };
-const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
-const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
-/** The hardware encoder's bitrate at a given short side, in megabits — mirrors the export's encoder table. */
-const hardwareMbps = (shortSide: number) => ({ 720: 9, 1080: 16, 1440: 28 } as Record<number, number>)[shortSide] ?? (shortSide >= 2160 ? 50 : Math.round(shortSide * 0.015));
-const ZOOM_MIN = 8; const ZOOM_MAX = 300; const ZOOM_STEP = 1.4;
-const FAST_RATES = [1, 2, 4];
-const MIN_MUSIC_SECONDS = 1;
-const PREVIEW_SHORT_SIDE = 540;
-const RENDERED_ID = -1;
-const CLIP_EFFECT_PRESETS = [
-  { id: 'colour-splash', group: 'Stylise', label: 'Colour splash', about: 'Keep one chosen colour while everything else turns monochrome.' },
-  { id: 'dreamy-glow', group: 'Stylise', label: 'Dreamy glow', about: 'Soft, warm highlight bloom for weddings and portraits.' },
-  { id: 'split-tone', group: 'Stylise', label: 'Split-tone', about: 'Tint shadows and highlights with two colours, keeping the real colours.' },
-  { id: 'duotone', group: 'Stylise', label: 'Duotone', about: 'Paint the picture in two colours, dark to light.' },
-  { id: 'zoom-blur', group: 'Motion', label: 'Zoom blur', about: 'Streaks rushing towards a centre, like a fast push in.' },
-  { id: 'echo', group: 'Motion', label: 'Echo trail', about: 'Ghosts of the last moments trailing movement, for dance and action.' },
-  { id: 'tilt-shift', group: 'Lens', label: 'Tilt-shift', about: 'A sharp band with soft blur above and below: a toy-town miniature.' },
-  { id: 'mirror', group: 'Shape', label: 'Mirror', about: 'Reflect the left or top half, or all four quarters.' },
-  { id: 'kaleidoscope', group: 'Shape', label: 'Kaleidoscope', about: 'Mirrored wedges turning round the centre.' },
-  { id: 'beat-pulse', group: 'Motion', label: 'Beat pulse', about: 'A quick camera push synchronized to the music.' },
-  { id: 'old-film', group: 'Film', label: 'Old film', about: 'Warm faded stock, grain, scratches and gate weave.' },
-  { id: 'glitch', group: 'Signal', label: 'Digital glitch', about: 'RGB separation, broken bands and digital noise.' },
-  { id: 'vhs', group: 'Signal', label: 'VHS tape', about: 'Tape jitter, scanlines, softness and analogue noise.' },
-  { id: 'raindrops', group: 'Lens', label: 'Raindrops', about: 'Water drops that bend and highlight the picture.' },
-  { id: 'lens-dirt', group: 'Lens', label: 'Lens dirt', about: 'Soft optical dirt and dark lens contamination.' },
-] as const;
-const FIT_MARGIN = 48;
-const TEXT_SECONDS = 3;
-const TEXT_TYPE_DELAY_MS = 250;
-const CAPTION_FETCHES = 3;
-/** How an item's own settings read, in the note that it sets them over its layer's style. */
-const STYLE_NAMES: Record<string, string> = { size: 'Size', color: 'Colour', font: 'Font', tamil_font: 'Tamil font', style: 'Style', position: 'Position', enter: 'Enter', exit: 'Exit',
-  transform: 'Place and motion', align: 'Alignment', band_color: 'Band colour', design: 'Design', spacing: 'Letter spacing', subtitle_size: 'Subtitle size', subtitle_color: 'Subtitle colour',
-  look: 'Look', adjust: 'Colour adjustments', volume: 'Volume', muted: 'Mute', fade_in: 'Fade in', fade_out: 'Fade out' };
-/** Logos and other brand pictures: images in a Media folder named Brand (or with "brand" in its name), or named as a logo. */
-const BRAND_FOLDER = 'Brand';
-const isBrandImage = (item: Photo) => item.media_type === 'image' && (/brand/i.test(item.folder ?? '') || /logo/i.test(item.filename));
-const FREEZE_SECONDS = 2;
-const THUMB_FORMAT = { width: 480, height: 270, fps: 30 };
-const SHAPE_FEATHER = 0.004;
-/** Which cleaned copy a clip or sound plays: one per song, or per video. */
-const voiceKey = (item: { media_id?: number; asset_id?: string }) => (item.asset_id ? `a:${item.asset_id}` : `m:${item.media_id}`);
-/** Which prepared copy a clip needs: [steadied, reversed, echo, cut-out], or null for the original. A frozen frame is never reversed or echoed.
- * An echo is made at the timeline's rate of source frames, the rate the export blends at. A cut-out clip previews without its echo. */
-const preparedWant = (clip: Clip, fps: number): [boolean, boolean, string, string] | null => {
-  const steady = Boolean(clip.stabilise); const backwards = Boolean(clip.reverse) && clip.freeze == null; const cutout = cutoutToken(clip);
-  const echo = clip.echo && clip.freeze == null && !cutout ? `${clip.echo.mode}.${clip.echo.trails}.${clip.echo.decay.toFixed(2)}@${Number((fps * clip.speed).toFixed(3))}` : '';
-  return steady || backwards || cutout || echo ? [steady, backwards, echo, cutout] : null;
-};
-const preparedKey = (id: number, steady: boolean, backwards: boolean, echo: string, cutout: string) => `${id}:${steady ? 1 : 0}:${backwards ? 1 : 0}:${echo}:${cutout}`;
-const MOODS: Mood[] = ['romantic', 'happy', 'birthday', 'calm', 'energetic', 'cinematic', 'inspiring', 'songs'];
-const MOOD_LABELS: Record<Mood, string> = { romantic: 'Romantic', happy: 'Happy', birthday: 'Birthday', calm: 'Calm', energetic: 'Energetic', cinematic: 'Cinematic', inspiring: 'Inspiring', songs: 'Songs' };
 type StemChoice = 'music' | 'vocals' | 'both';
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
 type Box = [number, number, number, number];
-/** `drawnAt` and `from` are the item's own seconds. A blur box drawn fresh is first placed on the drawn box. */
-/** An item added at the playhead can start a hair after it, from rounding; the playhead still counts as on it. */
-const ON_ITEM = 0.05;
 type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; queued?: boolean; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
   /** Set while looking for a face under a blur box: where the box is in the source, and what to follow instead when no face is there. */
   faces?: { box: Box; at: number; own: Box; grow?: number } };
-const MIN_DRAWN_BOX = 0.015;
 
 function reducer(state: History<Timeline | null>, action: Action): History<Timeline | null> {
   if (action.type === 'load') return startHistory(action.timeline);
@@ -172,21 +110,6 @@ function reducer(state: History<Timeline | null>, action: Action): History<Timel
   const next = action.type === 'undo' ? undo(state) : redo(state);
   return next.present === null ? state : next;
 }
-let idCounter = 0;
-const newId = () => `clip-${Date.now().toString(36)}-${(idCounter += 1)}`;
-const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && ((['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && (target as HTMLInputElement).type !== 'range') || target.isContentEditable || target.getAttribute('role') === 'separator');
-/** A button keeps focus only when reached by keyboard (see releaseClickedButton), so then it takes Space itself. */
-const buttonTakesSpace = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('button') !== null;
-/** Without this, Space after clicking a media tile would add the clip again instead of playing. */
-const releaseClickedButton = (event: React.MouseEvent) => { if (event.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur(); };
-/** Makes a side-panel tile draggable onto the timeline. Clicking still works as before. */
-const draggableAs = (payload: DragPayload) => ({
-  draggable: true,
-  onDragStart: (event: React.DragEvent) => { setActiveDrag(payload); event.dataTransfer.setData(DRAG_TYPE, encodePayload(payload)); event.dataTransfer.effectAllowed = 'copy'; },
-  onDragEnd: () => setActiveDrag(null),
-});
-
-const RESTART_MESSAGE = 'Kanaa was updated and needs a restart. Stop it in its terminal with Ctrl+C, then run ./start.sh again.';
 
 export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme, setTheme }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
@@ -2426,5 +2349,3 @@ const followPanel = followTarget && <FollowPanel blur={Boolean(selectedBlur)} ow
     }
   </div></SimpleContext.Provider>;
 }
-
-const SHORTCUTS: [string, string][] = [['⌘K', 'Find any action or setting'], ['Space', 'Play or pause'], ['F', 'Full screen preview'], ['S', 'Split at the playhead'], ['Delete', 'Delete the selected item'], ['⌘C / ⌘X / ⌘V', 'Copy, cut, paste at the playhead'], ['⌘D', 'Duplicate'], ['⌥⌘C / ⌥⌘V', 'Copy style, paste style'], ['I / O', 'Trim the clip start or end to the playhead'], ['← →', 'Move one frame (Shift for ten)'], ['J / K / L', 'Back a second, pause, play faster'], ['⌘Z / ⇧⌘Z', 'Undo and redo'], ['?', 'Show this guide']];
