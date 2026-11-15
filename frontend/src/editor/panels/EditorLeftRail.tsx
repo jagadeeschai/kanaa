@@ -1,3 +1,4 @@
+import { WordsTabSection1 } from './tabs/WordsTab';
 import { AudioTabSection1 } from './tabs/AudioTab';
 import { TextTabSection1 } from './tabs/TextTab';
 import { EffectsTabSection1, EffectsTabSection2, EffectsTabSection3, EffectsTabSection4, EffectsTabSection5 } from './tabs/EffectsTab';
@@ -174,9 +175,7 @@ export function EditorLeftRail() {
 </div>
         {panelOpen && <div className="ed-panel-content">
         <MediaTabSection1/>
-        {leftTab === 'words' && <div data-keep-panel><WordsPanel tokens={tokens} clips={mainClips} language={language} onLanguage={(next) => { setLanguage(next); setWordSelection(new Set()); try { localStorage.setItem('wa.wordsLanguage', next); } catch { /* It just won't be remembered. */ } }} missing={missingWords.length} locked={Boolean(timeline && mainLayer(timeline).locked)}
-          busy={wordJob ? `Listening to your video… ${wordJob.progress}%` : null} hasTracks={Boolean(timeline && timeline.layers.length > 1)} onTranscribe={() => { void transcribeClips(); }} onCancel={() => { if (wordJob) void cancelRenderJob(wordJob.id); }} onSeek={seek} onCut={cutWords} playhead={playhead} selection={wordSelection} onSelection={setWordSelection} tidy={tidy} pauseLength={pauseLength} onPauseLength={setPauseLength} fillers={removeFillers} onFillers={setRemoveFillers} onTidy={removePauses}
-          onMenu={(event, keys) => setMenu({ x: event.clientX, y: event.clientY, items: [{ label: keys.size === 1 ? 'Cut' : `Cut ${keys.size} items`, hint: '⌫', danger: true, onSelect: () => cutWords(keys) }] })}/></div>}
+        <WordsTabSection1/>
         <TemplatesTabSection1/>
         <ThemesTabSection1/>
         {leftTab === 'transitions' && <>
