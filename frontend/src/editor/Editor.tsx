@@ -1,118 +1,71 @@
-import type { FollowPanelBindings } from './preview/FollowPanel';
-import { InspectorBindingsProvider } from './state/EditorContext';
-import type { EditorInspectorRailBindings } from './panels/EditorInspectorRail';
-import type { EditorTimelineToolbarBindings } from './panels/EditorTimelineToolbar';
-import type { EditorPreviewStageBindings } from './preview/EditorPreviewStage';
-import type { EditorLeftRailBindings } from './panels/EditorLeftRail';
-import { EditorInspectorRail } from './panels/EditorInspectorRail';
-import { EditorTimelineToolbar } from './panels/EditorTimelineToolbar';
-import { EditorPreviewStage } from './preview/EditorPreviewStage';
+import { CircleHelp,Download,Trash2,TriangleAlert,X } from 'lucide-react';
+import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from 'react';
+import { createPortal } from 'react-dom';
+import { cancelRenderJob,cleanVoiceUrl,clipFilmstripUrl,clipProxyUrl,fetchCaptionImage,fetchShapeMask,fetchTextImage,fetchTextLetters,getClipAssets,getClipPeaks,getJobStatus,getMusicLibrary,getProjectTimeline,getSongPeaks,getStemsStatus,getVideoProject,getWords,listEffects,listPhotos,listSoundEffects,photoImageUrl,photoThumbUrl,photoVideoUrl,preparedProxyUrl,previewRenderUrl,requestCleanVoice,requestPrepared,saveVideoProject,songUrl,startSceneTrack,startWords,type EffectInfo,type LibraryTrack,type Mood,type SoundEffectInfo,type Stems } from '../api/client';
+import AIImageGenerator from '../components/CoverArtGenerator';
+import { DeleteMediaDialog,FolderDialog,folderNames } from '../components/MediaDialogs';
+import { t } from '../i18n';
+import type { Transition,TransitionKind } from '../timeline/animation';
+import { LETTER_PRESETS } from '../timeline/animation';
+import { coverBrand } from '../timeline/brand';
+import { buildCaptions,DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
+import { type Options } from '../timeline/commands';
+import { applyBypass,clipEffects,playingTimeline } from '../timeline/effects';
+import { commit,redo,startHistory,undo,type History } from '../timeline/history';
+import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
+import { addBlur,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
+import { type Focus } from '../timeline/presets';
+import { reframeTransform,type SubjectPoint } from '../timeline/reframe';
+import { splitAtCuts } from '../timeline/scenes';
+import { STORIES,type Story } from '../timeline/stories';
+import { savedStyles,TEMPLATES,type Template } from '../timeline/templates';
+import { THEMES } from '../timeline/themes';
+import { sceneMatrix,type SceneTrack } from '../timeline/title3d';
+import { blurForFace,unfollow,type TrackPoint } from '../timeline/tracking';
+import { clearTransitions,transitionEverywhere } from '../timeline/transitions';
+import { buildTokens,cutTokens,tidyUp,type Word } from '../timeline/words';
+import { wheelFactor,zoomBy } from '../timeline/zoom';
+import type { Photo } from '../types/photo';
 import { createAskActions } from './actions/ask';
+import { createAudioToolActions } from './actions/audio-tools';
+import { createClipToolActions } from './actions/clip-tools';
+import { createEffectJobActions } from './actions/effect-jobs';
 import { createInspectorScopeActions } from './actions/inspector-scope';
 import { createEditorMenuActions } from './actions/menus';
 import { createPreviewTrackingActions } from './actions/preview-tracking';
-import { createEffectJobActions } from './actions/effect-jobs';
-import { createAudioToolActions } from './actions/audio-tools';
-import { createClipToolActions } from './actions/clip-tools';
-import { createTitleEditingActions } from './actions/title-editing';
-import { useEditorShortcuts } from './hooks/useEditorShortcuts';
-import { LEFT_TABS, RAIL_BREAK_BEFORE, LITE_TABS, LEFT_TAB_LABELS, TAB_ICONS, TAB_TIPS, QUALITIES, ESTIMATED_MB_PER_SECOND_1080, hardwareMbps, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, FAST_RATES, MIN_MUSIC_SECONDS, PREVIEW_SHORT_SIDE, RENDERED_ID, CLIP_EFFECT_PRESETS, FIT_MARGIN, TEXT_SECONDS, TEXT_TYPE_DELAY_MS, CAPTION_FETCHES, STYLE_NAMES, BRAND_FOLDER, isBrandImage, FREEZE_SECONDS, THUMB_FORMAT, SHAPE_FEATHER, voiceKey, preparedWant, preparedKey, MOODS, MOOD_LABELS, ON_ITEM, MIN_DRAWN_BOX, newId, isTyping, buttonTakesSpace, releaseClickedButton, draggableAs, RESTART_MESSAGE, SHORTCUTS } from './editor-constants';
 import { createThemeActions } from './actions/themes-and-stories';
-import { EditorLeftRail } from './panels/EditorLeftRail';
+import { createTitleEditingActions } from './actions/title-editing';
 import { createTitleSceneActions } from './actions/title-scene';
-import { BlurInspector } from './inspectors/BlurInspector';
-import { CaptionInspector } from './inspectors/CaptionInspector';
-import { FollowPanel } from './preview/FollowPanel';
-import { SoundInspector } from './inspectors/SoundInspector';
-import { TopSettings } from './TopSettings';
-import { FormatDialog } from './dialogs/FormatDialog';
+import CommandPalette from './CommandPalette';
+import { ContextMenu,type MenuState } from './ContextMenu';
 import { ExportDialog } from './dialogs/ExportDialog';
-import { createPortal } from 'react-dom';
-import { ProjectInspector } from './inspectors/ProjectInspector';
-import { Inspector } from './inspectors/ClipInspector';
-import { CORNERS, LOOK_NAMES, SoundControls } from './inspectors/clip-parts';
-import { TextInspector } from './inspectors/TextInspector';
-import { ASSET_POLL_MS, AnimationPicker, Chips, useFoundInClip } from './inspectors/parts';
-import TravelMapPanel from './TravelMapPanel';
-import { LANGUAGE, setLanguage, t } from '../i18n';
-import LyricSyncFix from '../components/LyricSyncFix';
-import { loopSound, needsLoop } from '../timeline/loop';
-import { placeEffects, removeEffects, titleTimes, transitionTimes } from '../timeline/sfx';
-import AskPanel from './AskPanel';
-import { applyPure, describeCommand, translateCaptions, type Options, type Proposed } from '../timeline/commands';
-import { keepCaptionsClear, type FacePath } from '../timeline/clear-faces';
-import { canReframe, reframeTransform, type SubjectPoint } from '../timeline/reframe';
-import { splitAtCuts } from '../timeline/scenes';
-import { beatSound, cutToBeats, timelineBeats } from '../timeline/beats';
-import { placeEffect, applyClipDrop, clipEffectChanges, dropClip, encodePayload, setActiveDrag, DRAG_TYPE, EFFECT_LAYER, type DragPayload, type DropTarget } from '../timeline/drop';
-import { Fragment, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { BadgeCheck, Camera, Magnet, ChevronRight, Link2, Eye, Shuffle, Crop, Palette, WandSparkles, Move, Mic, Expand, Shrink, ArrowLeft, AudioLines, Bookmark, Captions, Car, Check, Mountain, PenTool, Users, Crosshair, EyeOff, ScanFace, Snowflake, Pipette, CircleHelp, Layers, Lock, Unlock, Monitor, Moon, Sun, Type, Download, FlipHorizontal, FlipVertical, LoaderCircle, Maximize, Minimize, Minus, MoreHorizontal, Music, Pause, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RotateCcw, RotateCw, Scissors, Trash2, Undo2, Volume2, VolumeX, X, TriangleAlert, Image as ImageIcon, Sparkles, Wind, SlidersHorizontal, ALargeSmall, Quote, Wallpaper, MessageSquareText } from 'lucide-react';
-import { Search, Settings2, Paintbrush, X as Close } from 'lucide-react';
-import { useClipboard } from './useClipboard';
-import { asVideo } from './photoToVideo';
-import { wheelFactor, zoomBy } from '../timeline/zoom';
-import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
-import { drawnPoints } from '../timeline/shapeEdit';
-import { ShapeDrawing } from './ShapeDrawing';
-import { TRANSITIONS, TRANSITION_DIRECTIONS, TRANSITION_ICONS } from './transition-catalog';
-import TransitionPopover from './TransitionPopover';
-import { clipPlacement, invert, pinStretch, pinTrackOptions, sceneMatrix, type SceneTrack } from '../timeline/title3d';
-import { fetchRecorded, getSurface, moveMediaToFolder, startPeopleGrid, startSceneTrack } from '../api/client';
-import type { KeepClear } from '../timeline/model';
-import { removeStay, stayWith } from '../timeline/stayWith';
-import { KEEP_CLEAR_ROOM, keepClear, removeKeepClear, roomOf, type PeopleGrid, type Room } from '../timeline/keepClear';
-import { startBrandIntro, listSoundEffects, useSoundEffect as fetchSoundEffect, type SoundEffectInfo, listLuts, type LutInfo, translateLines, startBestMoments, waitForJob, faceFinderReady, startReframe, getPhoto, listEffects, makeEffect, type EffectInfo, startScenes, getFocus, getSongBeats, cancelRenderJob, clipFilmstripUrl, clipProxyUrl, exportProjectTimeline, fetchTextImage, fetchTextLetters, fetchCaptionImage, fetchShapeMask, requestCleanVoice, cleanVoiceUrl, requestPrepared, preparedProxyUrl, getMusicLibrary, musicListenUrl, takeLibraryTrack, type LibraryTrack, type Mood, requestInstances, instancesPictureUrl, type FoundOne, startFaces, startTracking, getWords, startWords, getClipAssets, previewRenderUrl, startPreviewRender, getClipPeaks, getJobStatus, getProjectTimeline, getSongPeaks, getStemsStatus, getVideoProject, listPhotos, photoImageUrl, photoThumbUrl, photoVideoUrl, saveVideoProject, songUrl, startStems, uploadVideoAudio, type Stems } from '../api/client';
-import ImportArea from '../components/ImportArea';
-import KanaaSelect from '../components/KanaaSelect';
-import AIImageGenerator from '../components/CoverArtGenerator';
-import { DeleteMediaDialog, FolderDialog, folderNames } from '../components/MediaDialogs';
-import type { Photo } from '../types/photo';
-import type { Animation, LookName, Preset, Transition, TransitionDirection, TransitionKind } from '../timeline/animation';
-import { LETTER_PRESETS } from '../timeline/animation';
-import { CINEMA_REVEALS, TITLE_SPACE, titleSpaceOf, cinemaReveal, cinemaRevealFront, cinemaRevealShape, removeCinemaReveal, DEFAULT_TITLE_DEPTH, type CinemaReveal } from '../timeline/model';
-import { DEFAULT_BEAT_PULSE, DEFAULT_COLOUR_SPLASH, DEFAULT_DREAMY_GLOW, DEFAULT_ECHO, DEFAULT_LENS_SURFACE, DEFAULT_MIRROR, DEFAULT_OLD_FILM, DEFAULT_SIGNAL_DAMAGE, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, DEFAULT_ZOOM_BLUR, TONE_PRESETS } from '../timeline/model';
-import { onSkyline, snapshotFrame, TITLE_DESIGNS, type TitleDesign } from '../timeline/model';
-import { applyTitleMove, stillTitle, TITLE_MOVES } from '../timeline/titleMoves';
-import { applyLayerStyles, layerLines, retimeLayerLines, followsLayer, setFollowLayer, overrideLayerItems, overriddenCount, groundRiseBehind, groundRiseGap, markOwn, ownOverLayer, setGroundRiseGap, setLayerStyle, sharedKeys, styledLayerOf, useLayerStyle } from '../timeline/model';
-import { commit, redo, startHistory, undo, type History } from '../timeline/history';
-import type { CoverKind } from '../timeline/model';
-import { barShare, CINEMATIC, type Finish, groundShape, putBehindShape, putBehindObject, replaceBackground, cutoutToken, focusAt, focusLocal, type CutoutPick, type BlurAmount, type ShapeMask, captionLayers, captionStates, captionText, findCaption, removeCaption, setCaptions, updateCaption, updateCaptionLook, type Caption, type CaptionLayer, type CaptionLook, freezeFrame, putBehindPerson, trimAtPlayhead, REST_TRANSFORM, addBlur, findBlur, removeBlur, updateBlur, BLUR_SECONDS, DEFAULT_BLUR, type BlurBox, cornerPlacement, MIN_CLIP_SECONDS, moveItem, setSpeed, trimSound, trimText, MAX_PHOTO_SECONDS, MAX_VIDEO_LAYERS, removeMedia, duplicateItem, isLocked, layerOf, reorderLayer, overlayLayers, addOverlay, addSound, addText, audioLayers, clipLength, detachAudio, duration, exportFormat, fillScale, findClip, findSound, findText, FORMATS, insertClip, mainLayer, MUSIC_VOLUME, newClip, OVERLAY_SCALE, normalizeTimeline, removeClip, removeSound, removeText, soundLength, splitClip, splitSound, timecode, trimClip, textLayers, updateClip, updateLayer, updateSound, updateText, type Adjust, type AudioLayer, type BlendMode, type Corner, type VideoLayer, type Clip, type Format, type Sound, type SourceFacts, type TextItem, type Timeline, type TitlePin, type SurfaceKind } from '../timeline/model';
-import { PlaybackEngine, type PlaybackSource } from './playback';
-import { ContextMenu, isEditable, type MenuItem, type MenuState } from './ContextMenu';
-import { TimeField, ValueSlider, type TimeFieldProps } from './controls';
-import { buildTokens, cutTokens, tidyUp, type Word } from '../timeline/words';
-import { LANGUAGES, WordsPanel } from './Words';
-import { explainError } from './errors';
-import { EditorContext } from './state/EditorContext';
-import { TitleEditBox, TitleToolbar } from './preview/TitleEditing';
+import { FormatDialog } from './dialogs/FormatDialog';
+import { CAPTION_FETCHES,CLIP_EFFECT_PRESETS,draggableAs,FIT_MARGIN,FREEZE_SECONDS,LEFT_TAB_LABELS,LEFT_TABS,LITE_TABS,MIN_MUSIC_SECONDS,MOOD_LABELS,MOODS,newId,preparedKey,preparedWant,RAIL_BREAK_BEFORE,releaseClickedButton,RENDERED_ID,RESTART_MESSAGE,SHORTCUTS,TAB_ICONS,TAB_TIPS,TEXT_TYPE_DELAY_MS,THUMB_FORMAT,voiceKey,ZOOM_MAX,ZOOM_MIN } from './editor-constants';
 import ErrorBanner from './ErrorBanner';
-import { Timing, timingSummary } from './Timing';
-import JobTray from './JobTray';
-import CommandPalette, { type Command } from './CommandPalette';
-import { ARTICLES } from './guide-articles';
-import { DEFAULT_CHROMA } from '../timeline/chroma';
-import { DEFAULT_LAYOUT, Group, HelpContext, LayerModeContext, RailContext, SimpleContext, LIMITS, More, Panel, Splitter, useEditorLayout, type ThemeChoice } from './layout';
 import { Guide } from './Guide';
-import { MotionPanel, MotionPath } from './Keyframes';
-import { ResizeBox } from './ResizeBox';
-import { clipBox } from '../timeline/resize';
-import TimelineView, { type ClipVisuals } from './TimelineView';
-import { valueAt } from '../timeline/evaluate';
-import { isFollowed, writeValue } from '../timeline/keyframes';
-import { clearTransitions, transitionEverywhere } from '../timeline/transitions';
-import { applyCinematicPreset, activeCinematicPreset, clearCinematicPreset, CINEMATIC_PRESETS } from '../timeline/cinematic';
-import { applyBrand, brandClip, brandOnClip, brandsOnClip, BRAND_SIZES, coverBrand, fadeBrand, moveBrand, removeBrand, removeClipBrand, resizeBrand } from '../timeline/brand';
-import { applyMove, focusOnScreen, slotPlacement, type Focus, type MovePreset } from '../timeline/presets';
-import { activeTheme, addThemeMusic, applyTheme, openingWords, pickTrack, removeTheme, removeThemeMusic, themeMusic, THEMES, type Theme as VideoTheme } from '../timeline/themes';
-import { buildStory, fillRest, STORIES, storySeconds, type Story } from '../timeline/stories';
-import { applyBypass, clipEffects, playingTimeline, removeEffect, toggleAllEffects, toggleEffect } from '../timeline/effects';
-import { cinematicJoinFor, cinematicJoinTime, addTemplateEffects, dateWords, defocusBox, ENGLISH_FONTS, fromTemplate, isDateTemplate, lookOf, MAX_SAVED, motionOf, savedStyles, saveStyles, TAMIL_FONTS, TEMPLATES, type FontChoice, type Template } from '../timeline/templates';
-import { buildCaptions, retypeCaption, DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
-import { localAt, RAMPS, rampSpeed, sourceAt, type RampName, type RampPoint } from '../timeline/ramp';
-import { blurForFace, boxInSource, faceUnder, followPath, unfollow, videoAt, videoUnder, type TrackPoint } from '../timeline/tracking';
-import { ProjectSaveQueue, type SaveState } from './project-save';
-import { exportSpec } from './export-spec';
-import { nextTabIndex } from './tab-navigation';
+import { useEditorShortcuts } from './hooks/useEditorShortcuts';
+import { LOOK_NAMES } from './inspectors/clip-parts';
+import { ASSET_POLL_MS } from './inspectors/parts';
+import JobTray from './JobTray';
+import { DEFAULT_LAYOUT,HelpContext,LIMITS,RailContext,SimpleContext,Splitter,useEditorLayout,type ThemeChoice } from './layout';
+import type { EditorInspectorRailBindings } from './panels/EditorInspectorRail';
+import { EditorInspectorRail } from './panels/EditorInspectorRail';
+import type { EditorLeftRailBindings } from './panels/EditorLeftRail';
+import { EditorLeftRail } from './panels/EditorLeftRail';
+import type { EditorTimelineToolbarBindings } from './panels/EditorTimelineToolbar';
+import { EditorTimelineToolbar } from './panels/EditorTimelineToolbar';
+import { PlaybackEngine,type PlaybackSource } from './playback';
+import type { EditorPreviewStageBindings } from './preview/EditorPreviewStage';
+import { EditorPreviewStage } from './preview/EditorPreviewStage';
+import type { FollowPanelBindings } from './preview/FollowPanel';
+import { FollowPanel } from './preview/FollowPanel';
+import { ProjectSaveQueue,type SaveState } from './project-save';
+import { EditorContext,InspectorBindingsProvider } from './state/EditorContext';
+import TimelineView,{ type ClipVisuals } from './TimelineView';
+import { TopSettings } from './TopSettings';
+import { TRANSITIONS } from './transition-catalog';
+import TransitionPopover from './TransitionPopover';
+import { useClipboard } from './useClipboard';
 
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
@@ -220,7 +173,27 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [sceneTracks, setSceneTracks] = useState<Record<string, SceneTrack>>({});
   const [pinProgress, setPinProgress] = useState<number | null>(null);
   const sceneTrackKey = (mediaId: number, stretch: { start: number; end: number; at: number; horizon?: boolean; region?: [number, number] | null; upright?: boolean }) => `${mediaId}:${Math.round(stretch.start * 30)}:${Math.round(stretch.end * 30)}:${Math.round(stretch.at * 30)}${stretch.horizon ? ':horizon' : ''}${stretch.region ? `:${stretch.region[0].toFixed(3)},${stretch.region[1].toFixed(3)}` : ''}${stretch.upright ? ':upright' : ''}`;
-  const { pinTarget, pinTitle, placeInScene, clipUnderTitle, keepTitleClear, addBrandIntro, stayWithPeople } = createTitleSceneActions(() => ({ sceneTrackKey, timelineRef, change, engineRef, mediaById, setError, setPinProgress, setSceneTracks, setPlacing, newId, setNote, setClearProgress, setKeepClearNote, sceneTracks, setIntroProgress, setMedia, setStayProgress, setStayNote, setSelectedId }));
+  const { pinTarget, pinTitle, placeInScene, clipUnderTitle, keepTitleClear, addBrandIntro, stayWithPeople } = createTitleSceneActions(() => ({
+    get sceneTrackKey(): typeof sceneTrackKey { return sceneTrackKey; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get change(): typeof change { return change; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get setError(): typeof setError { return setError; },
+    get setPinProgress(): typeof setPinProgress { return setPinProgress; },
+    get setSceneTracks(): typeof setSceneTracks { return setSceneTracks; },
+    get setPlacing(): typeof setPlacing { return setPlacing; },
+    get newId(): typeof newId { return newId; },
+    get setNote(): typeof setNote { return setNote; },
+    get setClearProgress(): typeof setClearProgress { return setClearProgress; },
+    get setKeepClearNote(): typeof setKeepClearNote { return setKeepClearNote; },
+    get sceneTracks(): typeof sceneTracks { return sceneTracks; },
+    get setIntroProgress(): typeof setIntroProgress { return setIntroProgress; },
+    get setMedia(): typeof setMedia { return setMedia; },
+    get setStayProgress(): typeof setStayProgress { return setStayProgress; },
+    get setStayNote(): typeof setStayNote { return setStayNote; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+  }));
   /** Place in scene: waiting for a click on the preview for this title, or working out the surface. */
   const [placing, setPlacing] = useState<{ textId: string; busy: boolean } | null>(null);
   useEffect(() => {
@@ -636,7 +609,32 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const selectedSound = timeline ? findSound(timeline, selectedId) : null;
   const selectedLayer = timeline ? layerOf(timeline, selectedId) : undefined;
   const isRendered = Boolean(timeline && rendered && rendered.key === JSON.stringify(timeline));
-  const { addEffect, keepClearOfFaces, reframeClip, splitScenes, blurFaces, askForFaceFinder, renderPreview, addBlurBox } = createEffectJobActions(() => ({ get timeline() { return timeline; }, get engineRef() { return engineRef; }, get projectId() { return projectId; }, get setRenderJob() { return setRenderJob; }, get setError() { return setError; }, get change() { return change; }, get setSelectedId() { return setSelectedId; }, get effectBusy() { return effectBusy; }, get setEffectBusy() { return setEffectBusy; }, get weather() { return weather; }, get setMedia() { return setMedia; }, get timelineRef() { return timelineRef; }, get effects() { return effects; }, get clearing() { return clearing; }, get isVideo() { return isVideo; }, get setClearNote() { return setClearNote; }, get setClearing() { return setClearing; }, get mediaById() { return mediaById; }, get reframeJob() { return reframeJob; }, get setFaceNote() { return setFaceNote; }, get setReframeJob() { return setReframeJob; }, get setSceneJob() { return setSceneJob; }, get playhead() { return playhead; }, get setFaceJob() { return setFaceJob; } }));
+  const { addEffect, keepClearOfFaces, reframeClip, splitScenes, blurFaces, askForFaceFinder, renderPreview, addBlurBox } = createEffectJobActions(() => ({
+    get timeline(): typeof timeline { return timeline; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get projectId(): typeof projectId { return projectId; },
+    get setRenderJob(): typeof setRenderJob { return setRenderJob; },
+    get setError(): typeof setError { return setError; },
+    get change(): typeof change { return change; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get effectBusy(): typeof effectBusy { return effectBusy; },
+    get setEffectBusy(): typeof setEffectBusy { return setEffectBusy; },
+    get weather(): typeof weather { return weather; },
+    get setMedia(): typeof setMedia { return setMedia; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get effects(): typeof effects { return effects; },
+    get clearing(): typeof clearing { return clearing; },
+    get isVideo(): typeof isVideo { return isVideo; },
+    get setClearNote(): typeof setClearNote { return setClearNote; },
+    get setClearing(): typeof setClearing { return setClearing; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get reframeJob(): typeof reframeJob { return reframeJob; },
+    get setFaceNote(): typeof setFaceNote { return setFaceNote; },
+    get setReframeJob(): typeof setReframeJob { return setReframeJob; },
+    get setSceneJob(): typeof setSceneJob { return setSceneJob; },
+    get playhead(): typeof playhead { return playhead; },
+    get setFaceJob(): typeof setFaceJob { return setFaceJob; },
+  }));
   const selectedText = timeline ? findText(timeline, selectedId)?.text ?? null : null;
   const selectedBlur = timeline ? findBlur(timeline, selectedId)?.blur ?? null : null;
   const selectedCaption = timeline ? findCaption(timeline, selectedId) : null;
@@ -655,7 +653,47 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const styleScope: 'item' | 'layer' = layerSettings ? 'layer' : 'item';
   const [layerWins, setLayerWins] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
-  const { openLayerSettings, scopeBar, pick, paletteCommands, findSetting, mixedSettings, clipTiming, soundTiming, textTiming } = createInspectorScopeActions(() => ({ get fps() { return fps; }, get setSyncOpen() { return setSyncOpen; }, get timeline() { return timeline; }, get setSelectedId() { return setSelectedId; }, get setLayerSettings() { return setLayerSettings; }, get layerSettings() { return layerSettings; }, get layerWins() { return layerWins; }, get setLayerWins() { return setLayerWins; }, get change() { return change; }, get syncOpen() { return syncOpen; }, get now() { return now; }, get seek() { return seek; }, get selectedId() { return selectedId; }, get setMoreIds() { return setMoreIds; }, get moreIds() { return moreIds; }, get total() { return total; }, get togglePlay() { return togglePlay; }, get split() { return split; }, get freeze() { return freeze; }, get snapshot() { return snapshot; }, get renderPreview() { return renderPreview; }, get engineRef() { return engineRef; }, get setExporting() { return setExporting; }, get dispatch() { return dispatch; }, get clipboard() { return clipboard; }, get playhead() { return playhead; }, get toggleFullScreen() { return toggleFullScreen; }, get setShowingHelp() { return setShowingHelp; }, get updateLayout() { return updateLayout; }, get layout() { return layout; }, get setLanguage() { return setLanguage; }, get setLeftTab() { return setLeftTab; }, get setPanelOpen() { return setPanelOpen; }, get addTitle() { return addTitle; }, get openGuide() { return openGuide; }, get selectedLayer() { return selectedLayer; }, get facts() { return facts; }, get sourceLimit() { return sourceLimit; }, get mediaById() { return mediaById; } }));
+  const { openLayerSettings, scopeBar, pick, paletteCommands, findSetting, mixedSettings, clipTiming, soundTiming, textTiming } = createInspectorScopeActions(() => ({
+    get fps(): typeof fps { return fps; },
+    get setSyncOpen(): typeof setSyncOpen { return setSyncOpen; },
+    get timeline(): typeof timeline { return timeline; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get setLayerSettings(): typeof setLayerSettings { return setLayerSettings; },
+    get layerSettings(): typeof layerSettings { return layerSettings; },
+    get layerWins(): typeof layerWins { return layerWins; },
+    get setLayerWins(): typeof setLayerWins { return setLayerWins; },
+    get change(): typeof change { return change; },
+    get syncOpen(): typeof syncOpen { return syncOpen; },
+    get now(): typeof now { return now; },
+    get seek(): typeof seek { return seek; },
+    get selectedId(): typeof selectedId { return selectedId; },
+    get setMoreIds(): typeof setMoreIds { return setMoreIds; },
+    get moreIds(): typeof moreIds { return moreIds; },
+    get total(): typeof total { return total; },
+    get togglePlay(): typeof togglePlay { return togglePlay; },
+    get split(): typeof split { return split; },
+    get freeze(): typeof freeze { return freeze; },
+    get snapshot(): typeof snapshot { return snapshot; },
+    get renderPreview(): typeof renderPreview { return renderPreview; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get setExporting(): typeof setExporting { return setExporting; },
+    get dispatch(): typeof dispatch { return dispatch; },
+    get clipboard(): typeof clipboard { return clipboard; },
+    get playhead(): typeof playhead { return playhead; },
+    get toggleFullScreen(): typeof toggleFullScreen { return toggleFullScreen; },
+    get setShowingHelp(): typeof setShowingHelp { return setShowingHelp; },
+    get updateLayout(): typeof updateLayout { return updateLayout; },
+    get layout(): typeof layout { return layout; },
+    get setLanguage(): typeof setLanguage { return setLanguage; },
+    get setLeftTab(): typeof setLeftTab { return setLeftTab; },
+    get setPanelOpen(): typeof setPanelOpen { return setPanelOpen; },
+    get addTitle(): typeof addTitle { return addTitle; },
+    get openGuide(): typeof openGuide { return openGuide; },
+    get selectedLayer(): typeof selectedLayer { return selectedLayer; },
+    get facts(): typeof facts { return facts; },
+    get sourceLimit(): typeof sourceLimit { return sourceLimit; },
+    get mediaById(): typeof mediaById { return mediaById; },
+  }));
   const scopedUpdate = <T extends object>(id: string, changes: T, one: (t: Timeline) => Timeline, group?: string) => {
     if (!timeline) return;
     if (styleScope === 'layer' && sharedKeys(changes).length) {
@@ -671,7 +709,24 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   };
   // In a text layer's settings, karaoke goes on (or off) for every title on the layer, each timed to its own words.
   const setKaraoke = (colour: string | null) => { if (timeline && selectedText) change(setKaraokeFor(timeline, settingsLayer?.kind === 'text' ? settingsLayer.items.map((item) => item.id) : [selectedText.id, ...moreIds], colour)); };
-  const { saveStyle, forgetStyle, addTitle, updateSelectedText, titleRect, decorateTitle, titleAt, finishShape } = createTitleEditingActions(() => ({ get timeline() { return timeline; }, get selectedText() { return selectedText; }, get moreIds() { return moreIds; }, get styleScope() { return styleScope; }, get change() { return change; }, get scopedUpdate() { return scopedUpdate; }, get myStyles() { return myStyles; }, get setMyStyles() { return setMyStyles; }, get engineRef() { return engineRef; }, get setError() { return setError; }, get timelineRef() { return timelineRef; }, get addEffect() { return addEffect; }, get setSelectedId() { return setSelectedId; }, get shaping() { return shaping; }, get setShaping() { return setShaping; }, get now() { return now; } }));
+  const { saveStyle, forgetStyle, addTitle, updateSelectedText, titleRect, decorateTitle, titleAt, finishShape } = createTitleEditingActions(() => ({
+    get timeline(): typeof timeline { return timeline; },
+    get selectedText(): typeof selectedText { return selectedText; },
+    get moreIds(): typeof moreIds { return moreIds; },
+    get styleScope(): typeof styleScope { return styleScope; },
+    get change(): typeof change { return change; },
+    get scopedUpdate(): typeof scopedUpdate { return scopedUpdate; },
+    get myStyles(): typeof myStyles { return myStyles; },
+    get setMyStyles(): typeof setMyStyles { return setMyStyles; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get setError(): typeof setError { return setError; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get addEffect(): typeof addEffect { return addEffect; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get shaping(): typeof shaping { return shaping; },
+    get setShaping(): typeof setShaping { return setShaping; },
+    get now(): typeof now { return now; },
+  }));
   const [myStyles, setMyStyles] = useState<Template[]>(savedStyles);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   // Each template's picture, drawn by the server like any title, small.
@@ -696,21 +751,95 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     .then((found) => { setLibrary(found.tracks); setLibraryFolder(found.folder); return found.tracks; })
     .catch(() => { setLibrary([]); return [] as LibraryTrack[]; })), []);
   useEffect(() => { if (leftTab === 'themes' || leftTab === 'audio') void loadLibrary(); }, [leftTab, loadLibrary]);
-  const { listen, librarySong, chooseTheme, makeStory, buildStoryVideo, changeThemeMusic, addLibraryTrack } = createThemeActions(() => ({ listenRef, listening, setListening, timeline, setError, themeBusy, projectName, setThemeBusy, mediaById, aimFor, newId, themeWithMusic, loadLibrary, setThemeTrack, change, story, facts, timelineRef, setMomentProgress, setStory, library, themeTrack, setAddingMusic, engineRef, MIN_MUSIC_SECONDS, setSelectedId }));
+  const { listen, librarySong, chooseTheme, makeStory, buildStoryVideo, changeThemeMusic, addLibraryTrack } = createThemeActions(() => ({
+    get listenRef(): typeof listenRef { return listenRef; },
+    get listening(): typeof listening { return listening; },
+    get setListening(): typeof setListening { return setListening; },
+    get timeline(): typeof timeline { return timeline; },
+    get setError(): typeof setError { return setError; },
+    get themeBusy(): typeof themeBusy { return themeBusy; },
+    get projectName(): typeof projectName { return projectName; },
+    get setThemeBusy(): typeof setThemeBusy { return setThemeBusy; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get aimFor(): typeof aimFor { return aimFor; },
+    get newId(): typeof newId { return newId; },
+    get themeWithMusic(): typeof themeWithMusic { return themeWithMusic; },
+    get loadLibrary(): typeof loadLibrary { return loadLibrary; },
+    get setThemeTrack(): typeof setThemeTrack { return setThemeTrack; },
+    get change(): typeof change { return change; },
+    get story(): typeof story { return story; },
+    get facts(): typeof facts { return facts; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get setMomentProgress(): typeof setMomentProgress { return setMomentProgress; },
+    get setStory(): typeof setStory { return setStory; },
+    get library(): typeof library { return library; },
+    get themeTrack(): typeof themeTrack { return themeTrack; },
+    get setAddingMusic(): typeof setAddingMusic { return setAddingMusic; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get MIN_MUSIC_SECONDS(): typeof MIN_MUSIC_SECONDS { return MIN_MUSIC_SECONDS; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+  }));
   useEffect(() => () => { listenRef.current?.pause(); }, []);
   const storyMedia = media.filter((item) => item.media_type === 'video' || item.media_type === 'image');
   const showEnter = (start: number, seconds: number) => engineRef.current?.playRange(start, start + seconds);
   const showExit = (end: number, seconds: number) => engineRef.current?.playRange(Math.max(0, end - seconds), Math.max(0, end - 0.02));
   const clipsInOrder = timeline ? [...mainLayer(timeline).items].sort((a, b) => a.start - b.start) : [];
   const clipIndex = selected ? clipsInOrder.findIndex((clip) => clip.id === selected.id) : -1;
-  const { applyStems, separate, updateSelectedSound, hasSound, detach, addMusic, addSoundEffects, addThunder, loopSelectedSound, cutClipsToBeat } = createAudioToolActions(() => ({ get timelineRef() { return timelineRef; }, get stemJob() { return stemJob; }, get setStemJob() { return setStemJob; }, get change() { return change; }, get selectedSound() { return selectedSound; }, get setError() { return setError; }, get timeline() { return timeline; }, get visuals() { return visuals; }, get selected() { return selected; }, get mediaById() { return mediaById; }, get setSelectedId() { return setSelectedId; }, get setAddingMusic() { return setAddingMusic; }, get engineRef() { return engineRef; }, get sfxBusy() { return sfxBusy; }, get setSfxNote() { return setSfxNote; }, get setSfxBusy() { return setSfxBusy; }, get sfxChoice() { return sfxChoice; }, get thunderBusy() { return thunderBusy; }, get setThunderBusy() { return setThunderBusy; }, get looping() { return looping; }, get setLooping() { return setLooping; }, get setBeatNote() { return setBeatNote; }, get setBeatBusy() { return setBeatBusy; }, get facts() { return facts; } }));
+  const { applyStems, separate, updateSelectedSound, hasSound, detach, addMusic, addSoundEffects, addThunder, loopSelectedSound, cutClipsToBeat } = createAudioToolActions(() => ({
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get stemJob(): typeof stemJob { return stemJob; },
+    get setStemJob(): typeof setStemJob { return setStemJob; },
+    get change(): typeof change { return change; },
+    get selectedSound(): typeof selectedSound { return selectedSound; },
+    get setError(): typeof setError { return setError; },
+    get timeline(): typeof timeline { return timeline; },
+    get visuals(): typeof visuals { return visuals; },
+    get selected(): typeof selected { return selected; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get setAddingMusic(): typeof setAddingMusic { return setAddingMusic; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get sfxBusy(): typeof sfxBusy { return sfxBusy; },
+    get setSfxNote(): typeof setSfxNote { return setSfxNote; },
+    get setSfxBusy(): typeof setSfxBusy { return setSfxBusy; },
+    get sfxChoice(): typeof sfxChoice { return sfxChoice; },
+    get thunderBusy(): typeof thunderBusy { return thunderBusy; },
+    get setThunderBusy(): typeof setThunderBusy { return setThunderBusy; },
+    get looping(): typeof looping { return looping; },
+    get setLooping(): typeof setLooping { return setLooping; },
+    get setBeatNote(): typeof setBeatNote { return setBeatNote; },
+    get setBeatBusy(): typeof setBeatBusy { return setBeatBusy; },
+    get facts(): typeof facts { return facts; },
+  }));
   const hasAudibleAudio = Boolean(timeline?.layers.some((layer) => {
     if (layer.muted) return false;
     if (layer.kind === 'audio') return layer.items.some((sound) => !sound.muted && sound.volume > 0);
     if (layer.kind === 'video') return layer.items.some((clip) => !clip.muted && clip.volume > 0 && hasSound(clip.media_id));
     return false;
   }));
-  const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen } = createClipToolActions(() => ({ get timeline() { return timeline; }, get selected() { return selected; }, get moreIds() { return moreIds; }, get styleScope() { return styleScope; }, get change() { return change; }, get scopedUpdate() { return scopedUpdate; }, get updateLayout() { return updateLayout; }, get playhead() { return playhead; }, get setError() { return setError; }, get setSelectedId() { return setSelectedId; }, get engineRef() { return engineRef; }, get mediaById() { return mediaById; }, get myStyles() { return myStyles; }, get addTitle() { return addTitle; }, get library() { return library; }, get addLibraryTrack() { return addLibraryTrack; }, get addEffect() { return addEffect; }, get focusCache() { return focusCache; }, get local() { return local; }, get setChoosingFormat() { return setChoosingFormat; }, get sourceFor() { return sourceFor; } }));
+  const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen } = createClipToolActions(() => ({
+    get timeline(): typeof timeline { return timeline; },
+    get selected(): typeof selected { return selected; },
+    get moreIds(): typeof moreIds { return moreIds; },
+    get styleScope(): typeof styleScope { return styleScope; },
+    get change(): typeof change { return change; },
+    get scopedUpdate(): typeof scopedUpdate { return scopedUpdate; },
+    get updateLayout(): typeof updateLayout { return updateLayout; },
+    get playhead(): typeof playhead { return playhead; },
+    get setError(): typeof setError { return setError; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get myStyles(): typeof myStyles { return myStyles; },
+    get addTitle(): typeof addTitle { return addTitle; },
+    get library(): typeof library { return library; },
+    get addLibraryTrack(): typeof addLibraryTrack { return addLibraryTrack; },
+    get addEffect(): typeof addEffect { return addEffect; },
+    get focusCache(): typeof focusCache { return focusCache; },
+    get local(): typeof local { return local; },
+    get setChoosingFormat(): typeof setChoosingFormat { return setChoosingFormat; },
+    get sourceFor(): typeof sourceFor { return sourceFor; },
+  }));
   const fps = timeline?.format.fps ?? 30;
   const sourceLimit = (mediaId: number) => { const item = mediaById.get(mediaId); return item?.media_type === 'video' ? item.duration ?? undefined : MAX_PHOTO_SECONDS; };
   const pauseEngine = () => engineRef.current?.pause();
@@ -850,7 +979,43 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   // The title picked by clicking it in the preview: only then does the preview show its box and toolbar.
   const [pickedInPreview, setPickedInPreview] = useState<string | null>(null);
-  const { previewDown, previewMove, startDrawing, frameAt, drawnBox, startFollowing, ownBox, followHere, finishDrawing, applyFaces, applyFollow } = createPreviewTrackingActions(() => ({ get placing() { return placing; }, get timeline() { return timeline; }, get placeInScene() { return placeInScene; }, get pickingKey() { return pickingKey; }, get selected() { return selected; }, get engineRef() { return engineRef; }, get updateSelected() { return updateSelected; }, get stopPicking() { return stopPicking; }, get drawing() { return drawing; }, get shaping() { return shaping; }, get titleAt() { return titleAt; }, get setPickedInPreview() { return setPickedInPreview; }, get selectedId() { return selectedId; }, get setLayerSettings() { return setLayerSettings; }, get setSelectedId() { return setSelectedId; }, get moving() { return moving; }, get selectedLayer() { return selectedLayer; }, get dragPreview() { return dragPreview; }, get followTarget() { return followTarget; }, get playhead() { return playhead; }, get setError() { return setError; }, get isVideo() { return isVideo; }, get setFollowNote() { return setFollowNote; }, get setDrawing() { return setDrawing; }, get sourceFor() { return sourceFor; }, get setFollowJob() { return setFollowJob; }, get followSize() { return followSize; }, get selectedBlur() { return selectedBlur; }, get blurLocal() { return blurLocal; }, get local() { return local; }, get seek() { return seek; }, get updateSelectedBlur() { return updateSelectedBlur; }, get drawStart() { return drawStart; }, get timelineRef() { return timelineRef; }, get change() { return change; } }));
+  const { previewDown, previewMove, startDrawing, frameAt, drawnBox, startFollowing, ownBox, followHere, finishDrawing, applyFaces, applyFollow } = createPreviewTrackingActions(() => ({
+    get placing(): typeof placing { return placing; },
+    get timeline(): typeof timeline { return timeline; },
+    get placeInScene(): typeof placeInScene { return placeInScene; },
+    get pickingKey(): typeof pickingKey { return pickingKey; },
+    get selected(): typeof selected { return selected; },
+    get engineRef(): typeof engineRef { return engineRef; },
+    get updateSelected(): typeof updateSelected { return updateSelected; },
+    get stopPicking(): typeof stopPicking { return stopPicking; },
+    get drawing(): typeof drawing { return drawing; },
+    get shaping(): typeof shaping { return shaping; },
+    get titleAt(): typeof titleAt { return titleAt; },
+    get setPickedInPreview(): typeof setPickedInPreview { return setPickedInPreview; },
+    get selectedId(): typeof selectedId { return selectedId; },
+    get setLayerSettings(): typeof setLayerSettings { return setLayerSettings; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get moving(): typeof moving { return moving; },
+    get selectedLayer(): typeof selectedLayer { return selectedLayer; },
+    get dragPreview(): typeof dragPreview { return dragPreview; },
+    get followTarget(): typeof followTarget { return followTarget; },
+    get playhead(): typeof playhead { return playhead; },
+    get setError(): typeof setError { return setError; },
+    get isVideo(): typeof isVideo { return isVideo; },
+    get setFollowNote(): typeof setFollowNote { return setFollowNote; },
+    get setDrawing(): typeof setDrawing { return setDrawing; },
+    get sourceFor(): typeof sourceFor { return sourceFor; },
+    get setFollowJob(): typeof setFollowJob { return setFollowJob; },
+    get followSize(): typeof followSize { return followSize; },
+    get selectedBlur(): typeof selectedBlur { return selectedBlur; },
+    get blurLocal(): typeof blurLocal { return blurLocal; },
+    get local(): typeof local { return local; },
+    get seek(): typeof seek { return seek; },
+    get updateSelectedBlur(): typeof updateSelectedBlur { return updateSelectedBlur; },
+    get drawStart(): typeof drawStart { return drawStart; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get change(): typeof change { return change; },
+  }));
   // Zoom by hand: a trackpad pinch (or ⌘-scroll) over the preview resizes the selected picture or video.
   const wheelRef = useRef<(event: WheelEvent) => void>(() => {});
   wheelRef.current = (event: WheelEvent) => {
@@ -945,7 +1110,52 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, 600);
     return () => clearTimeout(timer);
   });
-  const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({ get history() { return history; }, get dispatch() { return dispatch; }, get setMenu() { return setMenu; }, get safeArea() { return safeArea; }, get setSafeArea() { return setSafeArea; }, get total() { return total; }, get renderJob() { return renderJob; }, get isRendered() { return isRendered; }, get renderPreview() { return renderPreview; }, get setShowingHelp() { return setShowingHelp; }, get resetLayout() { return resetLayout; }, get playing() { return playing; }, get togglePlay() { return togglePlay; }, get addBlurBox() { return addBlurBox; }, get faceJob() { return faceJob; }, get blurFaces() { return blurFaces; }, get followTarget() { return followTarget; }, get ownBox() { return ownBox; }, get followJob() { return followJob; }, get selectedBlur() { return selectedBlur; }, get followHere() { return followHere; }, get addMedia() { return addMedia; }, get addOverlayMedia() { return addOverlayMedia; }, get setFiling() { return setFiling; }, get usedIds() { return usedIds; }, get timeline() { return timeline; }, get change() { return change; }, get setSelectedId() { return setSelectedId; }, get setDeleting() { return setDeleting; }, get seek() { return seek; }, get clipboard() { return clipboard; }, get fitZoom() { return fitZoom; }, get mediaById() { return mediaById; }, get setRenamingClip() { return setRenamingClip; }, get isVideo() { return isVideo; }, get reframeJob() { return reframeJob; }, get reframeClip() { return reframeClip; }, get sceneJob() { return sceneJob; }, get splitScenes() { return splitScenes; }, get freeze() { return freeze; }, get snapshot() { return snapshot; }, get hasSound() { return hasSound; }, get detach() { return detach; }, get timelineRef() { return timelineRef; } }));
+  const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
+    get history(): typeof history { return history; },
+    get dispatch(): typeof dispatch { return dispatch; },
+    get setMenu(): typeof setMenu { return setMenu; },
+    get safeArea(): typeof safeArea { return safeArea; },
+    get setSafeArea(): typeof setSafeArea { return setSafeArea; },
+    get total(): typeof total { return total; },
+    get renderJob(): typeof renderJob { return renderJob; },
+    get isRendered(): typeof isRendered { return isRendered; },
+    get renderPreview(): typeof renderPreview { return renderPreview; },
+    get setShowingHelp(): typeof setShowingHelp { return setShowingHelp; },
+    get resetLayout(): typeof resetLayout { return resetLayout; },
+    get playing(): typeof playing { return playing; },
+    get togglePlay(): typeof togglePlay { return togglePlay; },
+    get addBlurBox(): typeof addBlurBox { return addBlurBox; },
+    get faceJob(): typeof faceJob { return faceJob; },
+    get blurFaces(): typeof blurFaces { return blurFaces; },
+    get followTarget(): typeof followTarget { return followTarget; },
+    get ownBox(): typeof ownBox { return ownBox; },
+    get followJob(): typeof followJob { return followJob; },
+    get selectedBlur(): typeof selectedBlur { return selectedBlur; },
+    get followHere(): typeof followHere { return followHere; },
+    get addMedia(): typeof addMedia { return addMedia; },
+    get addOverlayMedia(): typeof addOverlayMedia { return addOverlayMedia; },
+    get setFiling(): typeof setFiling { return setFiling; },
+    get usedIds(): typeof usedIds { return usedIds; },
+    get timeline(): typeof timeline { return timeline; },
+    get change(): typeof change { return change; },
+    get setSelectedId(): typeof setSelectedId { return setSelectedId; },
+    get setDeleting(): typeof setDeleting { return setDeleting; },
+    get seek(): typeof seek { return seek; },
+    get clipboard(): typeof clipboard { return clipboard; },
+    get fitZoom(): typeof fitZoom { return fitZoom; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get setRenamingClip(): typeof setRenamingClip { return setRenamingClip; },
+    get isVideo(): typeof isVideo { return isVideo; },
+    get reframeJob(): typeof reframeJob { return reframeJob; },
+    get reframeClip(): typeof reframeClip { return reframeClip; },
+    get sceneJob(): typeof sceneJob { return sceneJob; },
+    get splitScenes(): typeof splitScenes { return splitScenes; },
+    get freeze(): typeof freeze { return freeze; },
+    get snapshot(): typeof snapshot { return snapshot; },
+    get hasSound(): typeof hasSound { return hasSound; },
+    get detach(): typeof detach { return detach; },
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+  }));
   const total = timeline ? duration(timeline) : 0;
   const fitZoom = useCallback(() => {
     const width = rootRef.current?.querySelector('.tl-scroll')?.clientWidth;
@@ -969,7 +1179,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     formats: FORMATS.map((format) => ({ id: format.id, label: `${format.label} (${format.ratio})` })), stories: STORIES.map((item) => ({ id: item.id, label: item.label })),
     title_styles: TEMPLATES.map((template) => ({ id: template.id, label: template.label })),
   };
-  const { askProject, runAsk } = createAskActions(() => ({ get timelineRef() { return timelineRef; }, get mediaById() { return mediaById; }, get media() { return media; }, get usedIds() { return usedIds; }, get actions() { return actions; }, get askOptions() { return askOptions; }, get setCaptionWords() { return setCaptionWords; } }));
+  const { askProject, runAsk } = createAskActions(() => ({
+    get timelineRef(): typeof timelineRef { return timelineRef; },
+    get mediaById(): typeof mediaById { return mediaById; },
+    get media(): typeof media { return media; },
+    get usedIds(): typeof usedIds { return usedIds; },
+    get actions(): typeof actions { return actions; },
+    get askOptions(): typeof askOptions { return askOptions; },
+    get setCaptionWords(): typeof setCaptionWords { return setCaptionWords; },
+  }));
   const actions = useRef({ chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change });
   actions.current = { chooseTheme, addTitle, addEffect, cutClipsToBeat, makeCaptions, keepClearOfFaces, buildStoryVideo, storyMedia, facts, change };
 const followPanel = followTarget && <InspectorBindingsProvider name="follow" bindings={{ blur: Boolean(selectedBlur), own: Boolean(selectedBlur || (selected && selectedLayer && timeline && selectedLayer !== mainLayer(timeline))), onDraw: () => startDrawing('start'), drawing: Boolean(drawing), job: followJob?.itemId === followTarget.id ? followJob : null, busy: Boolean(followJob), note: followNote?.itemId === followTarget.id ? followNote.text : null, following: Boolean(followTarget.transform.keyframes?.x?.length), size: followSize, onSize: setFollowSize, onStart: () => { void followHere('start'); }, onContinue: () => { void followHere('continue'); }, onCancel: () => { if (followJob) void cancelRenderJob(followJob.jobId); setFollowJob(null); }, onStop: () => { if (selected) updateSelected({ transform: unfollow(selected.transform, local) }); else if (selectedBlur) updateSelectedBlur({ transform: unfollow(selectedBlur.transform, blurLocal) }); else if (selectedText) updateSelectedText({ transform: unfollow(selectedText.transform ?? REST_TRANSFORM, textLocal) }); setFollowNote(null); } } satisfies FollowPanelBindings}><FollowPanel/></InspectorBindingsProvider>;
