@@ -1,3 +1,4 @@
+import { createEditorMenuActions } from './actions/menus';
 import { createPreviewTrackingActions } from './actions/preview-tracking';
 import { createEffectJobActions } from './actions/effect-jobs';
 import { createAudioToolActions } from './actions/audio-tools';
@@ -1058,101 +1059,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     }, 600);
     return () => clearTimeout(timer);
   });
-
-  const generalItems = (): MenuItem[] => [
-    { label: 'Undo', hint: '⌘Z', disabled: !history.past.length, onSelect: () => dispatch({ type: 'undo' }) },
-    { label: 'Redo', hint: '⇧⌘Z', disabled: !history.future.length, onSelect: () => dispatch({ type: 'redo' }) },
-  ];
-  const openGeneralMenu = (event: React.MouseEvent) => {
-    if (isEditable(event.target)) return;
-    event.preventDefault();
-    setMenu({ x: event.clientX, y: event.clientY, items: generalItems() });
-  };
-  const openViewMenu = (event: React.MouseEvent) => {
-    event.preventDefault(); event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    setMenu({ x: rect.right, y: rect.bottom + 4, items: [
-      { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) },
-      { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } },
-      'divider',
-      { label: 'Guide and shortcuts', hint: '?', onSelect: () => setShowingHelp(true) },
-      { label: 'Reset panel layout', onSelect: resetLayout },
-    ] });
-  };
-  const openPreviewMenu = (event: React.MouseEvent) => {
-    event.preventDefault(); event.stopPropagation();
-    const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
-    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
-    if (followTarget && ownBox() && !followJob) items.push('divider', { label: selectedBlur ? 'Follow what is under this blur' : 'Follow what is under this', onSelect: () => { void followHere('start'); } });
-    setMenu({ x: event.clientX, y: event.clientY, items });
-  };
-  const openMediaMenu = (event: React.MouseEvent, item: Photo) => {
-    event.preventDefault(); event.stopPropagation();
-    setMenu({ x: event.clientX, y: event.clientY, items: [
-      { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }, { label: 'Move to folder…', onSelect: () => setFiling(item) },
-      ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
-      'divider', { label: 'Delete from Kanaa…', danger: true, onSelect: () => setDeleting(item) },
-    ] });
-  };
-  const openItemMenu = (id: string | null, t: number, x: number, y: number) => {
-    if (!timeline) return;
-    const place = { x, y };
-    if (!id) {
-      setMenu({ ...place, items: [{ label: 'Move playhead here', onSelect: () => seek(t) }, { label: 'Paste here', hint: '⌘V', disabled: !clipboard.hasCopy(), onSelect: () => clipboard.pasteAt(t) }, { label: 'Fit timeline', disabled: !total, onSelect: fitZoom }, 'divider', ...generalItems()] });
-      return;
-    }
-    const layer = layerOf(timeline, id)!;
-    const lockItem: MenuItem = { label: layer.locked ? 'Unlock layer' : 'Lock layer', onSelect: () => change(updateLayer(timeline, layer.id, { locked: !layer.locked })) };
-    if (layer.locked) { setMenu({ ...place, items: [lockItem] }); return; }
-    const clip = findClip(timeline, id);
-    const sound = findSound(timeline, id)?.sound;
-    const items: MenuItem[] = [];
-    if (clip || sound) items.push({ label: 'Split here', hint: 'S', onSelect: () => { const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) change(next); } });
-    const clipItem = clip ? mediaById.get(clip.media_id) : undefined;
-    if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
-    if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
-    // The tools that study the picture (and take a while) sit together under Smart tools.
-    const smart: MenuItem[] = [];
-    if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
-    if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
-    if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
-    items.push(...clipboard.menuItems(id, t));
-    if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) }, { label: 'Snapshot freeze here', onSelect: () => { void snapshot(t); } });
-    if (clip) {
-      if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
-      items.push({ label: clip.muted ? 'Turn sound on' : 'Mute clip', onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) });
-      if (clipEffects(clip).length) {
-        // Built each time the menu draws, from the clip as it is now, so ticks stay true while switches are flipped.
-        const now = () => { const latest = timelineRef.current; const found = latest && findClip(latest, id); return latest && found ? { latest, found } : null; };
-        const apply = (changes: (found: Clip) => Partial<Clip>) => { const at = now(); if (at) change(updateClip(at.latest, id, changes(at.found))); };
-        items.push('divider', {
-          label: 'Effects', submenu: () => {
-            const at = now(); if (!at) return [];
-            const effects = clipEffects(at.found);
-            const allOff = effects.every((effect) => !effect.on);
-            return [...effects.map((effect): MenuItem => ({ label: `${effect.label} · ${effect.detail}`, checked: effect.on, keepOpen: true, onSelect: () => apply((found) => toggleEffect(found, effect.id)) })),
-              'divider', { label: allOff ? 'Turn all back on' : 'Turn all off', keepOpen: true, onSelect: () => apply(toggleAllEffects) }];
-          },
-        }, {
-          label: 'Remove effects', submenu: () => {
-            const at = now(); if (!at) return [];
-            const effects = clipEffects(at.found);
-            return [...effects.map((effect): MenuItem => ({ label: `${effect.label} · ${effect.detail}`, keepOpen: effects.length > 1, onSelect: () => apply((found) => removeEffect(found, effect.id)) })),
-              'divider', { label: 'Remove all effects', danger: true, onSelect: () => apply((found) => clipEffects(found).reduce<Clip>((next, effect) => ({ ...next, ...removeEffect(next, effect.id) }), found)) }];
-          },
-        });
-      }
-    }
-    if (sound) items.push({ label: sound.muted ? 'Turn sound on' : 'Mute sound', onSelect: () => change(updateSound(timeline, id, { muted: !sound.muted })) }, { label: sound.duck ? 'Stop dipping under speech' : 'Dip under speech', onSelect: () => change(updateSound(timeline, id, { duck: !sound.duck })) });
-    items.push('divider');
-    const overlays = overlayLayers(timeline);
-    const stack = overlays.findIndex((entry) => entry.id === layer.id);
-    if (stack >= 0) items.push({ label: 'Bring forward', disabled: stack === overlays.length - 1, onSelect: () => change(reorderLayer(timeline, layer.id, 'forward')) }, { label: 'Send back', disabled: stack === 0, onSelect: () => change(reorderLayer(timeline, layer.id, 'back')) });
-    items.push(lockItem, 'divider', { label: 'Delete', hint: '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
-    setMenu({ ...place, items });
-  };
+  const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({ get history() { return history; }, get dispatch() { return dispatch; }, get setMenu() { return setMenu; }, get safeArea() { return safeArea; }, get setSafeArea() { return setSafeArea; }, get total() { return total; }, get renderJob() { return renderJob; }, get isRendered() { return isRendered; }, get renderPreview() { return renderPreview; }, get setShowingHelp() { return setShowingHelp; }, get resetLayout() { return resetLayout; }, get playing() { return playing; }, get togglePlay() { return togglePlay; }, get addBlurBox() { return addBlurBox; }, get faceJob() { return faceJob; }, get blurFaces() { return blurFaces; }, get followTarget() { return followTarget; }, get ownBox() { return ownBox; }, get followJob() { return followJob; }, get selectedBlur() { return selectedBlur; }, get followHere() { return followHere; }, get addMedia() { return addMedia; }, get addOverlayMedia() { return addOverlayMedia; }, get setFiling() { return setFiling; }, get usedIds() { return usedIds; }, get timeline() { return timeline; }, get change() { return change; }, get setSelectedId() { return setSelectedId; }, get setDeleting() { return setDeleting; }, get seek() { return seek; }, get clipboard() { return clipboard; }, get fitZoom() { return fitZoom; }, get mediaById() { return mediaById; }, get setRenamingClip() { return setRenamingClip; }, get isVideo() { return isVideo; }, get reframeJob() { return reframeJob; }, get reframeClip() { return reframeClip; }, get sceneJob() { return sceneJob; }, get splitScenes() { return splitScenes; }, get freeze() { return freeze; }, get snapshot() { return snapshot; }, get hasSound() { return hasSound; }, get detach() { return detach; }, get timelineRef() { return timelineRef; } }));
   const total = timeline ? duration(timeline) : 0;
   const fitZoom = useCallback(() => {
     const width = rootRef.current?.querySelector('.tl-scroll')?.clientWidth;
