@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { Chips } from "./parts";
 import { useEffect, useState } from "react";
 import { Captions, Trash2, ALargeSmall } from "lucide-react";
@@ -6,7 +7,10 @@ import { ValueSlider, type TimeFieldProps } from "../controls";
 import { Timing, timingSummary } from "../Timing";
 import { Group, More, Panel } from "../layout";
 
-export function CaptionInspector({ caption, layer, timing, onText, onLook, onRemoveAll }: { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void }) {
+export type CaptionInspectorBindings = { caption: Caption; layer: CaptionLayer; timing: TimeFieldProps[]; onText: (text: string) => void; onLook: (changes: Partial<CaptionLook>, group?: string) => void; onRemoveAll: () => void };
+
+export function CaptionInspector() {
+  const { caption, layer, timing, onText, onLook, onRemoveAll } = useEditorPanel<CaptionInspectorBindings>('caption');
   const [draft, setDraft] = useState(captionText(caption));
   useEffect(() => setDraft(captionText(caption)), [caption.id]);
   return <Panel id="caption" tabs={[{ id: 'words', label: 'Words', Icon: Captions }, { id: 'style', label: 'Style', Icon: ALargeSmall }]}>

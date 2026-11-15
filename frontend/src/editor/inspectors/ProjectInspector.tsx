@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { useEditor } from '../state/EditorContext';
 import { type LutInfo, listLuts } from '../../api/client';
 import ImportArea from '../../components/ImportArea';
@@ -17,7 +18,10 @@ import { useContext, useEffect, useState } from 'react';
 import { BrandIntroGroup, FRAME_RATES, RATE_TIPS } from './project-parts';
 import { SignatureAddGroup } from './SignatureAddGroup';
 
-export function ProjectInspector({ introBusy, onBrandIntro, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onThemes }: {  introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onThemes: () => void }) {
+export type ProjectInspectorBindings = {  introBusy: number | null; onBrandIntro: (logo: Photo, tamil: string, english: string) => void; clipFormat: Format | null; logos: Photo[]; logo: Photo | null; onBrand: (item: Photo) => void; onImported: (items: Photo[]) => void; onRemoveBrand: () => void; onThemes: () => void };
+
+export function ProjectInspector() {
+  const { introBusy, onBrandIntro, clipFormat, logos, logo, onBrand, onImported, onRemoveBrand, onThemes } = useEditorPanel<ProjectInspectorBindings>('project');
   const { timeline, change: onChange, pause: onPause, openGuide } = useEditor();
   const onGuide = () => openGuide();
   const format = timeline.format;

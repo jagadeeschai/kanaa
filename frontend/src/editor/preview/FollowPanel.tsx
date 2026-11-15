@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { Crosshair } from "lucide-react";
 import { More } from "../layout";
 
@@ -7,8 +8,11 @@ type FollowJob = { itemId: string; underId: string; jobId: string; progress: num
   /** Set while looking for a face under a blur box: where the box is in the source, and what to follow instead when no face is there. */
   faces?: { box: Box; at: number; own: Box; grow?: number } };
 
-export function FollowPanel({ blur, own, drawing, job, busy, note, following, size, onSize, onStart, onDraw, onContinue, onCancel, onStop }: { blur: boolean; own: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
-  onSize: (on: boolean) => void; onStart: () => void; onDraw: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void }) {
+export type FollowPanelBindings = { blur: boolean; own: boolean; drawing: boolean; job: FollowJob | null; busy: boolean; note: string | null; following: boolean; size: boolean;
+  onSize: (on: boolean) => void; onStart: () => void; onDraw: () => void; onContinue: () => void; onCancel: () => void; onStop: () => void };
+
+export function FollowPanel() {
+  const { blur, own, drawing, job, busy, note, following, size, onSize, onStart, onDraw, onContinue, onCancel, onStop } = useEditorPanel<FollowPanelBindings>('follow');
   if (job) return <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p className="ed-tip">{job.queued ? 'Waiting for the job ahead of it to finish…' : `Following… ${job.progress}%`}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>;
   const what = blur ? 'the blur' : 'it';
   return <>

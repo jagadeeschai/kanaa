@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { Camera,X as Close,Magnet,Minus,MoreHorizontal,Paintbrush,Plus,Redo2,Scissors,Snowflake,Trash2,Undo2 } from "lucide-react";
 import { t } from "../../i18n";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
@@ -33,8 +34,8 @@ export type EditorTimelineToolbarBindings = {
   zoom: number;
 };
 
-export function EditorTimelineToolbar({ bindings }: { bindings: EditorTimelineToolbarBindings }) {
-  const { dispatch, history, clipboard, selectedId, split, total, freeze, timeline, snapshot, removeSelected, selected, selectedSound, selectedText, selectedBlur, selectedCaption, selectedLayer, fitZoom, snapping, setSnapping, setZoom, zoom, openViewMenu } = bindings;
+export function EditorTimelineToolbar() {
+  const { dispatch, history, clipboard, selectedId, split, total, freeze, timeline, snapshot, removeSelected, selected, selectedSound, selectedText, selectedBlur, selectedCaption, selectedLayer, fitZoom, snapping, setSnapping, setZoom, zoom, openViewMenu } = useEditorPanel<EditorTimelineToolbarBindings>('toolbar');
   return (<div className="ed-tools">
       <span className="ed-tool-group" role="group" aria-label="Edit tools">
         <button className="ed-button ed-icon-button" onClick={() => dispatch({ type: 'undo' })} disabled={!history.past.length} aria-label={t('Undo')} title={`${t('Undo')} (⌘Z)`}><Undo2 size={15}/></button>

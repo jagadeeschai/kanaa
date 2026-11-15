@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { SoundControls } from "./clip-parts";
 import { Mic, LoaderCircle, Music, Volume2, VolumeX } from "lucide-react";
 import { soundLength, type AudioLayer, type Sound } from "../../timeline/model";
@@ -9,8 +10,11 @@ type StemChoice = 'music' | 'vocals' | 'both';
 
 type StemJob = { soundId: string; jobId: string; choice: StemChoice; progress: number };
 
-export function SoundInspector({ onLoop, looping, sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems }: { onLoop: (() => void) | null; looping: boolean; sound: Sound; timing: TimeFieldProps[]; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
-  stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void }) {
+export type SoundInspectorBindings = { onLoop: (() => void) | null; looping: boolean; sound: Sound; timing: TimeFieldProps[]; layer: AudioLayer; onChange: (changes: Partial<Sound>, group?: string) => void; onLayer: (changes: Partial<AudioLayer>) => void;
+  stems: { available: boolean; install_command: string } | null; job: StemJob | null; busy: boolean; onSeparate: (choice: StemChoice) => void; onCancelStems: () => void };
+
+export function SoundInspector() {
+  const { onLoop, looping, sound, timing, layer, onChange, onLayer, stems, job, busy, onSeparate, onCancelStems } = useEditorPanel<SoundInspectorBindings>('sound');
   return <Panel id="sound" tabs={[{ id: 'volume', label: 'Volume', Icon: Volume2, changed: sound.muted || sound.volume !== 1 }, { id: 'voice', label: 'Voice', Icon: Mic, changed: Boolean(sound.clean_voice) }]}>
     <p className="ed-name" title={sound.name}>{sound.name}</p>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration trim loop repeat" help="timing-and-trimming">

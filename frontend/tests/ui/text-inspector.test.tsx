@@ -11,7 +11,7 @@ const noop = () => {};
 async function panel(language: 'en' | 'ta', options: { layer?: boolean; text?: TextItem } = {}) {
   const { TextInspector } = await inLanguage(language, () => import('../../src/editor/inspectors/TextInspector'));
   const { LayerModeContext } = await import('../../src/editor/layout');
-  const { EditorContext } = await import('../../src/editor/state/EditorContext');
+  const { EditorContext, InspectorBindingsProvider } = await import('../../src/editor/state/EditorContext');
   const { emptyTimeline } = await import('../../src/timeline/model');
   const onChange = vi.fn();
   const props = {
@@ -21,7 +21,7 @@ async function panel(language: 'en' | 'ta', options: { layer?: boolean; text?: T
     timing: [{ label: 'Start', value: 1, fps: 30 }, { label: 'Duration', value: 4, fps: 30 }], follow: null, onChange, onEnter: noop, onExit: noop,
   };
   const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: noop, pause: noop, openGuide: noop, now: 0, seek: noop, selectedId: null, select: noop };
-  render(<EditorContext.Provider value={shared}><LayerModeContext.Provider value={Boolean(options.layer)}><TextInspector {...props}/></LayerModeContext.Provider></EditorContext.Provider>);
+  render(<EditorContext.Provider value={shared}><LayerModeContext.Provider value={Boolean(options.layer)}><InspectorBindingsProvider name="text" bindings={{ ...props }}><TextInspector/></InspectorBindingsProvider></LayerModeContext.Provider></EditorContext.Provider>);
   return onChange;
 }
 

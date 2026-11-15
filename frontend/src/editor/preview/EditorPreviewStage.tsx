@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { Check,CircleHelp,Crosshair,Expand,Pause,Play,Shrink,X } from "lucide-react";
 import { cancelRenderJob } from "../../api/client";
 import { t } from "../../i18n";
@@ -95,8 +96,8 @@ export type EditorPreviewStageBindings = {
   updateSelectedText: (changes: Partial<TextItem>, group?: string | undefined) => void;
 };
 
-export function EditorPreviewStage({ bindings }: { bindings: EditorPreviewStageBindings }) {
-  const { fullScreen, stageRef, saved, projectName, timeline, firstRunClosed, total, setLeftTab, setPanelOpen, exportedOnce, engineRef, setExporting, setFirstRunClosed, openGuide, ratio, canvasRef, openPreviewMenu, previewDown, previewMove, dragPreview, titleAt, setPickedInPreview, setSelectedId, setEditingTitle, placing, pickingKey, selected, selectedLayer, shaping, drawing, now, sourceFor, local, updateSelected, seek, selectedText, updateSelectedText, pickedInPreview, titleRect, editingTitle, selectedBlur, updateSelectedBlur, followTarget, followJob, ownBox, followHere, renderJob, reframeJob, sceneJob, faceJob, faceNote, followNote, setRenderJob, setHeavy, setReframeJob, setSceneJob, setFaceJob, setFollowJob, setFaceNote, setFollowNote, setShaping, finishShape, frameAt, drawStart, setDrawing, finishDrawing, drawnBox, safeArea, isEmpty, choosingFormat, clockRef, togglePlay, playing, toggleFullScreen } = bindings;
+export function EditorPreviewStage() {
+  const { fullScreen, stageRef, saved, projectName, timeline, firstRunClosed, total, setLeftTab, setPanelOpen, exportedOnce, engineRef, setExporting, setFirstRunClosed, openGuide, ratio, canvasRef, openPreviewMenu, previewDown, previewMove, dragPreview, titleAt, setPickedInPreview, setSelectedId, setEditingTitle, placing, pickingKey, selected, selectedLayer, shaping, drawing, now, sourceFor, local, updateSelected, seek, selectedText, updateSelectedText, pickedInPreview, titleRect, editingTitle, selectedBlur, updateSelectedBlur, followTarget, followJob, ownBox, followHere, renderJob, reframeJob, sceneJob, faceJob, faceNote, followNote, setRenderJob, setHeavy, setReframeJob, setSceneJob, setFaceJob, setFollowJob, setFaceNote, setFollowNote, setShaping, finishShape, frameAt, drawStart, setDrawing, finishDrawing, drawnBox, safeArea, isEmpty, choosingFormat, clockRef, togglePlay, playing, toggleFullScreen } = useEditorPanel<EditorPreviewStageBindings>('preview');
   return (<main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !fullScreen && (() => {

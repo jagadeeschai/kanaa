@@ -1,3 +1,4 @@
+import { useEditorPanel } from '../state/EditorContext';
 import { Chips } from "./parts";
 import { Move, EyeOff } from "lucide-react";
 import { DEFAULT_BLUR, type BlurBox } from "../../timeline/model";
@@ -6,7 +7,10 @@ import { Timing, timingSummary } from "../Timing";
 import { Group, More, Panel } from "../layout";
 import { MotionPanel } from "../Keyframes";
 
-export function BlurInspector({ blur, timing, local, onChange, onSeekLocal, onPause, follow }: { blur: BlurBox; timing: TimeFieldProps[]; local: number; onChange: (changes: Partial<BlurBox>, group?: string) => void; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode }) {
+export type BlurInspectorBindings = { blur: BlurBox; timing: TimeFieldProps[]; local: number; onChange: (changes: Partial<BlurBox>, group?: string) => void; onSeekLocal: (t: number) => void; onPause: () => void; follow: React.ReactNode };
+
+export function BlurInspector() {
+  const { blur, timing, local, onChange, onSeekLocal, onPause, follow } = useEditorPanel<BlurInspectorBindings>('blur');
   return <Panel id="blur" tabs={[{ id: 'hide', label: 'Hide', Icon: EyeOff }, { id: 'motion', label: 'Motion', Icon: Move, changed: Object.keys(blur.transform.keyframes ?? {}).length > 0 }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Hide" tab="hide" startOpen keywords="hide face number plate pixelate censor blur strength oval box" tip="Hide a face or number plate. Drag the box in the preview to move it." help="hide-faces-plates">

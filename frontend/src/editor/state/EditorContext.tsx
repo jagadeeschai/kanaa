@@ -3,10 +3,13 @@
  * the timeline, how to change it, pausing playback and opening the guide. Panels read it with useEditor().
  */
 import type { Photo } from '../../types/photo';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { Timeline } from '../../timeline/model';
 
+export type EditorPanelName = 'left' | 'preview' | 'toolbar' | 'inspector' | 'text' | 'clip' | 'sound' | 'caption' | 'blur' | 'project' | 'follow';
+
 export type EditorShared = {
+  panels?: Partial<Record<EditorPanelName, unknown>>;
   timeline: Timeline;
   /** Applies a new timeline; `group` merges quick successive changes into one undo step. */
   change: (next: Timeline, group?: string) => void;
@@ -25,7 +28,8 @@ export type EditorShared = {
   drawBox: (onBox: (box: [number, number, number, number]) => void) => void;
 };
 
-export const EditorContext = createContext<EditorShared | null>(null);
+export type EditorStore = Omit<EditorShared, 'timeline'> & { timeline: Timeline | null };
+export const EditorContext = createContext<EditorStore | null>(null);
 
 /** The playhead within an item that starts at `start` and lasts `length` seconds, and seeking within it. */
 export function useItemTime(start: number, length: number): { local: number; seekLocal: (t: number) => void } {
@@ -35,6 +39,27 @@ export function useItemTime(start: number, length: number): { local: number; see
 
 export function useEditor(): EditorShared {
   const shared = useContext(EditorContext);
-  if (!shared) throw new Error('useEditor needs an EditorContext.Provider with a timeline.');
-  return shared;
+  if (!shared?.timeline) throw new Error('useEditor needs an EditorContext.Provider with a timeline.');
+  return shared as EditorShared;
+}
+
+/** Reads a panel's selected state and actions from the same store as history and playback. */
+export function useEditorPanel<T>(name: EditorPanelName): T {
+  const store = useContext(EditorContext);
+  const panel = store?.panels?.[name];
+  if (panel === undefined) throw new Error('Missing editor panel: ' + name);
+  return panel as T;
+}
+
+/** A selection binds its panel data without copying timeline/history state. */
+export function InspectorBindingsProvider({ name, bindings, children }: { name: EditorPanelName; bindings: unknown; children: ReactNode }) {
+  const store = useContext(EditorContext);
+  if (!store) throw new Error('InspectorBindingsProvider needs the editor store.');
+  const value = useMemo(() => ({ ...store, panels: { ...store.panels, [name]: bindings } }), [store, name, bindings]);
+  return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
+}
+
+export function useSelection() {
+  const { selectedId, select } = useEditor();
+  return { selectedId, select };
 }
