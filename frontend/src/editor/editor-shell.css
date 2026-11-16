@@ -543,3 +543,7 @@
 .ed-quickbar .ed-icon{position:relative;width:28px;height:28px}.ed-quickbar .ed-icon:disabled{opacity:.35}
 .ed-quickbar .ed-icon::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:4px 8px;border-radius:6px;background:var(--raised);box-shadow:var(--shade2);color:var(--text);font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s}
 .ed-quickbar .ed-icon:hover::after,.ed-quickbar .ed-icon:focus-visible::after{opacity:1}
+/* Full screen: an icon with a tip (the tip as the clip actions'); "Exit" shows only while in full screen. */
+.ed-fullscreen{position:relative}.ed-fullscreen:not(.exit){width:30px;padding:0;justify-content:center}
+.ed-fullscreen::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);right:0;padding:4px 8px;border-radius:6px;background:var(--raised);box-shadow:var(--shade2);color:var(--text);font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s}
+.ed-fullscreen:hover::after,.ed-fullscreen:focus-visible::after{opacity:1}

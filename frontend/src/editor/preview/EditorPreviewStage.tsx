@@ -173,8 +173,10 @@ export function EditorPreviewStage() {
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
           <span className="ed-transport-end">
-            {!fullScreen && <ClipQuickBar sourceFor={sourceFor}/>}
-            <button className="ed-icon ed-safe-toggle" aria-pressed={fullScreen} onClick={toggleFullScreen} title={fullScreen ? 'Leave full screen (F or Esc)' : 'Full screen preview (F)'} aria-label={fullScreen ? 'Leave full screen' : 'Full screen preview'}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen ? 'Exit' : 'Full screen'}</button>
+            {!fullScreen && <ClipQuickBar sourceFor={sourceFor} playRange={(start, end) => engineRef.current?.playRange(start, end)}/>}
+            {/* An icon with its tip, like the clip actions beside it; in full screen it says Exit, so leaving is obvious. */}
+            <button className={`ed-icon ed-safe-toggle ed-fullscreen ${fullScreen ? 'exit' : ''}`} aria-pressed={fullScreen} onClick={toggleFullScreen} aria-label={t(fullScreen ? 'Leave full screen' : 'Full screen preview')}
+              data-tip={fullScreen ? `${t('Leave full screen')} · F / Esc` : `${t('Full screen preview')} · F`}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen && t('Exit')}</button>
           </span>
         </div>
       </main>);

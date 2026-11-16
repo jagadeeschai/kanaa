@@ -42,6 +42,7 @@ type Input = {
   selectedId: string | null;
   moreIds: ReadonlySet<string>;
   setError: (message: string) => void;
+  engineRef: React.MutableRefObject<{ playRange: (start: number, end: number) => void } | null>;
   ownBox: () => Box | null;
   playing: boolean;
   reframeClip: (clipId: string) => Promise<void>;
@@ -145,7 +146,7 @@ export function createEditorMenuActions(getInput: () => Input) {
   };
 
   const openItemMenu = (...args: Parameters<(id: string | null, t: number, x: number, y: number) => void>) => {
-    const { timeline, setMenu, seek, clipboard, total, fitZoom, change, mediaById, setRenamingClip, isVideo, reframeJob, reframeClip, sceneJob, splitScenes, freeze, snapshot, hasSound, detach, timelineRef, setSelectedId } = getInput();
+    const { timeline, setMenu, seek, clipboard, total, fitZoom, change, mediaById, setRenamingClip, isVideo, reframeJob, reframeClip, sceneJob, splitScenes, freeze, snapshot, hasSound, detach, timelineRef, setSelectedId, engineRef } = getInput();
     const invoke = (id: string | null, t: number, x: number, y: number) => {
     if (!timeline) return;
     const place = { x, y };
@@ -170,6 +171,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       const canFreeze = onMain && clip.freeze == null && clipItem?.media_type === 'video';
       // What every clip has, always in these places (the clipboard items above end the edit group).
       items.push(
+        { label: 'Play this clip', hint: '⇧Space', onSelect: () => { engineRef.current?.playRange(clip.start, clip.start + clipLength(clip)); } },
         // Animate: unlocks the frame and opens Motion, in one step.
         { label: 'Animate', onSelect: () => { if (clip.frame_locked) change(updateClip(timeline, id, { frame_locked: false })); setSelectedId(id); openPanelTab('clip', 'motion'); } },
         { label: 'Frame locked', checked: Boolean(clip.frame_locked), onSelect: () => change(updateClip(timeline, id, { frame_locked: !clip.frame_locked })) },

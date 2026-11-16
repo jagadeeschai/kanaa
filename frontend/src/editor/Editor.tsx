@@ -1039,7 +1039,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
   useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
-    get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; },
+    get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; }, get engineRef(): typeof engineRef { return engineRef; },
     get history(): typeof history { return history; },
     get dispatch(): typeof dispatch { return dispatch; },
     get setMenu(): typeof setMenu { return setMenu; },
