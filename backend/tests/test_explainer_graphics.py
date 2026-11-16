@@ -15,7 +15,7 @@ from app.services.cutout_service import helper
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline
-from app.services.explainer_graphics import count_value, format_count, state_at, state_count
+from app.services.explainer_graphics import count_value, format_count, render, state_at, state_count
 
 
 KINDS = ('arrow-straight', 'arrow-curved', 'circle', 'box', 'callout')
@@ -154,6 +154,20 @@ class ExplainerGraphics(unittest.TestCase):
             alpha = np.asarray(Image.open(target))[:, :, 3]
             self.assertGreater(np.count_nonzero(alpha[:, :160]), 100)
             self.assertEqual(np.count_nonzero(alpha[:, -1]), 0)
+
+
+class CountUpFits(unittest.TestCase):
+    def test_a_long_label_at_the_largest_size_stays_inside_the_frame(self):
+        import numpy as np
+        from PIL import Image
+        item = Text.model_validate({'id': 'n', 'start': 0, 'length': 3, 'text': 'n', 'style': 'plain', 'position': 'center', 'color': '#ffffff', 'size': 100,
+            'graphic': {'kind': 'count-up', 'style': 'documentary', 'from': [.5, .5], 'to': [.5, .42], 'width': .56, 'height': .34, 'line_width': .006,
+                        'count_from': 0, 'count_to': 9, 'suffix': '%', 'label': 'அமெரிக்கத் தொழிலாளர்கள் · அடுத்த 10 ஆண்டுகள் (கணிப்பு) · மிக நீளமான குறிப்பு'}})
+        for width, height in ((426, 240), (1920, 1080)):
+            with tempfile.TemporaryDirectory() as folder:
+                target = Path(folder) / 'n.png'; render(item, Format(width=width, height=height, fps=24), target, 1)
+                alpha = np.asarray(Image.open(target))[:, :, 3]; ys, xs = np.nonzero(alpha)
+                self.assertGreater(xs.min(), 0, width); self.assertLess(xs.max(), width - 1, width)
 
 
 if __name__ == '__main__':

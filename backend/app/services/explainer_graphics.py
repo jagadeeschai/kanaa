@@ -186,8 +186,16 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         font_name = 'Arima-Bold.ttf' if graphic.tamil_numerals or _tamil(number + label) else 'NotoSans-Bold.ttf'
         number_font, label_font = _font(font_name, number_size), _font('Arima-Bold.ttf' if _tamil(label) else 'NotoSans-Bold.ttf', label_size)
         number_box = draw.textbbox((0, 0), number, font=number_font); label_box = draw.textbbox((0, 0), label or ' ', font=label_font)
+        pad = max(8, round(fmt.height * .018))
+        room = fmt.width * .9 - 2 * pad
+        if max(number_box[2], label_box[2]) > room:
+            # A long label (or a big number) shrinks with its number, so the whole panel stays inside the frame.
+            factor = room / max(number_box[2], label_box[2])
+            number_size = max(8, int(number_size * factor)); label_size = max(6, int(label_size * factor))
+            number_font, label_font = _font(font_name, number_size), _font('Arima-Bold.ttf' if _tamil(label) else 'NotoSans-Bold.ttf', label_size)
+            number_box = draw.textbbox((0, 0), number, font=number_font); label_box = draw.textbbox((0, 0), label or ' ', font=label_font)
         tw = max(number_box[2], label_box[2]); th = number_box[3] - number_box[1] + (label_box[3] - label_box[1] if label else 0) + round(label_size * .35)
-        x0 = round(b[0] - tw / 2); y0 = round(b[1] - th / 2); pad = max(8, round(fmt.height * .018))
+        x0 = round(min(fmt.width - tw - pad * 2, max(pad * 2, b[0] - tw / 2))); y0 = round(min(fmt.height - th - pad * 2, max(pad * 2, b[1] - th / 2)))
         if graphic.style in ('dark-band', 'bold-colour', 'documentary'):
             fill = (12, 15, 21, 235) if graphic.style == 'dark-band' else (44, 38, 18, 240) if graphic.style == 'documentary' else (58, 70, 180, 240)
             draw.rounded_rectangle((x0-pad, y0-pad, x0+tw+pad, y0+th+pad), radius=pad, fill=fill)
