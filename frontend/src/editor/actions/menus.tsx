@@ -127,6 +127,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Chapter card', onSelect: () => addExplainerGraphic('chapter-card', at) },
       { label: 'Bar chart', onSelect: () => addExplainerGraphic('bar-chart', at) },
       { label: 'Line chart', onSelect: () => addExplainerGraphic('line-chart', at) },
+      { label: 'Pie or donut chart', onSelect: () => addExplainerGraphic('pie-chart', at) },
       'divider',
       { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
       { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },

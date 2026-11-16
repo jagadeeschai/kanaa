@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from app.services.chart_graphics import bar_geometry, line_geometry, render_bar_chart, render_line_chart
+from app.services.chart_graphics import bar_geometry, line_geometry, pie_geometry, pie_percentages, render_bar_chart, render_line_chart, render_pie_chart
 from app.services.explainer_graphics import state_count
 from app.services.timeline_schema import Format, Text
 
@@ -22,6 +22,13 @@ def line_item(labels=None):
     return Text.model_validate({'id': 'line', 'start': 0, 'length': 3, 'text': 'Line chart', 'style': 'plain', 'position': 'center', 'color': '#ffffff', 'size': 44,
         'enter': {'preset': 'reveal', 'duration': 1.2}, 'graphic': {'kind': 'line-chart', 'style': 'documentary', 'from': [.5,.5], 'to': [.5,.5], 'width': .9, 'height': .78, 'line_width': .006,
         'data': [{'label': label, 'value': value} for label,value in zip(labels,(10,30,20,40))], 'show_values': True}})
+
+
+def pie_item(labels=None):
+    labels=labels or ['கல்வி','சுகாதாரம்','போக்குவரத்து']
+    return Text.model_validate({'id':'pie','start':0,'length':3,'text':'Pie chart','style':'plain','position':'center','color':'#ffffff','size':44,
+        'enter':{'preset':'reveal','duration':1.2},'graphic':{'kind':'pie-chart','style':'documentary','from':[.5,.5],'to':[.5,.5],'width':.9,'height':.78,'line_width':.006,
+        'data':[{'label':label,'value':value} for label,value in zip(labels,(1,1,1))],'donut':True,'show_values':True}})
 
 
 class ChartGraphics(unittest.TestCase):
@@ -74,6 +81,24 @@ class ChartGraphics(unittest.TestCase):
     def test_line_schema_rejects_more_than_twelve_points(self):
         data=line_item().model_dump(by_alias=True); data['graphic']['data']=[{'label':str(n),'value':n} for n in range(13)]
         with self.assertRaisesRegex(ValueError,'up to 12 points'): Text.model_validate(data)
+
+    def test_pie_angles_and_rounded_percentages_are_exact(self):
+        rows=pie_item().graphic.data; slices=pie_geometry(rows)
+        self.assertAlmostEqual(sum(slice_.end-slice_.start for slice_ in slices),360)
+        self.assertEqual(pie_percentages(rows),[34,33,33]); self.assertEqual(sum(slice_.percent for slice_ in slices),100)
+        self.assertEqual(slices[0].start,-90); self.assertEqual(slices[-1].end,270)
+        self.assertEqual(state_count(pie_item(),30),37)
+
+    def test_pie_schema_rejects_too_many_or_nonpositive_slices(self):
+        data=pie_item().model_dump(by_alias=True); data['graphic']['data']=[{'label':str(n),'value':n+1} for n in range(7)]
+        with self.assertRaisesRegex(ValueError,'up to 6 slices'): Text.model_validate(data)
+        data['graphic']['data']=[{'label':'bad','value':0}]
+        with self.assertRaisesRegex(ValueError,'greater than zero'): Text.model_validate(data)
+
+    def test_pie_long_tamil_legend_stays_inside_minimum_frame(self):
+        labels=['மிகநீளமானகல்வித்துறைப்பெயர்','மிகநீளமானசுகாதாரத்துறைப்பெயர்','மிகநீளமானபோக்குவரத்துப்பெயர்']
+        image=np.asarray(render_pie_chart(pie_item(labels),Format(width=426,height=240,fps=24),1)); ys,xs=np.nonzero(image[:,:,3])
+        self.assertGreater(len(xs),100); self.assertGreaterEqual(xs.min(),3); self.assertLessEqual(xs.max(),422); self.assertGreaterEqual(ys.min(),3); self.assertLessEqual(ys.max(),236)
 
 
 if __name__ == '__main__': unittest.main()

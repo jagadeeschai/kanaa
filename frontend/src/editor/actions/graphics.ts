@@ -41,7 +41,7 @@ export function createGraphicActions(getInput: () => Input) {
     const id = newId();
     const text: TextItem = { id, start: at, length: 3, text: label, style: 'plain', position: 'center', color: colour, size: 44,
       enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
-      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : ['count-up', 'chapter-card', 'bar-chart', 'line-chart'].includes(graphic.kind) ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
+      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : ['count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart'].includes(graphic.kind) ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
     change(addGraphic(current, text, newId()));
     setSelectedId(id);
     setTimeout(() => engineRef.current?.seek(at + 1), 0);
@@ -69,6 +69,11 @@ export function createGraphicActions(getInput: () => Input) {
     if (kind === 'line-chart') {
       place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .76, height: .62, line_width: .007,
         data: [{ label: '2022', value: 42 }, { label: '2023', value: 68 }, { label: '2024', value: 57 }, { label: '2025', value: 84 }], show_values: true }, 'Line chart', '#ffffff', now());
+      return;
+    }
+    if (kind === 'pie-chart') {
+      place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .74, height: .64, line_width: .006,
+        data: [{ label: 'கல்வி', value: 42 }, { label: 'சுகாதாரம்', value: 31 }, { label: 'போக்குவரத்து', value: 27 }], donut: true, show_values: true }, 'Pie chart', '#ffffff', now());
       return;
     }
     const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));

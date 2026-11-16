@@ -15,7 +15,7 @@ MAX_STATES = 90
 
 def state_count(item: Text, fps: int) -> int:
     """Count-up gets roughly one picture per entrance frame; strokes keep their proven 24 states."""
-    if item.graphic and item.graphic.kind in ('count-up', 'bar-chart', 'line-chart') and item.enter and item.enter.preset == 'reveal':
+    if item.graphic and item.graphic.kind in ('count-up', 'bar-chart', 'line-chart', 'pie-chart') and item.enter and item.enter.preset == 'reveal':
         duration = max(1e-6, min(item.length, item.enter.duration))
         return min(MAX_STATES, max(2, round(duration * fps) + 1))
     return STATES
@@ -111,9 +111,9 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind in ('bar-chart', 'line-chart'):
-        from app.services.chart_graphics import render_bar_chart, render_line_chart
-        image = render_bar_chart(item, fmt, progress) if graphic.kind == 'bar-chart' else render_line_chart(item, fmt, progress)
+    if graphic.kind in ('bar-chart', 'line-chart', 'pie-chart'):
+        from app.services.chart_graphics import render_bar_chart, render_line_chart, render_pie_chart
+        image = render_bar_chart(item, fmt, progress) if graphic.kind == 'bar-chart' else render_line_chart(item, fmt, progress) if graphic.kind == 'line-chart' else render_pie_chart(item, fmt, progress)
     elif graphic.kind == 'chapter-card':
         full = graphic.card_mode == 'full'; q = progress
         if full:
