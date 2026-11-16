@@ -4,7 +4,7 @@ import type { GraphicKind, GraphicStyle, TextItem } from '../../timeline/model';
 import { Timing, timingSummary } from '../Timing';
 import type { TimeFieldProps } from '../controls';
 import { ValueSlider } from '../controls';
-import { Group, Panel } from '../layout';
+import { Group, More, Panel } from '../layout';
 import { AnimationPicker, Chips } from './parts';
 import { useEffect, useState } from 'react';
 
@@ -12,6 +12,7 @@ const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
   { id: 'circle', label: 'Circle' }, { id: 'box', label: 'Rounded box' }, { id: 'callout', label: 'Callout label' }, { id: 'spotlight', label: 'Spotlight' },
   { id: 'lower-third', label: 'Lower third' },
+  { id: 'count-up', label: 'Count-up number' },
 ];
 const STYLES: { id: GraphicStyle; label: string }[] = [
   { id: 'clean', label: 'Clean white' }, { id: 'hand-drawn', label: 'Hand-drawn' },
@@ -37,7 +38,8 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
           onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
       )}
       {graphic.kind === 'lower-third' && <><label className="ed-field"><span>{t('Name')}</span><input value={text.text} maxLength={120} onChange={(event) => event.target.value.trim() && onChange({ text: event.target.value }, `graphic-name-${text.id}`)}/></label><label className="ed-field"><span>{t('Role')}</span><input value={graphic.role ?? ''} maxLength={160} onChange={(event) => onChange({ graphic: { ...graphic, role: event.target.value } }, `graphic-role-${text.id}`)}/></label></>}
-      <Chips label="Style" options={graphic.kind === 'lower-third' ? LOWER_STYLES : STYLES} value={graphic.style} onPick={setStyle}/>
+      {graphic.kind === 'count-up' && <><label className="ed-field"><span>{t('From')}</span><input type="number" value={graphic.count_from ?? 0} onChange={(event) => onChange({ graphic: { ...graphic, count_from: Number(event.target.value) } }, `graphic-count-from-${text.id}`)}/></label><label className="ed-field"><span>{t('To')}</span><input type="number" value={graphic.count_to ?? 2000} onChange={(event) => onChange({ graphic: { ...graphic, count_to: Number(event.target.value) } }, `graphic-count-to-${text.id}`)}/></label><label className="ed-field"><span>{t('Label')}</span><input value={graphic.label ?? ''} maxLength={120} onChange={(event) => onChange({ graphic: { ...graphic, label: event.target.value } }, `graphic-count-label-${text.id}`)}/></label><More><label className="ed-field"><span>{t('Prefix')}</span><input value={graphic.prefix ?? ''} maxLength={20} onChange={(event) => onChange({ graphic: { ...graphic, prefix: event.target.value } })}/></label><label className="ed-field"><span>{t('Suffix')}</span><input value={graphic.suffix ?? ''} maxLength={20} onChange={(event) => onChange({ graphic: { ...graphic, suffix: event.target.value } })}/></label><label className="ed-check"><input type="checkbox" checked={graphic.indian_grouping ?? false} onChange={(event) => onChange({ graphic: { ...graphic, indian_grouping: event.target.checked } })}/>{t('Indian grouping')}</label><label className="ed-check"><input type="checkbox" checked={graphic.tamil_numerals ?? false} onChange={(event) => onChange({ graphic: { ...graphic, tamil_numerals: event.target.checked } })}/>{t('Tamil numerals')}</label></More></>}
+      <Chips label="Style" options={graphic.kind === 'lower-third' || graphic.kind === 'count-up' ? LOWER_STYLES : STYLES} value={graphic.style} onPick={setStyle}/>
       <label className="ed-color"><span>{t('Colour')}</span><input type="color" aria-label="Graphic colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `graphic-colour-${text.id}`)}/></label>
       <ValueSlider label="Line width" value={graphic.line_width} min={.001} max={.025} step={.001} defaultValue={.006} unit="%" factor={100} decimals={1} onChange={(line_width, group) => onChange({ graphic: { ...graphic, line_width } }, group)}/>
       {graphic.kind === 'spotlight' && <ValueSlider label="Darken the rest" value={graphic.dim ?? .6} min={.1} max={.95} step={.05} defaultValue={.6} unit="%" factor={100} onChange={(dim, group) => onChange({ graphic: { ...graphic, dim } }, group)}/>}

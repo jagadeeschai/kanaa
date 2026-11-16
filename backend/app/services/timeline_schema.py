@@ -371,7 +371,7 @@ class TitlePin(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -383,6 +383,13 @@ class ExplainerGraphic(Strict):
     # Glow outline: the object's edge, found once by Click to choose, as frame shares around `to`.
     shape: Optional[List[Tuple[float, float]]] = Field(default=None, min_length=3, max_length=200)
     role: Optional[str] = Field(default=None, max_length=160)
+    count_from: int = Field(default=0, ge=-999_999_999_999, le=999_999_999_999)
+    count_to: int = Field(default=2000, ge=-999_999_999_999, le=999_999_999_999)
+    label: Optional[str] = Field(default=None, max_length=120)
+    prefix: str = Field(default='', max_length=20)
+    suffix: str = Field(default='', max_length=20)
+    indian_grouping: bool = False
+    tamil_numerals: bool = False
 
     @field_validator('from_', 'to')
     @classmethod

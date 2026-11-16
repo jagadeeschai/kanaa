@@ -36,6 +36,7 @@ export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]):
     return [(left + right) / 2 + dx, (top + bottom) / 2 + dy, Math.max(.03, right - left), Math.max(.03, bottom - top)];
   }
   if (graphic.kind === 'lower-third') return [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
+  if (graphic.kind === 'count-up') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   return [graphic.to[0] + dx, graphic.to[1] + dy, .12, .12];  // An arrow or callout follows what its point is on.
 }

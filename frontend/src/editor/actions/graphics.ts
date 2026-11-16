@@ -53,6 +53,10 @@ export function createGraphicActions(getInput: () => Input) {
       place({ kind, style: 'clean', from: [.07, .78], to: [.07, .78], width: .42, height: .14, line_width: .006, role: 'Role or organisation' }, 'Name', '#ffffff', now());
       return;
     }
+    if (kind === 'count-up') {
+      place({ kind, style: 'clean', from: [.5, .5], to: [.5, .5], width: .34, height: .2, line_width: .006, count_from: 0, count_to: 2000, label: 'years', prefix: '', suffix: '', indian_grouping: false, tamil_numerals: false }, 'Count-up number', '#ffffff', now());
+      return;
+    }
     const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));
     // Keep a useful arrow length at every edge instead of clamping a fixed top-left tail into a tiny line.
     const tailX = x < .28 ? Math.min(.96, x + .2) : x - .2;

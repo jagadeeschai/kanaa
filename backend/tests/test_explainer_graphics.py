@@ -15,7 +15,7 @@ from app.services.cutout_service import helper
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline
-from app.services.explainer_graphics import state_at, state_count
+from app.services.explainer_graphics import count_value, format_count, state_at, state_count
 
 
 KINDS = ('arrow-straight', 'arrow-curved', 'circle', 'box', 'callout')
@@ -66,6 +66,20 @@ class ExplainerGraphics(unittest.TestCase):
                 self.assertGreater(np.count_nonzero(np.asarray(Image.open(target))[:, :, 3]), 100)
             lower = Text.model_validate(base)
             self.assertGreater(state_at(lower, .7, 30), state_at(lower, 2.8, 30))
+
+    def test_count_up_easing_formatting_and_exact_end(self):
+        data = item('callout').model_dump(by_alias=True)
+        data.update({'id': 'count', 'length': 3, 'text': 'Count-up number', 'enter': {'preset': 'reveal', 'duration': 2}})
+        data['graphic'].update({'kind': 'count-up', 'count_from': 0, 'count_to': 200000, 'label': 'ஆண்டுகள்', 'prefix': '₹', 'suffix': '+', 'indian_grouping': True, 'tamil_numerals': True})
+        count = Text.model_validate(data)
+        self.assertEqual(format_count(200000, True, False), '2,00,000')
+        self.assertEqual(format_count(200000, True, True), '௨,௦௦,௦௦௦')
+        self.assertEqual(count_value(count.graphic, 0), 0)
+        self.assertEqual(count_value(count.graphic, 1), 200000)
+        self.assertGreater(state_at(count, .5, 30), round((.5 / 2) * (state_count(count, 30) - 1)))
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'count.png'; render_text_image(count, Format(width=480, height=270, fps=30), target)
+            self.assertGreater(np.count_nonzero(np.asarray(Image.open(target))[:, :, 3]), 100)
 
     def test_reference_and_gpu_export_match_staged_stroke(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'KANAA_GPU_RENDER': '0'}):

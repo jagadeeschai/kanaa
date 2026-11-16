@@ -69,6 +69,27 @@ def _tamil(text: str) -> bool:
     return any('\u0b80' <= char <= '\u0bff' for char in text)
 
 
+def format_count(value: int, indian: bool = False, tamil: bool = False) -> str:
+    """Format an exact integer with Western or lakh/crore grouping and optional Tamil digits."""
+    sign = '-' if value < 0 else ''
+    digits = str(abs(value))
+    if indian and len(digits) > 3:
+        tail, head = digits[-3:], digits[:-3]
+        groups = []
+        while head:
+            groups.insert(0, head[-2:]); head = head[:-2]
+        digits = ','.join(groups + [tail])
+    elif len(digits) > 3:
+        digits = f'{abs(value):,}'
+    result = sign + digits
+    return result.translate(str.maketrans('0123456789', '௦௧௨௩௪௫௬௭௮௯')) if tamil else result
+
+
+def count_value(graphic, progress: float) -> int:
+    start, end = graphic.count_from, graphic.count_to
+    return end if progress >= 1 else round(start + (end - start) * min(1, max(0, progress)))
+
+
 def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
     graphic = item.graphic
     assert graphic is not None
@@ -90,7 +111,23 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'lower-third':
+    if graphic.kind == 'count-up':
+        value = count_value(graphic, progress)
+        number = f'{graphic.prefix}{format_count(value, graphic.indian_grouping, graphic.tamil_numerals)}{graphic.suffix}'
+        label = graphic.label or ''
+        number_size = max(22, round(item.size * 1.45 * fmt.height / 1080)); label_size = max(12, round(number_size * .42))
+        font_name = 'Arima-Bold.ttf' if graphic.tamil_numerals or _tamil(number + label) else 'NotoSans-Bold.ttf'
+        number_font, label_font = _font(font_name, number_size), _font('Arima-Bold.ttf' if _tamil(label) else 'NotoSans-Bold.ttf', label_size)
+        number_box = draw.textbbox((0, 0), number, font=number_font); label_box = draw.textbbox((0, 0), label or ' ', font=label_font)
+        tw = max(number_box[2], label_box[2]); th = number_box[3] - number_box[1] + (label_box[3] - label_box[1] if label else 0) + round(label_size * .35)
+        x0 = round(b[0] - tw / 2); y0 = round(b[1] - th / 2); pad = max(8, round(fmt.height * .018))
+        if graphic.style in ('dark-band', 'bold-colour', 'documentary'):
+            fill = (12, 15, 21, 235) if graphic.style == 'dark-band' else (245, 193, 27, 240) if graphic.style == 'documentary' else colour[:-1] + (240,)
+            draw.rounded_rectangle((x0-pad, y0-pad, x0+tw+pad, y0+th+pad), radius=pad, fill=fill)
+        ink = (20, 20, 20, 255) if graphic.style in ('documentary', 'bold-colour') else colour
+        draw.text((x0 + (tw-number_box[2])/2, y0-number_box[1]), number, font=number_font, fill=ink)
+        if label: draw.text((x0 + (tw-label_box[2])/2, y0 + number_box[3]-number_box[1] + round(label_size*.35)-label_box[1]), label, font=label_font, fill=ink)
+    elif graphic.kind == 'lower-third':
         x0 = round(graphic.to[0] * fmt.width); y0 = round(graphic.to[1] * fmt.height)
         panel_w = round(graphic.width * fmt.width); panel_h = round(graphic.height * fmt.height)
         x0 = min(fmt.width - panel_w - width * 2, max(width * 2, x0)); y0 = min(fmt.height - panel_h - width * 2, max(width * 2, y0))
