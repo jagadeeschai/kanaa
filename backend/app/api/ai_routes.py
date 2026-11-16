@@ -210,14 +210,16 @@ def video_from_text(data: TextToVideoRequest):
 class RemovePeopleRequest(BaseModel):
     people: list[int] = Field(min_length=1, max_length=6)
     quality: Literal['low', 'medium', 'high'] = 'medium'
+    method: Literal['local', 'ai'] = 'local'  # On this Mac (LaMa), or the image provider.
 
 
 @router.post('/photos/{identifier}/people')
 def find_people_in_picture(identifier: int):
     """Remove person, step 1: each person in the picture, numbered, with a preview to choose from."""
     from app.services.remove_person import find_people
+    from app.services.local_fill import available
     try:
-        return find_people(identifier)
+        return {**find_people(identifier), 'local': available()}
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -237,6 +239,6 @@ def remove_people(identifier: int, data: RemovePeopleRequest):
     """Remove person, step 2: one job that fills where the chosen people were; its result names the new picture."""
     from app.services.remove_person import start_remove
     try:
-        return {'job_id': start_remove(identifier, data.people, data.quality)}
+        return {'job_id': start_remove(identifier, data.people, data.quality, data.method)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

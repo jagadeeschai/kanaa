@@ -61,7 +61,7 @@ class RemovePerson(unittest.TestCase):
             sent.update(size=size, holed=Image.open(io.BytesIO(mask)))
             buffer = io.BytesIO(); Image.new('RGB', (1536, 1024), (0, 200, 0)).save(buffer, 'PNG'); return buffer.getvalue()
         with mock.patch.object(remove_person, 'request_fill', provider), mock.patch.object(remove_person, 'index_media', return_value={'id': 9}) as index:
-            remove_person.start_remove(4, [1])
+            remove_person.start_remove(4, [1], method='ai')
             self.assertEqual(self.jobs[0](lambda: False), {'progress': 100, 'media_id': 9})
         self.assertEqual(sent['size'], '1536x1024')
         alpha = np.asarray(sent['holed'].split()[-1])
@@ -73,13 +73,35 @@ class RemovePerson(unittest.TestCase):
         self.assertTrue((result[:, 400:] == original[:, 400:]).all())  # Everything else exactly as it was.
         self.assertEqual(index.call_args.args[1], 'AI scene 8 (person removed).png')
 
+    def test_on_this_mac_fills_only_the_chosen_person_without_a_key(self):
+        from app.services import local_fill
+        remove_person.find_people(4, self.finder)
+
+        class FakeModel:  # Paints its whole input flat green; only the masked part may reach the result.
+            def run(self, _, inputs):
+                return [np.full((1, 3, 512, 512), [[[0.]], [[200.]], [[0.]]], np.float32)]
+        with mock.patch.object(remove_person, 'read_settings', return_value={'api_key': ''}), mock.patch.object(local_fill, 'available', return_value=True), \
+             mock.patch.object(local_fill, '_model', return_value=FakeModel()), mock.patch.object(remove_person, 'index_media', return_value={'id': 10}) as index:
+            remove_person.start_remove(4, [1])
+            self.assertEqual(self.jobs[0](lambda: False)['media_id'], 10)
+        result = np.asarray(Image.open(index.call_args.args[0])).astype(int)
+        original = np.asarray(Image.open(self.picture)).astype(int)
+        self.assertEqual(result[200, 90].tolist(), [0, 200, 0])
+        self.assertTrue((result[:, 400:] == original[:, 400:]).all())
+
+    def test_on_this_mac_needs_the_model(self):
+        from app.services import local_fill
+        remove_person.find_people(4, self.finder)
+        with mock.patch.object(local_fill, 'available', return_value=False), self.assertRaises(ValueError):
+            remove_person.start_remove(4, [1])
+
     def test_refuses_nothing_chosen_unknown_people_videos_and_no_key(self):
         remove_person.find_people(4, self.finder)
         for numbers in ([], [5]):
             with self.assertRaises(ValueError):
                 remove_person.start_remove(4, numbers)
         with mock.patch.object(remove_person, 'read_settings', return_value={'api_key': ''}), self.assertRaises(ValueError):
-            remove_person.start_remove(4, [1])
+            remove_person.start_remove(4, [1], method='ai')
         self.row['media_type'] = 'video'
         with self.assertRaises(ValueError):
             remove_person.find_people(4, self.finder)

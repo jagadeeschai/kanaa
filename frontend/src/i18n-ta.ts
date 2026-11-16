@@ -70,6 +70,12 @@ export const TAMIL: Record<string, string> = {
 
   'Remove person': 'நபரை நீக்கு', 'Remove person…': 'நபரை நீக்கு…', 'Filling where they were…': 'அவர்கள் இருந்த இடம் நிரப்பப்படுகிறது…', 'Looking for people…': 'நபர்களைத் தேடுகிறது…', 'The picture without them shows here': 'அவர்கள் இல்லாத படம் இங்கே தெரியும்', 'Without them': 'அவர்கள் இல்லாமல்', 'Choose who to remove. The rest of the picture stays exactly as it is.': 'யாரை நீக்க வேண்டும் என்று தேர்ந்தெடுங்கள். படத்தின் மற்ற பகுதி அப்படியே இருக்கும்.', 'Person {number}': 'நபர் {number}', 'No people found in this picture.': 'இந்தப் படத்தில் நபர்கள் இல்லை.', 'The picture goes to the image AI in AI settings, and uses its credits.': 'படம் AI அமைப்புகளில் உள்ள பட AI-க்குச் சென்று அதன் கடன்களைப் பயன்படுத்தும்.',
 
+  'Fill with': 'இதைக் கொண்டு நிரப்பு', 'This Mac · free': 'இந்த Mac · இலவசம்', 'AI service': 'AI சேவை',
+  'Free and private: a few seconds on this Mac. Best for fields, walls, sky and water.': 'இலவசம், தனிப்பட்டது: இந்த Mac-இல் சில நொடிகள். வயல், சுவர், வானம், நீருக்குச் சிறந்தது.',
+  'The fill model for this Mac is not installed. Run ./install-fill.sh in the Kanaa folder.': 'இந்த Mac-க்கான நிரப்பு மாதிரி நிறுவப்படவில்லை. Kanaa கோப்புறையில் ./install-fill.sh-ஐ இயக்கவும்.',
+  'Uses your image AI credits. Better when the person hides a lot.': 'உங்கள் பட AI கடன்களைப் பயன்படுத்தும். நபர் அதிகம் மறைக்கும்போது சிறந்தது.',
+  'Filled on this Mac: nothing leaves it, and it costs nothing.': 'இந்த Mac-இலேயே நிரப்பப்படும்: எதுவும் வெளியே செல்லாது, கட்டணமும் இல்லை.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

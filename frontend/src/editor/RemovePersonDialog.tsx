@@ -1,6 +1,6 @@
 /**
- * Remove person: right-click a picture, pick the people to take out (each is outlined and numbered), and the AI fills
- * where they were with what would be behind them. Every other pixel stays the original's. See before and after,
+ * Remove person: right-click a picture, pick the people to take out (each is outlined and numbered), and where they were
+ * is filled with what would be behind them: on this Mac (LaMa, free) or by the image AI service. Every other pixel stays the original's. See before and after,
  * then Replace in timeline, Try again, or Keep both. The picture itself is never changed.
  */
 import { useContext, useEffect, useState } from 'react';
@@ -21,7 +21,8 @@ export function openRemovePerson(target: Target) {
 export function RemovePersonHost() {
   const store = useContext(EditorContext);
   const [target, setTarget] = useState<Target | null>(null);
-  const [people, setPeople] = useState<{ count: number; preview: string } | null>(null);
+  const [people, setPeople] = useState<{ count: number; preview: string; local: boolean } | null>(null);
+  const [method, setMethod] = useState<'local' | 'ai'>('local');
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState<number | null>(null);
   const [result, setResult] = useState<number | null>(null);
@@ -30,7 +31,7 @@ export function RemovePersonHost() {
     const open = (event: Event) => {
       const next = (event as CustomEvent<Target>).detail;
       setTarget(next); setPeople(null); setChosen(new Set()); setResult(null); setError(null); setBusy(null);
-      findPeople(next.mediaId).then((found) => { setPeople(found); if (found.count === 1) setChosen(new Set([1])); })
+      findPeople(next.mediaId).then((found) => { setPeople(found); setMethod(found.local ? 'local' : 'ai'); if (found.count === 1) setChosen(new Set([1])); })
         .catch((problem) => setError((problem as Error).message));
     };
     window.addEventListener(OPEN, open);
@@ -42,7 +43,7 @@ export function RemovePersonHost() {
   const run = async () => {
     setError(null); setResult(null); setBusy(0);
     try {
-      const { job_id } = await startRemovePeople(target.mediaId, [...chosen].sort());
+      const { job_id } = await startRemovePeople(target.mediaId, [...chosen].sort(), method);
       const done = await waitForJob<{ media_id: number }>(job_id, (progress) => setBusy(progress));
       store.addMedia(await getPhoto(done.media_id));
       setResult(done.media_id);
@@ -66,9 +67,14 @@ export function RemovePersonHost() {
       {people && (people.count ? <>
         <p className="ed-tip">{t('Choose who to remove. The rest of the picture stays exactly as it is.')}</p>
         <div className="ed-chips" role="group" aria-label={t('People')}>{Array.from({ length: people.count }, (_, k) => k + 1).map((number) => <button key={number} className={chosen.has(number) ? 'on' : ''} aria-pressed={chosen.has(number)} disabled={busy !== null} onClick={() => toggle(number)}>{t('Person {number}', { number })}</button>)}</div>
+        <h3 className="ed-sub">{t('Fill with')}</h3>
+        <div className="ed-chips" role="group" aria-label={t('Fill with')}>
+          <button className={method === 'local' ? 'on' : ''} aria-pressed={method === 'local'} disabled={!people.local || busy !== null} title={people.local ? t('Free and private: a few seconds on this Mac. Best for fields, walls, sky and water.') : t('The fill model for this Mac is not installed. Run ./install-fill.sh in the Kanaa folder.')} onClick={() => setMethod('local')}>{t('This Mac · free')}</button>
+          <button className={method === 'ai' ? 'on' : ''} aria-pressed={method === 'ai'} disabled={busy !== null} title={t('Uses your image AI credits. Better when the person hides a lot.')} onClick={() => setMethod('ai')}>{t('AI service')}</button>
+        </div>
       </> : <p className="ed-tip">{t('No people found in this picture.')}</p>)}
       {error && <p className="ed-error" role="alert">{error}</p>}
-      <p className="ed-tip">{t('The picture goes to the image AI in AI settings, and uses its credits.')}</p>
+      <p className="ed-tip">{method === 'local' ? t('Filled on this Mac: nothing leaves it, and it costs nothing.') : t('The picture goes to the image AI in AI settings, and uses its credits.')}</p>
       <div className="ed-ai-edit-actions">
         {result !== null && <button className="ed-button primary" onClick={replace}>{t('Replace in timeline')}</button>}
         <button className={`ed-button ${result === null ? 'primary' : ''}`} disabled={busy !== null || !chosen.size} onClick={() => void run()}>{result === null ? t('Remove') : t('Try again')}</button>

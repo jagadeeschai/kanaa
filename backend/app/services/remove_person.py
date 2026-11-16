@@ -2,7 +2,7 @@
 
 1. Find: Apple Vision's person finder (the instance_mask helper the cut-outs use) outlines each person in the picture.
 2. Mask: the chosen people, grown a little so no edge or shadow fringe is left.
-3. Fill: the image provider's edit request with that mask fills only the masked area.
+3. Fill: on this Mac with LaMa (local_fill.py, free, offline), or by the image provider's masked edit request.
 4. Keep: outside the mask the original pixels are pasted back, so only the person's place changes.
 The original picture is never changed; the result is a new picture beside it.
 """
@@ -141,15 +141,19 @@ def blend(original: Image.Image, filled: Image.Image, mask: Image.Image) -> Imag
     return Image.composite(filled, original.convert('RGB'), soft)
 
 
-def start_remove(media_id: int, numbers: list[int], quality: str = 'medium') -> str:
+def start_remove(media_id: int, numbers: list[int], quality: str = 'medium', method: str = 'local') -> str:
+    """`method`: 'local' fills on this Mac (LaMa), 'ai' with the image provider."""
+    from app.services import local_fill
     item = dict(get_media(media_id))
     if item['media_type'] != 'image':
         raise ValueError('Remove person works on pictures.')
     if not numbers:
         raise ValueError('Choose at least one person.')
+    if method == 'local' and not local_fill.available():
+        raise ValueError('The fill model for this Mac is not installed: run ./install-fill.sh in the Kanaa folder, or choose the AI service.')
     config = read_settings()
-    if not config['api_key']:
-        raise ValueError('Add an API key in AI settings before removing people.')
+    if method == 'ai' and not config['api_key']:
+        raise ValueError('Add an API key in AI settings before removing people with the AI service.')
     source = Path(item['absolute_path'])
     name = Path(item.get('filename') or 'picture').stem[:60]
     with Image.open(source) as opened:
@@ -163,6 +167,12 @@ def start_remove(media_id: int, numbers: list[int], quality: str = 'medium') -> 
         with Image.open(source) as opened:
             original = opened.convert('RGB')
         mask = chosen_mask(source, numbers, original.size)
+        if method == 'local':
+            update_job(job_id, phase='Filling on this Mac', progress=30)
+            filled = local_fill.fill(original, mask)
+            if should_cancel():
+                raise JobCancelled()
+            return save(blend(original, filled, mask))
         send_w, send_h = (int(v) for v in size.split('x'))
         sent = original.resize((send_w, send_h), Image.LANCZOS)
         # The provider's mask: the picture with the area to paint made transparent.
@@ -174,10 +184,13 @@ def start_remove(media_id: int, numbers: list[int], quality: str = 'medium') -> 
         filled = Image.open(io.BytesIO(asyncio.run(request_fill(config, pictures[0], pictures[1], size, quality, should_cancel))))
         if should_cancel():
             raise JobCancelled()
+        return save(blend(original, filled, mask))
+
+    def save(result: Image.Image) -> dict:
         target = settings.data_dir / 'media' / f'people-removed-{uuid.uuid4().hex}.png'
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            blend(original, filled, mask).save(target)
+            result.save(target)
             media = index_media(target, f'{name} (person removed).png', folder=item.get('folder'))
         except BaseException:
             target.unlink(missing_ok=True)
