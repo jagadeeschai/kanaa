@@ -146,7 +146,10 @@ export function createEditorMenuActions(getInput: () => Input) {
 
   /** Right-click a main-track clip of someone: put them on one of the project's pictures or videos, keyed in one step. */
   const virtualBackgroundItem = (clip: Clip, media: Photo[], mediaById: Map<number, Photo>) => {
-    const choices = media.filter((item) => (item.media_type === 'image' || item.media_type === 'video') && item.id !== clip.media_id).slice(-12).reverse();
+    // Newest first, one entry per name (an edited copy often keeps its original's name).
+    const seen = new Set<string>();
+    const choices = media.filter((item) => (item.media_type === 'image' || item.media_type === 'video') && item.id !== clip.media_id).reverse()
+      .filter((item) => !seen.has(item.filename) && Boolean(seen.add(item.filename))).slice(0, 12);
     const apply = async (item: Photo) => {
       const { timelineRef, change, setSelectedId, setError } = getInput();
       let screen: string | null = null;
