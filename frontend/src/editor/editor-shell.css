@@ -513,3 +513,5 @@
 .ed-media-row{display:flex;gap:6px;padding:8px 0 10px;border-bottom:1px solid var(--hairline);margin-bottom:8px}.ed-media-row>*{flex:1;min-width:0}.ed-media-row .ed-button{width:100%;padding:0 6px;gap:4px;font-size:11.5px;white-space:nowrap;overflow:hidden}
 .ed-chips button>svg{display:inline-block;vertical-align:-2px;margin-right:3px}
 .ed-chips-add button{display:inline-flex;align-items:center;flex-direction:row}
+/* Click to choose: the picture is the control. */
+.ed-click-pick{cursor:crosshair}

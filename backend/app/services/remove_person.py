@@ -30,7 +30,7 @@ FIND_SIDE = 1024  # The finder sees the picture at most this big; masks are scal
 GROW = 0.012  # Of the picture's short side: the mask is grown this much to take edges and fringes too.
 FEATHER = 0.004  # Of the short side: the soft edge where the fill meets the original.
 SIZES = {'portrait': '1024x1536', 'square': '1024x1024', 'landscape': '1536x1024'}
-KINDS = ('people', 'objects')
+KINDS = ('people', 'objects', 'clicks')  # clicks: an outline drawn by clicking (click_select.py), one choice.
 INSTRUCTION = ('Remove everything in the masked area completely, including its shadow, and fill that area with '
                'the background that would naturally be behind them, matching the surrounding scene, light and perspective. '
                'Do not add any new people or objects.')
@@ -47,7 +47,7 @@ def _finder() -> list[str]:
 
 def find_people(media_id: int, finder: list[str] | None = None, kind: str = 'people') -> dict:
     """Each person (or each thing) in the picture, numbered from 1, with a preview where each is tinted and numbered. Cached."""
-    if kind not in KINDS:
+    if kind not in ('people', 'objects'):  # A clicked outline is made by click_select, not looked for.
         raise ValueError('Look for people or things.')
     item = dict(get_media(media_id))
     if item['media_type'] != 'image':

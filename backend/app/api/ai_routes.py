@@ -211,7 +211,7 @@ class RemovePeopleRequest(BaseModel):
     people: list[int] = Field(min_length=1, max_length=6)
     quality: Literal['low', 'medium', 'high'] = 'medium'
     method: Literal['local', 'ai'] = 'local'  # On this Mac (LaMa), or the image provider.
-    kind: Literal['people', 'objects'] = 'people'
+    kind: Literal['people', 'objects', 'clicks'] = 'people'
 
 
 @router.post('/photos/{identifier}/people')
@@ -220,13 +220,14 @@ def find_people_in_picture(identifier: int, kind: Literal['people', 'objects'] =
     from app.services.remove_person import find_people
     from app.services.local_fill import available
     try:
-        return {**find_people(identifier, kind=kind), 'local': available()}
+        from app.services.click_select import available as can_click
+        return {**find_people(identifier, kind=kind), 'local': available(), 'click': can_click()}
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @router.get('/photos/{identifier}/people/preview')
-def people_preview(identifier: int, kind: Literal['people', 'objects'] = 'people'):
+def people_preview(identifier: int, kind: Literal['people', 'objects', 'clicks'] = 'people'):
     from fastapi.responses import FileResponse
     from app.services.remove_person import preview_path
     path = preview_path(identifier, kind)
@@ -241,5 +242,27 @@ def remove_people(identifier: int, data: RemovePeopleRequest):
     from app.services.remove_person import start_remove
     try:
         return {'job_id': start_remove(identifier, data.people, data.quality, data.method, data.kind)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class ClickPoint(BaseModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    keep: bool = True
+
+
+class OutlineRequest(BaseModel):
+    points: list[ClickPoint] = Field(min_length=1, max_length=20)
+
+
+@router.post('/photos/{identifier}/outline')
+def outline_by_clicks(identifier: int, data: OutlineRequest):
+    """Click to choose: outlines what was clicked (MobileSAM) as Remove's one choice; returns a tinted preview."""
+    from app.services.click_select import available, outline
+    if not available():
+        raise HTTPException(409, 'Click to choose is not installed: run ./install-fill.sh in the Kanaa folder.')
+    try:
+        return outline(identifier, [point.model_dump() for point in data.points])
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

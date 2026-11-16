@@ -81,6 +81,11 @@ export const TAMIL: Record<string, string> = {
   'Nothing found in the foreground of this picture.': 'இந்தப் படத்தின் முன்புறத்தில் எதுவும் இல்லை.',
   'Choose what to remove. Things in the foreground are found; the scenery behind them is not.': 'எதை நீக்க வேண்டும் என்று தேர்ந்தெடுங்கள். முன்புறப் பொருட்கள் கண்டறியப்படும்; பின்னணிக் காட்சி அல்ல.',
 
+  'Click to choose': 'சொடுக்கித் தேர்ந்தெடு', 'Click anything in the picture: a rock, a tree, a pole, a building': 'படத்தில் எதையும் சொடுக்கவும்: பாறை, மரம், கம்பம், கட்டடம்',
+  'Click to choose is not installed. Run ./install-fill.sh in the Kanaa folder.': 'சொடுக்கித் தேர்வு நிறுவப்படவில்லை. Kanaa கோப்புறையில் ./install-fill.sh-ஐ இயக்கவும்.',
+  'Click what to remove': 'நீக்க வேண்டியதைச் சொடுக்கவும்', 'Outlining…': 'வரையறுக்கிறது…', 'Click what to remove · Option-click to take away': 'நீக்க வேண்டியதைச் சொடுக்கவும் · Option-சொடுக்கு நீக்கிவிடும்',
+  'Clear clicks': 'சொடுக்குகளை அழி',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',
