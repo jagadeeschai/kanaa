@@ -742,11 +742,26 @@ def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
     return {'job_id': job_id}
 
 
-@router.post('/projects/{identifier}/colour-match')
-def colour_match(identifier: int, request: dict):
+@router.get('/photos/{identifier}/screen-colour')
+def photo_screen_colour(identifier: int, at: float = 0.0):
+    """The green or blue screen behind this clip, if it was shot on one; null means use the AI cut-out instead."""
+    from PIL import Image
+    from app.services.graphic_outline import _picture
+    from app.services.screen_colour import screen_colour
+    row = get_media(identifier)
+    item = dict(row) if row else None
+    if not item:
+        raise HTTPException(404, 'That picture or video is not in the library.')
+    try:
+        return {'colour': screen_colour(Image.open(_picture(item, at)))}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/timeline/colour-match')
+def colour_match(request: dict):
     """Gains that bring a keyed or cut-out clip toward the colour and light behind it, measured at `at`."""
     from app.services.composite_match import measure
-    project_for(identifier)
     try:
         parsed = Timeline.model_validate(request.get('timeline'))
         clip_id, at = str(request.get('clip_id')), float(request.get('at', 0))

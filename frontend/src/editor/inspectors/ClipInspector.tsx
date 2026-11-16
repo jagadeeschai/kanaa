@@ -1,4 +1,5 @@
 import { useEditorPanel } from '../state/EditorContext';
+import { BlendEdgesGroup } from './BlendEdgesGroup';
 import { PictureLightsGroup } from './PictureLightsGroup';
 import { SignatureCardGroup } from './SignatureCardGroup';
 import { useEditor, useItemTime } from '../state/EditorContext';
@@ -254,6 +255,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => { onChange({ chroma: DEFAULT_CHROMA }); onPick(); }}><Pipette size={14}/>Remove a colour</button>
     </>}
     </Group>
+    <BlendEdgesGroup clip={clip} onChange={onChange}/>
     <Group title="Animation" tab="motion" startOpen changed={Boolean(clip.enter || clip.exit)} keywords="animation entrance exit enter fade slide" tip="How the clip appears and leaves." help="animations-and-moves">
     {transition && <p className="ed-tip">This clip opens with a {transition.kind} transition — set in the Transitions tab.</p>}
     {transition ? <p className="ed-tip">The transition replaces this clip's enter animation.</p> : <AnimationPicker label="Enter" value={clip.enter} onChange={(enter, group) => onChange({ enter }, group)} onShow={onShowEnter}/>}

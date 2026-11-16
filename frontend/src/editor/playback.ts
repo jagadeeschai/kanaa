@@ -1,4 +1,5 @@
 import { karaokeLit } from '../timeline/karaoke';
+import { CHOKE_HIGH, CHOKE_LOW, CHOKE_REACH, matchGain, WRAP_BLUR, WRAP_EDGE, WRAP_GAIN } from '../timeline/composite';
 import { dividerFor, splitAt } from '../timeline/compare';
 import { dipColour, animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
@@ -324,6 +325,9 @@ uniform int mirrorMode; uniform float mirrorSegments, mirrorTurn, picAspect;
 uniform float zoomReach; uniform vec2 zoomCenter;
 uniform float tiltBlur, tiltFocus, tiltBand, tiltSat; uniform vec2 tiltSigma;
 uniform int toneMode; uniform float toneBalance, toneAmount; uniform vec3 toneShadow, toneHigh;
+// Keyed-clip compositing, mirrored in timeline_service.py (composited, light_wrap): edge tightening pulls the matte in,
+// colour match multiplies by measured gains, light wrap lays the blurred backdrop over a narrow band inside the edge.
+uniform vec2 chokeSigma, wrapSigma; uniform float wrapAmount, wrapBlur; uniform vec3 matchGain;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -336,6 +340,15 @@ vec4 pick(vec2 at){
     else c.b -= max(c.b - (c.r + c.g) * .5, 0.) * keySpill;
   }
   c.rgb*=c.a; return c;
+}
+// The clip's alpha blurred by about sigma (source share): the centre and two rings, Gaussian weights.
+float blurredAlpha(vec2 at, vec2 sigma){
+  float total = pick(at).a, weight = 1.;
+  for (int i = 0; i < 8; i++) {
+    vec2 d = vec2(cos(float(i) * .785398), sin(float(i) * .785398));
+    total += pick(at + d * sigma).a * .6065 + pick(at + d * sigma * 2.).a * .1353; weight += .7418;
+  }
+  return total / weight;
 }
 // The clip's own picture coordinates (as displayed, after its flip and turn) folded by a mirror or kaleidoscope.
 vec2 shaped(vec2 u){
@@ -446,6 +459,8 @@ void main(){
     c /= total;
   }
   float alpha = c.a; vec3 rgb = alpha > 0. ? c.rgb / alpha : vec3(0.);
+  float ownAlpha = alpha;
+  if (chokeSigma.x > 0.) alpha *= clamp((blurredAlpha(s, chokeSigma) - ${CHOKE_LOW}) / ${(CHOKE_HIGH - CHOKE_LOW).toFixed(4)}, 0., 1.);
   if (titleParticle > 0 && titleParticleProgress < .999) {
     vec3 magic = particleHue < .33 ? vec3(.35, .85, 1.) : particleHue < .66 ? vec3(.85, .35, 1.) : vec3(1., .68, .18);
     rgb *= mix(magic, vec3(1.), titleParticleProgress);
@@ -512,6 +527,16 @@ void main(){
   if (lensMode == 2) {
     rgb = mix(rgb, rgb * vec3(.86, .94, 1.06), lensMask * lensAmount * .24);
     rgb = clamp(rgb + lensRim * lensAmount * .32, 0., 1.);
+  }
+  rgb = clamp(rgb * matchGain, 0., 1.);
+  if (wrapAmount > 0.) {
+    float band = clamp(ownAlpha * (1. - blurredAlpha(s, wrapSigma)) * wrapAmount * ${WRAP_GAIN.toFixed(2)}, 0., 1.);
+    vec2 size = vec2(textureSize(backdrop, 0)); vec3 light = texture(backdrop, gl_FragCoord.xy / size).rgb; float weight = 1.;
+    for (int i = 0; i < 12; i++) {
+      vec2 d = vec2(cos(float(i) * .5236), sin(float(i) * .5236)) * wrapBlur;
+      light += texture(backdrop, (gl_FragCoord.xy + d) / size).rgb * .6065 + texture(backdrop, (gl_FragCoord.xy + d * 2.) / size).rgb * .1353; weight += .7418;
+    }
+    rgb = mix(rgb, light / weight, band);
   }
   float a = alpha * opacity;
   // A drawn shape keeps only part of the frame. The picture has the frame's top at its first row.
@@ -591,7 +616,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh', 'useWheels', 'wheelLift', 'wheelGamma', 'wheelGain']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh', 'useWheels', 'wheelLift', 'wheelGamma', 'wheelGain', 'chokeSigma', 'wrapSigma', 'wrapAmount', 'wrapBlur', 'matchGain']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -874,6 +899,14 @@ export class PlaybackEngine {
     }
     gl.uniform2f(uniforms.frame, format.width, format.height);
     gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
+    const composite = clip.composite; const clipWidth = (fitted.width * scale) || 1;
+    const chokeFrame = composite?.choke ? Math.max(.3, CHOKE_REACH * composite.choke * format.height) : 0;
+    gl.uniform2f(uniforms.chokeSigma, chokeFrame / clipWidth, chokeFrame / (height || 1));
+    const wrapFrame = WRAP_EDGE * format.height;
+    gl.uniform2f(uniforms.wrapSigma, wrapFrame / clipWidth, wrapFrame / (height || 1));
+    gl.uniform1f(uniforms.wrapAmount, composite?.wrap ?? 0);
+    gl.uniform1f(uniforms.wrapBlur, WRAP_BLUR * this.canvas.height);
+    gl.uniform3f(uniforms.matchGain, ...matchGain(composite));
     gl.uniform1f(uniforms.opacity, Math.max(0, Math.min(1, valueAt(clip.transform, 'opacity', local))) * look.opacity * opacity);
     gl.uniform1f(uniforms.brightness, clip.adjust.brightness);
     gl.uniform1f(uniforms.contrast, clip.adjust.contrast * contrast);
@@ -1114,7 +1147,7 @@ export class PlaybackEngine {
   private drawLayer(layer: VideoLayer) {
     const { gl, uniforms } = this;
     const mode = BLEND_NUMBERS[layer.blend ?? 'normal'];
-    if (mode) this.copyBackdrop();
+    if (mode || layer.items.some((clip) => clip.composite?.wrap)) this.copyBackdrop();
     gl.uniform1i(uniforms.blendMode, mode);
     this.drawLayerClips(layer);
     gl.uniform1i(uniforms.blendMode, 0);

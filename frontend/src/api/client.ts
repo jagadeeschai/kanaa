@@ -148,6 +148,10 @@ export const startWords = (id: number, language: string) => requestJson<{ job_id
 export const clipFilmstripUrl = (id: number) => `/api/photos/${id}/filmstrip`;
 export const getClipPeaks = (id: number) => requestJson<{ peaks_per_second: number; peaks: number[] }>(`/api/photos/${id}/peaks`);
 export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projects/${id}/timeline`);
+/** Colour gains that bring a keyed clip toward what is behind it, measured at `at` (composite_match.py). */
+export const colourMatch = (timeline: unknown, clipId: string, at: number) => requestJson<{ gain: [number, number, number] }>('/api/timeline/colour-match', { method: 'POST', body: JSON.stringify({ timeline, clip_id: clipId, at }) });
+/** The green or blue screen a clip was shot on, or null (screen_colour.py). */
+export const screenColour = (mediaId: number, at: number) => requestJson<{ colour: string | null }>(`/api/photos/${mediaId}/screen-colour?at=${at.toFixed(3)}`);
 export const exportProjectTimeline = (id: number, timeline: unknown, hardware = true) => requestJson<{ job_id: string }>(`/api/projects/${id}/export?hardware=${hardware}`, { method: 'POST', body: JSON.stringify(timeline) });
 /** Phone access on the home Wi-Fi, with a PIN. Only the Mac can read or change it. */
 export type PhoneAccess = { enabled: boolean; pin: string | null; locked: boolean; address: string | null; port: number; listening: boolean; phones: number };

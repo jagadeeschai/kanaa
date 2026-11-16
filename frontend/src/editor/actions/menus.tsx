@@ -12,6 +12,8 @@ import { canReframe } from "../../timeline/reframe";
 import type { Photo } from "../../types/photo";
 import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
 import { newId } from "../editor-constants";
+import { withVirtualBackground } from "../../timeline/virtual-background";
+import { screenColour } from "../../api/client";
 import { findAdjust, removeAdjust } from '../../timeline/adjust';
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 type Box = [number, number, number, number];
@@ -142,6 +144,24 @@ export function createEditorMenuActions(getInput: () => Input) {
     return invoke(...args);
   };
 
+  /** Right-click a main-track clip of someone: put them on one of the project's pictures or videos, keyed in one step. */
+  const virtualBackgroundItem = (clip: Clip, media: Photo[], mediaById: Map<number, Photo>) => {
+    const choices = media.filter((item) => (item.media_type === 'image' || item.media_type === 'video') && item.id !== clip.media_id).slice(-12).reverse();
+    const apply = async (item: Photo) => {
+      const { timelineRef, change, setSelectedId, setError } = getInput();
+      let screen: string | null = null;
+      try { screen = (await screenColour(clip.media_id, clip.in + clipLength(clip) * clip.speed / 2)).colour; } catch { screen = null; }
+      if (!screen && mediaById.get(clip.media_id)?.media_type !== 'video') { setError('This picture has no green or blue screen to remove. A video of someone works without one: Kanaa cuts them out.'); return; }
+      const current = timelineRef.current;
+      if (!current) return;
+      const person = newId();
+      const next = withVirtualBackground(current, clip.id, { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height }, screen, { layer: newId(), person });
+      if (next === current) { setError('That clip is no longer on the main track.'); return; }
+      change(next); setSelectedId(person);
+    };
+    return { label: 'Virtual background', disabled: !choices.length, submenu: choices.map((item) => ({ label: item.filename, onSelect: () => { void apply(item); } })) };
+  };
+
   const openMediaMenu = (...args: Parameters<(event: React.MouseEvent, item: Photo) => void>) => {
     const { setMenu, addMedia, addOverlayMedia, setFiling, usedIds, timeline, change, setSelectedId, setDeleting, selectedId, moreIds, setError } = getInput();
     const invoke = (event: React.MouseEvent, item: Photo) => {
@@ -199,6 +219,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         { label: 'Clip on', checked: clip.enabled !== false, onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) },
         { label: 'Rename clip…', onSelect: () => setRenamingClip(id) },
         ...(onMain ? [] : [{ label: 'Before / after split', onSelect: () => getInput().addComparison(id) }]),
+        ...(onMain ? [virtualBackgroundItem(clip, [...mediaById.values()], mediaById)] : []),
         'divider');
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });

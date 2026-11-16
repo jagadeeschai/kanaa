@@ -87,4 +87,19 @@ class Composite(unittest.TestCase):
         self.assertGreater(red, 1.1); self.assertLess(blue, .9)
         with self.assertRaises(ValueError): measure(plan(), 'back', .5, render)      # a main-track clip has nothing behind it
 
+
+class ScreenColour(unittest.TestCase):
+    def test_finds_an_even_green_or_blue_screen_and_nothing_else(self):
+        from app.services.screen_colour import screen_colour
+        def shot(back, noise=0):
+            picture = np.zeros((H, W, 3)) + np.array(back, float)
+            picture += np.random.default_rng(1).normal(0, noise, picture.shape)
+            picture[60:240, 160:270] = (120, 110, 100)   # someone in front
+            return Image.fromarray(picture.clip(0, 255).astype(np.uint8))
+        self.assertTrue(screen_colour(shot(GREEN, 6)).startswith('#0'))
+        blue = screen_colour(shot((20, 60, 200), 6)); self.assertIsNotNone(blue)
+        self.assertIsNone(screen_colour(shot((128, 128, 128))))                   # a grey wall
+        forest = np.random.default_rng(2).integers(0, 255, (H, W, 3)); forest[..., 1] = 160
+        self.assertIsNone(screen_colour(Image.fromarray(forest.astype(np.uint8))))  # green, but not one even screen
+
 if __name__ == '__main__': unittest.main()
