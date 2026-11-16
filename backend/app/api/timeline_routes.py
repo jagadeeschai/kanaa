@@ -480,10 +480,14 @@ def text_image(body: dict):
     lit = body.get('lit') if item.karaoke else None
     if lit is not None and not isinstance(lit, int):
         raise HTTPException(400, 'This text is not valid.')
-    target = text_cache(item, fmt).with_suffix('.png' if lit is None else f'.lit{lit}.png')
+    graphic_frame = body.get('graphic_frame') if item.graphic else None
+    if graphic_frame is not None and (not isinstance(graphic_frame, int) or not 0 <= graphic_frame < 24):
+        raise HTTPException(400, 'This graphic frame is not valid.')
+    suffix = f'.graphic{graphic_frame}.png' if graphic_frame is not None else '.png' if lit is None else f'.lit{lit}.png'
+    target = text_cache(item, fmt).with_suffix(suffix)
     if not target.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
-        render_text_image(item, fmt, target, lit=lit)
+        render_text_image(item, fmt, target, lit=lit, graphic_progress=1 if graphic_frame is None else graphic_frame / 23)
     return FileResponse(target, media_type='image/png')
 
 

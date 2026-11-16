@@ -20,6 +20,7 @@ import { PlaybackEngine,type PlaybackSource } from "../playback";
 import { type SaveState } from "../project-save";
 import { ResizeBox } from "../ResizeBox";
 import { ShapeDrawing } from "../ShapeDrawing";
+import { GraphicHandles } from './GraphicHandles';
 import { TitleEditBox,TitleToolbar } from "./TitleEditing";
 type Box = [number, number, number, number];
 type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; queued?: boolean; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
@@ -130,11 +131,12 @@ export function EditorPreviewStage() {
       </aside>;
     })()}
         <div className="ed-frame" style={{ aspectRatio: `${ratio}`, '--ar': ratio } as React.CSSProperties}>
-          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setPickedInPreview(hit.id); setSelectedId(hit.id); setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
+          <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setPickedInPreview(hit.id); setSelectedId(hit.id); if (!hit.graphic) setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
-          {selectedText && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
-          {selectedText && pickedInPreview === selectedText.id && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && (() => {
+          {selectedText && !selectedText.graphic && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
+          {selectedText?.graphic && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && <GraphicHandles graphic={selectedText.graphic} onChange={(graphic, group) => updateSelectedText({ graphic }, group)}/>}
+          {selectedText && !selectedText.graphic && pickedInPreview === selectedText.id && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && (() => {
             const rect = titleRect(selectedText);
             if (!rect) return null;
             const box = { left: `${rect.left * 100}%`, top: `${rect.top * 100}%`, width: `${(rect.right - rect.left) * 100}%`, height: `${(rect.bottom - rect.top) * 100}%` };

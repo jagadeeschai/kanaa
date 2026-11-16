@@ -7,6 +7,7 @@ export const TAMIL: Record<string, string> = {
   'Circle highlight': 'வட்டச் சிறப்பிப்பு', 'Rounded box highlight': 'வட்டமூலைப் பெட்டிச் சிறப்பிப்பு', 'Callout label': 'சுட்டிக்காட்டு குறிப்பு',
   'Circle': 'வட்டம்', 'Rounded box': 'வட்டமூலைப் பெட்டி', 'Clean white': 'தூய வெள்ளை', 'Hand-drawn': 'கையால் வரைந்தது',
   'Neon': 'நியான்', 'Documentary yellow': 'ஆவணப்பட மஞ்சள்', 'Draw on': 'வரைந்து தோன்று', 'Line width': 'கோட்டின் தடிமன்', 'Entrance': 'தொடக்க அசைவு',
+  'Graphic handles': 'விளக்கப்படக் கைப்பிடிகள்', 'Move arrow tail': 'அம்பின் தொடக்கத்தை நகர்த்து', 'Move arrow point': 'அம்பின் முனையை நகர்த்து', 'Move highlight': 'சிறப்பிப்பை நகர்த்து', 'Resize highlight': 'சிறப்பிப்பின் அளவை மாற்று',
   'Warm the whole scene': 'முழுக் காட்சியையும் வெதுவெதுப்பாக்கு', 'Cool night': 'குளிர் இரவு', 'Dreamy': 'கனவு போல', 'Film look': 'திரைப்படத் தோற்றம்',
   'Adjustment': 'சரிசெய்தல் அடுக்கு', 'Scene look': 'காட்சித் தோற்றம்', 'One click': 'ஒரே சொடுக்கில்', 'Soft glow': 'மென் ஒளிர்வு',
   'Changes everything below it while it plays, then fades away.': 'ஓடும்போது கீழே உள்ள அனைத்தையும் மாற்றும், பிறகு மெல்ல மறையும்.',

@@ -6,6 +6,7 @@ import type { TimeFieldProps } from '../controls';
 import { ValueSlider } from '../controls';
 import { Group, Panel } from '../layout';
 import { AnimationPicker, Chips } from './parts';
+import { useEffect, useState } from 'react';
 
 const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
@@ -19,14 +20,16 @@ const ENTRANCES = [{ id: 'reveal' as const, label: 'Draw on' }, { id: 'pop' as c
 
 export function GraphicInspector({ text, timing, onChange, onEnter }: { text: TextItem; timing: TimeFieldProps[]; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void }) {
   const graphic = text.graphic!;
-  const setStyle = (style: GraphicStyle) => onChange({ color: style === 'documentary' ? '#f5c11b' : style === 'neon' ? '#42f5e9' : '#ffffff', graphic: { ...graphic, style } });
+  const [draft, setDraft] = useState(text.text);
+  useEffect(() => setDraft(text.text), [text.id, text.text]);
+  const setStyle = (style: GraphicStyle) => onChange({ graphic: { ...graphic, style } });
   return <Panel id="graphic" tabs={[{ id: 'look', label: 'Graphic', Icon: Circle }, { id: 'motion', label: 'Motion', Icon: MoveRight, changed: Boolean(text.enter) }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Graphic" tab="look" startOpen keywords="arrow circle box callout label pointer explainer" tip="The point you right-clicked is the arrow tip or the centre of the highlight.">
       <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: { ...graphic, kind } })}/>
       {graphic.kind === 'callout' && (
-        <textarea className="ed-text" aria-label="Callout label" lang="ta" value={text.text} maxLength={200} rows={2}
-          onChange={(event) => { if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }}/>
+        <textarea className="ed-text" aria-label={t('Callout label')} lang="ta" value={draft} maxLength={200} rows={2}
+          onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
       )}
       <Chips label="Style" options={STYLES} value={graphic.style} onPick={setStyle}/>
       <label className="ed-color"><span>{t('Colour')}</span><input type="color" aria-label="Graphic colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `graphic-colour-${text.id}`)}/></label>

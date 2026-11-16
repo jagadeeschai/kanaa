@@ -18,7 +18,7 @@ import { type Options } from '../timeline/commands';
 import { applyBypass,clipEffects,playingTimeline } from '../timeline/effects';
 import { commit,redo,startHistory,undo,type History } from '../timeline/history';
 import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
-import { addBlur,addGraphic,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type GraphicKind,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
+import { addBlur,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
 import { type Focus } from '../timeline/presets';
 import { reframeTransform,type SubjectPoint } from '../timeline/reframe';
 import { splitAtCuts } from '../timeline/scenes';
@@ -37,6 +37,7 @@ import { createClipToolActions } from './actions/clip-tools';
 import { createEffectJobActions } from './actions/effect-jobs';
 import { createInspectorScopeActions } from './actions/inspector-scope';
 import { createEditorMenuActions } from './actions/menus';
+import { createGraphicActions, queueGraphicFrames } from './actions/graphics';
 import { createPreviewTrackingActions } from './actions/preview-tracking';
 import { createThemeActions } from './actions/themes-and-stories';
 import { createTitleEditingActions } from './actions/title-editing';
@@ -73,7 +74,6 @@ import TransitionPopover from './TransitionPopover';
 import { useClipboard } from './useClipboard';
 import { findAdjust, removeAdjust } from '../timeline/adjust';
 import { deleteAndStretch, factsFrom, isSongVideo } from '../timeline/songSafe';
-
 type Props = { projectId: number; projectName: string; photo: Photo; onClose: () => void; onOpenOutput: (id: number) => void; theme: string; themeChoice: ThemeChoice; nextTheme: () => void; setTheme?: (choice: ThemeChoice) => void };
 type Action = { type: 'load'; timeline: Timeline } | { type: 'change'; timeline: Timeline; group?: string | null } | { type: 'undo' } | { type: 'redo' };
 const EMPTY = startHistory<Timeline | null>(null);
@@ -83,14 +83,12 @@ type Box = [number, number, number, number];
 type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; queued?: boolean; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
   /** Set while looking for a face under a blur box: where the box is in the source, and what to follow instead when no face is there. */
   faces?: { box: Box; at: number; own: Box; grow?: number } };
-
 function reducer(state: History<Timeline | null>, action: Action): History<Timeline | null> {
   if (action.type === 'load') return startHistory(action.timeline);
   if (action.type === 'change') return commit(state, action.timeline, action.group ?? null);
   const next = action.type === 'undo' ? undo(state) : redo(state);
   return next.present === null ? state : next;
 }
-
 export default function Editor({ projectId, projectName, photo, onClose, onOpenOutput, theme, themeChoice, nextTheme, setTheme }: Props) {
   const [history, dispatch] = useReducer(reducer, EMPTY);
   const timeline = history.present;
@@ -269,8 +267,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string } | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
   const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, text.graphic ?? null, format.width, format.height]);
-  const textUrl = useCallback((text: TextItem, lit?: number | null) => {
-    const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format) + (lit == null ? '' : `|lit${lit}`));
+  const textUrl = useCallback((text: TextItem, lit?: number | null, graphicFrame?: number | null) => {
+    const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format) + (graphicFrame == null ? lit == null ? '' : `|lit${lit}` : `|graphic${graphicFrame}`));
     return found && found !== 'loading' ? found : undefined;
   }, []);
   useEffect(() => {
@@ -282,6 +280,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         textImages.current.set(key, 'loading');
         void fetchTextImage(text, timeline.format).then((url) => { textImages.current.set(key, url); redrawText(); }).catch((problem: Error) => { textImages.current.delete(key); setError(problem.message); });
       }
+      queueGraphicFrames(textLayers(timeline).flatMap((layer) => layer.items), timeline.format, textKey, textImages.current, redrawText);
       // Karaoke lines: one picture for each word sung so far.
       for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
         for (let lit = 0; lit < (text.karaoke?.words.length ?? 0); lit += 1) {
@@ -637,7 +636,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const settingsLayer = layerSettings ? timeline?.layers.find((l) => l.id === layerSettings) : undefined;
   const selectedIdentity = settingsLayer ? { kind: 'Layer', name: settingsLayer.name || (settingsLayer.kind === 'text' ? 'Text' : 'Video') }
     : selected ? { kind: 'Clip', name: selected.name || (mediaById.get(selected.media_id)?.filename ?? `Media ${selected.media_id}`) }
-    : selectedText ? { kind: 'Title', name: selectedText.text || 'Untitled title' }
+    : selectedText ? { kind: selectedText.graphic ? 'Graphic' : 'Title', name: selectedText.graphic ? selectedText.graphic.kind.replace(/-/g, ' ') : selectedText.text || 'Untitled title' }
       : selectedSound ? { kind: 'Sound', name: selectedSound.sound.name || 'Untitled sound' }
         : selectedBlur ? { kind: 'Privacy', name: selectedBlur.style === 'pixelate' ? 'Pixelated area' : 'Blurred area' }
           : selectedCaption ? { kind: 'Caption', name: captionText(selectedCaption.caption) || 'Empty caption' } : null;
@@ -1038,20 +1037,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useSceneJob(() => ({ sceneJob, setError, setSceneJob, timelineRef, change, setFaceNote }), [sceneJob, change]);
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
   useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
-  const addExplainerGraphic = useCallback((kind: GraphicKind, point: [number, number]) => {
-    const current = timelineRef.current;
-    if (!current) return;
-    const at = Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000;
-    const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));
-    const from: [number, number] = [Math.max(.04, x - .2), Math.max(.04, y - .16)];
-    const id = newId();
-    const text: TextItem = { id, start: at, length: 3, text: kind === 'callout' ? 'Type your label' : kind.replace('arrow-', '').replace('-', ' '), style: 'plain', position: 'center', color: '#ffffff', size: 44,
-      enter: { preset: kind === 'callout' ? 'pop' : 'reveal', duration: .65 }, transform: REST_TRANSFORM,
-      graphic: { kind, style: kind === 'circle' || kind === 'box' ? 'documentary' : 'clean', from, to: [x, y], width: .25, height: .18, line_width: .006 } };
-    change(addGraphic(current, text, newId()));
-    setSelectedId(id);
-    setTimeout(() => engineRef.current?.seek(at + 1), 0);
-  }, [change]);
+  const { addExplainerGraphic } = createGraphicActions(() => ({ timelineRef, engineRef, change, setSelectedId }));
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
     get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; }, get engineRef(): typeof engineRef { return engineRef; },
     get history(): typeof history { return history; },

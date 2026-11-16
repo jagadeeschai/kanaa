@@ -12,6 +12,7 @@ import { isBrandLayer } from '../timeline/brand';
 import { adjustStrength } from '../timeline/adjust';
 import { wheelVectors } from '../timeline/colourWheels';
 import { alphaBox, corners, DEFAULT_DEPTH_ANGLE, hexColour, homography, invert, is3d, layers, layerShade, pinFade, poseAt, trickBounds, type Box, type Matrix, type Point } from '../timeline/title3d';
+import { graphicState } from '../timeline/graphics';
 
 /** A title picture's letter box as shares of the picture (alphaBox in title3d.ts), so any size of the picture agrees. */
 function pictureBox(image: HTMLImageElement): Box | null {
@@ -539,7 +540,7 @@ export class PlaybackEngine {
   cleanVoice: (mediaId: number) => string | undefined = () => undefined;
   /** The picture of a clip's drawn shape, once it is ready. */
   shapeUrl: (mask: ShapeMask) => string | undefined = () => undefined;
-  private textUrl: (text: TextItem, lit?: number | null) => string | undefined = () => undefined;
+  private textUrl: (text: TextItem, lit?: number | null, graphicFrame?: number | null) => string | undefined = () => undefined;
   private captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined;
   private stopAt = Infinity;
   private gl: WebGL2RenderingContext;
@@ -646,7 +647,7 @@ export class PlaybackEngine {
     return entry;
   }
 
-  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem, lit?: number | null) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
+  setTimeline(timeline: Timeline, sources: (mediaId: number, clip?: Clip) => PlaybackSource | undefined, soundUrl: (sound: Sound) => string | undefined, textUrl: (text: TextItem, lit?: number | null, graphicFrame?: number | null) => string | undefined = () => undefined, captionUrl: (layer: CaptionLayer, caption: Caption, lit: number | null) => string | undefined = () => undefined) {
     this.timeline = timeline;
     if ((timeline.lut ?? null) !== this.lutId) this.loadLut(timeline.lut ?? null);
     this.textUrl = textUrl;
@@ -1154,17 +1155,18 @@ export class PlaybackEngine {
     const { gl, uniforms } = this;
     const item = layer.items.find((entry) => this.time >= entry.start && this.time < entry.start + entry.length);
     // A karaoke line shows the picture with the words sung so far lit, or the plain one until that picture is in.
-    const lit = item ? karaokeLit(item, this.time - item.start) : null;
-    const url = item && ((lit !== null && this.textUrl(item, lit)) || this.textUrl(item));
+    const local = item ? this.time - item.start : 0;
+    const lit = item ? karaokeLit(item, local) : null;
+    const graphicFrame = item ? graphicState(item, local) : null;
+    const url = item && ((graphicFrame !== null && this.textUrl(item, null, graphicFrame)) || (lit !== null && this.textUrl(item, lit)) || this.textUrl(item));
     if (!item || !url) return;
     const image = this.imageTexture(url, true);
     if (!image.ready) return;
     gl.bindTexture(gl.TEXTURE_2D, image.texture);
-    const local = this.time - item.start;
     // Keep the ordinary title visible while its letter bounds are being measured. Once ready, redraw it through the
     // perspective path. A failed measurement must not make a perfectly valid title disappear.
-    if (is3d(item) && image.box) { this.drawTitle3d(item, local, image.box, image.texture); return; }
-    const look = animatedLook(item.enter, item.exit, local, item.length);
+    if (!item.graphic && is3d(item) && image.box) { this.drawTitle3d(item, local, image.box, image.texture); return; }
+    const look = animatedLook(item.graphic && item.enter?.preset === 'reveal' ? null : item.enter, item.exit, local, item.length);
     const { width, height } = this.timeline!.format;
     // The title's own move first, then its animation moves that whole frame, as the export's pose() does.
     const transform = item.transform ?? REST_TRANSFORM;

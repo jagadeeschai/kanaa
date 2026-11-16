@@ -42,8 +42,6 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.kind == 'text':
             from app.services import title3d
             for item in layer.items:
-                if item.graphic is not None:
-                    found.add('explainer graphics')
                 if item.keep_clear or item.stay_with:
                     found.add('titles that move with people')
                 if title3d.is_3d(item):
@@ -167,6 +165,11 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
     frames = max(1, round(item.length * fps))
     image = folder / f'{name}.png'
     render_text_image(item, fmt, image)
+    if item.graphic and item.enter and item.enter.preset == 'reveal':
+        from app.services import explainer_graphics
+        paths, shown = explainer_graphics.frames(item, fmt, fps, frames, folder, f'{name}-graphic')
+        return {'kind': 'image', 'path': str(paths[0]), 'paths': [str(path) for path in paths], 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
+                **_frames(item.transform, None, item.exit, frames / fps, frames, fps)}
     if title3d.is_3d(item):
         # Depth, tilt and the letter tricks (pop-letters, reveal, line...): the export's own frames, already in place,
         # each different one drawn once (title3d_render.render_title_sequence).
