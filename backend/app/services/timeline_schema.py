@@ -371,13 +371,17 @@ class TitlePin(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
     width: float = Field(default=0.24, ge=0.03, le=1)
     height: float = Field(default=0.18, ge=0.03, le=1)
     line_width: float = Field(default=0.006, ge=0.001, le=0.04)
+    # Spotlight: how dark the rest of the frame goes.
+    dim: float = Field(default=0.6, ge=0.1, le=0.95)
+    # Glow outline: the object's edge, found once by Click to choose, as frame shares around `to`.
+    shape: Optional[List[Tuple[float, float]]] = Field(default=None, min_length=3, max_length=200)
 
     @field_validator('from_', 'to')
     @classmethod
@@ -385,6 +389,19 @@ class ExplainerGraphic(Strict):
         if any(value < 0 or value > 1 for value in point):
             raise ValueError('Graphic points must be inside the frame.')
         return point
+
+    @field_validator('shape')
+    @classmethod
+    def shape_in_frame(cls, shape):
+        if shape is not None and any(value < -0.05 or value > 1.05 for point in shape for value in point):
+            raise ValueError('The outline must be inside the frame.')
+        return shape
+
+    @model_validator(mode='after')
+    def outline_has_shape(self):
+        if self.kind == 'outline' and not self.shape:
+            raise ValueError('A glow outline needs the outline of something: right-click on it in the preview.')
+        return self
 
 
 class Text(Strict):

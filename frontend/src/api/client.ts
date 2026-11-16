@@ -182,6 +182,9 @@ export const startRemovePeople = (id: number, people: number[], method: 'local' 
 /** Click to choose: outlines what was clicked (x, y are shares of the picture; keep false takes away). */
 export const outlineByClicks = (id: number, points: { x: number; y: number; keep: boolean }[]) =>
   requestJson<{ area: number; preview: string }>(`/api/photos/${id}/outline`, { method: 'POST', body: JSON.stringify({ points }) });
+/** Glow outline: the edge of what is at (x, y) in a picture, or in a video `at` seconds in, as shares of the source. */
+export const graphicOutline = (id: number, x: number, y: number, at: number) =>
+  requestJson<{ shape: [number, number][]; area: number }>(`/api/photos/${id}/graphic-outline`, { method: 'POST', body: JSON.stringify({ x, y, at }) });
 /** Pop-out (3D): the chosen ones as a cut-out and the picture filled behind them; the job result names both. */
 export const startPopout = (id: number, people: number[], kind: 'people' | 'objects' | 'clicks') =>
   requestJson<{ job_id: string }>(`/api/photos/${id}/popout`, { method: 'POST', body: JSON.stringify({ people, kind }) });

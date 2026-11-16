@@ -1,9 +1,10 @@
-"""Frame-exact drawing for arrows, highlights and callouts shared by ffmpeg and GPU exports."""
+"""Frame-exact drawing for arrows, highlights, callouts, spotlights and glow outlines shared by ffmpeg and GPU exports."""
 from __future__ import annotations
 
 import math
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.services.timeline_schema import Format, Text
@@ -95,6 +96,24 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         for cx, cy, start in ((left+radius, top+radius, math.pi), (right-radius, top+radius, -math.pi/2), (right-radius, bottom-radius, 0), (left+radius, bottom-radius, math.pi/2)):
             points += [(round(cx + radius*math.cos(start + math.pi*n/2/12)), round(cy + radius*math.sin(start + math.pi*n/2/12))) for n in range(13)]
         points.append(points[0]); stroke(points)
+    elif graphic.kind == 'spotlight':
+        # The rest of the frame darkens while the light closes in on the spot; styles other than clean add a ring.
+        grow = 1 + .6 * (1 - progress)
+        half_w, half_h = graphic.width * fmt.width / 2 * grow, graphic.height * fmt.height / 2 * grow
+        hole = Image.new('L', (fmt.width, fmt.height), 255)
+        ImageDraw.Draw(hole).ellipse((round(b[0]-half_w), round(b[1]-half_h), round(b[0]+half_w), round(b[1]+half_h)), fill=0)
+        hole = hole.filter(ImageFilter.GaussianBlur(max(2, fmt.height * .03)))
+        alpha = (np.asarray(hole, np.float32) * graphic.dim * progress).round().astype(np.uint8)
+        shade = Image.new('RGBA', (fmt.width, fmt.height), (0, 0, 0, 0))
+        shade.putalpha(Image.fromarray(alpha))
+        image = Image.alpha_composite(shade, image)
+        draw = ImageDraw.Draw(image)
+        if graphic.style != 'clean':
+            ring = [(round(b[0] + half_w * math.cos(-math.pi/2 + 2*math.pi*n/80)), round(b[1] + half_h * math.sin(-math.pi/2 + 2*math.pi*n/80))) for n in range(81)]
+            stroke(ring)
+    elif graphic.kind == 'outline':
+        points = [(round(x * fmt.width), round(y * fmt.height)) for x, y in graphic.shape or []]
+        stroke(points + points[:1])
     else:
         line_progress = min(1, progress / .68)
         stroke([a, b], line_progress)
@@ -113,8 +132,12 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
             draw.rounded_rectangle(label, radius=padding, fill=backing)
             ink = (20, 20, 20, opacity) if graphic.style == 'documentary' else (255, 255, 255, opacity)
             draw.text((x0 + padding, y0 + padding - bounds[1]), item.text or ' ', font=font, fill=ink)
-    if graphic.style == 'neon':
-        image = Image.alpha_composite(image.filter(ImageFilter.GaussianBlur(max(3, width * 1.6))), image)
+    if graphic.style == 'neon' or graphic.kind == 'outline':
+        # A glow outline always glows; neon glows everything.
+        glow = image.filter(ImageFilter.GaussianBlur(max(3, width * 1.6)))
+        image = Image.alpha_composite(glow, image)
+        if graphic.kind == 'outline':
+            image = Image.alpha_composite(image.filter(ImageFilter.GaussianBlur(max(6, width * 3.5))), image)
     image.save(target)
 
 

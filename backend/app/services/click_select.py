@@ -39,7 +39,8 @@ def _small(picture: Path) -> Image.Image:
     with Image.open(picture) as opened:
         image = opened.convert('RGB')
     scale = SIDE / max(image.size)
-    return image.resize((round(image.width * scale), round(image.height * scale)), Image.LANCZOS) if scale < 1 else image
+    # Always exactly SIDE on the longer side: the model is lost on a smaller picture (it reads clicks on that scale).
+    return image.resize((round(image.width * scale), round(image.height * scale)), Image.LANCZOS) if scale != 1 else image
 
 
 def _embedding(picture: Path, encoder=None):
@@ -53,6 +54,17 @@ def _embedding(picture: Path, encoder=None):
     return _read[key]
 
 
+def mask_at(picture: Path, points: list[dict], encoder=None, decoder=None) -> np.ndarray:
+    """What the clicks pick out of `picture`, as a mask the size of the picture the model read (at most SIDE)."""
+    embedding, (width, height) = _embedding(picture, encoder)
+    coords = np.array([[[p['x'] * width, p['y'] * height] for p in points] + [[0, 0]]], np.float32)
+    labels = np.array([[1 if p.get('keep', True) else 0 for p in points] + [-1]], np.float32)
+    inputs = {'image_embeddings': embedding, 'point_coords': coords, 'point_labels': labels, 'mask_input': np.zeros((1, 1, 256, 256), np.float32),
+              'has_mask_input': np.zeros(1, np.float32), 'orig_im_size': np.array([height, width], np.float32)}
+    masks = (decoder or (lambda feed: _session(DECODER).run(None, feed)[0]))(inputs)
+    return masks[0, 0] > 0
+
+
 def outline(media_id: int, points: list[dict], encoder=None, decoder=None) -> dict:
     """`points`: [{x, y, keep}], x and y shares of the picture; keep false takes that area away. Saves the outline as
     Remove's 'clicks' choice and returns how much of the picture it covers and a tinted preview."""
@@ -63,13 +75,7 @@ def outline(media_id: int, points: list[dict], encoder=None, decoder=None) -> di
     if not points:
         raise ValueError('Click on what to remove.')
     picture = Path(item['absolute_path'])
-    embedding, (width, height) = _embedding(picture, encoder)
-    coords = np.array([[[p['x'] * width, p['y'] * height] for p in points] + [[0, 0]]], np.float32)
-    labels = np.array([[1 if p.get('keep', True) else 0 for p in points] + [-1]], np.float32)
-    inputs = {'image_embeddings': embedding, 'point_coords': coords, 'point_labels': labels, 'mask_input': np.zeros((1, 1, 256, 256), np.float32),
-              'has_mask_input': np.zeros(1, np.float32), 'orig_im_size': np.array([height, width], np.float32)}
-    masks = (decoder or (lambda feed: _session(DECODER).run(None, feed)[0]))(inputs)
-    mask = masks[0, 0] > 0
+    mask = mask_at(picture, points, encoder, decoder)
     folder = remove_person._folder(picture, 'clicks')
     folder.mkdir(parents=True, exist_ok=True)
     Image.fromarray(mask.astype(np.uint8) * 255).save(folder / 'person-1.png')

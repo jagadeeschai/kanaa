@@ -9,6 +9,7 @@ import { localAt,sourceAt } from "../../timeline/ramp";
 import { clipBox } from "../../timeline/resize";
 import { blurForFace,boxInSource,faceUnder,followPath,videoUnder,type TrackPoint } from "../../timeline/tracking";
 import { MIN_DRAWN_BOX,ON_ITEM } from "../editor-constants";
+import { graphicBox } from "./graphics";
 import { PlaybackEngine,type PlaybackSource } from "../playback";
 type Box = [number, number, number, number];
 type FollowJob = { itemId: string; underId: string; jobId: string; progress: number; queued?: boolean; drawnAt: number; from: number; size: boolean; place: Box | null; own: boolean; grew: boolean;
@@ -152,9 +153,13 @@ export function createPreviewTrackingActions(getInput: () => Input) {
   };
 
   const ownBox = (...args: Parameters<() => Box | null>) => {
-    const { timeline, selectedBlur, blurLocal, selected, selectedLayer, sourceFor, local } = getInput();
+    const { timeline, selectedBlur, blurLocal, selected, selectedLayer, sourceFor, local, followTarget, playhead } = getInput();
     const invoke = (): Box | null => {
     if (!timeline) return null;
+    // A graphic follows what it points at or rings, so it needs no box drawn.
+    const graphic = followTarget && findText(timeline, followTarget.id)?.text.graphic;
+    if (graphic?.kind === 'spotlight') return null;  // Moving a whole-frame shade would uncover a strip at the edge.
+    if (graphic && followTarget) { const at = playhead.current - followTarget.start; return graphicBox(graphic, [valueAt(followTarget.transform, 'x', at) - 0.5, valueAt(followTarget.transform, 'y', at) - 0.5]); }
     if (selectedBlur) { const size = valueAt(selectedBlur.transform, 'scale', blurLocal); return [valueAt(selectedBlur.transform, 'x', blurLocal), valueAt(selectedBlur.transform, 'y', blurLocal), selectedBlur.width * size, selectedBlur.height * size]; }
     if (selected && selectedLayer && selectedLayer !== mainLayer(timeline)) {
       const source = sourceFor(selected.media_id);

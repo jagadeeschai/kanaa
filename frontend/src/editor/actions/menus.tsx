@@ -22,6 +22,7 @@ type FollowJob = { itemId: string; underId: string; jobId: string; progress: num
 type Input = {
   addBlurBox: (style: "blur" | "pixelate", at?: [number, number] | undefined) => void;
   addExplainerGraphic: (kind: GraphicKind, at: [number, number]) => void;
+  addGlowOutline: (at: [number, number]) => Promise<void>;
   addMedia: (item: Photo) => void;
   addOverlayMedia: (item: Photo, dropAt?: number | undefined) => void;
   blurFaces: () => Promise<void>;
@@ -109,7 +110,7 @@ export function createEditorMenuActions(getInput: () => Input) {
   };
 
   const openPreviewMenu = (...args: Parameters<(event: React.MouseEvent) => void>) => {
-    const { playing, total, togglePlay, safeArea, setSafeArea, renderJob, isRendered, renderPreview, addBlurBox, addExplainerGraphic, faceJob, blurFaces, followTarget, ownBox, followJob, selectedBlur, followHere, setMenu } = getInput();
+    const { playing, total, togglePlay, safeArea, setSafeArea, renderJob, isRendered, renderPreview, addBlurBox, addExplainerGraphic, addGlowOutline, faceJob, blurFaces, followTarget, ownBox, followJob, selectedBlur, followHere, setMenu } = getInput();
     const invoke = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
@@ -121,6 +122,9 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Circle highlight', onSelect: () => addExplainerGraphic('circle', at) },
       { label: 'Rounded box highlight', onSelect: () => addExplainerGraphic('box', at) },
       { label: 'Callout label', onSelect: () => addExplainerGraphic('callout', at) },
+      'divider',
+      { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
+      { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },
     ] }, { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
     if (followTarget && ownBox() && !followJob) items.push('divider', { label: selectedBlur ? 'Follow what is under this blur' : 'Follow what is under this', onSelect: () => { void followHere('start'); } });
     setMenu({ x: event.clientX, y: event.clientY, items });

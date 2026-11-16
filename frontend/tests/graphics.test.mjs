@@ -16,3 +16,11 @@ test('pop and fade use the complete picture rather than stroke states', () => {
   assert.equal(graphicState({ ...graphic, enter: { preset: 'pop', duration: .5 } }, .1), null);
   assert.equal(graphicState({ ...graphic, enter: { preset: 'fade', duration: .5 } }, .1), null);
 });
+
+test('Follow uses a graphic\'s own box: the outline\'s bounds, a highlight\'s size, an arrow\'s point', async () => {
+  const { graphicBox } = await import('../src/timeline/graphics.ts');
+  const outline = { ...graphic.graphic, kind: 'outline', shape: [[.3, .2], [.5, .2], [.5, .6], [.3, .6]] };
+  assert.deepEqual(graphicBox(outline, [0, 0]).map((v) => Math.round(v * 100) / 100), [.4, .4, .2, .4]);
+  assert.deepEqual(graphicBox({ ...graphic.graphic, kind: 'spotlight', to: [.5, .5], width: .3, height: .4 }, [.1, 0]), [.6, .5, .3, .4]);
+  assert.deepEqual(graphicBox(graphic.graphic, [0, -.1]).map((v) => Math.round(v * 100) / 100), [.7, .6, .12, .12]);
+});

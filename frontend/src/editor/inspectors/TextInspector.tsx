@@ -33,7 +33,7 @@ export function TextInspector() {
   const [savedNow, setSavedNow] = useState(false);  // A moment of "Saved to My styles" after saving.
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
   const forLayer = useContext(LayerModeContext);
-  if (text.graphic) return <GraphicInspector text={text} timing={timing} onChange={onChange} onEnter={onEnter}/>;
+  if (text.graphic) return <GraphicInspector text={text} timing={timing} onChange={onChange} onEnter={onEnter} follow={follow}/>;
   const fontsAndSize = <>
     <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
     <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>

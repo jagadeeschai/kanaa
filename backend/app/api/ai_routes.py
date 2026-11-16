@@ -281,3 +281,21 @@ def popout(identifier: int, data: PopoutRequest):
         return {'job_id': start(identifier, data.people, data.kind)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+class GraphicOutlineRequest(BaseModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    at: float = Field(default=0, ge=0)
+
+
+@router.post('/photos/{identifier}/graphic-outline')
+def graphic_outline(identifier: int, data: GraphicOutlineRequest):
+    """Glow outline: the edge of what is at (x, y) in the picture, or in the video `at` seconds in."""
+    from app.services.graphic_outline import outline
+    try:
+        return outline(identifier, data.x, data.y, data.at)
+    except LookupError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
