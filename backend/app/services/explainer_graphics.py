@@ -9,16 +9,26 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.services.timeline_schema import Format, Text
 
-STATES = 24  # Mirrored by frontend/src/timeline/graphics.ts.
+STATES = 24  # Stroke graphics keep their existing cache size. Mirrored by frontend/src/timeline/graphics.ts.
+MAX_STATES = 90
 
 
-def state_at(item: Text, local: float) -> int:
+def state_count(item: Text, fps: int) -> int:
+    """Count-up gets roughly one picture per entrance frame; strokes keep their proven 24 states."""
+    if item.graphic and item.graphic.kind == 'count-up' and item.enter and item.enter.preset == 'reveal':
+        duration = max(1e-6, min(item.length, item.enter.duration))
+        return min(MAX_STATES, max(2, round(duration * fps) + 1))
+    return STATES
+
+
+def state_at(item: Text, local: float, fps: int = 24) -> int:
     """Quantised stroke state at an item-local time; the preview uses the same formula."""
     if not item.graphic or not item.enter or item.enter.preset != 'reveal':
-        return STATES - 1
+        return state_count(item, fps) - 1
+    states = state_count(item, fps)
     duration = max(1e-6, min(item.length, item.enter.duration))
     eased = 1 - (1 - min(1, max(0, local / duration))) ** 3
-    return min(STATES - 1, max(0, round(eased * (STATES - 1))))
+    return min(states - 1, max(0, round(eased * (states - 1))))
 
 
 def _shorten(points: list[tuple[int, int]], share: float) -> list[tuple[int, int]]:
@@ -142,11 +152,12 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
 
 
 def frames(item: Text, fmt: Format, fps: int, total: int, folder: Path, prefix: str) -> tuple[list[Path], list[int]]:
-    shown = [state_at(item, number / fps) for number in range(total)]
+    states = state_count(item, fps)
+    shown = [state_at(item, number / fps, fps) for number in range(total)]
     paths: list[Path] = []
     for state in sorted(set(shown)):
         target = folder / f'{prefix}-{state:02d}.png'
-        render(item, fmt, target, state / (STATES - 1))
+        render(item, fmt, target, state / (states - 1))
         paths.append(target)
     by_state = {int(path.stem.rsplit('-', 1)[1]): index for index, path in enumerate(paths)}
     return paths, [by_state[state] for state in shown]

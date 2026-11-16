@@ -1,6 +1,6 @@
 import { addGraphic, clipLength, REST_TRANSFORM, type Clip, type ExplainerGraphic, type GraphicKind, type TextItem, type Timeline, type VideoLayer } from '../../timeline/model';
 import { newId } from '../editor-constants';
-import { GRAPHIC_STATES } from '../../timeline/graphics';
+import { graphicStateCount } from '../../timeline/graphics';
 export { graphicBox } from '../../timeline/graphics';
 import { fetchTextImage, graphicOutline } from '../../api/client';
 import { frameToSource, sourceToFrame } from '../../timeline/tracking';
@@ -80,7 +80,7 @@ export function createGraphicActions(getInput: () => Input) {
 export function queueGraphicFrames(texts: TextItem[], format: Timeline['format'], keyOf: (text: TextItem, format: Timeline['format']) => string, images: Map<string, string | 'loading'>, ready: () => void) {
   for (const text of texts) {
     if (!text.graphic || text.enter?.preset !== 'reveal') continue;
-    for (let frame = 0; frame < GRAPHIC_STATES; frame += 1) {
+    for (let frame = 0; frame < graphicStateCount(text, format.fps); frame += 1) {
       const key = `${keyOf(text, format)}|graphic${frame}`;
       if (images.has(key)) continue;
       images.set(key, 'loading');

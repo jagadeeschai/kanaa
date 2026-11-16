@@ -1,13 +1,23 @@
 import type { ExplainerGraphic, TextItem } from './model';
 
 export const GRAPHIC_STATES = 24; // Matches backend/app/services/explainer_graphics.py.
+export const MAX_GRAPHIC_STATES = 90;
 
-export function graphicState(item: TextItem, local: number): number | null {
+export function graphicStateCount(item: TextItem, fps: number): number {
+  if ((item.graphic?.kind as string) === 'count-up' && item.enter?.preset === 'reveal') {
+    const duration = Math.max(1e-6, Math.min(item.length, item.enter.duration));
+    return Math.min(MAX_GRAPHIC_STATES, Math.max(2, Math.round(duration * fps) + 1));
+  }
+  return GRAPHIC_STATES;
+}
+
+export function graphicState(item: TextItem, local: number, fps = 24): number | null {
   if (!item.graphic || item.enter?.preset !== 'reveal') return null;
+  const states = graphicStateCount(item, fps);
   const duration = Math.max(1e-6, Math.min(item.length, item.enter.duration));
   const q = Math.min(1, Math.max(0, local / duration));
   const eased = 1 - (1 - q) ** 3;
-  return Math.min(GRAPHIC_STATES - 1, Math.max(0, Math.round(eased * (GRAPHIC_STATES - 1))));
+  return Math.min(states - 1, Math.max(0, Math.round(eased * (states - 1))));
 }
 
 /** Where a graphic sits at item-local time `local`, for Follow: its own box, moved by its position keys. */

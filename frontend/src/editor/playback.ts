@@ -1157,7 +1157,7 @@ export class PlaybackEngine {
     // A karaoke line shows the picture with the words sung so far lit, or the plain one until that picture is in.
     const local = item ? this.time - item.start : 0;
     const lit = item ? karaokeLit(item, local) : null;
-    const graphicFrame = item ? graphicState(item, local) : null;
+    const graphicFrame = item ? graphicState(item, local, this.timeline?.format.fps ?? 24) : null;
     const url = item && ((graphicFrame !== null && this.textUrl(item, null, graphicFrame)) || (lit !== null && this.textUrl(item, lit)) || this.textUrl(item));
     if (!item || !url) return;
     const image = this.imageTexture(url, true);

@@ -24,6 +24,7 @@ from app.services.tracking_service import track
 from app.services.stem_service import INSTALL_COMMAND, separate, stems_available
 from app.services.timeline_schema import Caption, CaptionLayer, Format, ShapeMask, Text, Timeline
 from app.services.timeline_service import write_shape_mask, render_text_image, render_timeline, upgrade_edit_recipe
+from app.services.explainer_graphics import state_count
 from app.services.video_edit_service import LYRIC_FONTS_DIR, check_disk_space, resolve_audio_asset
 from app.services.video_service import serve_file_with_ranges
 from app.db.database import get_connection
@@ -481,13 +482,14 @@ def text_image(body: dict):
     if lit is not None and not isinstance(lit, int):
         raise HTTPException(400, 'This text is not valid.')
     graphic_frame = body.get('graphic_frame') if item.graphic else None
-    if graphic_frame is not None and (not isinstance(graphic_frame, int) or not 0 <= graphic_frame < 24):
+    graphic_states = state_count(item, fmt.fps)
+    if graphic_frame is not None and (not isinstance(graphic_frame, int) or not 0 <= graphic_frame < graphic_states):
         raise HTTPException(400, 'This graphic frame is not valid.')
     suffix = f'.graphic{graphic_frame}.png' if graphic_frame is not None else '.png' if lit is None else f'.lit{lit}.png'
     target = text_cache(item, fmt).with_suffix(suffix)
     if not target.is_file():
         target.parent.mkdir(parents=True, exist_ok=True)
-        render_text_image(item, fmt, target, lit=lit, graphic_progress=1 if graphic_frame is None else graphic_frame / 23)
+        render_text_image(item, fmt, target, lit=lit, graphic_progress=1 if graphic_frame is None else graphic_frame / (graphic_states - 1))
     return FileResponse(target, media_type='image/png')
 
 

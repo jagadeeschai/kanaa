@@ -15,6 +15,7 @@ from app.services.cutout_service import helper
 from app.services.media_probe import MediaFacts
 from app.services.timeline_schema import Format, Text, Timeline
 from app.services.timeline_service import render_text_image, render_timeline
+from app.services.explainer_graphics import state_at, state_count
 
 
 KINDS = ('arrow-straight', 'arrow-curved', 'circle', 'box', 'callout')
@@ -27,6 +28,14 @@ def item(kind, style='clean'):
 
 @unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg required')
 class ExplainerGraphics(unittest.TestCase):
+    def test_state_formula_matches_preview_examples_and_count_up_density(self):
+        arrow = item('arrow-straight')
+        self.assertEqual([state_at(arrow, at, 24) for at in (0, .2, .4, .6, .8, 1)], [0, 18, 23, 23, 23, 23])
+        count_up = arrow.model_copy(update={'length_': 3, 'graphic': arrow.graphic.model_copy(update={'kind': 'count-up'}), 'enter': arrow.enter.model_copy(update={'duration': 2})}, deep=True)
+        self.assertEqual(state_count(count_up, 30), 61)
+        self.assertEqual(state_at(count_up, 2, 30), 60)
+        self.assertEqual(state_count(count_up.model_copy(update={'enter': count_up.enter.model_copy(update={'duration': 8})}), 60), 90)
+
     def test_all_graphics_and_styles_render_transparent_images(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); fmt = Format(width=320, height=240, fps=24)
