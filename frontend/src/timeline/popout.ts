@@ -52,14 +52,15 @@ export function popoutMoves(preset: PopoutPreset, where: Where, picture: { width
 }
 
 /**
- * The clip with id `clipId` (on the main track) as two layers: the background in its place, the cut-out on a new layer
- * right above the pictures (words in front of the person) or above the words (words behind the person).
+ * The clip with id `clipId` (on the main track) as two layers: the background in its place, the cut-out right above the
+ * pictures (words in front of the person) or above the words (words behind the person). Applying again to the same
+ * clip replaces its cut-out; the cut-out goes on a Pop-out layer that is free at that time and on the right side of the
+ * words, and a new layer is made only when none is.
  */
 export function applyPopout(timeline: Timeline, clipId: string, pictures: PopoutPictures, preset: PopoutPreset, wordsBehind: boolean, personClipId: string, layerId: string): Timeline {
   const main = mainLayer(timeline);
   const index = main.items.findIndex((clip) => clip.id === clipId);
   if (index < 0) throw new Error('Pop-out works on a clip on the main track.');
-  if (timeline.layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers.`);
   const clip = main.items[index];
   const length = clipLength(clip);
   const base = clip.transform.scale ?? 1;
@@ -69,9 +70,23 @@ export function applyPopout(timeline: Timeline, clipId: string, pictures: Popout
   const next = main.items[index + 1];
   const person: Clip = { ...clip, id: personClipId, media_id: pictures.personId, transform: front, frame_locked: true, transition_in: null, volume: 0, muted: true,
     fade_in: clip.transition_in ? clip.transition_in.duration / 2 : 0, fade_out: next?.transition_in ? next.transition_in.duration / 2 : 0, in: 0, out: round(length), speed: 1 };
-  const withBackground = { ...timeline, layers: timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((item) => (item.id === clipId ? background : item)) } : layer)) };
+  const end = clip.start + length;
+  // This clip's earlier cut-out (same time on a Pop-out layer) goes; a layer left empty goes with it.
+  const same = (item: Clip) => Math.abs(item.start - clip.start) < 1e-3 && Math.abs(clipLength(item) - length) < 1e-3;
+  let layers = timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((item) => (item.id === clipId ? background : item)) }
+    : layer.kind === 'video' && layer.name === 'Pop-out' ? { ...layer, items: layer.items.filter((item) => !same(item)) } : layer))
+    .filter((layer) => !(layer.kind === 'video' && layer.name === 'Pop-out' && layer.items.length === 0));
+  const mainAt = layers.findIndex((each) => each.id === main.id);
+  const lastWords = layers.reduce((last, each, k) => (each.kind === 'text' ? k : last), -1);
+  const sideOk = (k: number) => (wordsBehind ? k > lastWords : k < lastWords || lastWords < 0);
+  const free = (layer: VideoLayer) => layer.items.every((item) => item.start + clipLength(item) <= clip.start + 1e-6 || end <= item.start + 1e-6);
+  const reuse = layers.findIndex((layer, k) => k > mainAt && layer.kind === 'video' && layer.name === 'Pop-out' && sideOk(k) && free(layer as VideoLayer));
+  if (reuse >= 0) {
+    layers = layers.map((layer, k) => (k === reuse ? { ...(layer as VideoLayer), items: [...(layer as VideoLayer).items, person].sort((a, b) => a.start - b.start) } : layer));
+    return { ...timeline, layers };
+  }
+  if (layers.filter((layer) => layer.kind === 'video').length >= MAX_VIDEO_LAYERS) throw new Error(`Use up to ${MAX_VIDEO_LAYERS} video layers. Delete a layer you no longer use, then apply again.`);
   const layer: VideoLayer = { id: layerId, kind: 'video', name: 'Pop-out', items: [person] };
-  const layers = withBackground.layers;
-  const at = wordsBehind ? layers.reduce((last, each, k) => (each.kind === 'text' || each.kind === 'video' ? k : last), 0) + 1 : layers.indexOf(layers.find((each) => each.id === main.id)!) + 1;
-  return { ...withBackground, layers: [...layers.slice(0, at), layer, ...layers.slice(at)] };
+  const at = wordsBehind ? layers.reduce((last, each, k) => (each.kind === 'text' || each.kind === 'video' ? k : last), 0) + 1 : mainAt + 1;
+  return { ...timeline, layers: [...layers.slice(0, at), layer, ...layers.slice(at)] };
 }

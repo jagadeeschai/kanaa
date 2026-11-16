@@ -43,3 +43,22 @@ test('the clip becomes the background, and a new layer holds the person for exac
   assert.equal(duration(t), duration(timeline()));
   assert.deepEqual(applyPopout(timeline(), 'a', PICTURES, 'forward', true, 'p', 'pop').layers.map((l) => l.id), ['main', 'words', 'pop']);  // Words behind.
 });
+
+test('a second pop-out uses the Pop-out layer already there, and applying again replaces the cut-out', () => {
+  const once = applyPopout(timeline(), 'a', PICTURES, 'forward', false, 'p', 'pop');
+  const twice = applyPopout(once, 'b', { ...PICTURES, backgroundId: 17, personId: 18 }, 'rise', false, 'q', 'pop2');
+  assert.deepEqual(twice.layers.map((l) => l.id), ['main', 'pop', 'words']);
+  assert.deepEqual(twice.layers[1].items.map((item) => [item.id, item.start]), [['p', 0], ['q', 5]]);
+  const again = applyPopout(twice, 'a', { ...PICTURES, personId: 28 }, 'back', false, 'r', 'pop3');
+  assert.deepEqual(again.layers.map((l) => l.id), ['main', 'pop', 'words']);
+  assert.deepEqual(again.layers[1].items.map((item) => [item.id, item.media_id]), [['r', 28], ['q', 18]]);
+});
+
+test('with 8 video layers already, a pop-out still fits on a free Pop-out layer', () => {
+  const full = applyPopout(timeline(), 'a', PICTURES, 'forward', false, 'p', 'pop');
+  for (let n = 0; n < 6; n++) full.layers.splice(1, 0, { id: `v${n}`, kind: 'video', name: 'Overlay', items: [] });
+  assert.equal(full.layers.filter((l) => l.kind === 'video').length, 8);
+  const more = applyPopout(full, 'b', PICTURES, 'forward', false, 'q', 'pop2');
+  assert.equal(more.layers.filter((l) => l.kind === 'video').length, 8);
+  assert.throws(() => applyPopout(full, 'b', PICTURES, 'forward', true, 'q', 'pop2'), /8 video layers/);   // words behind needs a new layer
+});
