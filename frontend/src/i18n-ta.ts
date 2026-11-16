@@ -3,6 +3,8 @@
  * one sentence. Names (YouTube, VHS, LUT, font names) stay as they are. A label missing here simply shows in English.
  */
 export const TAMIL: Record<string, string> = {
+  'Graphic colour':'விளக்கப்பட நிறம்',
+  'All steps timed':'அனைத்துப் படிகளுக்கும் நேரம் அமைக்கப்பட்டது',
   'Icon':'சின்னம்', 'Pin':'இடக்குறி', 'Warning':'எச்சரிக்கை', 'Tick':'சரி', 'Cross':'தவறு', 'Question':'கேள்வி', 'Star':'விண்மீன்', 'Heart':'இதயம்', 'Trend up':'உயர்வு', 'Trend down':'சரிவு', 'Round badge':'வட்டப் பின்னணி',
   'Timeline bar':'காலவரிசைக் கோடு', 'Timeline points':'காலவரிசைப் புள்ளிகள்', 'date, label':'தேதி, குறிப்பு', 'Add 2–8 points as date, label.':'தேதி, குறிப்பு என 2–8 புள்ளிகளைச் சேருங்கள்.', 'Vertical timeline':'செங்குத்துக் காலவரிசை',
   'Step list': 'படிநிலைப் பட்டியல்', 'Steps': 'படிகள்', 'Add 2–8 steps, one per line.': 'ஒரு வரியில் ஒரு படியாக 2–8 படிகளைச் சேருங்கள்.', 'Time each step to the playhead': 'ஒவ்வொரு படிக்கும் இயக்க நேரத்தை அமை', 'Move the playhead forward inside this clip.': 'இந்தத் துண்டுக்குள் இயக்கக் குறியை முன்னோக்கி நகர்த்துங்கள்.', 'Use even timing': 'சம இடைவெளியைப் பயன்படுத்து', 'Use bullets': 'புள்ளிகளைப் பயன்படுத்து', 'Highlight current step': 'தற்போதைய படியைச் சிறப்பி',

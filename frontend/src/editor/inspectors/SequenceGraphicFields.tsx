@@ -23,7 +23,7 @@ export function SequenceGraphicFields({ text, onChange }: { text: TextItem; onCh
       const at = Math.round((now - text.start) * 1000000) / 1000000;
       if (at < 0 || at >= text.length || (times.length > 0 && at <= times[times.length - 1])) { setError('Move the playhead forward inside this clip.'); return; }
       setError(''); onChange({ graphic: { ...graphic, step_times: [...times, at] } });
-    }}>{t('Time each step to the playhead')} ({times.length + 1}/{graphic.steps?.length})</button>
+    }}>{times.length >= (graphic.steps?.length ?? 0) ? t('All steps timed') : t('Time each step to the playhead')} ({Math.min(times.length + 1, graphic.steps?.length ?? 0)}/{graphic.steps?.length})</button>
     {times.length > 0 && <><p>{times.map((at, i) => `${i + 1}: ${at.toFixed(2)}s`).join(' · ')}</p><button className="ed-btn" onClick={() => onChange({ graphic: { ...graphic, step_times: null } })}>{t('Use even timing')}</button></>}
     <More><label className="ed-check"><input type="checkbox" checked={graphic.step_bullets ?? false} onChange={(event) => onChange({ graphic: { ...graphic, step_bullets: event.target.checked } })}/>{t('Use bullets')}</label><label className="ed-check"><input type="checkbox" checked={graphic.highlight_current ?? true} onChange={(event) => onChange({ graphic: { ...graphic, highlight_current: event.target.checked } })}/>{t('Highlight current step')}</label></More>
   </>;
