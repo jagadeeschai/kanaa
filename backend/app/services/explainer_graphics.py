@@ -124,15 +124,22 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
             x0 = min(fmt.width-panel_w-width*2, max(width*2, x0)); y0 = min(fmt.height-panel_h-width*2, max(width*2, y0))
         accent = (245, 193, 27, 255) if graphic.style == 'documentary' else colour
         if not full or graphic.style in ('dark-band', 'bold-colour', 'documentary'):
-            fill = (12, 15, 21, round(238*q)) if graphic.style == 'dark-band' else (245, 193, 27, round(238*q)) if graphic.style == 'documentary' else colour[:-1]+(round(238*q),) if graphic.style == 'bold-colour' else (12, 15, 21, round(210*q))
+            fill = (12, 15, 21, round(238*q)) if graphic.style == 'dark-band' else (44, 38, 18, round(238*q)) if graphic.style == 'documentary' else (58, 70, 180, round(238*q)) if graphic.style == 'bold-colour' else (12, 15, 21, round(210*q))
             draw.rounded_rectangle((x0, y0, x0+panel_w, y0+panel_h), radius=max(8, round(panel_h*.06)), fill=fill)
         line_q = min(1, q/.35)
         draw.line((x0+round(panel_w*.08), y0+round(panel_h*.78), x0+round(panel_w*(.08+.84*line_q)), y0+round(panel_h*.78)), fill=accent, width=max(width, round(fmt.height*.008)))
         if q > .25:
             shown = min(1, (q-.25)/.75); opacity = round(255*shown); slide = round((1-shown)*panel_w*.1)
-            font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', max(18, round(item.size*fmt.height/1080)))
-            bounds = draw.textbbox((0, 0), item.text, font=font); tw, th = bounds[2]-bounds[0], bounds[3]-bounds[1]
-            ink = (20, 20, 20, opacity) if graphic.style in ('documentary', 'bold-colour') else (255, 255, 255, opacity)
+            # Full screen: a title, about a third of the panel tall (Text size scales it); a corner card uses Text size as is.
+            # Either way it shrinks until it fits the panel, so a long chapter name never runs off.
+            face = 'Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf'
+            size = round(panel_h * .3 * item.size / 44) if full else round(item.size * fmt.height / 1080)
+            size = max(12, size); font = _font(face, size)
+            bounds = draw.textbbox((0, 0), item.text, font=font)
+            while size > 12 and (bounds[2]-bounds[0] > panel_w * .84 or bounds[3]-bounds[1] > panel_h * .55):
+                size = max(12, round(size * .9)); font = _font(face, size); bounds = draw.textbbox((0, 0), item.text, font=font)
+            tw, th = bounds[2]-bounds[0], bounds[3]-bounds[1]
+            ink = (245, 193, 27, opacity) if graphic.style == 'documentary' else (255, 255, 255, opacity)
             tx = x0 + (panel_w-tw)//2 - slide; ty = y0 + (panel_h-th)//2 - bounds[1] - round(panel_h*.05)
             draw.text((tx, ty), item.text, font=font, fill=ink)
     elif graphic.kind == 'count-up':
@@ -146,31 +153,38 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         tw = max(number_box[2], label_box[2]); th = number_box[3] - number_box[1] + (label_box[3] - label_box[1] if label else 0) + round(label_size * .35)
         x0 = round(b[0] - tw / 2); y0 = round(b[1] - th / 2); pad = max(8, round(fmt.height * .018))
         if graphic.style in ('dark-band', 'bold-colour', 'documentary'):
-            fill = (12, 15, 21, 235) if graphic.style == 'dark-band' else (245, 193, 27, 240) if graphic.style == 'documentary' else colour[:-1] + (240,)
+            fill = (12, 15, 21, 235) if graphic.style == 'dark-band' else (44, 38, 18, 240) if graphic.style == 'documentary' else (58, 70, 180, 240)
             draw.rounded_rectangle((x0-pad, y0-pad, x0+tw+pad, y0+th+pad), radius=pad, fill=fill)
-        ink = (20, 20, 20, 255) if graphic.style in ('documentary', 'bold-colour') else colour
+        ink = (245, 193, 27, 255) if graphic.style == 'documentary' else (255, 255, 255, 255) if graphic.style == 'bold-colour' else colour
         draw.text((x0 + (tw-number_box[2])/2, y0-number_box[1]), number, font=number_font, fill=ink)
         if label: draw.text((x0 + (tw-label_box[2])/2, y0 + number_box[3]-number_box[1] + round(label_size*.35)-label_box[1]), label, font=label_font, fill=ink)
     elif graphic.kind == 'lower-third':
+        name_size = max(16, round(item.size * fmt.height / 1080)); role_size = max(12, round(name_size * .58))
+        name_font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', name_size)
+        role_text = graphic.role or ''
+        role_font = _font('Arima-Bold.ttf' if _tamil(role_text) else 'NotoSans-Bold.ttf', role_size)
+        name_box = draw.textbbox((0, 0), item.text or ' ', font=name_font)
+        role_box = draw.textbbox((0, 0), role_text, font=role_font) if role_text else (0, 0, 0, 0)
+        gap = round(name_size * .25) if role_text else 0
+        # The panel grows to fit both lines (Tamil letters reach well below the line), however small the frame.
+        pad_y = max(4, round(name_size * .3)); pad_x = max(6, round(name_size * .45))
+        text_h = (name_box[3] - name_box[1]) + gap + (role_box[3] - role_box[1])
+        panel_w = min(fmt.width - width * 4, max(round(graphic.width * fmt.width), max(name_box[2], role_box[2]) + pad_x * 2))
+        panel_h = min(fmt.height - width * 4, max(round(graphic.height * fmt.height), text_h + pad_y * 2))
         x0 = round(graphic.to[0] * fmt.width); y0 = round(graphic.to[1] * fmt.height)
-        panel_w = round(graphic.width * fmt.width); panel_h = round(graphic.height * fmt.height)
         x0 = min(fmt.width - panel_w - width * 2, max(width * 2, x0)); y0 = min(fmt.height - panel_h - width * 2, max(width * 2, y0))
         accent = (245, 193, 27, 255) if graphic.style == 'documentary' else colour
         if graphic.style in ('dark-band', 'bold-colour', 'documentary'):
-            fill = (12, 15, 21, round(232 * progress)) if graphic.style == 'dark-band' else (245, 193, 27, round(240 * progress)) if graphic.style == 'documentary' else colour[:-1] + (round(240 * progress),)
+            fill = (12, 15, 21, round(232 * progress)) if graphic.style == 'dark-band' else (44, 38, 18, round(240 * progress)) if graphic.style == 'documentary' else (58, 70, 180, round(240 * progress))
             draw.rounded_rectangle((x0, y0, x0 + panel_w, y0 + panel_h), radius=max(5, round(panel_h * .08)), fill=fill)
         line_share = min(1, progress / .34)
         draw.line((x0, y0 + panel_h, x0 + round(panel_w * line_share), y0 + panel_h), fill=accent, width=max(width, round(fmt.height * .008)))
         if progress > .28:
             q = min(1, (progress - .28) / .72); slide = round((1 - q) * panel_w * .12); opacity = round(255 * q)
-            name_size = max(16, round(item.size * fmt.height / 1080)); role_size = max(12, round(name_size * .58))
-            name_font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', name_size)
-            role_text = graphic.role or ''
-            role_font = _font('Arima-Bold.ttf' if _tamil(role_text) else 'NotoSans-Bold.ttf', role_size)
-            ink = (20, 20, 20, opacity) if graphic.style in ('documentary', 'bold-colour') and graphic.style != 'dark-band' else (255, 255, 255, opacity)
-            px = x0 + round(panel_w * .055) - slide; py = y0 + round(panel_h * .16)
-            draw.text((px, py), item.text, font=name_font, fill=ink)
-            if role_text: draw.text((px, py + round(name_size * 1.15)), role_text, font=role_font, fill=ink)
+            ink = (245, 193, 27, opacity) if graphic.style == 'documentary' else (255, 255, 255, opacity)
+            px = x0 + pad_x - slide; top = y0 + (panel_h - text_h) // 2
+            draw.text((px, top - name_box[1]), item.text, font=name_font, fill=ink)
+            if role_text: draw.text((px, top + name_box[3] - name_box[1] + gap - role_box[1]), role_text, font=role_font, fill=ink)
     elif graphic.kind.startswith('arrow'):
         if graphic.kind == 'arrow-curved':
             control = ((a[0] + b[0]) / 2, min(a[1], b[1]) - abs(b[0] - a[0]) * .22)

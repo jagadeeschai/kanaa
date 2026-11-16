@@ -67,6 +67,21 @@ class ExplainerGraphics(unittest.TestCase):
             lower = Text.model_validate(base)
             self.assertGreater(state_at(lower, .7, 30), state_at(lower, 2.8, 30))
 
+    def test_lower_third_panel_fits_name_and_role_on_a_small_frame(self):
+        # The role line once spilled under the panel's line and off the bottom of a small frame.
+        with tempfile.TemporaryDirectory() as folder:
+            for width, height in ((426, 240), (1920, 1080)):
+                base = item('callout').model_dump(by_alias=True)
+                base.update({'id': 'lower', 'length': 3, 'text': 'கனா Kanaa'})
+                base['graphic'].update({'kind': 'lower-third', 'style': 'dark-band', 'from': [.07, .78], 'to': [.07, .78], 'width': .42, 'height': .14, 'role': 'இயக்குநர் · Director'})
+                target = Path(folder) / f'{height}.png'
+                render_text_image(Text.model_validate(base), Format(width=width, height=height, fps=24), target)
+                alpha = np.asarray(Image.open(target))[:, :, 3]
+                rows = np.nonzero(alpha.max(axis=1))[0]
+                panel = np.nonzero(alpha[:, :].max(axis=1) > 200)[0]
+                self.assertLess(rows.max(), height - 1, (width, height))     # nothing runs off the bottom
+                self.assertEqual(rows.max() - panel.max(), 0, (width, height))  # nothing hangs below the panel's line
+
     def test_count_up_easing_formatting_and_exact_end(self):
         data = item('callout').model_dump(by_alias=True)
         data.update({'id': 'count', 'length': 3, 'text': 'Count-up number', 'enter': {'preset': 'reveal', 'duration': 2}})

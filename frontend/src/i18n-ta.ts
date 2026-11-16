@@ -8,7 +8,7 @@ export const TAMIL: Record<string, string> = {
   'Circle': 'வட்டம்', 'Rounded box': 'வட்டமூலைப் பெட்டி', 'Clean white': 'தூய வெள்ளை', 'Hand-drawn': 'கையால் வரைந்தது',
   'Neon': 'நியான்', 'Documentary yellow': 'ஆவணப்பட மஞ்சள்', 'Draw on': 'வரைந்து தோன்று', 'Line width': 'கோட்டின் தடிமன்', 'Entrance': 'தொடக்க அசைவு',
   'Graphic handles': 'விளக்கப்படக் கைப்பிடிகள்', 'Move arrow tail': 'அம்பின் தொடக்கத்தை நகர்த்து', 'Move arrow point': 'அம்பின் முனையை நகர்த்து', 'Move highlight': 'சிறப்பிப்பை நகர்த்து', 'Resize highlight': 'சிறப்பிப்பின் அளவை மாற்று',
-  'Spotlight': 'ஒளிவட்டம்', 'Glow outline around this': 'இதைச் சுற்றி ஒளிரும் கோடு', 'glow outline': 'ஒளிரும் கோடு', 'Darken the rest': 'மற்றதை இருட்டாக்கு',
+  'Text size': 'எழுத்தின் அளவு', 'Spotlight': 'ஒளிவட்டம்', 'Glow outline around this': 'இதைச் சுற்றி ஒளிரும் கோடு', 'glow outline': 'ஒளிரும் கோடு', 'Darken the rest': 'மற்றதை இருட்டாக்கு',
   'A spotlight stays where you put it. To light something that moves, use a glow outline or a circle and choose Follow.': 'ஒளிவட்டம் வைத்த இடத்திலேயே இருக்கும். நகரும் ஒன்றை ஒளிரச் செய்ய, ஒளிரும் கோடு அல்லது வட்டம் வைத்து பின்தொடர் என்பதைத் தேர்வு செய்யுங்கள்.',
   'Right-click on a picture or video to outline something in it.': 'ஒன்றைச் சுற்றிக் கோடிட, படம் அல்லது வீடியோவின் மேல் வலது-சொடுக்குங்கள்.',
   'The point you right-clicked is the arrow tip or the centre of the highlight. A glow outline traces what you right-clicked.': 'நீங்கள் வலது-சொடுக்கிய இடமே அம்பின் முனை அல்லது சிறப்பிப்பின் மையம். ஒளிரும் கோடு நீங்கள் வலது-சொடுக்கியதைச் சுற்றி வரையும்.',
