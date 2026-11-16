@@ -1037,7 +1037,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useSceneJob(() => ({ sceneJob, setError, setSceneJob, timelineRef, change, setFaceNote }), [sceneJob, change]);
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
   useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
-  const { addExplainerGraphic, addGlowOutline } = createGraphicActions(() => ({ timelineRef, engineRef, change, setSelectedId, sourceFor, setError }));
+  const { addExplainerGraphic, addGlowOutline, addComparison } = createGraphicActions(() => ({ timelineRef, engineRef, change, setSelectedId, sourceFor, setError }));
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
     get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; }, get engineRef(): typeof engineRef { return engineRef; },
     get history(): typeof history { return history; },
@@ -1054,7 +1054,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     get playing(): typeof playing { return playing; },
     get togglePlay(): typeof togglePlay { return togglePlay; },
     get addBlurBox(): typeof addBlurBox { return addBlurBox; },
-    get addExplainerGraphic(): typeof addExplainerGraphic { return addExplainerGraphic; }, get addGlowOutline(): typeof addGlowOutline { return addGlowOutline; },
+    get addExplainerGraphic(): typeof addExplainerGraphic { return addExplainerGraphic; }, get addGlowOutline(): typeof addGlowOutline { return addGlowOutline; }, get addComparison(): typeof addComparison { return addComparison; },
     get faceJob(): typeof faceJob { return faceJob; },
     get blurFaces(): typeof blurFaces { return blurFaces; },
     get followTarget(): typeof followTarget { return followTarget; },

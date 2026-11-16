@@ -49,7 +49,7 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
-export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart' | 'line-chart' | 'pie-chart' | 'step-list' | 'timeline-bar' | 'icon';
+export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart' | 'line-chart' | 'pie-chart' | 'step-list' | 'timeline-bar' | 'icon' | 'compare-divider';
 export type GraphicIcon = 'pin' | 'warning' | 'tick' | 'cross' | 'question' | 'star' | 'heart' | 'trend-up' | 'trend-down';
 export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary' | 'dark-band' | 'bold-colour';
 export type ChartRow = { label: string; value: number };
@@ -60,7 +60,9 @@ export type ExplainerGraphic = { kind: GraphicKind; style: GraphicStyle; from: [
   count_from?: number; count_to?: number; label?: string | null; prefix?: string; suffix?: string; indian_grouping?: boolean; tamil_numerals?: boolean; card_mode?: 'full' | 'corner';
   data?: ChartRow[] | null; chart_orientation?: 'horizontal' | 'vertical'; highlight_index?: number | null; show_values?: boolean; donut?: boolean;
   steps?: string[] | null; step_times?: number[] | null; step_bullets?: boolean; highlight_current?: boolean;
-  points?: { date: string; label: string }[] | null; timeline_vertical?: boolean; icon?: GraphicIcon; icon_badge?: boolean };
+  points?: { date: string; label: string }[] | null; timeline_vertical?: boolean; icon?: GraphicIcon; icon_badge?: boolean;
+  /** Before / after split: the overlay clip shown right of the divider, and how the divider slides. */
+  compare_clip?: string | null; split_from?: number; split_to?: number; split_delay?: number; split_move?: number; before_label?: string; after_label?: string };
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band' | 'plain'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; glint?: boolean; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   graphic?: ExplainerGraphic | null;

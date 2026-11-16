@@ -1,10 +1,12 @@
 import type { ExplainerGraphic, TextItem } from './model';
 import { stepStates, timelineStates } from './sequence-graphics.ts';
+import { compareStates } from './compare.ts';
 
 export const GRAPHIC_STATES = 24; // Matches backend/app/services/explainer_graphics.py.
 export const MAX_GRAPHIC_STATES = 90;
 
 export function graphicStateCount(item: TextItem, fps: number): number {
+  if (item.graphic?.kind === 'compare-divider') return compareStates(item, fps).length;
   if (item.graphic?.kind === 'timeline-bar') return timelineStates(item).length;
   if (item.graphic?.kind === 'step-list') return stepStates(item).length;
   if (item.graphic && ['count-up', 'bar-chart', 'line-chart', 'pie-chart'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
@@ -15,6 +17,7 @@ export function graphicStateCount(item: TextItem, fps: number): number {
 }
 
 export function graphicState(item: TextItem, local: number, fps = 24): number | null {
+  if (item.graphic?.kind === 'compare-divider') return Math.max(0, compareStates(item, fps).filter((at) => at <= local + 1e-9).length - 1);
   if (item.graphic?.kind === 'timeline-bar') return Math.max(0, timelineStates(item).filter((at) => at <= local).length - 1);
   if (item.graphic?.kind === 'step-list') return Math.max(0, stepStates(item).filter((at) => at <= local).length - 1);
   if (!item.graphic || item.enter?.preset !== 'reveal') return null;
@@ -35,6 +38,7 @@ export function graphicState(item: TextItem, local: number, fps = 24): number | 
 /** Where a graphic sits at item-local time `local`, for Follow: its own box, moved by its position keys. */
 export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]): [number, number, number, number] {
   const [dx, dy] = offset;
+  if (graphic.kind === 'compare-divider') return [.5 + dx, .5 + dy, 1, 1];
   if (graphic.kind === 'icon') return [graphic.to[0]+dx,graphic.to[1]+dy,graphic.width,graphic.height];
   if (graphic.kind === 'outline' && graphic.shape?.length) {
     const xs = graphic.shape.map((p) => p[0]), ys = graphic.shape.map((p) => p[1]);

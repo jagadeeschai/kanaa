@@ -23,6 +23,7 @@ type Input = {
   addBlurBox: (style: "blur" | "pixelate", at?: [number, number] | undefined) => void;
   addExplainerGraphic: (kind: GraphicKind, at: [number, number]) => void;
   addGlowOutline: (at: [number, number]) => Promise<void>;
+  addComparison: (clipId: string) => void;
   addMedia: (item: Photo) => void;
   addOverlayMedia: (item: Photo, dropAt?: number | undefined) => void;
   blurFaces: () => Promise<void>;
@@ -197,6 +198,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         { label: 'Frame locked', checked: Boolean(clip.frame_locked), onSelect: () => change(updateClip(timeline, id, { frame_locked: !clip.frame_locked })) },
         { label: 'Clip on', checked: clip.enabled !== false, onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) },
         { label: 'Rename clip…', onSelect: () => setRenamingClip(id) },
+        ...(onMain ? [] : [{ label: 'Before / after split', onSelect: () => getInput().addComparison(id) }]),
         'divider');
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });

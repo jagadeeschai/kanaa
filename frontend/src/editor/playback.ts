@@ -1,4 +1,5 @@
 import { karaokeLit } from '../timeline/karaoke';
+import { dividerFor, splitAt } from '../timeline/compare';
 import { dipColour, animatedLook, cardCorners, CROSS_BLUR, dipWeights, LETTER_PRESETS, MOVING, MOVING_KINDS, type TransitionKind, letterLooks, LOOKS, MAX_LETTERS, PICTURE_REST, REST, STREAK_TAPS, TRICK_COPIES, WHIP_BLUR, type Look } from '../timeline/animation';
 import { keyChroma, keyKind, toHex } from '../timeline/chroma';
 import { valueAt } from '../timeline/evaluate';
@@ -851,10 +852,13 @@ export class PlaybackEngine {
     const height = fitted.height * scale;
     // The clip is cropped to the frame, and that whole frame moves, as in the export.
     const centerX = 0.5 + look.dx; const centerY = 0.5 + look.dy;
-    if (moved) {
+    // A before / after divider shows this clip only to its right, stepped exactly as the export cuts it.
+    const divider = dividerFor(this.timeline!, clip.id);
+    const split = divider ? splitAt(divider.graphic!, this.time - divider.start, format.fps) : null;
+    if (moved || split != null) {
       const { width: w, height: h } = this.canvas;
       gl.enable(gl.SCISSOR_TEST);
-      const left = Math.max(0, (centerX - frame / 2) * w); const right = Math.min(w, (centerX + frame / 2) * w);
+      const left = Math.max(0, (centerX - frame / 2) * w, split == null ? 0 : Math.round(split * w)); const right = Math.min(w, (centerX + frame / 2) * w);
       const top = Math.max(0, (centerY - frame / 2) * h); const bottom = Math.min(h, (centerY + frame / 2) * h);
       gl.scissor(Math.round(left), Math.round(h - bottom), Math.max(0, Math.round(right - left)), Math.max(0, Math.round(bottom - top)));
     }
@@ -940,7 +944,7 @@ export class PlaybackEngine {
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
-    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); gl.uniform1i(uniforms.useWheels, 0); this.clearShaping(); if (moved) gl.disable(gl.SCISSOR_TEST); return; }
+    if (clip.shape_mask && !shape?.ready) { gl.uniform1f(uniforms.oldFilm, 0); gl.uniform1i(uniforms.signalMode, 0); gl.uniform1i(uniforms.lensMode, 0); gl.uniform1f(uniforms.splashAmount, 0); gl.uniform1f(uniforms.dreamyAmount, 0); gl.uniform1i(uniforms.useWheels, 0); this.clearShaping(); if (moved || split != null) gl.disable(gl.SCISSOR_TEST); return; }
     if (shape) {
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shape.texture); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(uniforms.shapeTex, 2); gl.uniform2f(uniforms.viewport, this.canvas.width, this.canvas.height);
@@ -955,7 +959,7 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.useWheels, 0);
     this.clearShaping();
     gl.uniform1i(uniforms.useShape, 0);
-    if (moved) gl.disable(gl.SCISSOR_TEST);
+    if (moved || split != null) gl.disable(gl.SCISSOR_TEST);
   }
 
   /** Mirror, zoom blur, tilt-shift and tone grade off again, so the next thing drawn with this program is plain. */

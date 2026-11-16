@@ -117,7 +117,25 @@ export function createGraphicActions(getInput: () => Input) {
       place({ kind: 'outline', style: 'neon', from: centre, to: centre, width: .25, height: .18, line_width: .005, shape: framed }, 'glow outline', '#42f5e9', t);
     } catch (problem) { setError((problem as Error).message); }
   };
-  return { addExplainerGraphic, addGlowOutline };
+  /** Before / after split over this overlay clip: the divider runs for the whole clip; the clip shows right of it. */
+  const addComparison = (clipId: string) => {
+    const { timelineRef, change, setSelectedId, setError, engineRef } = getInput();
+    const current = timelineRef.current;
+    if (!current) return;
+    const layer = current.layers.find((each): each is VideoLayer => each.kind === 'video' && each.items.some((clip) => clip.id === clipId));
+    const clip = layer?.items.find((each) => each.id === clipId);
+    if (!layer || !clip) return;
+    if (layer === current.layers.find((each) => each.kind === 'video')) { setError('Put the "after" clip on a layer above the "before" one, then choose Before / after split on it.'); return; }
+    const id = newId();
+    const graphic: ExplainerGraphic = { kind: 'compare-divider', style: 'clean', from: [.5, .5], to: [.5, .5], width: 1, height: 1, line_width: .004,
+      compare_clip: clip.id, split_from: 1, split_to: .5, split_delay: .3, split_move: 1.2, before_label: 'முன்', after_label: 'பின்' };
+    const text: TextItem = { id, start: clip.start, length: Math.round(clipLength(clip) * 1000) / 1000, text: 'Before / after', style: 'plain', position: 'center', color: '#ffffff', size: 44, transform: REST_TRANSFORM, graphic };
+    change(addGraphic(current, text, newId()));
+    setSelectedId(id);
+    setTimeout(() => engineRef.current?.seek(clip.start + .3 + 1.2), 0);
+  };
+
+  return { addExplainerGraphic, addGlowOutline, addComparison };
 }
 
 export function queueGraphicFrames(texts: TextItem[], format: Timeline['format'], keyOf: (text: TextItem, format: Timeline['format']) => string, images: Map<string, string | 'loading'>, ready: () => void) {
