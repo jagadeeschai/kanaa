@@ -1,7 +1,10 @@
 import { Check,Clapperboard,Layers,Minus,Plus,Search,WandSparkles,X } from "lucide-react";
 import { useState } from "react";
+import { insertClip } from "../../../timeline/model";
+import { MEDIA_SORTS, sortMedia, type MediaSort } from "../../../timeline/mediaOrder";
 import { openTextToVideo } from "../../TextToVideoDialog";
 import { getPhoto,photoThumbUrl } from "../../../api/client";
+import type { Photo } from "../../../types/photo";
 import ImportArea from "../../../components/ImportArea";
 import KanaaSelect from "../../../components/KanaaSelect";
 import { t } from "../../../i18n";
@@ -12,12 +15,27 @@ import TravelMapPanel from "../../TravelMapPanel";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
 
 export function MediaTabSection1() {
-  const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia } = useEditorPanel<EditorLeftRailBindings>('left');
+  const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia, change, newId, setSelectedId } = useEditorPanel<EditorLeftRailBindings>('left');
+  const [sort, setSort] = useState<MediaSort>(() => { try { return (localStorage.getItem('kanaa.mediaSort') as MediaSort) || 'newest'; } catch { return 'newest'; } });
+  const [unusedOnly, setUnusedOnly] = useState(false);
+  // Shift- or ⌘-click picks several, in the order clicked; Add puts them on the timeline in that order.
+  const [picked, setPicked] = useState<Photo[]>([]);
+  const pick = (item: Photo) => setPicked((current) => (current.some((each) => each.id === item.id) ? current.filter((each) => each.id !== item.id) : [...current, item]));
+  const addPicked = () => {
+    if (!timeline || !picked.length) return;
+    let next = timeline; let last = '';
+    for (const item of picked) {
+      const clip = newClip({ media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration, width: item.width, height: item.height }, newId());
+      next = insertClip(next, clip); last = clip.id;
+    }
+    change(next); setSelectedId(last); setPicked([]);
+  };
   // Search by name, inside the folder chosen: every word typed must be in the file's name.
   const [query, setQuery] = useState('');
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (item: { filename: string }) => words.every((word) => item.filename.toLowerCase().includes(word));
-  const found = { inVideo: inVideo.filter(matches), otherMedia: otherMedia.filter(matches) };
+  const shown = (items: Photo[]) => sortMedia(items.filter((item) => matches(item) && (!unusedOnly || !usedIds.has(item.id))), sort);
+  const found = { inVideo: unusedOnly ? [] : shown(inVideo), otherMedia: shown(otherMedia) };
   return (<>{leftTab === 'media' && <>
           <div className="ed-media-row">
             <ImportArea slim onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -37,10 +55,24 @@ export function MediaTabSection1() {
           <label className="ed-media-search"><Search size={13} aria-hidden="true"/><input value={query} placeholder={t('Search media')} aria-label={t('Search media')}
             onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setQuery(''); }}/>
             {query && <button className="ed-icon small" aria-label={t('Clear search')} onClick={() => setQuery('')}><X size={12}/></button>}</label>
-          {words.length > 0 && !found.inVideo.length && !found.otherMedia.length && <p className="ed-tip">{t('No media named like that{inFolder}.', { inFolder: folder ? ` ${t('in this folder')}` : '' })}</p>}
+          <div className="ed-media-tools">
+            <button className={`ed-chip-toggle ${unusedOnly ? 'on' : ''}`} aria-pressed={unusedOnly} title={t('Show only media not yet in this video')} onClick={() => setUnusedOnly(!unusedOnly)}>{t('Not used yet')}</button>
+            <KanaaSelect aria-label={t('Sort')} value={sort} onChange={(event) => { const next = event.target.value as MediaSort; setSort(next); try { localStorage.setItem('kanaa.mediaSort', next); } catch { /* This session only. */ } }}>
+              {MEDIA_SORTS.map((each) => <option key={each.id} value={each.id}>{t(each.label)}</option>)}
+            </KanaaSelect>
+          </div>
+          {picked.length > 0 && <div className="ed-media-picked" role="status">
+            <span>{t('{count} picked', { count: picked.length })}</span>
+            <button className="ed-button primary" disabled={!timeline} onClick={addPicked}>{t('Add to timeline in this order')}</button>
+            <button className="ed-icon small" aria-label={t('Clear the picks')} onClick={() => setPicked([])}><X size={12}/></button>
+          </div>}
+          {(words.length > 0 || unusedOnly) && !found.inVideo.length && !found.otherMedia.length && <p className="ed-tip">{words.length ? t('No media named like that{inFolder}.', { inFolder: folder ? ` ${t('in this folder')}` : '' }) : t('Everything here is already in your video.')}</p>}
           {([['In this video', found.inVideo], ['Other media', found.otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
-            <button className="ed-tile-add" {...draggableAs({ kind: 'media', id: item.id })} onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}, or drag it onto the timeline. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
+            <button className={`ed-tile-add ${picked.some((each) => each.id === item.id) ? 'picked' : ''}`} {...draggableAs({ kind: 'media', id: item.id })}
+              onClick={(event) => { if (event.shiftKey || event.metaKey) pick(item); else if (picked.length) pick(item); else addMedia(item); }} onContextMenu={(event) => openMediaMenu(event, item)}
+              title={`Add ${item.filename}, or drag it onto the timeline. Shift-click to pick several. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
+            {picked.some((each) => each.id === item.id) && <span className="ed-tile-order" aria-label={t('Picked {number}', { number: picked.findIndex((each) => each.id === item.id) + 1 })}>{picked.findIndex((each) => each.id === item.id) + 1}</span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
         </>}</>);
 }

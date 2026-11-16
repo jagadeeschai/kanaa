@@ -519,3 +519,11 @@
 .ed-media-search{display:flex;align-items:center;gap:6px;height:30px;margin:6px 0 4px;padding:0 6px 0 9px;border-radius:7px;border:1px solid var(--hairline);background:var(--well);color:var(--muted)}
 .ed-media-search:focus-within{border-color:var(--accent);color:var(--text-2)}
 .ed-media-search input{flex:1;min-width:0;height:100%;border:0;background:none;color:var(--text);font-size:12.5px;outline:none}
+/* Media: Not used yet, sort, and several picked (numbered in the order they go on). */
+.ed-media-tools{display:flex;align-items:center;gap:6px;margin:2px 0 6px}.ed-media-tools .kanaa-select{flex:1;min-width:0}
+.ed-chip-toggle{height:28px;padding:0 9px;border-radius:14px;border:1px solid var(--hairline);background:none;color:var(--text-2);font-size:11.5px;white-space:nowrap}
+.ed-chip-toggle.on{background:var(--selected-bg);color:var(--selected-text);border-color:transparent}
+.ed-media-picked{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:6px 8px;border-radius:8px;background:var(--raised);box-shadow:var(--shade2);font-size:12px}
+.ed-media-picked span{flex:none;color:var(--text-2)}.ed-media-picked .ed-button{flex:1;height:28px;font-size:11.5px;padding:0 6px}
+.ed-tile-add.picked{outline:2px solid var(--accent);outline-offset:1px}
+.ed-tile-order{position:absolute;left:5px;top:5px;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;pointer-events:none}
