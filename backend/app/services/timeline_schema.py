@@ -381,7 +381,7 @@ class TimelinePoint(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -414,6 +414,14 @@ class ExplainerGraphic(Strict):
     timeline_vertical: bool = False
     icon: Literal['pin', 'warning', 'tick', 'cross', 'question', 'star', 'heart', 'trend-up', 'trend-down'] = 'pin'
     icon_badge: bool = False
+    # Before / after split: the divider and labels are drawn here; `compare_clip` (an overlay clip) shows only to its right.
+    compare_clip: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    split_from: float = Field(default=1.0, ge=0, le=1)   # Divider position across the frame when the clip starts.
+    split_to: float = Field(default=.5, ge=0, le=1)      # Where it settles.
+    split_delay: float = Field(default=.3, ge=0, le=60, allow_inf_nan=False)
+    split_move: float = Field(default=1.2, gt=0, le=10, allow_inf_nan=False)
+    before_label: str = Field(default='முன்', max_length=40)
+    after_label: str = Field(default='பின்', max_length=40)
 
     @field_validator('from_', 'to')
     @classmethod
@@ -438,6 +446,8 @@ class ExplainerGraphic(Strict):
                 raise ValueError('Add 2–8 steps, one per line.')
             if self.step_times and (len(self.step_times) > len(self.steps) or any(b <= a for a, b in zip(self.step_times, self.step_times[1:]))):
                 raise ValueError('Step times must increase, with one time per step.')
+        if self.kind == 'compare-divider' and not self.compare_clip:
+            raise ValueError('A before / after split needs the clip it reveals.')
         if self.kind == 'timeline-bar' and (not self.points or any(not point.date.strip() for point in self.points)):
             raise ValueError('Add 2–8 points as date, label.')
         if self.kind in ('bar-chart', 'line-chart', 'pie-chart'):

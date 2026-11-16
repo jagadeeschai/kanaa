@@ -34,6 +34,7 @@ TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe'}  # Drawn
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
     """What in `timeline` the engine cannot draw yet; empty when it can draw all of it."""
     found: set[str] = set()
+    compared = {item.graphic.compare_clip for layer in timeline.layers if layer.kind == 'text' and not layer.hidden for item in layer.items if item.graphic and item.graphic.kind == 'compare-divider'}
     if timeline.finish or timeline.lut:
         found.add('finish or LUT')
     for layer in timeline.layers:
@@ -68,6 +69,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             if clip.freeze is not None:
                 found.add('freeze')
             found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur'))
+            if clip.id in compared:
+                found.add('before / after split')
             if clip.stabilise or clip.shape_mask:
                 found.add('stabilisation or shape mask')
             if clip.transition_in and clip.transition_in.kind not in TRANSITIONS:
@@ -165,7 +168,7 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
     frames = max(1, round(item.length * fps))
     image = folder / f'{name}.png'
     render_text_image(item, fmt, image)
-    if item.graphic and (item.graphic.kind in ('step-list', 'timeline-bar') or item.enter and item.enter.preset == 'reveal'):
+    if item.graphic and (item.graphic.kind in ('step-list', 'timeline-bar', 'compare-divider') or item.enter and item.enter.preset == 'reveal'):
         from app.services import explainer_graphics
         paths, shown = explainer_graphics.frames(item, fmt, fps, frames, folder, f'{name}-graphic')
         return {'kind': 'image', 'path': str(paths[0]), 'paths': [str(path) for path in paths], 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,

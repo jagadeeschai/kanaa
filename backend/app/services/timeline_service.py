@@ -1004,6 +1004,11 @@ class Builder:
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label, clip.beat_pulse)
             if clip.shape_mask:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
+            divider = self.compare_dividers().get(clip.id)
+            if divider:
+                # Its first frame is `head` frames before its own start; the divider's time is counted from its own start.
+                offset = (round(divider.start * fps) - (clip_frames(clip, fps)[0] - head)) / fps
+                shown = self.compare(shown, divider.graphic, offset, frames, label)
             if head:
                 merged = f'x{position}_{number}'
                 if clip.transition_in.kind in MOVING_KINDS:
@@ -1037,6 +1042,29 @@ class Builder:
         if layer.blend != 'normal':
             return self.blended(base, joined, position, layer.blend)
         return self.overlay(base, joined, position, '0', '0')
+
+    def compare_dividers(self) -> dict:
+        """Overlay clips revealed by a before / after divider, each with the divider's text item."""
+        found = {}
+        for layer in self.timeline.layers:
+            if layer.kind == 'text' and not getattr(layer, 'hidden', False):
+                for item in layer.items:
+                    if item.graphic and item.graphic.kind == 'compare-divider' and item.graphic.compare_clip:
+                        found.setdefault(item.graphic.compare_clip, item)
+        return found
+
+    def compare(self, label: str, graphic, offset: float, frames: int, name: str) -> str:
+        """Keeps only what is right of the divider: a white board slid across a black one, stepped as the divider is drawn."""
+        from app.services.compare_graphics import split_expression
+        fps, w, h = self.fmt.fps, self.fmt.width, self.fmt.height
+        seconds = f'{(frames + 1) / fps:.6f}'
+        self.graph += [f'color=black:s={w}x{h}:r={fps}:d={seconds},format=gray[{name}_dark]',
+                       f'color=white:s={w}x{h}:r={fps}:d={seconds},format=gray[{name}_lit]',
+                       f"[{name}_dark][{name}_lit]overlay=x='round(W*({split_expression(graphic, offset, fps)}))':y=0:eval=frame,format=gray,"
+                       f'trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{name}_split]',
+                       f'[{label}]split=2[{name}_cbody][{name}_cown]', f'[{name}_cown]alphaextract[{name}_calpha]',
+                       f'[{name}_calpha][{name}_split]blend=all_mode=multiply[{name}_cboth]', f'[{name}_cbody][{name}_cboth]alphamerge[{name}_compared]']
+        return f'{name}_compared'
 
     def shape(self, label: str, mask: ShapeMask, frames: int, name: str) -> str:
         """Keeps only the frame inside the shape: its own transparency times the shape's, so nothing outside the picture appears."""
@@ -1126,7 +1154,7 @@ class Builder:
             render_text_image(item, self.fmt, image)
             frames = self.frames(item.length)
             label, output = f'text{position}_{number}', f't{position}_{number}'
-            if item.graphic and (item.graphic.kind in ('step-list', 'timeline-bar') or item.enter and item.enter.preset == 'reveal'):
+            if item.graphic and (item.graphic.kind in ('step-list', 'timeline-bar', 'compare-divider') or item.enter and item.enter.preset == 'reveal'):
                 from app.services import explainer_graphics
                 paths, shown_states = explainer_graphics.frames(item, self.fmt, fps, frames, self.folder, f'text-{position}-{number}-graphic')
                 listing = self.folder / f'text-{position}-{number}-graphic.txt'
