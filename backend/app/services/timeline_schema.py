@@ -369,6 +369,24 @@ class TitlePin(Strict):
     surface: Optional[Literal['floor', 'wall', 'upright', 'sky']] = None
 
 
+class ExplainerGraphic(Strict):
+    """Editable explainer artwork; every coordinate is a share of the output frame."""
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout']
+    style: Literal['clean', 'hand-drawn', 'neon', 'documentary'] = 'clean'
+    from_: Tuple[float, float] = Field(alias='from')
+    to: Tuple[float, float]
+    width: float = Field(default=0.24, ge=0.03, le=1)
+    height: float = Field(default=0.18, ge=0.03, le=1)
+    line_width: float = Field(default=0.006, ge=0.001, le=0.04)
+
+    @field_validator('from_', 'to')
+    @classmethod
+    def point_in_frame(cls, point):
+        if any(value < 0 or value > 1 for value in point):
+            raise ValueError('Graphic points must be inside the frame.')
+        return point
+
+
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
@@ -388,6 +406,7 @@ class Text(Strict):
     pin: Optional[TitlePin] = None
     keep_clear: Optional[KeepClear] = None
     stay_with: Optional[StayWith] = None
+    graphic: Optional[ExplainerGraphic] = None
     karaoke: Optional[Karaoke] = None
     # credits: one title holds a whole credit block; each line is styled by what it is (title_credits in timeline_service).
     layout: Optional[Literal['credits']] = None

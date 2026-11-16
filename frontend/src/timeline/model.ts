@@ -49,8 +49,13 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
+export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout';
+export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary';
+/** Editable explainer artwork. Coordinates are frame shares, so preview and export use the same geometry. */
+export type ExplainerGraphic = { kind: GraphicKind; style: GraphicStyle; from: [number, number]; to: [number, number]; width: number; height: number; line_width: number };
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band' | 'plain'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; glint?: boolean; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
+  graphic?: ExplainerGraphic | null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null ; /** Words light up as they are sung: when each word starts, in the title's own seconds. */ karaoke?: { color: string; words: number[] } | null; /** credits: one title holds a credit block, each line styled by what it is. */ layout?: 'credits' | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
@@ -866,6 +871,15 @@ export function addText(timeline: Timeline, text: TextItem, layerId: string): Ti
   const free = textLayers(timeline).find((layer) => layer.items.every((item) => item.start + item.length <= text.start + 1e-6 || text.start + text.length <= item.start + 1e-6));
   if (free) return withItems(timeline, free, [...free.items, text]);
   return { ...timeline, layers: [...timeline.layers, { id: layerId, kind: 'text', name: 'Text', items: [text] }] };
+}
+
+/** Graphics get their own named text-compositor lanes; a free lane is reused when its times do not overlap. */
+export function addGraphic(timeline: Timeline, text: TextItem, layerId: string): Timeline {
+  const free = textLayers(timeline).find((layer) => layer.name === 'Graphics' && layer.items.every((item) => item.start + item.length <= text.start + 1e-6 || text.start + text.length <= item.start + 1e-6));
+  if (free) return withItems(timeline, free, [...free.items, text]);
+  const beforeCaptions = timeline.layers.findIndex((layer) => layer.kind === 'captions');
+  const at = beforeCaptions < 0 ? timeline.layers.length : beforeCaptions;
+  return { ...timeline, layers: [...timeline.layers.slice(0, at), { id: layerId, kind: 'text', name: 'Graphics', items: [text] }, ...timeline.layers.slice(at)] };
 }
 
 export function removeText(timeline: Timeline, id: string): Timeline {

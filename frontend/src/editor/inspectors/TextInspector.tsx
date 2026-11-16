@@ -16,6 +16,7 @@ import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
 
 import { MATERIAL_LOOKS } from '../../timeline/titleMaterial';
+import { GraphicInspector } from './GraphicInspector';
 
 const KARAOKE_SWATCHES: [string, string][] = [['#ffd54a', 'Gold'], ['#ff7aa8', 'Rose'], ['#7dd3fc', 'Sky'], ['#86efac', 'Leaf'], ['#ffffff', 'White']];
 
@@ -32,6 +33,7 @@ export function TextInspector() {
   const [savedNow, setSavedNow] = useState(false);  // A moment of "Saved to My styles" after saving.
   useEffect(() => { setDraft(text.text); }, [text.id, text.text]);
   const forLayer = useContext(LayerModeContext);
+  if (text.graphic) return <GraphicInspector text={text} timing={timing} onChange={onChange} onEnter={onEnter}/>;
   const fontsAndSize = <>
     <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
     <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>

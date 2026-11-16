@@ -42,6 +42,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.kind == 'text':
             from app.services import title3d
             for item in layer.items:
+                if item.graphic is not None:
+                    found.add('explainer graphics')
                 if item.keep_clear or item.stay_with:
                     found.add('titles that move with people')
                 if title3d.is_3d(item):

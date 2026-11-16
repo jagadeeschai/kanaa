@@ -18,7 +18,7 @@ import { type Options } from '../timeline/commands';
 import { applyBypass,clipEffects,playingTimeline } from '../timeline/effects';
 import { commit,redo,startHistory,undo,type History } from '../timeline/history';
 import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
-import { addBlur,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
+import { addBlur,addGraphic,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type GraphicKind,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
 import { type Focus } from '../timeline/presets';
 import { reframeTransform,type SubjectPoint } from '../timeline/reframe';
 import { splitAtCuts } from '../timeline/scenes';
@@ -268,7 +268,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // Where each letter of a letter-by-letter title is, by look (/api/text-letters).
   const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string } | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
-  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, format.width, format.height]);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, text.graphic ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem, lit?: number | null) => {
     const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format) + (lit == null ? '' : `|lit${lit}`));
     return found && found !== 'loading' ? found : undefined;
@@ -1038,6 +1038,20 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useSceneJob(() => ({ sceneJob, setError, setSceneJob, timelineRef, change, setFaceNote }), [sceneJob, change]);
   useFaceJob(() => ({ faceJob, setError, setFaceJob, timelineRef, sourceFor, setFaceNote, change, setSelectedId }), undefined);
   useFollowJob(() => ({ followJob, setError, setFollowJob, applyFaces, applyFollow }), undefined);
+  const addExplainerGraphic = useCallback((kind: GraphicKind, point: [number, number]) => {
+    const current = timelineRef.current;
+    if (!current) return;
+    const at = Math.round((engineRef.current?.currentTime ?? 0) * 1000) / 1000;
+    const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));
+    const from: [number, number] = [Math.max(.04, x - .2), Math.max(.04, y - .16)];
+    const id = newId();
+    const text: TextItem = { id, start: at, length: 3, text: kind === 'callout' ? 'Type your label' : kind.replace('arrow-', '').replace('-', ' '), style: 'plain', position: 'center', color: '#ffffff', size: 44,
+      enter: { preset: kind === 'callout' ? 'pop' : 'reveal', duration: .65 }, transform: REST_TRANSFORM,
+      graphic: { kind, style: kind === 'circle' || kind === 'box' ? 'documentary' : 'clean', from, to: [x, y], width: .25, height: .18, line_width: .006 } };
+    change(addGraphic(current, text, newId()));
+    setSelectedId(id);
+    setTimeout(() => engineRef.current?.seek(at + 1), 0);
+  }, [change]);
   const { generalItems, openGeneralMenu, openViewMenu, openPreviewMenu, openMediaMenu, openItemMenu } = createEditorMenuActions(() => ({
     get selectedId(): typeof selectedId { return selectedId; }, get moreIds(): typeof moreIds { return moreIds; }, get setError(): typeof setError { return setError; }, get engineRef(): typeof engineRef { return engineRef; },
     get history(): typeof history { return history; },
@@ -1054,6 +1068,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     get playing(): typeof playing { return playing; },
     get togglePlay(): typeof togglePlay { return togglePlay; },
     get addBlurBox(): typeof addBlurBox { return addBlurBox; },
+    get addExplainerGraphic(): typeof addExplainerGraphic { return addExplainerGraphic; },
     get faceJob(): typeof faceJob { return faceJob; },
     get blurFaces(): typeof blurFaces { return blurFaces; },
     get followTarget(): typeof followTarget { return followTarget; },

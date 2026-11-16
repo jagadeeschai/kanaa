@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.api.schemas import VideoEditRequest
 from app.services.finish_service import finish_filters
@@ -729,9 +729,75 @@ def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
     return VideoEditRequest(canvas='original', lyric_style=layer.style, lyric_size=layer.size, lyric_position=layer.position, lyric_color=layer.color, lyrics=cues)
 
 
+def _graphic_colour(item: Text) -> tuple[int, int, int, int]:
+    value = item.color.lstrip('#')
+    return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4)) + (255,)
+
+
+def render_explainer_graphic(item: Text, fmt: Format, target: Path) -> None:
+    """Draw an editable graphic once; preview and export composite this exact PNG."""
+    graphic = item.graphic
+    assert graphic is not None
+    image = Image.new('RGBA', (fmt.width, fmt.height), (0, 0, 0, 0))
+    colour = _graphic_colour(item)
+    width = max(2, round(graphic.line_width * fmt.height))
+    a = (round(graphic.from_[0] * fmt.width), round(graphic.from_[1] * fmt.height))
+    b = (round(graphic.to[0] * fmt.width), round(graphic.to[1] * fmt.height))
+
+    def stroke(canvas, points, fill=colour, line_width=width):
+        canvas.line(points, fill=fill, width=line_width, joint='curve')
+        if graphic.style == 'hand-drawn':
+            canvas.line([(x + max(1, width // 3), y - max(1, width // 4)) for x, y in points], fill=fill, width=max(1, round(line_width * .45)), joint='curve')
+
+    draw = ImageDraw.Draw(image)
+    if graphic.kind.startswith('arrow'):
+        if graphic.kind == 'arrow-curved':
+            control = ((a[0] + b[0]) / 2, min(a[1], b[1]) - abs(b[0] - a[0]) * .22)
+            points = []
+            for number in range(33):
+                q = number / 32
+                points.append((round((1-q)**2*a[0] + 2*(1-q)*q*control[0] + q*q*b[0]), round((1-q)**2*a[1] + 2*(1-q)*q*control[1] + q*q*b[1])))
+        else:
+            points = [a, b]
+        stroke(draw, points)
+        dx, dy = points[-1][0] - points[-2][0], points[-1][1] - points[-2][1]
+        angle = math.atan2(dy, dx); head = max(width * 4, round(fmt.height * .035))
+        left = (round(b[0] - head * math.cos(angle - .55)), round(b[1] - head * math.sin(angle - .55)))
+        right = (round(b[0] - head * math.cos(angle + .55)), round(b[1] - head * math.sin(angle + .55)))
+        stroke(draw, [left, b, right])
+    elif graphic.kind in ('circle', 'box'):
+        half_w, half_h = graphic.width * fmt.width / 2, graphic.height * fmt.height / 2
+        box = (round(b[0]-half_w), round(b[1]-half_h), round(b[0]+half_w), round(b[1]+half_h))
+        if graphic.kind == 'circle': draw.ellipse(box, outline=colour, width=width)
+        else: draw.rounded_rectangle(box, radius=max(width * 2, round(fmt.height * .025)), outline=colour, width=width)
+        if graphic.style == 'hand-drawn':
+            inset = max(2, width // 2); second = (box[0]+inset, box[1]-inset, box[2]+inset, box[3]-inset)
+            if graphic.kind == 'circle': draw.ellipse(second, outline=colour, width=max(1, width // 2))
+            else: draw.rounded_rectangle(second, radius=max(width * 2, round(fmt.height * .025)), outline=colour, width=max(1, width // 2))
+    else:
+        stroke(draw, [a, b])
+        # Arima carries Tamil and Latin together, so a label such as "சிலை · 133 ft" never loses either script.
+        font_path = Path(__file__).parents[1] / 'assets' / 'fonts' / ('Arima-Bold.ttf' if any('\u0b80' <= char <= '\u0bff' for char in item.text) else 'NotoSans-Bold.ttf')
+        font = ImageFont.truetype(str(font_path), max(16, round(item.size * fmt.height / 1080)), layout_engine=ImageFont.Layout.RAQM)
+        padding = max(8, round(fmt.height * .012)); bounds = draw.textbbox((0, 0), item.text, font=font)
+        tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
+        label = (b[0] - padding, b[1] - th - padding * 2, b[0] + tw + padding, b[1] + padding)
+        backing = (15, 15, 18, 232) if graphic.style != 'documentary' else (245, 193, 27, 245)
+        draw.rounded_rectangle(label, radius=padding, fill=backing)
+        ink = (255, 255, 255, 255) if graphic.style != 'documentary' else (20, 20, 20, 255)
+        draw.text((b[0], b[1] - th - padding), item.text, font=font, fill=ink)
+    if graphic.style == 'neon':
+        glow = image.filter(ImageFilter.GaussianBlur(max(3, width * 1.6)))
+        image = Image.alpha_composite(glow, image)
+    image.save(target)
+
+
 def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None) -> None:
     """`lit`: for a caption, its highlighted word; for a karaoke title, the last word sung so far."""
     """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
+    if layer is None and item.graphic:
+        render_explainer_graphic(item, fmt, target)
+        return
     if layer is not None:
         edit, marks = caption_edit(layer, [{'start': 0, 'end': 1, 'text': item.text}]), [lit]
     else:

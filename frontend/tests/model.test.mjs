@@ -4,7 +4,7 @@ import { addKey, hasKeyAt, isAnimated, keyTimes, moveKey, removeKey, setEase, sh
 import { valueAt } from '../src/timeline/evaluate.ts';
 import { buildTokens, cutSource, cutTokens } from '../src/timeline/words.ts';
 import { formatTime, parseTime, parseValue } from '../src/timeline/values.ts';
-import { setSpeed, removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
+import { setSpeed, removeMedia, duplicateItem, cornerPlacement, isLocked, overlayLayers, reorderLayer, trackLayers, updateLayer, addOverlay, findClip, updateClip, addText, addGraphic, findText, moveItem, removeText, transitionHalf, trimText, addSound, audioLayers, detachAudio, fadeGain, findSound, moveSound, removeSound, splitSound, trimSound, clipAt, duration, emptyTimeline, exportFormat, fillScale, fittedSize, insertClip, mainLayer, moveClip, newClip, normalizeTimeline, removeClip, snap, splitClip, timecode, trimClip } from '../src/timeline/model.ts';
 import { commit, redo, startHistory, undo } from '../src/timeline/history.ts';
 
 const source = { media_id: 1, media_type: 'video', duration: 10, width: 1920, height: 1080 };
@@ -151,6 +151,16 @@ test('titles stack on a new track only when they overlap, and leave when empty',
   next = addText(next, title('c', 5), 'l3');
   assert.equal(next.layers.filter((layer) => layer.kind === 'text').length, 2);
   assert.equal(removeText(removeText(next, 'a'), 'c').layers.filter((layer) => layer.kind === 'text').length, 1);
+});
+
+test('explainer graphics use named lanes below captions and reuse a free lane', () => {
+  const base = { ...title('arrow', 0), graphic: { kind: 'arrow-straight', style: 'clean', from: [.2, .2], to: [.7, .6], width: .25, height: .18, line_width: .006 } };
+  let next = addGraphic({ ...withClip(), layers: [...withClip().layers, { id: 'captions', kind: 'captions', style: 'outline', position: 'bottom', color: '#fff', highlight: null, size: 48, items: [] }] }, base, 'graphics-1');
+  assert.deepEqual(next.layers.slice(-2).map((layer) => [layer.name, layer.kind]), [['Graphics', 'text'], [undefined, 'captions']]);
+  next = addGraphic(next, { ...base, id: 'circle', start: 4 }, 'graphics-2');
+  assert.equal(next.layers.filter((layer) => layer.name === 'Graphics').length, 1);
+  next = addGraphic(next, { ...base, id: 'box', start: 1 }, 'graphics-3');
+  assert.equal(next.layers.filter((layer) => layer.name === 'Graphics').length, 2);
 });
 
 test('text moves in time and trims against its neighbours, and stays off sound tracks', () => {

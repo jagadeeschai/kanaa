@@ -7,7 +7,7 @@ import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
 import { type History } from "../../timeline/history";
-import { clipLength,findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type Timeline } from "../../timeline/model";
+import { clipLength,findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type GraphicKind,type Timeline } from "../../timeline/model";
 import { canReframe } from "../../timeline/reframe";
 import type { Photo } from "../../types/photo";
 import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
@@ -21,6 +21,7 @@ type FollowJob = { itemId: string; underId: string; jobId: string; progress: num
 
 type Input = {
   addBlurBox: (style: "blur" | "pixelate", at?: [number, number] | undefined) => void;
+  addExplainerGraphic: (kind: GraphicKind, at: [number, number]) => void;
   addMedia: (item: Photo) => void;
   addOverlayMedia: (item: Photo, dropAt?: number | undefined) => void;
   blurFaces: () => Promise<void>;
@@ -108,13 +109,19 @@ export function createEditorMenuActions(getInput: () => Input) {
   };
 
   const openPreviewMenu = (...args: Parameters<(event: React.MouseEvent) => void>) => {
-    const { playing, total, togglePlay, safeArea, setSafeArea, renderJob, isRendered, renderPreview, addBlurBox, faceJob, blurFaces, followTarget, ownBox, followJob, selectedBlur, followHere, setMenu } = getInput();
+    const { playing, total, togglePlay, safeArea, setSafeArea, renderJob, isRendered, renderPreview, addBlurBox, addExplainerGraphic, faceJob, blurFaces, followTarget, ownBox, followJob, selectedBlur, followHere, setMenu } = getInput();
     const invoke = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
     const items: MenuItem[] = [{ label: playing ? 'Pause' : 'Play', hint: 'Space', disabled: !total, onSelect: togglePlay }, { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) }, { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } }];
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const at: [number, number] = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
-    if (total) items.push('divider', { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
+    if (total) items.push('divider', { label: 'Add graphic', submenu: [
+      { label: 'Straight arrow', onSelect: () => addExplainerGraphic('arrow-straight', at) },
+      { label: 'Curved arrow', onSelect: () => addExplainerGraphic('arrow-curved', at) },
+      { label: 'Circle highlight', onSelect: () => addExplainerGraphic('circle', at) },
+      { label: 'Rounded box highlight', onSelect: () => addExplainerGraphic('box', at) },
+      { label: 'Callout label', onSelect: () => addExplainerGraphic('callout', at) },
+    ] }, { label: 'Blur this spot', onSelect: () => addBlurBox('blur', at) }, { label: 'Pixelate this spot', onSelect: () => addBlurBox('pixelate', at) }, { label: 'Blur all faces in this clip', disabled: Boolean(faceJob), onSelect: () => { void blurFaces(); } });
     if (followTarget && ownBox() && !followJob) items.push('divider', { label: selectedBlur ? 'Follow what is under this blur' : 'Follow what is under this', onSelect: () => { void followHere('start'); } });
     setMenu({ x: event.clientX, y: event.clientY, items });
   };
