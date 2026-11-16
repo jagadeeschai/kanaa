@@ -371,7 +371,7 @@ class TitlePin(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -390,6 +390,7 @@ class ExplainerGraphic(Strict):
     suffix: str = Field(default='', max_length=20)
     indian_grouping: bool = False
     tamil_numerals: bool = False
+    card_mode: Literal['full', 'corner'] = 'full'
 
     @field_validator('from_', 'to')
     @classmethod

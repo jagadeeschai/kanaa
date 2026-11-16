@@ -3,7 +3,7 @@
  * one sentence. Names (YouTube, VHS, LUT, font names) stay as they are. A label missing here simply shows in English.
  */
 export const TAMIL: Record<string, string> = {
-  'Add graphic': 'விளக்கப்படம் சேர்', 'Graphic': 'விளக்கப்படம்', 'Straight arrow': 'நேரான அம்பு', 'Curved arrow': 'வளைந்த அம்பு', 'Name': 'பெயர்', 'Role': 'பணி', 'Role or organisation': 'பணி அல்லது நிறுவனம்', 'Dark band': 'கரும் பட்டை', 'Bold colour': 'அடர் நிறம்', 'Count-up number': 'எண்ணிக்கை உயர்வு', 'From': 'தொடக்கம்', 'To': 'முடிவு', 'Label': 'குறிப்பு', 'Prefix': 'முன்னொட்டு', 'Suffix': 'பின்னொட்டு', 'Indian grouping': 'இந்திய இலக்கப் பிரிப்பு', 'Tamil numerals': 'தமிழ் எண்கள்',
+  'Add graphic': 'விளக்கப்படம் சேர்', 'Graphic': 'விளக்கப்படம்', 'Straight arrow': 'நேரான அம்பு', 'Curved arrow': 'வளைந்த அம்பு', 'Name': 'பெயர்', 'Role': 'பணி', 'Role or organisation': 'பணி அல்லது நிறுவனம்', 'Dark band': 'கரும் பட்டை', 'Bold colour': 'அடர் நிறம்', 'Count-up number': 'எண்ணிக்கை உயர்வு', 'From': 'தொடக்கம்', 'To': 'முடிவு', 'Label': 'குறிப்பு', 'Prefix': 'முன்னொட்டு', 'Suffix': 'பின்னொட்டு', 'Indian grouping': 'இந்திய இலக்கப் பிரிப்பு', 'Tamil numerals': 'தமிழ் எண்கள்', 'Chapter card': 'அத்தியாய அட்டை', 'Chapter title': 'அத்தியாயத் தலைப்பு', 'Full frame': 'முழுத் திரை', 'Corner card': 'மூலை அட்டை',
   'Circle highlight': 'வட்டச் சிறப்பிப்பு', 'Rounded box highlight': 'வட்டமூலைப் பெட்டிச் சிறப்பிப்பு', 'Callout label': 'சுட்டிக்காட்டு குறிப்பு',
   'Circle': 'வட்டம்', 'Rounded box': 'வட்டமூலைப் பெட்டி', 'Clean white': 'தூய வெள்ளை', 'Hand-drawn': 'கையால் வரைந்தது',
   'Neon': 'நியான்', 'Documentary yellow': 'ஆவணப்பட மஞ்சள்', 'Draw on': 'வரைந்து தோன்று', 'Line width': 'கோட்டின் தடிமன்', 'Entrance': 'தொடக்க அசைவு',

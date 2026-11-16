@@ -81,6 +81,20 @@ class ExplainerGraphics(unittest.TestCase):
             target = Path(folder) / 'count.png'; render_text_image(count, Format(width=480, height=270, fps=30), target)
             self.assertGreater(np.count_nonzero(np.asarray(Image.open(target))[:, :, 3]), 100)
 
+    def test_chapter_card_full_and_corner_styles_render_tamil(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); fmt = Format(width=480, height=270, fps=24)
+            data = item('callout').model_dump(by_alias=True)
+            data.update({'id': 'chapter', 'text': 'பகுதி 2 — சங்க காலம்'})
+            data['graphic'].update({'kind': 'chapter-card', 'from': [.5, .5], 'to': [.08, .12], 'width': .42, 'height': .22})
+            for mode in ('full', 'corner'):
+                for style in ('clean', 'documentary', 'dark-band', 'bold-colour'):
+                    chapter = Text.model_validate({**data, 'graphic': {**data['graphic'], 'card_mode': mode, 'style': style}})
+                    target = root / f'{mode}-{style}.png'; render_text_image(chapter, fmt, target)
+                    alpha = np.asarray(Image.open(target))[:, :, 3]
+                    self.assertGreater(np.count_nonzero(alpha), 100)
+                    if mode == 'full': self.assertGreater(np.count_nonzero(alpha[:, 0]), 100)
+
     def test_reference_and_gpu_export_match_staged_stroke(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'KANAA_GPU_RENDER': '0'}):
             root = Path(folder); base = root / 'base.png'; Image.new('RGB', (320, 240), (24, 30, 40)).save(base)

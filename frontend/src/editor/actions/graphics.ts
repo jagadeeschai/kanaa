@@ -41,7 +41,7 @@ export function createGraphicActions(getInput: () => Input) {
     const id = newId();
     const text: TextItem = { id, start: at, length: 3, text: label, style: 'plain', position: 'center', color: colour, size: 44,
       enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
-      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : {}), transform: REST_TRANSFORM, graphic };
+      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : graphic.kind === 'count-up' || graphic.kind === 'chapter-card' ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
     change(addGraphic(current, text, newId()));
     setSelectedId(id);
     setTimeout(() => engineRef.current?.seek(at + 1), 0);
@@ -55,6 +55,10 @@ export function createGraphicActions(getInput: () => Input) {
     }
     if (kind === 'count-up') {
       place({ kind, style: 'clean', from: [.5, .5], to: [.5, .5], width: .34, height: .2, line_width: .006, count_from: 0, count_to: 2000, label: 'years', prefix: '', suffix: '', indian_grouping: false, tamil_numerals: false }, 'Count-up number', '#ffffff', now());
+      return;
+    }
+    if (kind === 'chapter-card') {
+      place({ kind, style: 'documentary', from: [.5, .5], to: [.08, .12], width: .42, height: .22, line_width: .006, card_mode: 'full' }, 'Part 2 — சங்க காலம்', '#f5c11b', now());
       return;
     }
     const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));

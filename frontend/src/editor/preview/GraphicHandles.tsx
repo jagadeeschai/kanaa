@@ -5,6 +5,7 @@ type Point = [number, number];
 const clamp = (value: number) => Math.round(Math.max(.01, Math.min(.99, value)) * 1000) / 1000;
 
 export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphic; onChange: (graphic: ExplainerGraphic, group: string) => void }) {
+  if (graphic.kind === 'chapter-card' && graphic.card_mode === 'full') return null;
   const drag = (kind: 'from' | 'to' | 'size', event: React.PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     const target = event.currentTarget, frame = target.parentElement!.getBoundingClientRect();
@@ -25,7 +26,7 @@ export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphi
     target.addEventListener('pointermove', move); target.addEventListener('pointerup', up);
   };
   const handle = (kind: 'from' | 'to' | 'size', point: Point, label: string) => <button className={`ed-graphic-handle ${kind}`} aria-label={t(label)} title={t(label)} style={{ left: `${point[0] * 100}%`, top: `${point[1] * 100}%` }} onPointerDown={(event) => drag(kind, event)}/>;
-  const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight' || graphic.kind === 'lower-third' || graphic.kind === 'count-up';
+  const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight' || graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card';
   const outline = graphic.kind === 'outline';
   return <div className="ed-graphic-handles" aria-label={t('Graphic handles')}>
     {!highlight && !outline && handle('from', graphic.from, 'Move arrow tail')}

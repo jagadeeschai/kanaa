@@ -111,7 +111,31 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'count-up':
+    if graphic.kind == 'chapter-card':
+        full = graphic.card_mode == 'full'; q = progress
+        if full:
+            shade = Image.new('RGBA', image.size, (0, 0, 0, round(165 * q)))
+            image = Image.alpha_composite(image, shade); draw = ImageDraw.Draw(image)
+            panel_w, panel_h = round(fmt.width * .76), round(fmt.height * .28)
+            x0, y0 = round((fmt.width-panel_w)/2), round((fmt.height-panel_h)/2)
+        else:
+            panel_w, panel_h = round(graphic.width*fmt.width), round(graphic.height*fmt.height)
+            x0, y0 = round(graphic.to[0]*fmt.width), round(graphic.to[1]*fmt.height)
+            x0 = min(fmt.width-panel_w-width*2, max(width*2, x0)); y0 = min(fmt.height-panel_h-width*2, max(width*2, y0))
+        accent = (245, 193, 27, 255) if graphic.style == 'documentary' else colour
+        if not full or graphic.style in ('dark-band', 'bold-colour', 'documentary'):
+            fill = (12, 15, 21, round(238*q)) if graphic.style == 'dark-band' else (245, 193, 27, round(238*q)) if graphic.style == 'documentary' else colour[:-1]+(round(238*q),) if graphic.style == 'bold-colour' else (12, 15, 21, round(210*q))
+            draw.rounded_rectangle((x0, y0, x0+panel_w, y0+panel_h), radius=max(8, round(panel_h*.06)), fill=fill)
+        line_q = min(1, q/.35)
+        draw.line((x0+round(panel_w*.08), y0+round(panel_h*.78), x0+round(panel_w*(.08+.84*line_q)), y0+round(panel_h*.78)), fill=accent, width=max(width, round(fmt.height*.008)))
+        if q > .25:
+            shown = min(1, (q-.25)/.75); opacity = round(255*shown); slide = round((1-shown)*panel_w*.1)
+            font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', max(18, round(item.size*fmt.height/1080)))
+            bounds = draw.textbbox((0, 0), item.text, font=font); tw, th = bounds[2]-bounds[0], bounds[3]-bounds[1]
+            ink = (20, 20, 20, opacity) if graphic.style in ('documentary', 'bold-colour') else (255, 255, 255, opacity)
+            tx = x0 + (panel_w-tw)//2 - slide; ty = y0 + (panel_h-th)//2 - bounds[1] - round(panel_h*.05)
+            draw.text((tx, ty), item.text, font=font, fill=ink)
+    elif graphic.kind == 'count-up':
         value = count_value(graphic, progress)
         number = f'{graphic.prefix}{format_count(value, graphic.indian_grouping, graphic.tamil_numerals)}{graphic.suffix}'
         label = graphic.label or ''
