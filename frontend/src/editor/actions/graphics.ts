@@ -63,12 +63,12 @@ export function createGraphicActions(getInput: () => Input) {
     }
     if (kind === 'bar-chart') {
       place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .72, height: .62, line_width: .006,
-        data: [{ label: 'சென்னை', value: 82 }, { label: 'மதுரை', value: 61 }, { label: 'கோவை', value: 74 }], chart_orientation: 'horizontal', highlight_index: 0, show_values: true }, 'Bar chart', '#ffffff', now());
+        data: [{ label: 'சென்னை', value: 82 }, { label: 'மதுரை', value: 61 }, { label: 'கோவை', value: 74 }], chart_orientation: 'horizontal', highlight_index: 0, show_values: true, indian_grouping: true }, 'Bar chart', '#ffffff', now());
       return;
     }
     if (kind === 'line-chart') {
       place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .76, height: .62, line_width: .007,
-        data: [{ label: '2022', value: 42 }, { label: '2023', value: 68 }, { label: '2024', value: 57 }, { label: '2025', value: 84 }], show_values: true }, 'Line chart', '#ffffff', now());
+        data: [{ label: '2022', value: 42 }, { label: '2023', value: 68 }, { label: '2024', value: 57 }, { label: '2025', value: 84 }], show_values: true, indian_grouping: true }, 'Line chart', '#ffffff', now());
       return;
     }
     if (kind === 'pie-chart') {

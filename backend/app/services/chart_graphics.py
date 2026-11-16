@@ -1,6 +1,7 @@
 """Exact chart maths and Pillow drawing for explainer graphics."""
 from __future__ import annotations
 
+import unicodedata
 from pathlib import Path
 from typing import NamedTuple
 
@@ -85,108 +86,173 @@ def _partial(points: list[tuple[int, int]], progress: float) -> list[tuple[int, 
 
 
 def _font(text: str, size: int):
-    name = 'Arima-Bold.ttf' if any('\u0b80' <= char <= '\u0bff' for char in text) else 'NotoSans-Bold.ttf'
+    name = 'Arima-Bold.ttf' if any('஀' <= char <= '௿' for char in text) else 'NotoSans-Bold.ttf'
     path = Path(__file__).parents[1] / 'assets' / 'fonts' / name
     return ImageFont.truetype(str(path), max(8, size), layout_engine=ImageFont.Layout.RAQM)
 
 
-def _fit(draw, text: str, size: int, width: int, height: int):
-    shown = text; font = _font(shown, size); box = draw.textbbox((0, 0), shown, font=font)
-    while size > 8 and (box[2] - box[0] > width or box[3] - box[1] > height):
+def clusters(text: str) -> list[str]:
+    """Split into letters a reader sees: a Tamil consonant keeps its vowel sign or pulli, so shortening never strands one."""
+    answer: list[str] = []
+    for char in text:
+        joins = unicodedata.category(char) in ('Mn', 'Mc') or char in '‌‍'
+        if answer and (joins or answer[-1][-1] in '‌‍'): answer[-1] += char
+        else: answer.append(char)
+    return answer
+
+
+def least(fmt: Format) -> int:
+    """The smallest chart text that still reads on this frame size."""
+    return max(9, round(fmt.height * .028))
+
+
+def _fit(draw, text: str, size: int, width: int, height: int, smallest: int = 8):
+    """Shrink to fit, but not below `smallest`; past that, end in an ellipsis on a whole letter."""
+    size = max(smallest, size); shown = text; font = _font(shown, size); box = draw.textbbox((0, 0), shown, font=font)
+    while size > smallest and (box[2] - box[0] > width or box[3] - box[1] > height):
         size -= 1; font = _font(shown, size); box = draw.textbbox((0, 0), shown, font=font)
-    while len(shown) > 2 and box[2] - box[0] > width:
-        shown = shown[:-2].rstrip() + '…'; font = _font(shown, size); box = draw.textbbox((0, 0), shown, font=font)
+    letters = clusters(text)
+    while len(letters) > 1 and box[2] - box[0] > width:
+        letters.pop(); shown = ''.join(letters).rstrip() + '…'; font = _font(shown, size); box = draw.textbbox((0, 0), shown, font=font)
     return font, box, shown
 
 
-def render_bar_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
+def number(value: float, graphic) -> str:
+    """Values read as people write them: 15,00,000 or 1,500,000, never 1.5e+06."""
+    from app.services.explainer_graphics import format_count
+    whole = round(value)
+    if abs(value - whole) < 1e-9: return format_count(whole, graphic.indian_grouping, graphic.tamil_numerals)
+    text = f'{abs(value):.2f}'.rstrip('0'); integer, fraction = text.split('.')
+    return ('-' if value < 0 else '') + format_count(int(integer), graphic.indian_grouping, graphic.tamil_numerals) + '.' + fraction
+
+
+def _frame(item: Text, fmt: Format):
     graphic = item.graphic; assert graphic and graphic.data
     image = Image.new('RGBA', (fmt.width, fmt.height), (0, 0, 0, 0)); draw = ImageDraw.Draw(image)
     cx, cy = round(graphic.to[0] * fmt.width), round(graphic.to[1] * fmt.height)
     width, height = round(graphic.width * fmt.width), round(graphic.height * fmt.height)
     left = min(fmt.width - width - 3, max(3, cx - width // 2)); top = min(fmt.height - height - 3, max(3, cy - height // 2))
-    right, bottom = left + width, top + height
     panel = {'documentary': (28, 27, 24, 238), 'dark-band': (12, 15, 21, 235), 'bold-colour': (30, 36, 58, 238)}.get(graphic.style)
-    if panel: draw.rounded_rectangle((left, top, right, bottom), radius=max(5, height // 24), fill=panel)
-    ink = (255, 255, 255, 255)
-    accent = (245, 193, 27, 255) if graphic.style == 'documentary' else (105, 170, 235, 255) if graphic.style == 'bold-colour' else ink
-    pad = max(8, round(height * .06)); rows = bar_geometry(graphic.data, progress); horizontal = graphic.chart_orientation == 'horizontal'
+    if panel: draw.rounded_rectangle((left, top, left + width, top + height), radius=max(5, height // 24), fill=panel)
+    colour = item.color.lstrip('#'); main = tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
+    accent = (105, 170, 235, 255) if graphic.style == 'bold-colour' else (245, 193, 27, 255)
+    if accent[:3] == main[:3]: accent = (255, 255, 255, 255)
+    return graphic, image, draw, (left, top, left + width, top + height), panel, main, accent
+
+
+def _text(draw, xy, text, font, box):
+    draw.text((xy[0] - box[0], xy[1] - box[1]), text, font=font, fill=(255, 255, 255, 255))
+
+
+def _draw_bar(item: Text, fmt: Format, progress: float) -> Image.Image:
+    graphic, image, draw, (left, top, right, bottom), _, main, accent = _frame(item, fmt)
+    rows = bar_geometry(graphic.data, progress); small = least(fmt); horizontal = graphic.chart_orientation == 'horizontal'
+    width, height = right - left, bottom - top; pad = max(6, round(min(width, height) * .05)); gap = max(3, pad // 2)
+    size = max(small, round(item.size * fmt.height / 1080)); vsize = max(small, round(size * .8))
+    values = [number(row.value, graphic) for row in graphic.data] if graphic.show_values else []
+    negative = any(row.value < 0 for row in graphic.data); positive = any(row.value > 0 for row in graphic.data)
+    vfont = _font(''.join(values), vsize); vboxes = [draw.textbbox((0, 0), value, font=vfont) for value in values]
     if horizontal:
-        label_w = round(width * .28); chart_l, chart_r = left + pad + label_w, right - pad
-        row_h = max(8, (height - 2 * pad) / len(rows)); bar_h = max(3, round(row_h * .5))
+        label_w = round(width * .28); value_w = min(round(width * .22), max((b[2] - b[0] for b in vboxes), default=0) + gap)
+        plot_l = left + pad + label_w + gap + (value_w if negative else 0); plot_r = right - pad - (value_w if positive else 0)
+        row_h = (height - 2 * pad) / len(rows); bar_h = max(3, round(row_h * .55))
         for index, bar in enumerate(rows):
-            y = round(top + pad + row_h * (index + .5)); font, box, label = _fit(draw, bar.label, round(item.size * fmt.height / 1080), label_w - pad, round(row_h * .8))
-            draw.text((chart_l - pad - (box[2]-box[0]), y - (box[3]-box[1])/2 - box[1]), label, font=font, fill=ink)
-            x0 = round(chart_l + bar.start * (chart_r-chart_l)); x1 = round(chart_l + bar.end * (chart_r-chart_l))
-            colour = accent if graphic.highlight_index == index else ink
-            draw.rounded_rectangle((min(x0,x1), y-bar_h//2, max(x0,x1), y+bar_h//2), radius=max(1, bar_h//4), fill=colour)
-            if graphic.show_values and bar.progress >= .999:
-                value = f'{bar.value:g}'; vf, vb, value = _fit(draw, value, round(item.size * .8 * fmt.height / 1080), max(18, abs(x1-x0)-4), bar_h-2)
-                vx = min(max(min(x0,x1)+2, x1-(vb[2]-vb[0])-2), max(x0,x1)-(vb[2]-vb[0])-2)
-                draw.text((vx, y-(vb[3]-vb[1])/2-vb[1]), value, font=vf, fill=(20,20,20,255) if colour == accent else (12,15,21,255))
+            y = top + pad + row_h * (index + .5)
+            font, box, label = _fit(draw, bar.label, size, label_w, round(row_h * .9), small)
+            _text(draw, (left + pad + label_w - (box[2] - box[0]), y - (box[3] - box[1]) / 2), label, font, box)
+            x0 = plot_l + bar.start * (plot_r - plot_l); x1 = plot_l + bar.end * (plot_r - plot_l)
+            if abs(x1 - x0) >= 1:
+                draw.rounded_rectangle((round(min(x0, x1)), round(y - bar_h / 2), round(max(x0, x1)), round(y + bar_h / 2)), radius=max(1, bar_h // 4), fill=accent if graphic.highlight_index == index else main)
+            if values and bar.progress >= .999:
+                font, box, value = _fit(draw, values[index], vsize, value_w - gap, round(row_h * .9))
+                vx = x1 + gap if bar.value >= 0 else x1 - gap - (box[2] - box[0])
+                _text(draw, (vx, y - (box[3] - box[1]) / 2), value, font, box)
+        draw.line((round(plot_l + rows[0].start * (plot_r - plot_l)), top + pad, round(plot_l + rows[0].start * (plot_r - plot_l)), bottom - pad), fill=(255, 255, 255, 150), width=1)
     else:
-        label_h = round(height * .2); chart_t, chart_b = top + pad, bottom - pad - label_h
-        col_w = (width - 2 * pad) / len(rows); zero_y = chart_b - rows[0].start * (chart_b-chart_t)
-        draw.line((left+pad, zero_y, right-pad, zero_y), fill=ink, width=1)
+        col_w = (width - 2 * pad) / len(rows)
+        lfont = _font(''.join(row.label for row in rows), size); label_h = max(round(size * 1.5), draw.textbbox((0, 0), 'கஊ', font=lfont)[3] + gap)
+        value_h = max((b[3] - b[1] for b in vboxes), default=0) + gap
+        plot_t = top + pad + (value_h if positive and values else 0); plot_b = bottom - pad - label_h - (value_h + gap if negative and values else 0)
+        zero = plot_b - rows[0].start * (plot_b - plot_t); bar_w = max(4, round(col_w * .5))
         for index, bar in enumerate(rows):
-            x = round(left + pad + col_w*(index+.5)); y0 = round(chart_b-bar.start*(chart_b-chart_t)); y1 = round(chart_b-bar.end*(chart_b-chart_t)); bar_w = max(4, round(col_w*.48))
-            colour = accent if graphic.highlight_index == index else ink
-            draw.rounded_rectangle((x-bar_w//2, min(y0,y1), x+bar_w//2, max(y0,y1)), radius=max(1, bar_w//5), fill=colour)
-            font, box, label = _fit(draw, bar.label, round(item.size * fmt.height / 1080), round(col_w*.9), label_h)
-            draw.text((x-(box[2]-box[0])/2, chart_b+4-box[1]), label, font=font, fill=ink)
-            if graphic.show_values and bar.progress >= .999:
-                value=f'{bar.value:g}'; vf,vb,value=_fit(draw,value,round(item.size*.7*fmt.height/1080),bar_w-2,max(8,abs(y1-y0)-2))
-                draw.text((x-(vb[2]-vb[0])/2,min(y0,y1)+2-vb[1]),value,font=vf,fill=(20,20,20,255) if colour==accent else (12,15,21,255))
+            x = left + pad + col_w * (index + .5); y1 = plot_b - bar.end * (plot_b - plot_t)
+            if abs(y1 - zero) >= 1:
+                draw.rounded_rectangle((round(x - bar_w / 2), round(min(zero, y1)), round(x + bar_w / 2), round(max(zero, y1))), radius=max(1, bar_w // 6), fill=accent if graphic.highlight_index == index else main)
+            font, box, label = _fit(draw, bar.label, size, round(col_w * .92), label_h - gap, small)
+            _text(draw, (x - (box[2] - box[0]) / 2, bottom - pad - label_h + gap), label, font, box)
+            if values and bar.progress >= .999:
+                font, box, value = _fit(draw, values[index], vsize, round(col_w * .96), value_h)
+                vy = y1 - gap - (box[3] - box[1]) if bar.value >= 0 else y1 + gap
+                _text(draw, (x - (box[2] - box[0]) / 2, vy), value, font, box)
+        draw.line((left + pad, round(zero), right - pad, round(zero)), fill=(255, 255, 255, 150), width=1)
     return image
 
 
-def render_line_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
-    graphic = item.graphic; assert graphic and graphic.data
-    image = Image.new('RGBA', (fmt.width, fmt.height), (0,0,0,0)); draw = ImageDraw.Draw(image)
-    cx,cy=round(graphic.to[0]*fmt.width),round(graphic.to[1]*fmt.height); width,height=round(graphic.width*fmt.width),round(graphic.height*fmt.height)
-    left=min(fmt.width-width-3,max(3,cx-width//2)); top=min(fmt.height-height-3,max(3,cy-height//2)); right,bottom=left+width,top+height
-    panel={'documentary':(28,27,24,238),'dark-band':(12,15,21,235),'bold-colour':(30,36,58,238)}.get(graphic.style)
-    if panel: draw.rounded_rectangle((left,top,right,bottom),radius=max(5,height//24),fill=panel)
-    ink=(255,255,255,255); accent=(245,193,27,255) if graphic.style=='documentary' else (105,170,235,255) if graphic.style=='bold-colour' else ink
-    pad=max(8,round(height*.08)); label_h=max(14,round(height*.2)); chart=(left+pad,top+pad,right-pad,bottom-pad-label_h)
-    normal=line_geometry(graphic.data); pixels=[(round(chart[0]+p.x*(chart[2]-chart[0])),round(chart[1]+p.y*(chart[3]-chart[1]))) for p in normal]
-    shown=_partial(pixels,progress)
-    if len(shown)>1: draw.line(shown,fill=accent,width=max(2,round(graphic.line_width*fmt.height)),joint='curve')
+def _draw_line(item: Text, fmt: Format, progress: float) -> Image.Image:
+    graphic, image, draw, (left, top, right, bottom), _, main, accent = _frame(item, fmt)
+    colour = accent if graphic.style in ('documentary', 'bold-colour') else main
+    small = least(fmt); width, height = right - left, bottom - top; pad = max(6, round(min(width, height) * .06)); gap = max(3, pad // 2)
+    size = max(small, round(item.size * fmt.height / 1080)); count = len(graphic.data)
+    font = _font(''.join(row.label for row in graphic.data), size); label_h = max(round(size * 1.5), draw.textbbox((0, 0), 'கஊ', font=font)[3] + gap)
+    end_value = number(graphic.data[-1].value, graphic) if graphic.show_values else ''
+    vfont = _font(end_value, max(small, round(size * .9))); vbox = draw.textbbox((0, 0), end_value, font=vfont) if end_value else (0, 0, 0, 0)
+    plot = (left + pad + round(width * .04), top + pad + (vbox[3] - vbox[1]) // 2, right - pad - (vbox[2] - vbox[0] + gap * 2 if end_value else round(width * .04)), bottom - pad - label_h)
+    normal = line_geometry(graphic.data); pixels = [(round(plot[0] + p.x * (plot[2] - plot[0])), round(plot[1] + p.y * (plot[3] - plot[1]))) for p in normal]
+    shown = _partial(pixels, progress)
+    if len(shown) > 1: draw.line(shown, fill=colour, width=max(2, round(graphic.line_width * fmt.height)), joint='curve')
     if shown:
-        radius=max(3,round(fmt.height*.009)); draw.ellipse((shown[-1][0]-radius,shown[-1][1]-radius,shown[-1][0]+radius,shown[-1][1]+radius),fill=accent)
-    col_w=(chart[2]-chart[0])/max(1,len(normal))
-    for point,(x,y) in zip(normal,pixels):
-        font,box,label=_fit(draw,point.label,round(item.size*fmt.height/1080),round(col_w*.92),label_h)
-        label_w=box[2]-box[0]; tx=min(chart[2]-label_w,max(chart[0],x-label_w/2))
-        draw.text((tx,chart[3]+5-box[1]),label,font=font,fill=ink)
-    if graphic.show_values and progress>=.999:
-        point=normal[-1]; x,y=pixels[-1]; value=f'{point.value:g}'; font,box,value=_fit(draw,value,round(item.size*.8*fmt.height/1080),round(col_w),max(10,label_h//2))
-        tx=min(right-pad-(box[2]-box[0]),max(left+pad,x+5)); ty=max(top+pad,y-(box[3]-box[1])-4-box[1])
-        draw.text((tx,ty),value,font=font,fill=ink)
+        radius = max(3, round(fmt.height * .009)); draw.ellipse((shown[-1][0] - radius, shown[-1][1] - radius, shown[-1][0] + radius, shown[-1][1] + radius), fill=colour)
+    # Thin the labels instead of shrinking them past reading: every k-th point is named when all of them cannot be.
+    spacing = (plot[2] - plot[0]) / max(1, count - 1); widest = max(draw.textbbox((0, 0), row.label, font=_font(row.label, small))[2] for row in graphic.data)
+    step = 1
+    while step < count - 1 and widest > spacing * step * .92: step += 1
+    named = list(range(0, count, step))
+    if named[-1] != count - 1:
+        if count - 1 - named[-1] < step and len(named) > 1: named.pop()
+        named.append(count - 1)
+    room = round(spacing * step * .92) if count > 1 else plot[2] - plot[0]
+    for index in named:
+        font, box, label = _fit(draw, graphic.data[index].label, size, room, label_h - gap, small)
+        label_w = box[2] - box[0]; tx = min(right - pad - label_w, max(left + pad, pixels[index][0] - label_w / 2))
+        _text(draw, (tx, bottom - pad - label_h + gap), label, font, box)
+    if end_value and progress >= .999:
+        x, y = pixels[-1]; _text(draw, (x + gap * 2, max(top + pad, min(bottom - pad - label_h - (vbox[3] - vbox[1]), y - (vbox[3] - vbox[1]) / 2))), end_value, vfont, vbox)
     return image
 
 
-def render_pie_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
-    graphic=item.graphic; assert graphic and graphic.data
-    image=Image.new('RGBA',(fmt.width,fmt.height),(0,0,0,0)); draw=ImageDraw.Draw(image)
-    cx,cy=round(graphic.to[0]*fmt.width),round(graphic.to[1]*fmt.height); width,height=round(graphic.width*fmt.width),round(graphic.height*fmt.height)
-    left=min(fmt.width-width-3,max(3,cx-width//2)); top=min(fmt.height-height-3,max(3,cy-height//2)); right,bottom=left+width,top+height
-    panel={'documentary':(28,27,24,238),'dark-band':(12,15,21,235),'bold-colour':(30,36,58,238)}.get(graphic.style)
-    if panel: draw.rounded_rectangle((left,top,right,bottom),radius=max(5,height//24),fill=panel)
-    ink=(255,255,255,255)
-    palette=[(215,188,105,255),(120,157,181,255),(190,132,140,255),(119,169,145,255),(155,132,178,255),(199,151,105,255)]
-    pad=max(8,round(height*.07)); pie_size=min(height-2*pad,round(width*.48)); pie_box=(left+pad,top+(height-pie_size)//2,left+pad+pie_size,top+(height+pie_size)//2)
-    sweep=-90+360*progress; slices=pie_geometry(graphic.data)
-    for index,slice_ in enumerate(slices):
-        visible_end=min(slice_.end,sweep)
-        if visible_end>slice_.start: draw.pieslice(pie_box,start=slice_.start,end=visible_end,fill=palette[index])
+def _draw_pie(item: Text, fmt: Format, progress: float) -> Image.Image:
+    graphic, image, draw, (left, top, right, bottom), panel, _, _ = _frame(item, fmt)
+    palette = [(215, 188, 105, 255), (120, 157, 181, 255), (190, 132, 140, 255), (119, 169, 145, 255), (155, 132, 178, 255), (199, 151, 105, 255)]
+    small = least(fmt); width, height = right - left, bottom - top; pad = max(6, round(min(width, height) * .07))
+    pie_size = min(height - 2 * pad, round(width * .48)); pie_box = (left + pad, top + (height - pie_size) // 2, left + pad + pie_size, top + (height + pie_size) // 2)
+    sweep = -90 + 360 * progress; slices = pie_geometry(graphic.data)
+    for index, slice_ in enumerate(slices):
+        visible_end = min(slice_.end, sweep)
+        if visible_end > slice_.start: draw.pieslice(pie_box, start=slice_.start, end=visible_end, fill=palette[index])
     if graphic.donut:
-        inset=round(pie_size*.27); hole=(pie_box[0]+inset,pie_box[1]+inset,pie_box[2]-inset,pie_box[3]-inset)
-        draw.ellipse(hole,fill=panel or (0,0,0,0))
-    legend_l=pie_box[2]+pad; legend_w=right-pad-legend_l; row_h=(height-2*pad)/len(slices)
-    for index,slice_ in enumerate(slices):
-        y=round(top+pad+row_h*(index+.5)); swatch=max(5,round(row_h*.34)); draw.ellipse((legend_l,y-swatch//2,legend_l+swatch,y+swatch//2),fill=palette[index])
-        label=f'{slice_.label}  {slice_.percent}%' if graphic.show_values else slice_.label
-        font,box,label=_fit(draw,label,round(item.size*fmt.height/1080),max(8,legend_w-swatch-pad),round(row_h*.8))
-        draw.text((legend_l+swatch+pad//2,y-(box[3]-box[1])/2-box[1]),label,font=font,fill=ink)
+        inset = round(pie_size * .27); draw.ellipse((pie_box[0] + inset, pie_box[1] + inset, pie_box[2] - inset, pie_box[3] - inset), fill=panel or (0, 0, 0, 0))
+    legend_l = pie_box[2] + pad; legend_w = right - pad - legend_l; row_h = (height - 2 * pad) / len(slices)
+    size = max(small, round(item.size * fmt.height / 1080))
+    for index, slice_ in enumerate(slices):
+        y = top + pad + row_h * (index + .5); swatch = max(5, round(row_h * .34))
+        draw.ellipse((legend_l, round(y - swatch / 2), legend_l + swatch, round(y + swatch / 2)), fill=palette[index])
+        text_l = legend_l + swatch + pad // 2; room = right - pad - text_l
+        percent = f'{slice_.percent}%' if graphic.show_values else ''
+        pfont, pbox, percent = _fit(draw, percent, size, room // 3, round(row_h * .9), small) if percent else (None, (0, 0, 0, 0), '')
+        pw = pbox[2] - pbox[0]
+        font, box, label = _fit(draw, slice_.label, size, room - (pw + pad // 2 if percent else 0), round(row_h * .9), small)
+        _text(draw, (text_l, y - (box[3] - box[1]) / 2), label, font, box)
+        if percent: _text(draw, (right - pad - pw, y - (pbox[3] - pbox[1]) / 2), percent, pfont, pbox)
     return image
+
+
+def _smooth(draw, item: Text, fmt: Format, progress: float) -> Image.Image:
+    """Draw at twice the size and scale down: Pillow's hard pixel steps would otherwise come out differently from the
+    GPU and ffmpeg exports (and look jagged), most on a saturated line over a busy picture."""
+    big = draw(item, Format(width=fmt.width * 2, height=fmt.height * 2, fps=fmt.fps), progress)
+    return big.convert('RGBa').resize((fmt.width, fmt.height), Image.Resampling.BOX).convert('RGBA')
+
+
+def render_bar_chart(item: Text, fmt: Format, progress: float) -> Image.Image: return _smooth(_draw_bar, item, fmt, progress)
+def render_line_chart(item: Text, fmt: Format, progress: float) -> Image.Image: return _smooth(_draw_line, item, fmt, progress)
+def render_pie_chart(item: Text, fmt: Format, progress: float) -> Image.Image: return _smooth(_draw_pie, item, fmt, progress)
