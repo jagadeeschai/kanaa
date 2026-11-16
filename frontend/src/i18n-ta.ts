@@ -76,6 +76,11 @@ export const TAMIL: Record<string, string> = {
   'Uses your image AI credits. Better when the person hides a lot.': 'உங்கள் பட AI கடன்களைப் பயன்படுத்தும். நபர் அதிகம் மறைக்கும்போது சிறந்தது.',
   'Filled on this Mac: nothing leaves it, and it costs nothing.': 'இந்த Mac-இலேயே நிரப்பப்படும்: எதுவும் வெளியே செல்லாது, கட்டணமும் இல்லை.',
 
+  'Remove person or object': 'நபரை அல்லது பொருளை நீக்கு', 'Remove person or object…': 'நபரை அல்லது பொருளை நீக்கு…', 'Things': 'பொருட்கள்', 'Thing {number}': 'பொருள் {number}',
+  'Looking for things…': 'பொருட்களைத் தேடுகிறது…', 'No people found in this picture. Try Things.': 'இந்தப் படத்தில் நபர்கள் இல்லை. பொருட்கள் என்பதை முயலவும்.',
+  'Nothing found in the foreground of this picture.': 'இந்தப் படத்தின் முன்புறத்தில் எதுவும் இல்லை.',
+  'Choose what to remove. Things in the foreground are found; the scenery behind them is not.': 'எதை நீக்க வேண்டும் என்று தேர்ந்தெடுங்கள். முன்புறப் பொருட்கள் கண்டறியப்படும்; பின்னணிக் காட்சி அல்ல.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

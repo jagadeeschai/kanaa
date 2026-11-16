@@ -176,6 +176,6 @@ export const startBringToLife = (id: number, prompt: string, seconds: number) =>
 export const startTextToVideo = (body: { prompt: string; seconds: number; shape: 'landscape' | 'portrait' | 'square'; folder?: string | null }) =>
   requestJson<{ job_id: string }>('/api/ai-video/from-text', { method: 'POST', body: JSON.stringify(body) });
 /** Remove person: find the people in a picture (numbered left to right), then fill where the chosen ones were. */
-export const findPeople = (id: number) => requestJson<{ count: number; preview: string; local: boolean }>(`/api/photos/${id}/people`, { method: 'POST' });
-export const startRemovePeople = (id: number, people: number[], method: 'local' | 'ai' = 'local') =>
-  requestJson<{ job_id: string }>(`/api/photos/${id}/remove-people`, { method: 'POST', body: JSON.stringify({ people, method }) });
+export const findPeople = (id: number, kind: 'people' | 'objects' = 'people') => requestJson<{ count: number; preview: string; local: boolean }>(`/api/photos/${id}/people?kind=${kind}`, { method: 'POST' });
+export const startRemovePeople = (id: number, people: number[], method: 'local' | 'ai' = 'local', kind: 'people' | 'objects' = 'people') =>
+  requestJson<{ job_id: string }>(`/api/photos/${id}/remove-people`, { method: 'POST', body: JSON.stringify({ people, method, kind }) });

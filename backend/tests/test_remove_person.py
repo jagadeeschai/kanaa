@@ -89,6 +89,27 @@ class RemovePerson(unittest.TestCase):
         self.assertEqual(result[200, 90].tolist(), [0, 200, 0])
         self.assertTrue((result[:, 400:] == original[:, 400:]).all())
 
+    def test_things_are_found_and_removed_like_people_kept_apart(self):
+        from app.services import local_fill
+        kinds = []
+        with mock.patch.object(remove_person.subprocess, 'run', wraps=remove_person.subprocess.run) as run:
+            remove_person.find_people(4, self.finder, kind='objects')
+            kinds.append(run.call_args.args[0][-1])
+        self.assertEqual(kinds, ['objects'])
+        self.assertTrue((remove_person._folder(self.picture, 'objects') / 'person-1.png').exists())
+        self.assertFalse((remove_person._folder(self.picture) / 'person-1.png').exists())  # People not looked for yet.
+
+        class FakeModel:
+            def run(self, _, inputs):
+                return [np.zeros((1, 3, 512, 512), np.float32)]
+        with mock.patch.object(local_fill, 'available', return_value=True), mock.patch.object(local_fill, '_model', return_value=FakeModel()), \
+             mock.patch.object(remove_person, 'index_media', return_value={'id': 11}) as index:
+            remove_person.start_remove(4, [2], kind='objects')
+            self.jobs[0](lambda: False)
+        self.assertEqual(index.call_args.args[1], 'AI scene 8 (object removed).png')
+        with self.assertRaises(ValueError):
+            remove_person.find_people(4, self.finder, kind='trees')
+
     def test_on_this_mac_needs_the_model(self):
         from app.services import local_fill
         remove_person.find_people(4, self.finder)

@@ -211,24 +211,25 @@ class RemovePeopleRequest(BaseModel):
     people: list[int] = Field(min_length=1, max_length=6)
     quality: Literal['low', 'medium', 'high'] = 'medium'
     method: Literal['local', 'ai'] = 'local'  # On this Mac (LaMa), or the image provider.
+    kind: Literal['people', 'objects'] = 'people'
 
 
 @router.post('/photos/{identifier}/people')
-def find_people_in_picture(identifier: int):
+def find_people_in_picture(identifier: int, kind: Literal['people', 'objects'] = 'people'):
     """Remove person, step 1: each person in the picture, numbered, with a preview to choose from."""
     from app.services.remove_person import find_people
     from app.services.local_fill import available
     try:
-        return {**find_people(identifier), 'local': available()}
+        return {**find_people(identifier, kind=kind), 'local': available()}
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @router.get('/photos/{identifier}/people/preview')
-def people_preview(identifier: int):
+def people_preview(identifier: int, kind: Literal['people', 'objects'] = 'people'):
     from fastapi.responses import FileResponse
     from app.services.remove_person import preview_path
-    path = preview_path(identifier)
+    path = preview_path(identifier, kind)
     if not path.exists():
         raise HTTPException(404, 'Look for the people first.')
     return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
@@ -239,6 +240,6 @@ def remove_people(identifier: int, data: RemovePeopleRequest):
     """Remove person, step 2: one job that fills where the chosen people were; its result names the new picture."""
     from app.services.remove_person import start_remove
     try:
-        return {'job_id': start_remove(identifier, data.people, data.quality, data.method)}
+        return {'job_id': start_remove(identifier, data.people, data.quality, data.method, data.kind)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

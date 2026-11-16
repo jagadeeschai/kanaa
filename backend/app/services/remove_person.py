@@ -1,6 +1,7 @@
-"""Remove person: people taken out of a picture, the space filled with what would be behind them.
+"""Remove person or object: people (or things) taken out of a picture, the space filled with what would be behind them.
 
-1. Find: Apple Vision's person finder (the instance_mask helper the cut-outs use) outlines each person in the picture.
+1. Find: Apple Vision (the instance_mask helper the cut-outs use) outlines each person, or each thing in the foreground
+   (people, animals, vehicles, furniture, signs...); it does not pick out parts of the scenery.
 2. Mask: the chosen people, grown a little so no edge or shadow fringe is left.
 3. Fill: on this Mac with LaMa (local_fill.py, free, offline), or by the image provider's masked edit request.
 4. Keep: outside the mask the original pixels are pasted back, so only the person's place changes.
@@ -29,27 +30,30 @@ FIND_SIDE = 1024  # The finder sees the picture at most this big; masks are scal
 GROW = 0.012  # Of the picture's short side: the mask is grown this much to take edges and fringes too.
 FEATHER = 0.004  # Of the short side: the soft edge where the fill meets the original.
 SIZES = {'portrait': '1024x1536', 'square': '1024x1024', 'landscape': '1536x1024'}
-INSTRUCTION = ('Remove the person or people in the masked area completely, including their shadows, and fill that area with '
+KINDS = ('people', 'objects')
+INSTRUCTION = ('Remove everything in the masked area completely, including its shadow, and fill that area with '
                'the background that would naturally be behind them, matching the surrounding scene, light and perspective. '
                'Do not add any new people or objects.')
 
 
-def _folder(picture: Path) -> Path:
+def _folder(picture: Path, kind: str = 'people') -> Path:
     key = hashlib.sha256(picture.read_bytes()).hexdigest()[:16]
-    return settings.data_dir / 'cache' / 'people' / key
+    return settings.data_dir / 'cache' / 'people' / key / ('' if kind == 'people' else kind)
 
 
 def _finder() -> list[str]:
     return [str(cutout_service.helper(instance_service.SOURCE))]
 
 
-def find_people(media_id: int, finder: list[str] | None = None) -> dict:
-    """Each person in the picture, numbered from 1, with a preview where each is tinted and numbered. Cached."""
+def find_people(media_id: int, finder: list[str] | None = None, kind: str = 'people') -> dict:
+    """Each person (or each thing) in the picture, numbered from 1, with a preview where each is tinted and numbered. Cached."""
+    if kind not in KINDS:
+        raise ValueError('Look for people or things.')
     item = dict(get_media(media_id))
     if item['media_type'] != 'image':
         raise ValueError('Remove person works on pictures.')
     picture = Path(item['absolute_path'])
-    folder = _folder(picture)
+    folder = _folder(picture, kind)
     masks = sorted(folder.glob('person-*.png'))
     if not (folder / 'preview.jpg').exists():
         folder.mkdir(parents=True, exist_ok=True)
@@ -58,9 +62,9 @@ def find_people(media_id: int, finder: list[str] | None = None) -> dict:
         image.thumbnail((FIND_SIDE, FIND_SIDE))
         width, height = image.size[0] // 2 * 2, image.size[1] // 2 * 2
         image = image.resize((width, height))
-        found = subprocess.run([*(finder or _finder()), str(width), str(height), 'people'], input=image.tobytes(), capture_output=True, timeout=120)
+        found = subprocess.run([*(finder or _finder()), str(width), str(height), kind], input=image.tobytes(), capture_output=True, timeout=120)
         if found.returncode != 0 or not found.stdout:
-            raise RuntimeError('Could not look for people in this picture.')
+            raise RuntimeError('Could not look in this picture.')
         data, count, size = found.stdout, found.stdout[0], width * height
         people = []
         for number in range(count):
@@ -86,25 +90,25 @@ def find_people(media_id: int, finder: list[str] | None = None) -> dict:
             draw.text((x - 4, y + 7), str(number), fill=(0, 0, 0))
         preview.save(folder / 'preview.jpg', quality=88)
         masks = sorted(folder.glob('person-*.png'))
-    return {'count': len(masks), 'preview': f'/api/photos/{media_id}/people/preview'}
+    return {'count': len(masks), 'preview': f'/api/photos/{media_id}/people/preview?kind={kind}'}
 
 
-def preview_path(media_id: int) -> Path:
-    return _folder(Path(dict(get_media(media_id))['absolute_path'])) / 'preview.jpg'
+def preview_path(media_id: int, kind: str = 'people') -> Path:
+    return _folder(Path(dict(get_media(media_id))['absolute_path']), kind if kind in KINDS else 'people') / 'preview.jpg'
 
 
-def chosen_mask(picture: Path, numbers: list[int], size: tuple[int, int]) -> Image.Image:
+def chosen_mask(picture: Path, numbers: list[int], size: tuple[int, int], kind: str = 'people') -> Image.Image:
     """The chosen people as one mask at the picture's size, grown to take their edges too (white: remove)."""
-    folder = _folder(picture)
+    folder = _folder(picture, kind)
     union = None
     for number in numbers:
         path = folder / f'person-{number}.png'
         if not path.exists():
-            raise ValueError('Look for the people again: that person was not found.')
+            raise ValueError('Look again: that one was not found.')
         mask = np.asarray(Image.open(path).convert('L')) > 127
         union = mask if union is None else union | mask
     if union is None:
-        raise ValueError('Choose at least one person.')
+        raise ValueError('Choose at least one to remove.')
     grown = Image.fromarray(union.astype(np.uint8) * 255).resize(size, Image.BILINEAR)
     reach = max(3, round(min(size) * GROW)) | 1
     return grown.filter(ImageFilter.MaxFilter(reach if reach <= 51 else 51)).point(lambda v: 255 if v > 60 else 0)
@@ -141,14 +145,16 @@ def blend(original: Image.Image, filled: Image.Image, mask: Image.Image) -> Imag
     return Image.composite(filled, original.convert('RGB'), soft)
 
 
-def start_remove(media_id: int, numbers: list[int], quality: str = 'medium', method: str = 'local') -> str:
+def start_remove(media_id: int, numbers: list[int], quality: str = 'medium', method: str = 'local', kind: str = 'people') -> str:
     """`method`: 'local' fills on this Mac (LaMa), 'ai' with the image provider."""
     from app.services import local_fill
     item = dict(get_media(media_id))
     if item['media_type'] != 'image':
         raise ValueError('Remove person works on pictures.')
     if not numbers:
-        raise ValueError('Choose at least one person.')
+        raise ValueError('Choose at least one to remove.')
+    if kind not in KINDS:
+        raise ValueError('Look for people or things.')
     if method == 'local' and not local_fill.available():
         raise ValueError('The fill model for this Mac is not installed: run ./install-fill.sh in the Kanaa folder, or choose the AI service.')
     config = read_settings()
@@ -158,15 +164,15 @@ def start_remove(media_id: int, numbers: list[int], quality: str = 'medium', met
     name = Path(item.get('filename') or 'picture').stem[:60]
     with Image.open(source) as opened:
         width, height = opened.size
-    chosen_mask(source, numbers, (width, height))  # Checks the choice before queueing.
+    chosen_mask(source, numbers, (width, height), kind)  # Checks the choice before queueing.
     ratio = width / max(1, height)
     size = SIZES['landscape' if ratio > 1.15 else 'portrait' if ratio < 0.87 else 'square']
 
     def run(should_cancel):
-        update_job(job_id, phase='Filling where the people were', progress=10)
+        update_job(job_id, phase='Filling where they were', progress=10)
         with Image.open(source) as opened:
             original = opened.convert('RGB')
-        mask = chosen_mask(source, numbers, original.size)
+        mask = chosen_mask(source, numbers, original.size, kind)
         if method == 'local':
             update_job(job_id, phase='Filling on this Mac', progress=30)
             filled = local_fill.fill(original, mask)
@@ -191,11 +197,11 @@ def start_remove(media_id: int, numbers: list[int], quality: str = 'medium', met
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             result.save(target)
-            media = index_media(target, f'{name} (person removed).png', folder=item.get('folder'))
+            media = index_media(target, f"{name} ({'person' if kind == 'people' else 'object'} removed).png", folder=item.get('folder'))
         except BaseException:
             target.unlink(missing_ok=True)
             raise
         return {'progress': 100, 'media_id': media['id']}
 
-    job_id = enqueue_render('ai_edit', f'Remove person · {name}', run, total=100)
+    job_id = enqueue_render('ai_edit', f"Remove {'person' if kind == 'people' else 'object'} · {name}", run, total=100)
     return job_id
