@@ -86,6 +86,17 @@ export const TAMIL: Record<string, string> = {
   'Click what to remove': 'நீக்க வேண்டியதைச் சொடுக்கவும்', 'Outlining…': 'வரையறுக்கிறது…', 'Click what to remove · Option-click to take away': 'நீக்க வேண்டியதைச் சொடுக்கவும் · Option-சொடுக்கு நீக்கிவிடும்',
   'Clear clicks': 'சொடுக்குகளை அழி',
 
+  'Pop-out (3D)': 'முப்பரிமாணத் தோற்றம் (3D)', 'Pop-out (3D)…': 'முப்பரிமாணத் தோற்றம் (3D)…', 'Cutting out and filling behind…': 'வெட்டி, பின்னால் நிரப்புகிறது…',
+  'The scene behind them shows here': 'அவர்களுக்குப் பின்னால் உள்ள காட்சி இங்கே தெரியும்', 'Move': 'அசைவு',
+  'In front of the person': 'நபருக்கு முன்னால்', 'Behind the person': 'நபருக்குப் பின்னால்', 'Apply to timeline': 'காலவரிசையில் பயன்படுத்து', 'Make again': 'மீண்டும் உருவாக்கு', 'Make 3D': '3D உருவாக்கு',
+  'Made on this Mac, free. Your picture stays as it is; each layer can still be changed in Motion.': 'இந்த Mac-இலேயே இலவசமாக உருவாகும். உங்கள் படம் அப்படியே இருக்கும்; ஒவ்வொரு அடுக்கையும் அசைவு-இல் மாற்றலாம்.',
+  'Comes forward': 'முன்னே வருகிறார்', 'Steps back': 'பின்னே செல்கிறார்', 'Dolly zoom': 'டாலி ஸூம்', 'Parallax drift': 'இடமாறு நகர்வு', 'Rise up': 'எழுந்து நிமிர்',
+  'The person grows toward you; the scene stays': 'நபர் உங்களை நோக்கிப் பெரிதாகிறார்; காட்சி அப்படியே', 'The person recedes into the scene': 'நபர் காட்சிக்குள் பின்வாங்குகிறார்',
+  'The person stays; the scene pulls away behind them': 'நபர் அப்படியே; பின்னால் காட்சி விலகுகிறது', 'Both drift sideways, the person faster: a gentle 3D pan': 'இரண்டும் பக்கவாட்டில் நகரும், நபர் வேகமாக: மென்மையான 3D நகர்வு',
+  'The person rises and grows: a hero moment': 'நபர் எழுந்து பெரிதாகிறார்: நாயகத் தருணம்',
+
+  'Choose who pops out.': 'யார் முன்னே தோன்ற வேண்டும் என்று தேர்ந்தெடுங்கள்.', 'Choose what pops out. Things in the foreground are found; the scenery behind them is not.': 'எது முன்னே தோன்ற வேண்டும் என்று தேர்ந்தெடுங்கள். முன்புறப் பொருட்கள் கண்டறியப்படும்; பின்னணிக் காட்சி அல்ல.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

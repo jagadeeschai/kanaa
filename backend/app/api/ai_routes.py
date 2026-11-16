@@ -266,3 +266,18 @@ def outline_by_clicks(identifier: int, data: OutlineRequest):
         return outline(identifier, [point.model_dump() for point in data.points])
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+class PopoutRequest(BaseModel):
+    people: list[int] = Field(min_length=1, max_length=6)
+    kind: Literal['people', 'objects', 'clicks'] = 'people'
+
+
+@router.post('/photos/{identifier}/popout')
+def popout(identifier: int, data: PopoutRequest):
+    """Pop-out (3D): one job that makes the cut-out and the filled background; its result names both pictures."""
+    from app.services.popout import start
+    try:
+        return {'job_id': start(identifier, data.people, data.kind)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
