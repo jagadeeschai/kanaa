@@ -59,7 +59,9 @@ def _draw_steps(item, fmt, local):
     starts = step_starts(item); current = max((i for i, at in enumerate(starts) if local >= at), default=-1)
     small = max(18, least(fmt)); pad = max(6, round(fmt.height * .02))
     row_h = (bottom - top - 2 * pad) / len(starts); badge = max(small, min(round(row_h * .65), round(fmt.height * .046)))
-    size = max(small, round(item.size * fmt.height / 1080))
+    # Text grows with the room each step has (3 steps in a tall panel read large), but never past a title's size.
+    size = max(small, round(item.size * fmt.height / 1080), min(round(row_h * .3), round(fmt.height * .065) * item.size // 44))
+    badge = max(badge, min(round(size * 1.35), round(row_h * .8)))
     for index, (text, at) in enumerate(zip(graphic.steps, starts)):
         if local < at: continue
         # A visible first state at the exact event, then a short slide/fade. Previous states contain no pixels for it.

@@ -153,6 +153,13 @@ class ChartQuality(unittest.TestCase):
                 self.assertGreaterEqual(x0, left - 1); self.assertGreaterEqual(y0, top - 1)
                 self.assertLessEqual(x1, left + width + 1); self.assertLessEqual(y1, top + height + 1)
 
+    def test_clean_style_has_a_dark_edge_so_white_reads_on_white(self):
+        pixels = np.asarray(render_line_chart(clean(line_item()), Format(width=640, height=360, fps=24), 1)).astype(int)
+        dark = (pixels[:, :, 3] > 120) & (pixels[:, :, :3].max(axis=2) < 60)
+        self.assertGreater(dark.sum(), 400)   # a shadow is drawn around the white line and labels
+        panelled = np.asarray(render_line_chart(line_item(), Format(width=640, height=360, fps=24), 1))
+        self.assertEqual(np.count_nonzero(panelled[:, :, 3]) > 0, True)
+
     @unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg required')
     def test_gpu_export_matches_ffmpeg_for_every_chart_and_style(self):
         from app.services import gpu_render

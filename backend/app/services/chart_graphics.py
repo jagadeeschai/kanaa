@@ -5,7 +5,8 @@ import unicodedata
 from pathlib import Path
 from typing import NamedTuple
 
-from PIL import Image, ImageDraw, ImageFont
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.services.timeline_schema import Format, Text
 
@@ -250,7 +251,18 @@ def _smooth(draw, item: Text, fmt: Format, progress: float) -> Image.Image:
     """Draw at twice the size and scale down: Pillow's hard pixel steps would otherwise come out differently from the
     GPU and ffmpeg exports (and look jagged), most on a saturated line over a busy picture."""
     big = draw(item, Format(width=fmt.width * 2, height=fmt.height * 2, fps=fmt.fps), progress)
-    return big.convert('RGBa').resize((fmt.width, fmt.height), Image.Resampling.BOX).convert('RGBA')
+    small = big.convert('RGBa').resize((fmt.width, fmt.height), Image.Resampling.BOX).convert('RGBA')
+    return shadowed(small, fmt) if item.graphic and item.graphic.style == 'clean' else small
+
+
+def shadowed(image: Image.Image, fmt: Format) -> Image.Image:
+    """Clean graphics have no panel, so a soft dark shadow keeps white text readable on a bright picture."""
+    ink = image.getchannel('A')
+    tight = np.asarray(ink.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(max(1, fmt.height * .0018)))).astype(float)
+    soft = np.asarray(ink.filter(ImageFilter.GaussianBlur(max(2, fmt.height * .006)))).astype(float)
+    shade = Image.new('RGBA', image.size, (0, 0, 0, 0))
+    shade.putalpha(Image.fromarray(np.maximum(tight * .85, np.minimum(255, soft * 1.4)).astype(np.uint8)))
+    return Image.alpha_composite(shade, image)
 
 
 def render_bar_chart(item: Text, fmt: Format, progress: float) -> Image.Image: return _smooth(_draw_bar, item, fmt, progress)
