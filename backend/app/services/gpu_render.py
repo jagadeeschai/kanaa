@@ -68,7 +68,9 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             data = clip.model_dump()
             if clip.freeze is not None:
                 found.add('freeze')
-            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur'))
+            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur', 'old_film'))
+            if clip.old_film and clip.old_film.intensity > 0 and (clip.old_film.scratches or clip.old_film.dust or clip.old_film.weave):
+                found.add('old film scratches, dust or weave')
             if clip.composite and (clip.composite.choke or clip.composite.wrap or clip.composite.match):
                 found.add('edge tightening, light wrap or colour match')
             if clip.id in compared:
@@ -107,6 +109,22 @@ def colour_constants(adjust, look: str) -> dict:
                      rounded(b * adjust.brightness * (2 - adjust.temperature))],
             'power': rounded(1 / adjust.gamma), 'fade': rounded(adjust.fade),
             'contrast': rounded(contrast * adjust.contrast), 'saturation': rounded(saturation * adjust.saturation)}
+
+
+FILM_GRAIN_SCALE = 4.3
+
+
+def film_constants(effect) -> dict | None:
+    """old_film_filters' faded stock and grain: the channel mix (rr, rg, gg, gb, bb) exactly, and the grain's strength
+    in 8-bit levels (ffmpeg's noise, uniform and new every frame; the engine makes its own of the same strength)."""
+    if effect is None or effect.intensity <= 0:
+        return None
+    k = effect.intensity
+    return {'mix': [round(1 - .03 * k, 5), round(.035 * k, 5), round(1 - .045 * k, 5), round(.02 * k, 5), round(1 - .13 * k, 5)],
+            # Measured on encoded video, not in theory: ffmpeg's noise ends up stronger than its setting, and the encoder
+            # smooths the engine's finer grain more, so the engine's grain is scaled until the two look the same
+            # (test_film_grain_and_grade_match_ffmpeg checks the frame-to-frame grain of both).
+            'grain': round(max(0.1, 26 * effect.grain * k) * FILM_GRAIN_SCALE, 3)}
 
 
 def glow_constants(effect, fit: float = 1.0) -> dict | None:
@@ -269,7 +287,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             # exits give way to it.
             enter, exit_ = None if head else clip.enter, None if tail else clip.exit
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': first - head, 'frames': base + head + tail,
-                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'wheels': wheel_vectors(clip.wheels), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
+                          'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'wheels': wheel_vectors(clip.wheels), 'film': film_constants(clip.old_film), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
             from app.services.gpu_masks import resolve
             items[-1]['mask_path'] = resolve(clip, facts, masks)

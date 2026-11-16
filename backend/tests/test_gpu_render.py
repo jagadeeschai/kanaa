@@ -292,5 +292,38 @@ class MatchesFfmpeg(unittest.TestCase):
         self.assertGreater(sum(values) / len(values), 35)
 
 
+    def test_film_grain_and_grade_match_ffmpeg(self):
+        """Old film stock on the GPU: the channel mix exactly, grain of the same strength (both random, so not equal)."""
+        from app.services.timeline_schema import OldFilm
+        import numpy as np
+        work = timeline(12)
+        for clip in work.layers[0].items:
+            clip.look = 'film'; clip.old_film = OldFilm(intensity=.22, grain=.35, scratches=0, dust=0, weave=0)
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        ffmpeg_out, gpu_out = self.root / 'film-ffmpeg.mp4', self.root / 'film-gpu.mp4'
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
+        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(gpu_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        values = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
+        print(f'\nfilm grain PSNR average {sum(values) / len(values):.1f} dB, worst {min(values):.1f} dB')
+        self.assertGreater(sum(values) / len(values), 35)
+        def grain(path):   # how much each frame differs from the next where the picture is still: the grain's strength
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '7', '-i', str(path), '-frames:v', '2', '-vf', 'crop=200:200:100:100', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'],
+                                 capture_output=True, check=True).stdout
+            a, b = np.frombuffer(raw, np.uint8).reshape(2, 200, 200).astype(float)
+            return float(np.std(a - b))
+        cpu, gpu = grain(ffmpeg_out), grain(gpu_out)
+        print(f'grain: ffmpeg {cpu:.2f}, GPU {gpu:.2f}')
+        self.assertGreater(gpu, cpu * .75); self.assertLess(gpu, cpu * 1.33)
+
+    def test_scratches_dust_and_weave_stay_on_ffmpeg(self):
+        from app.services.timeline_schema import OldFilm
+        work = timeline(12)
+        work.layers[0].items[0].old_film = OldFilm(intensity=.5, grain=.3, scratches=.4, dust=0, weave=0)
+        self.assertIn('old film scratches, dust or weave', gpu_render.unsupported(work, self.facts.__getitem__))
+
+
 if __name__ == '__main__':
     unittest.main()

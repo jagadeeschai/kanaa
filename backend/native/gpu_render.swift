@@ -13,6 +13,7 @@ import Metal
 struct Item: Decodable {
     let colour: Colour?
     let wheels: Wheels?
+    let film: Film?
     let glow: Glow?
     let maskPath: String?
     let blend: String?
@@ -51,6 +52,26 @@ struct Wheels: Decodable {
     let gamma: [Double]
     let gain: [Double]
 }
+
+/// Old film stock (old_film_filters): a warm faded channel mix, then grain that changes every frame.
+struct Film: Decodable {
+    let mix: [Double]  // rr, rg, gg, gb, bb
+    let grain: Double  // Strength in 8-bit levels.
+}
+
+// The export's colorchannelmixer, then uniform noise of the same strength in each channel (ffmpeg's noise=allf=t+u
+// is random too, so the two match in strength, not grain for grain). Alpha is left as it is.
+let filmKernel = CIColorKernel(source: """
+float filmHash(vec2 p, float n) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453); }
+kernel vec4 film(__sample s, vec3 mixA, vec2 mixB, float grain, float frame) {
+    vec3 c = s.a > 0.0 ? s.rgb / s.a : vec3(0.0);
+    c = vec3(mixA.x * c.r + mixA.y * c.g, mixA.z * c.g + mixB.x * c.b, mixB.y * c.b);
+    vec2 p = destCoord();
+    vec3 noise = vec3(filmHash(p, frame), filmHash(p, frame + 0.31), filmHash(p, frame + 0.67)) * 2.0 - 1.0;
+    c = clamp(c + noise * grain / 255.0, 0.0, 1.0);
+    return vec4(c * s.a, s.a);
+}
+""")!
 
 struct Glow: Decodable {
     let radius: Double
@@ -247,6 +268,9 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     }
     if let w = item.wheels {
         shown = wheelsKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: w.lift[0], y: w.lift[1], z: w.lift[2]), CIVector(x: w.gamma[0], y: w.gamma[1], z: w.gamma[2]), CIVector(x: w.gain[0], y: w.gain[1], z: w.gain[2])])!
+    }
+    if let f = item.film {
+        shown = filmKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: f.mix[0], y: f.mix[1], z: f.mix[2]), CIVector(x: f.mix[3], y: f.mix[4]), f.grain, Double(item.start + k)])!
     }
     if let effect = item.zoomBlur {
         let rect = shown.extent
