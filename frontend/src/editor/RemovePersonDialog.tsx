@@ -6,6 +6,7 @@
  */
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEscape } from './useEscape';
 import { Layers3, LoaderCircle, UserX } from 'lucide-react';
 import { findPeople, getPhoto, outlineByClicks, photoThumbUrl, startPopout, startRemovePeople, waitForJob } from '../api/client';
 import { applyPopout, POPOUT_PRESETS, type PopoutPictures, type PopoutPreset, type Where } from '../timeline/popout';
@@ -53,6 +54,7 @@ export function RemovePersonHost() {
     window.addEventListener(OPEN, open);
     return () => window.removeEventListener(OPEN, open);
   }, []);
+  useEscape(Boolean(target), () => { if (busy === null) setTarget(null); });
   if (!target || !store) return null;
   /** Looks for people, or for things (anything in the foreground: animals, vehicles, furniture, signs...). */
   function look(mediaId: number, what: 'people' | 'objects') {

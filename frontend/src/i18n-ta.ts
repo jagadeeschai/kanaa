@@ -107,6 +107,8 @@ export const TAMIL: Record<string, string> = {
 
   'Tile size': 'அளவு', 'Small tiles': 'சிறிய ஓடுகள்', 'Medium tiles': 'நடுத்தர ஓடுகள்', 'Large tiles': 'பெரிய ஓடுகள்',
 
+  'Clip actions': 'கிளிப் செயல்கள்', 'Unlock frame': 'சட்டகத்தைத் திற', 'For pictures': 'படங்களுக்கு மட்டும்', 'For pictures on the main track': 'முதன்மைத் தடப் படங்களுக்கு மட்டும்', 'Lock or unlock the selected clip’s frame': 'தேர்ந்த கிளிப்பின் சட்டகத்தைப் பூட்டு அல்லது திற', 'Animate the selected clip (opens Motion)': 'தேர்ந்த கிளிப்பை அசைவூட்டு (அசைவு திறக்கும்)', 'Picture: Edit with AI, Remove, Pop-out (3D), Bring to life': 'படம்: AI திருத்தம், நீக்கு, 3D தோற்றம், உயிர் கொடு',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

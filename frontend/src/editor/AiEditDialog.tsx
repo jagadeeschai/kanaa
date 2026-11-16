@@ -4,6 +4,7 @@
  */
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEscape } from './useEscape';
 import { LoaderCircle, Sparkles } from 'lucide-react';
 import { getPhoto, photoThumbUrl, startAiEdit, waitForJob } from '../api/client';
 import { findClip, updateClip } from '../timeline/model';
@@ -31,6 +32,7 @@ export function AiEditHost() {
     window.addEventListener(OPEN, open);
     return () => window.removeEventListener(OPEN, open);
   }, []);
+  useEscape(Boolean(target), () => { if (busy === null) setTarget(null); });
   if (!target || !store) return null;
   const close = () => { if (busy === null) setTarget(null); };
   const run = async () => {

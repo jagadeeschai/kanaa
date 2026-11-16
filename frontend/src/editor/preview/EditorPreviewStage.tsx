@@ -1,4 +1,5 @@
 import { AiEditHost } from '../AiEditDialog';
+import { ClipQuickBar } from './ClipQuickBar';
 import { BringToLifeHost } from '../BringToLifeDialog';
 import { TextToVideoHost } from '../TextToVideoDialog';
 import { RemovePersonHost } from '../RemovePersonDialog';
@@ -172,6 +173,7 @@ export function EditorPreviewStage() {
           <span className="ed-clock"><span ref={clockRef}>0:00.00</span> / {timecode(total)}</span>
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
           <span className="ed-transport-end">
+            {!fullScreen && <ClipQuickBar sourceFor={sourceFor}/>}
             <button className="ed-icon ed-safe-toggle" aria-pressed={fullScreen} onClick={toggleFullScreen} title={fullScreen ? 'Leave full screen (F or Esc)' : 'Full screen preview (F)'} aria-label={fullScreen ? 'Leave full screen' : 'Full screen preview'}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen ? 'Exit' : 'Full screen'}</button>
           </span>
         </div>

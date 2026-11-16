@@ -5,6 +5,7 @@
  */
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEscape } from './useEscape';
 import { Clapperboard, LoaderCircle } from 'lucide-react';
 import { getPhoto, photoThumbUrl, photoVideoUrl, startBringToLife, waitForJob } from '../api/client';
 import { clipLength, findClip, updateClip } from '../timeline/model';
@@ -46,6 +47,7 @@ export function BringToLifeHost() {
     window.addEventListener(OPEN, open);
     return () => window.removeEventListener(OPEN, open);
   }, [store]);
+  useEscape(Boolean(target), () => { if (busy === null) setTarget(null); });
   if (!target || !store) return null;
   const close = () => { if (busy === null) setTarget(null); };
   const run = async () => {

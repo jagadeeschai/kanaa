@@ -4,6 +4,7 @@
  */
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEscape } from './useEscape';
 import { Clapperboard, LoaderCircle } from 'lucide-react';
 import { getPhoto, photoVideoUrl, startTextToVideo, waitForJob } from '../api/client';
 import type { Photo } from '../types/photo';
@@ -38,6 +39,7 @@ export function TextToVideoHost() {
     window.addEventListener(OPEN, open);
     return () => window.removeEventListener(OPEN, open);
   }, []);
+  useEscape(Boolean(request), () => { if (busy === null) setRequest(null); });
   if (!request || !store?.timeline) return null;
   const shape = shapeOf(store.timeline.format);
   const close = () => { if (busy === null) setRequest(null); };
