@@ -48,7 +48,8 @@ on some cuts, not every one; 0.5-1 s. Photos show 4 s unless told otherwise.
 Workflow for changing a project:
 1. list_projects, then get_project to see its clips and titles (with ids, names, times). find_items searches by name or words.
 2. look renders a stretch (up to 10 s) and shows you frames: use it before and after changing anything visual.
-3. Change things with update_item, set_keyframes, set_animation, add_title and place_in_scene. Each is one undoable step;
+3. Change things with update_item, set_keyframes, set_animation, add_title, place_in_scene, add_graphic, add_overlay,
+   virtual_background and match_colour. Each is one undoable step;
    undo puts the last one back. Small steps, then look again.
 
 Coordinates: x and y are shares of the frame (0 left/top, 1 right/bottom); the item's x, y is its middle. scale 1 is the
@@ -56,6 +57,11 @@ title's own size. tilt_x leans a title back (top away, degrees), tilt_y turns it
 length are timeline seconds; keyframe t is seconds from the item's own start. Kanaa draws in true perspective, so for a
 title on a wall, the ground or the sky prefer place_in_scene over writing tilt keyframes by hand.
 Keep the person's style: change what was asked, leave the rest.
+
+Explainers and documentaries: add_graphic puts arrows, highlights, callouts, a spotlight, lower thirds, count-up numbers,
+chapter cards, bar/line/pie charts, step lists, timeline bars and icons on the Graphics layer, animated as in the editor.
+add_overlay puts a clip above the main track (before_after=True makes a before / after split). virtual_background puts a
+presenter on a picture or video; then match_colour. Only show numbers you have a real source for, and look after each.
 
 Lyric videos: add_song, read_lrc (the bracketed directions tell you the style and singer), plan_lyric_scenes with a
 brief, rewrite each scene's prompt to fit its words, make_scene_pictures, look_at_media, build_lyric_video, then look.
@@ -331,6 +337,113 @@ def build_server(api: KanaaApi) -> MCPServer:
         layer['items'].append(title)
         save(project_id, before, after, f'Added title {text!r}')
         return title
+
+    @server.tool(annotations=CHANGES)
+    def add_graphic(project_id: int, kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'lower-third', 'count-up', 'chapter-card',
+                                                 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider'],
+                    start: float, length: float = 3, text: str | None = None, x: float = .5, y: float = .5, colour: str | None = None, settings: dict | None = None) -> dict:
+        """An explainer graphic on the Graphics layer, made as the editor's Add graphic makes it (its animation, style and
+        sample content), then `settings` changes any of its fields. x, y: what an arrow, highlight, callout, spotlight or
+        icon points at (shares of the frame). `text`: the arrow/callout label, the lower third's name, the chapter title.
+        settings by kind (all optional; style: clean, documentary, dark-band, bold-colour, also hand-drawn and neon for arrows):
+          lower-third: role. count-up: count_from, count_to, label, prefix, suffix, indian_grouping, tamil_numerals.
+          chapter-card: card_mode full|corner. bar-chart / line-chart / pie-chart: data [{label, value}] (bars <= 8, line
+          points <= 12, slices <= 6, pie values > 0), chart_orientation horizontal|vertical, highlight_index, show_values,
+          indian_grouping, donut. step-list: steps [2-8 lines], step_times [seconds from its start, increasing],
+          highlight_current, step_bullets. timeline-bar: points [{date, label}] (2-8), timeline_vertical. icon: icon (pin,
+          warning, tick, cross, question, star, heart, trend-up, trend-down), icon_badge. spotlight: dim, width, height.
+          compare-divider (before / after): compare_clip (an overlay clip's id; it shows right of the line), split_from,
+          split_to, split_delay, split_move, before_label, after_label; its start and length follow that clip.
+        Numbers on screen must be real: only put figures you have a source for. Returns the item, with its id."""
+        from kanaa_mcp.graphics import add_to_graphics, graphic_item
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        if kind == 'compare-divider':
+            clip_id = (settings or {}).get('compare_clip')
+            if not clip_id:
+                raise ToolError('A before / after divider needs settings.compare_clip: the overlay clip it reveals (add_overlay makes one).')
+            layer, clip = find(after, clip_id)
+            if layer is next(each for each in after['layers'] if each['kind'] == 'video') or 'media_id' not in clip:
+                raise ToolError('compare_clip must be a clip on a layer above the main track (add_overlay).')
+            start, length = clip['start'], length_of(clip)
+        fmt = after['format']
+        try:
+            item = graphic_item(kind, start, length, (x, y), fmt['height'] / fmt['width'], text, colour, settings)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        add_to_graphics(after, item)
+        save(project_id, before, after, f'Added {kind}')
+        return item
+
+    @server.tool(annotations=CHANGES)
+    def add_overlay(project_id: int, media_id: int, start: float, source_in: float = 0, out: float | None = None, x: float = .5, y: float = .5,
+                    scale: float = 1, name: str | None = None, before_after: bool = False) -> dict:
+        """A video or photo on a layer above the main track at `start` (picture in picture, a presenter, a logo, the
+        "after" of a comparison): source_in/out as in add_clips, x, y its middle and scale its size (1 fills the frame).
+        before_after: the clip becomes the "after" of a before / after split over what is below it (a sliding divider
+        with முன் / பின் labels; change it with update_item on the divider's graphic). Returns the clip (and divider)."""
+        from kanaa_mcp.graphics import add_overlay as place, add_to_graphics, graphic_item, new_clip
+        item = media(media_id)
+        photo = item.get('media_type') != 'video'
+        end = round(float(out if out is not None else source_in + 4 if photo else float(item.get('duration') or source_in + 4)), 3)
+        if not photo and item.get('duration') and end > float(item['duration']) + 1e-3:
+            raise ToolError(f"{item.get('filename')} is only {float(item['duration']):.2f} s long.")
+        if end <= source_in:
+            raise ToolError('out must be after source_in.')
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        clip = new_clip(item, start, source_in, end)
+        clip['transform'].update(x=x, y=y, scale=scale)
+        if name:
+            clip['name'] = str(name)[:80]
+        place(after, clip, 'Before / after' if before_after else 'Overlay')
+        made: dict[str, Any] = {'clip': {'id': clip['id'], 'start': clip['start'], 'length': round(length_of(clip), 3)}}
+        if before_after:
+            fmt = after['format']
+            divider = graphic_item('compare-divider', clip['start'], length_of(clip), (.5, .5), fmt['height'] / fmt['width'], settings={'compare_clip': clip['id']})
+            add_to_graphics(after, divider)
+            made['divider'] = divider['id']
+        save(project_id, before, after, f"Added {item.get('filename')} as an overlay")
+        return made
+
+    @server.tool(annotations=CHANGES)
+    def virtual_background(project_id: int, clip_id: str, background_media_id: int) -> dict:
+        """Puts the person in a main-track clip on a new background, as right-click > Virtual background does: the
+        background takes the clip's place (same time, silent), the person moves to a layer just above, keyed out of their
+        green or blue screen when the frame shows one, otherwise cut out by the AI (videos only), with the edge tightened
+        and light-wrapped. Then match_colour, and look. Returns the person's new clip id and how they were keyed."""
+        from kanaa_mcp.graphics import virtual_background as apply
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        _, person = find(after, clip_id)
+        if 'media_id' not in person:
+            raise ToolError('virtual_background is for a clip.')
+        middle = float(person.get('in', 0)) + length_of(person) * float(person.get('speed', 1) or 1) / 2
+        screen = api.get(f"/photos/{person['media_id']}/screen-colour?at={middle:.3f}").get('colour')
+        if not screen and media(person['media_id']).get('media_type') != 'video':
+            raise ToolError('This picture has no green or blue screen to remove. A video of someone works without one: Kanaa cuts them out.')
+        try:
+            front = apply(after, clip_id, media(background_media_id), screen)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        save(project_id, before, after, f'Virtual background for {clip_id}')
+        return {'person': front['id'], 'background': clip_id, 'keyed': f'green/blue screen {screen}' if screen else 'AI cut-out'}
+
+    @server.tool(annotations=CHANGES)
+    def match_colour(project_id: int, clip_id: str, at: float | None = None, amount: float = .7) -> dict:
+        """Measures a keyed or cut-out overlay clip against what is behind it (at timeline second `at`, default its middle)
+        and sets its colour match: amount 0-1 of the way toward the background's colour and light. Also on the clip, with
+        update_item: composite.choke (0-0.9, tightens the edge) and composite.wrap (0-1, light wrap). Takes a few seconds."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        _, clip = find(after, clip_id)
+        if not clip.get('chroma') and clip.get('cutout') != 'remove':
+            raise ToolError('Colour match is for a green-screen or cut-out clip on a layer above its background.')
+        when = clip['start'] + length_of(clip) / 2 if at is None else at
+        gain = api.post('/timeline/colour-match', {'timeline': before, 'clip_id': clip_id, 'at': when})['gain']
+        clip['composite'] = {**{'choke': 0, 'wrap': 0}, **(clip.get('composite') or {}), 'match_gain': gain, 'match': max(0.0, min(1.0, amount))}
+        save(project_id, before, after, f'Matched the colour of {clip_id}')
+        return {'id': clip_id, 'gain': gain, 'match': clip['composite']['match']}
 
     @server.tool(annotations=CHANGES)
     def place_in_scene(project_id: int, title_id: str, x: float, y: float, at: float | None = None, surface: Surface | None = None,

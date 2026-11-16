@@ -27,7 +27,17 @@ class FakeApi:
             return {'id': 1, 'filename': 'walk.mp4', 'media_type': 'video', 'width': 1280, 'height': 720, 'duration': 10}
         if path == '/photos/2':
             return {'id': 2, 'filename': 'still.jpg', 'media_type': 'image', 'width': 1280, 'height': 720}
+        if path == '/photos/3':
+            return {'id': 3, 'filename': 'forest.mp4', 'media_type': 'video', 'width': 1280, 'height': 720, 'duration': 4}
+        if path.startswith('/photos/1/screen-colour'):
+            return {'colour': '#00b140'}
+        if path.startswith('/photos/2/screen-colour'):
+            return {'colour': None}
         raise AssertionError(path)
+
+    def post(self, path, body):
+        assert path == '/timeline/colour-match' and body['clip_id'] and body['timeline']['layers']
+        return {'gain': [1.1, 1.0, 0.9]}
 
     def put(self, path, body):
         assert path == '/projects/1/recipe'
@@ -52,6 +62,47 @@ class Server(unittest.TestCase):
     def call(self, name, **args):
         result = asyncio.run(self.server.call_tool(name, args))
         return result
+
+    def result(self, name, **args):
+        result = asyncio.run(self.server.call_tool(name, args))
+        if getattr(result, 'isError', False):
+            raise ToolError(result.content[0].text)
+        if getattr(result, 'structuredContent', None):
+            return result.structuredContent.get('result', result.structuredContent)
+        return json.loads(result.content[0].text)
+
+    def test_add_graphic_makes_what_the_editor_makes_and_takes_settings(self):
+        bars = self.result('add_graphic', project_id=1, kind='bar-chart', start=1, settings={'data': [{'label': 'A', 'value': 3}, {'label': 'B', 'value': 5}], 'style': 'bold-colour'})
+        layer = next(layer for layer in self.api.timeline['layers'] if layer.get('name') == 'Graphics')
+        self.assertEqual(layer['items'][0]['id'], bars['id'])
+        self.assertEqual(bars['graphic']['style'], 'bold-colour'); self.assertEqual(len(bars['graphic']['data']), 2); self.assertEqual(bars['enter']['preset'], 'reveal')
+        arrow = self.result('add_graphic', project_id=1, kind='arrow-curved', start=1, x=.1, y=.1, text='Here')
+        self.assertEqual(arrow['graphic']['to'], [.1, .1]); self.assertGreater(arrow['graphic']['from'][0], .1)   # its tail stays on the frame
+        self.assertEqual(len([l for l in self.api.timeline['layers'] if l.get('name') == 'Graphics']), 2)        # overlapping: a second layer
+        with self.assertRaises(ToolError):
+            self.result('add_graphic', project_id=1, kind='pie-chart', start=0, settings={'data': [{'label': 'x', 'value': -1}]})
+
+    def test_overlay_before_after_and_its_divider(self):
+        made = self.result('add_overlay', project_id=1, media_id=2, start=1, out=3, before_after=True)
+        layers = self.api.timeline['layers']
+        self.assertEqual(layers[1]['kind'], 'video'); self.assertEqual(layers[1]['items'][0]['id'], made['clip']['id'])
+        divider = next(item for layer in layers if layer.get('name') == 'Graphics' for item in layer['items'])
+        self.assertEqual(divider['id'], made['divider']); self.assertEqual(divider['graphic']['compare_clip'], made['clip']['id'])
+        self.assertEqual((divider['start'], divider['length']), (1, 3))
+        with self.assertRaises(ToolError):   # a divider needs an overlay clip, not the main track
+            self.result('add_graphic', project_id=1, kind='compare-divider', start=0, settings={'compare_clip': 'c0'})
+
+    def test_virtual_background_then_match_colour(self):
+        made = self.result('virtual_background', project_id=1, clip_id='c0', background_media_id=3)
+        main, presenter = self.api.timeline['layers'][0], self.api.timeline['layers'][1]
+        self.assertEqual(main['items'][0]['media_id'], 3); self.assertTrue(main['items'][0]['muted']); self.assertAlmostEqual(main['items'][0]['speed'], 4 / 6, places=3)
+        person = presenter['items'][0]
+        self.assertEqual(person['id'], made['person']); self.assertEqual(person['chroma']['color'], '#00b140'); self.assertGreater(person['composite']['wrap'], 0)
+        matched = self.result('match_colour', project_id=1, clip_id=person['id'], amount=.5)
+        self.assertEqual(matched['gain'], [1.1, 1.0, 0.9])
+        self.assertEqual(self.api.timeline['layers'][1]['items'][0]['composite']['match'], .5)
+        with self.assertRaises(ToolError):   # the background on the main track is not keyed
+            self.result('match_colour', project_id=1, clip_id='c0')
 
     def test_finds_items_by_name_and_words(self):
         found = asyncio.run(self.server.call_tool('find_items', {'project_id': 1, 'query': 'opening'}))
