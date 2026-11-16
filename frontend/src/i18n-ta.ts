@@ -68,6 +68,8 @@ export const TAMIL: Record<string, string> = {
 
   'Add an effect': 'விளைவு சேர்', '{count} on': '{count} இயக்கத்தில்', 'Click one to add it. Its controls appear below, with Turn off.': 'சேர்க்க ஒன்றைச் சொடுக்கவும். அதன் கட்டுப்பாடுகள் கீழே தோன்றும்; அணைக்கவும் அங்கேயே.',
 
+  'Remove person': 'நபரை நீக்கு', 'Remove person…': 'நபரை நீக்கு…', 'Filling where they were…': 'அவர்கள் இருந்த இடம் நிரப்பப்படுகிறது…', 'Looking for people…': 'நபர்களைத் தேடுகிறது…', 'The picture without them shows here': 'அவர்கள் இல்லாத படம் இங்கே தெரியும்', 'Without them': 'அவர்கள் இல்லாமல்', 'Choose who to remove. The rest of the picture stays exactly as it is.': 'யாரை நீக்க வேண்டும் என்று தேர்ந்தெடுங்கள். படத்தின் மற்ற பகுதி அப்படியே இருக்கும்.', 'Person {number}': 'நபர் {number}', 'No people found in this picture.': 'இந்தப் படத்தில் நபர்கள் இல்லை.', 'The picture goes to the image AI in AI settings, and uses its credits.': 'படம் AI அமைப்புகளில் உள்ள பட AI-க்குச் சென்று அதன் கடன்களைப் பயன்படுத்தும்.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

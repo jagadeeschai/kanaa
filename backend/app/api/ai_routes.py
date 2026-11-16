@@ -205,3 +205,38 @@ def video_from_text(data: TextToVideoRequest):
         return {'job_id': start_text(data.prompt, data.seconds, data.shape, data.folder)}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+class RemovePeopleRequest(BaseModel):
+    people: list[int] = Field(min_length=1, max_length=6)
+    quality: Literal['low', 'medium', 'high'] = 'medium'
+
+
+@router.post('/photos/{identifier}/people')
+def find_people_in_picture(identifier: int):
+    """Remove person, step 1: each person in the picture, numbered, with a preview to choose from."""
+    from app.services.remove_person import find_people
+    try:
+        return find_people(identifier)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get('/photos/{identifier}/people/preview')
+def people_preview(identifier: int):
+    from fastapi.responses import FileResponse
+    from app.services.remove_person import preview_path
+    path = preview_path(identifier)
+    if not path.exists():
+        raise HTTPException(404, 'Look for the people first.')
+    return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@router.post('/photos/{identifier}/remove-people')
+def remove_people(identifier: int, data: RemovePeopleRequest):
+    """Remove person, step 2: one job that fills where the chosen people were; its result names the new picture."""
+    from app.services.remove_person import start_remove
+    try:
+        return {'job_id': start_remove(identifier, data.people, data.quality)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
