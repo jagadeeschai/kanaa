@@ -50,7 +50,8 @@ export default function KanaaSelect({ children, className = '', disabled, onChan
         const optionValue = String(option.props.value ?? '');
         const active = optionValue === String(value ?? '');
         return <button key={optionValue || index} type="button" role="option" aria-selected={active} disabled={option.props.disabled} className={`${active ? 'selected' : ''} ${focus === index ? 'focused' : ''}`}
-          onPointerMove={() => setFocus(index)} onClick={() => choose(option)}><span>{option.props.children}</span>{active && <Check size={15} aria-hidden="true"/>}</button>;
+          // preventDefault: inside a <label>, a click would otherwise also "click" the label's control (our trigger) and reopen the list.
+          onPointerMove={() => setFocus(index)} onClick={(event) => { event.preventDefault(); choose(option); }}><span>{option.props.children}</span>{active && <Check size={15} aria-hidden="true"/>}</button>;
       })}
       {!shown.length && <p className="kanaa-select-empty">No matching folders</p>}
     </div>}

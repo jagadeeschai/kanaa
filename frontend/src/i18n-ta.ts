@@ -99,6 +99,10 @@ export const TAMIL: Record<string, string> = {
 
   'Make it 3D…': '3D ஆக்கு…', 'Split the picture into the person and the scene behind them, so they move apart: the person comes forward, steps back or rises while the scene stays.': 'படத்தை நபராகவும் பின்னணிக் காட்சியாகவும் பிரிக்கும்; அவை தனித்தனியாக அசையும்: காட்சி அப்படியே இருக்க நபர் முன்னே வரலாம், பின்னே செல்லலாம், எழலாம்.',
 
+  'Search media': 'ஊடகத்தில் தேடு', 'No media named like that{inFolder}.': 'அப்படிப் பெயருள்ள ஊடகம் இல்லை{inFolder}.', 'in this folder': 'இந்தக் கோப்புறையில்',
+
+  'Clear search': 'தேடலை அழி',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

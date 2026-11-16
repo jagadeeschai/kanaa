@@ -515,3 +515,7 @@
 .ed-chips-add button{display:inline-flex;align-items:center;flex-direction:row}
 /* Click to choose: the picture is the control. */
 .ed-click-pick{cursor:crosshair}
+/* Media: search by name, under the folder picker. */
+.ed-media-search{display:flex;align-items:center;gap:6px;height:30px;margin:6px 0 4px;padding:0 6px 0 9px;border-radius:7px;border:1px solid var(--hairline);background:var(--well);color:var(--muted)}
+.ed-media-search:focus-within{border-color:var(--accent);color:var(--text-2)}
+.ed-media-search input{flex:1;min-width:0;height:100%;border:0;background:none;color:var(--text);font-size:12.5px;outline:none}

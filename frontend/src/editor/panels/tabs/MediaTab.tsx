@@ -1,4 +1,5 @@
-import { Check,Clapperboard,Layers,Minus,Plus,WandSparkles } from "lucide-react";
+import { Check,Clapperboard,Layers,Minus,Plus,Search,WandSparkles,X } from "lucide-react";
+import { useState } from "react";
 import { openTextToVideo } from "../../TextToVideoDialog";
 import { getPhoto,photoThumbUrl } from "../../../api/client";
 import ImportArea from "../../../components/ImportArea";
@@ -12,6 +13,11 @@ import type { EditorLeftRailBindings } from '../EditorLeftRail';
 
 export function MediaTabSection1() {
   const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia } = useEditorPanel<EditorLeftRailBindings>('left');
+  // Search by name, inside the folder chosen: every word typed must be in the file's name.
+  const [query, setQuery] = useState('');
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (item: { filename: string }) => words.every((word) => item.filename.toLowerCase().includes(word));
+  const found = { inVideo: inVideo.filter(matches), otherMedia: otherMedia.filter(matches) };
   return (<>{leftTab === 'media' && <>
           <div className="ed-media-row">
             <ImportArea slim onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
@@ -28,7 +34,11 @@ export function MediaTabSection1() {
               {ordered.map((name) => <option key={name} value={name}>{name === own ? `★ ${name}` : name} ({count(name)})</option>)}
             </KanaaSelect></label>;
           })()}
-          {([['In this video', inVideo], ['Other media', otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
+          <label className="ed-media-search"><Search size={13} aria-hidden="true"/><input value={query} placeholder={t('Search media')} aria-label={t('Search media')}
+            onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setQuery(''); }}/>
+            {query && <button className="ed-icon small" aria-label={t('Clear search')} onClick={() => setQuery('')}><X size={12}/></button>}</label>
+          {words.length > 0 && !found.inVideo.length && !found.otherMedia.length && <p className="ed-tip">{t('No media named like that{inFolder}.', { inFolder: folder ? ` ${t('in this folder')}` : '' })}</p>}
+          {([['In this video', found.inVideo], ['Other media', found.otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
             <button className="ed-tile-add" {...draggableAs({ kind: 'media', id: item.id })} onClick={() => addMedia(item)} onContextMenu={(event) => openMediaMenu(event, item)} title={`Add ${item.filename}, or drag it onto the timeline. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
