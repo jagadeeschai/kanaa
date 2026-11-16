@@ -742,6 +742,23 @@ def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
     return {'job_id': job_id}
 
 
+@router.post('/projects/{identifier}/colour-match')
+def colour_match(identifier: int, request: dict):
+    """Gains that bring a keyed or cut-out clip toward the colour and light behind it, measured at `at`."""
+    from app.services.composite_match import measure
+    project_for(identifier)
+    try:
+        parsed = Timeline.model_validate(request.get('timeline'))
+        clip_id, at = str(request.get('clip_id')), float(request.get('at', 0))
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'This timeline is not valid.') from exc
+    render = lambda timeline, target, window: render_timeline(timeline, media_facts, resolve_audio_asset, target, lambda _: None, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, lambda: False), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), lambda: False), hardware=False, window=window)
+    try:
+        return {'gain': measure(parsed, clip_id, at, render)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get('/photos/{identifier}/focus')
 def photo_focus(identifier: int, at: float = 0.0):
     """Where the main faces are in a photo, or in a video at `at` seconds, so a push-in aims at them. x and y are null when there are none."""

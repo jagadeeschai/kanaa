@@ -69,6 +69,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             if clip.freeze is not None:
                 found.add('freeze')
             found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur'))
+            if clip.composite and (clip.composite.choke or clip.composite.wrap or clip.composite.match):
+                found.add('edge tightening, light wrap or colour match')
             if clip.id in compared:
                 found.add('before / after split')
             if clip.stabilise or clip.shape_mask:

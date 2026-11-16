@@ -126,6 +126,21 @@ def adjust_filters(adjust: Adjust) -> list[str]:
     return filters
 
 
+# Light wrap, mirrored in the preview shader (playback.ts): the edge band and the background blur, as shares of the frame
+# height, and how strongly the band takes the blurred background.
+WRAP_EDGE, WRAP_BLUR, WRAP_GAIN = .003, .012, 1.4
+# Edge tightening: the alpha blurred (sigma CHOKE_REACH x choke x height), then kept from CHOKE_LOW to CHOKE_HIGH, which pulls the
+# edge in by about the blur's width and keeps it soft; times the clip's own alpha so it never grows. Also in playback.ts.
+CHOKE_REACH, CHOKE_LOW, CHOKE_HIGH = .01, .84, .977
+
+
+def match_gain(composite) -> tuple[float, float, float]:
+    """The colour gains actually applied: measured gains scaled by how much of the match is wanted."""
+    if not composite or not composite.match_gain or not composite.match:
+        return (1.0, 1.0, 1.0)
+    return tuple(1 + (gain - 1) * composite.match for gain in composite.match_gain)
+
+
 def chroma_filters(chroma: Chroma, image: bool) -> list[str]:
     """Keyed in BT.709 YUV, the same space the preview shader measures distance in."""
     y, u, v = chroma_yuv(chroma.color)
@@ -926,6 +941,7 @@ class Builder:
         lengths: list[int] = []  # Frames in each segment, so the last one can be cut short.
         cursor = 0  # In frames, so rounding can't accumulate down a long timeline.
         joined_label, joined_frames = None, 0
+        wraps: list[tuple[int, int, float]] = []  # Frames (from, to) and strength of each light-wrapped clip.
         for number, clip in enumerate(clips):
             facts = sound_facts = self.media(clip.media_id)
             source_in = clip.in_
@@ -1004,6 +1020,11 @@ class Builder:
             shown = self.pose(label, clip.transform, enter, exit_, clip.length, frames, scale, head / fps, label, clip.beat_pulse)
             if clip.shape_mask:
                 shown = self.shape(shown, clip.shape_mask, frames, label)
+            if clip.composite and (clip.composite.choke or clip.composite.match):
+                shown = self.composited(shown, clip.composite, label)
+            if clip.composite and clip.composite.wrap:
+                begin = clip_frames(clip, fps)[0]
+                wraps.append((begin, begin + clip_frames(clip, fps)[1], clip.composite.wrap))
             divider = self.compare_dividers().get(clip.id)
             if divider:
                 # Its first frame is `head` frames before its own start; the divider's time is counted from its own start.
@@ -1041,7 +1062,37 @@ class Builder:
         self.graph.append(f"{''.join(segments)}{self.concat(len(segments))}[{joined}]")
         if layer.blend != 'normal':
             return self.blended(base, joined, position, layer.blend)
+        if wraps:
+            base, joined = self.light_wrap(base, joined, wraps, f'w{position}')
         return self.overlay(base, joined, position, '0', '0')
+
+    def composited(self, label: str, composite, name: str) -> str:
+        """Colour match (channel gains), then edge tightening (the matte pulled in), as the preview shader applies them."""
+        red, green, blue = match_gain(composite)
+        if (red, green, blue) != (1.0, 1.0, 1.0):
+            self.graph.append(f'[{label}]colorchannelmixer=rr={red:.5f}:gg={green:.5f}:bb={blue:.5f}[{name}_matched]')
+            label = f'{name}_matched'
+        if composite.choke:
+            sigma = max(.3, CHOKE_REACH * composite.choke * self.fmt.height); low, high = CHOKE_LOW * 255, CHOKE_HIGH * 255
+            self.graph += [f'[{label}]split=2[{name}_body][{name}_own]', f'[{name}_own]alphaextract,split=2[{name}_a][{name}_a2]',
+                           f"[{name}_a2]gblur=sigma={sigma:.3f},lut=c0='clip((val-{low:.3f})*255/{high - low:.3f},0,255)'[{name}_pulled]",
+                           f'[{name}_a][{name}_pulled]blend=all_mode=multiply[{name}_tight]', f'[{name}_body][{name}_tight]alphamerge[{name}_choked]']
+            label = f'{name}_choked'
+        return label
+
+    def light_wrap(self, base: str, joined: str, wraps: list, name: str) -> tuple[str, str]:
+        """The blurred background over the layer's edge band (its alpha times one minus its blurred alpha), while a
+        wrapped clip shows. Returns the base and the layer to lay over it."""
+        h = self.fmt.height; strength = max(amount for _, _, amount in wraps)
+        when = '+'.join(f'between(n,{start},{end - 1})' for start, end, _ in wraps)
+        self.graph += [f'[{base}]split=2[{name}_base][{name}_b1]', f'[{name}_b1]format=gbrp,gblur=sigma={WRAP_BLUR * h:.3f}[{name}_soft]',
+                       f'[{joined}]split=2[{name}_top][{name}_t1]', f'[{name}_t1]alphaextract,split=3[{name}_a0][{name}_a1][{name}_a2]',
+                       f'[{name}_a1]gblur=sigma={WRAP_EDGE * h:.3f},negate[{name}_out]',
+                       f"[{name}_a0][{name}_out]blend=all_mode=multiply,lut=c0='min(255,val*{WRAP_GAIN * strength:.4f})'[{name}_band]",
+                       f'[{name}_soft][{name}_band]alphamerge[{name}_light]',
+                       f"[{name}_top][{name}_light]overlay=x=0:y=0:format=gbrp:enable='{when}'[{name}_lit]",
+                       f'[{name}_lit][{name}_a2]alphamerge[{name}_wrapped]']
+        return f'{name}_base', f'{name}_wrapped'
 
     def compare_dividers(self) -> dict:
         """Overlay clips revealed by a before / after divider, each with the divider's text item."""
