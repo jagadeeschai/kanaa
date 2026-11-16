@@ -25,7 +25,7 @@ export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphi
     target.addEventListener('pointermove', move); target.addEventListener('pointerup', up);
   };
   const handle = (kind: 'from' | 'to' | 'size', point: Point, label: string) => <button className={`ed-graphic-handle ${kind}`} aria-label={t(label)} title={t(label)} style={{ left: `${point[0] * 100}%`, top: `${point[1] * 100}%` }} onPointerDown={(event) => drag(kind, event)}/>;
-  const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight';
+  const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight' || graphic.kind === 'lower-third';
   const outline = graphic.kind === 'outline';
   return <div className="ed-graphic-handles" aria-label={t('Graphic handles')}>
     {!highlight && !outline && handle('from', graphic.from, 'Move arrow tail')}

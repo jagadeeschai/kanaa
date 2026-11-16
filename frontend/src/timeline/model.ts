@@ -49,12 +49,12 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
-export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline';
-export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary';
+export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third';
+export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary' | 'dark-band' | 'bold-colour';
 /** Editable explainer artwork. Coordinates are frame shares, so preview and export use the same geometry. */
 export type ExplainerGraphic = { kind: GraphicKind; style: GraphicStyle; from: [number, number]; to: [number, number]; width: number; height: number; line_width: number;
   /** Spotlight: how dark the rest goes. Glow outline: the object's edge as frame shares (from Click to choose). */
-  dim?: number; shape?: [number, number][] | null };
+  dim?: number; shape?: [number, number][] | null; role?: string | null };
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band' | 'plain'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; glint?: boolean; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   graphic?: ExplainerGraphic | null;

@@ -25,6 +25,11 @@ test('pop and fade use the complete picture rather than stroke states', () => {
   assert.equal(graphicState({ ...graphic, enter: { preset: 'fade', duration: .5 } }, .1), null);
 });
 
+test('lower third reverses its draw state during a reveal exit', () => {
+  const lower = { ...graphic, length: 3, exit: { preset: 'reveal', duration: .5 }, graphic: { ...graphic.graphic, kind: 'lower-third', role: 'ஆய்வாளர்' } };
+  assert.ok(graphicState(lower, .7, 30) > graphicState(lower, 2.8, 30));
+});
+
 test('Follow uses a graphic\'s own box: the outline\'s bounds, a highlight\'s size, an arrow\'s point', async () => {
   const { graphicBox } = await import('../src/timeline/graphics.ts');
   const outline = { ...graphic.graphic, kind: 'outline', shape: [[.3, .2], [.5, .2], [.5, .6], [.3, .6]] };

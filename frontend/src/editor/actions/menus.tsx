@@ -122,6 +122,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Circle highlight', onSelect: () => addExplainerGraphic('circle', at) },
       { label: 'Rounded box highlight', onSelect: () => addExplainerGraphic('box', at) },
       { label: 'Callout label', onSelect: () => addExplainerGraphic('callout', at) },
+      { label: 'Lower third', onSelect: () => addExplainerGraphic('lower-third', at) },
       'divider',
       { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
       { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },

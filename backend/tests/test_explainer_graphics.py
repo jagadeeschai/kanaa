@@ -54,6 +54,19 @@ class ExplainerGraphics(unittest.TestCase):
         with self.assertRaises(ValueError):
             Text.model_validate(data)
 
+    def test_lower_third_styles_tamil_role_and_reverse_exit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); fmt = Format(width=480, height=270, fps=30)
+            base = item('callout').model_dump(by_alias=True)
+            base.update({'id': 'lower', 'length': 3, 'text': 'கலையரசி', 'exit': {'preset': 'reveal', 'duration': .5}})
+            base['graphic'].update({'kind': 'lower-third', 'from': [.07, .78], 'to': [.07, .78], 'width': .42, 'height': .14, 'role': 'ஆய்வாளர்'})
+            for style in ('clean', 'documentary', 'dark-band', 'bold-colour'):
+                lower = Text.model_validate({**base, 'graphic': {**base['graphic'], 'style': style}})
+                target = root / f'lower-{style}.png'; render_text_image(lower, fmt, target)
+                self.assertGreater(np.count_nonzero(np.asarray(Image.open(target))[:, :, 3]), 100)
+            lower = Text.model_validate(base)
+            self.assertGreater(state_at(lower, .7, 30), state_at(lower, 2.8, 30))
+
     def test_reference_and_gpu_export_match_staged_stroke(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'KANAA_GPU_RENDER': '0'}):
             root = Path(folder); base = root / 'base.png'; Image.new('RGB', (320, 240), (24, 30, 40)).save(base)

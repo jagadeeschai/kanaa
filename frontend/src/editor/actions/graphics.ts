@@ -40,7 +40,8 @@ export function createGraphicActions(getInput: () => Input) {
     if (!current) return;
     const id = newId();
     const text: TextItem = { id, start: at, length: 3, text: label, style: 'plain', position: 'center', color: colour, size: 44,
-      enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 }, transform: REST_TRANSFORM, graphic };
+      enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
+      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : {}), transform: REST_TRANSFORM, graphic };
     change(addGraphic(current, text, newId()));
     setSelectedId(id);
     setTimeout(() => engineRef.current?.seek(at + 1), 0);
@@ -48,6 +49,10 @@ export function createGraphicActions(getInput: () => Input) {
   const now = () => Math.round((getInput().engineRef.current?.currentTime ?? 0) * 1000) / 1000;
 
   const addExplainerGraphic = (kind: GraphicKind, point: [number, number]) => {
+    if (kind === 'lower-third') {
+      place({ kind, style: 'clean', from: [.07, .78], to: [.07, .78], width: .42, height: .14, line_width: .006, role: 'Role or organisation' }, 'Name', '#ffffff', now());
+      return;
+    }
     const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));
     // Keep a useful arrow length at every edge instead of clamping a fixed top-left tail into a tiny line.
     const tailX = x < .28 ? Math.min(.96, x + .2) : x - .2;

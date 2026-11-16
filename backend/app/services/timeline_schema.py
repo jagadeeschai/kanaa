@@ -371,8 +371,8 @@ class TitlePin(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline']
-    style: Literal['clean', 'hand-drawn', 'neon', 'documentary'] = 'clean'
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third']
+    style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
     width: float = Field(default=0.24, ge=0.03, le=1)
@@ -382,6 +382,7 @@ class ExplainerGraphic(Strict):
     dim: float = Field(default=0.6, ge=0.1, le=0.95)
     # Glow outline: the object's edge, found once by Click to choose, as frame shares around `to`.
     shape: Optional[List[Tuple[float, float]]] = Field(default=None, min_length=3, max_length=200)
+    role: Optional[str] = Field(default=None, max_length=160)
 
     @field_validator('from_', 'to')
     @classmethod

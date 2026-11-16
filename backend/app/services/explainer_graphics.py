@@ -27,6 +27,11 @@ def state_at(item: Text, local: float, fps: int = 24) -> int:
         return state_count(item, fps) - 1
     states = state_count(item, fps)
     duration = max(1e-6, min(item.length, item.enter.duration))
+    if item.graphic.kind == 'lower-third' and item.exit and item.exit.preset == 'reveal':
+        exit_duration = max(1e-6, min(item.length, item.exit.duration))
+        if local > item.length - exit_duration:
+            q = min(1, max(0, (item.length - local) / exit_duration))
+            return min(states - 1, max(0, round((1 - (1 - q) ** 3) * (states - 1))))
     eased = 1 - (1 - min(1, max(0, local / duration))) ** 3
     return min(states - 1, max(0, round(eased * (states - 1))))
 
@@ -55,6 +60,15 @@ def _wobble(points: list[tuple[int, int]], amount: float) -> list[tuple[int, int
     return [(round(x + amount * math.sin(n * 1.73)), round(y + amount * math.sin(n * 2.37 + .8))) for n, (x, y) in enumerate(points)]
 
 
+def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
+    path = Path(__file__).parents[1] / 'assets' / 'fonts' / name
+    return ImageFont.truetype(str(path), size, layout_engine=ImageFont.Layout.RAQM)
+
+
+def _tamil(text: str) -> bool:
+    return any('\u0b80' <= char <= '\u0bff' for char in text)
+
+
 def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
     graphic = item.graphic
     assert graphic is not None
@@ -76,7 +90,27 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind.startswith('arrow'):
+    if graphic.kind == 'lower-third':
+        x0 = round(graphic.to[0] * fmt.width); y0 = round(graphic.to[1] * fmt.height)
+        panel_w = round(graphic.width * fmt.width); panel_h = round(graphic.height * fmt.height)
+        x0 = min(fmt.width - panel_w - width * 2, max(width * 2, x0)); y0 = min(fmt.height - panel_h - width * 2, max(width * 2, y0))
+        accent = (245, 193, 27, 255) if graphic.style == 'documentary' else colour
+        if graphic.style in ('dark-band', 'bold-colour', 'documentary'):
+            fill = (12, 15, 21, round(232 * progress)) if graphic.style == 'dark-band' else (245, 193, 27, round(240 * progress)) if graphic.style == 'documentary' else colour[:-1] + (round(240 * progress),)
+            draw.rounded_rectangle((x0, y0, x0 + panel_w, y0 + panel_h), radius=max(5, round(panel_h * .08)), fill=fill)
+        line_share = min(1, progress / .34)
+        draw.line((x0, y0 + panel_h, x0 + round(panel_w * line_share), y0 + panel_h), fill=accent, width=max(width, round(fmt.height * .008)))
+        if progress > .28:
+            q = min(1, (progress - .28) / .72); slide = round((1 - q) * panel_w * .12); opacity = round(255 * q)
+            name_size = max(16, round(item.size * fmt.height / 1080)); role_size = max(12, round(name_size * .58))
+            name_font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', name_size)
+            role_text = graphic.role or ''
+            role_font = _font('Arima-Bold.ttf' if _tamil(role_text) else 'NotoSans-Bold.ttf', role_size)
+            ink = (20, 20, 20, opacity) if graphic.style in ('documentary', 'bold-colour') and graphic.style != 'dark-band' else (255, 255, 255, opacity)
+            px = x0 + round(panel_w * .055) - slide; py = y0 + round(panel_h * .16)
+            draw.text((px, py), item.text, font=name_font, fill=ink)
+            if role_text: draw.text((px, py + round(name_size * 1.15)), role_text, font=role_font, fill=ink)
+    elif graphic.kind.startswith('arrow'):
         if graphic.kind == 'arrow-curved':
             control = ((a[0] + b[0]) / 2, min(a[1], b[1]) - abs(b[0] - a[0]) * .22)
             points = [(round((1-q)**2*a[0] + 2*(1-q)*q*control[0] + q*q*b[0]), round((1-q)**2*a[1] + 2*(1-q)*q*control[1] + q*q*b[1])) for q in (n / 48 for n in range(49))]
@@ -129,8 +163,7 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         stroke([a, b], line_progress)
         if progress > .58:
             opacity = round(255 * min(1, (progress - .58) / .42))
-            font_path = Path(__file__).parents[1] / 'assets' / 'fonts' / ('Arima-Bold.ttf' if any('\u0b80' <= char <= '\u0bff' for char in item.text) else 'NotoSans-Bold.ttf')
-            font = ImageFont.truetype(str(font_path), max(16, round(item.size * fmt.height / 1080)), layout_engine=ImageFont.Layout.RAQM)
+            font = _font('Arima-Bold.ttf' if _tamil(item.text) else 'NotoSans-Bold.ttf', max(16, round(item.size * fmt.height / 1080)))
             padding = max(8, round(fmt.height * .012)); bounds = draw.textbbox((0, 0), item.text or ' ', font=font)
             tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
             # Prefer the right of the pointer, flip to the left at the edge, and clamp vertically.
