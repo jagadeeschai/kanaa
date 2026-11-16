@@ -41,7 +41,7 @@ export function createGraphicActions(getInput: () => Input) {
     const id = newId();
     const text: TextItem = { id, start: at, length: 3, text: label, style: 'plain', position: 'center', color: colour, size: 44,
       enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
-      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : graphic.kind === 'count-up' || graphic.kind === 'chapter-card' ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
+      ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : ['count-up', 'chapter-card', 'bar-chart'].includes(graphic.kind) ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
     change(addGraphic(current, text, newId()));
     setSelectedId(id);
     setTimeout(() => engineRef.current?.seek(at + 1), 0);
@@ -59,6 +59,11 @@ export function createGraphicActions(getInput: () => Input) {
     }
     if (kind === 'chapter-card') {
       place({ kind, style: 'documentary', from: [.5, .5], to: [.08, .12], width: .42, height: .22, line_width: .006, card_mode: 'full' }, 'Part 2 — சங்க காலம்', '#f5c11b', now());
+      return;
+    }
+    if (kind === 'bar-chart') {
+      place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .72, height: .62, line_width: .006,
+        data: [{ label: 'சென்னை', value: 82 }, { label: 'மதுரை', value: 61 }, { label: 'கோவை', value: 74 }], chart_orientation: 'horizontal', highlight_index: 0, show_values: true }, 'Bar chart', '#ffffff', now());
       return;
     }
     const x = Math.max(.04, Math.min(.96, point[0])), y = Math.max(.04, Math.min(.96, point[1]));

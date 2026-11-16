@@ -15,7 +15,7 @@ MAX_STATES = 90
 
 def state_count(item: Text, fps: int) -> int:
     """Count-up gets roughly one picture per entrance frame; strokes keep their proven 24 states."""
-    if item.graphic and item.graphic.kind == 'count-up' and item.enter and item.enter.preset == 'reveal':
+    if item.graphic and item.graphic.kind in ('count-up', 'bar-chart') and item.enter and item.enter.preset == 'reveal':
         duration = max(1e-6, min(item.length, item.enter.duration))
         return min(MAX_STATES, max(2, round(duration * fps) + 1))
     return STATES
@@ -111,7 +111,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'chapter-card':
+    if graphic.kind == 'bar-chart':
+        from app.services.chart_graphics import render_bar_chart
+        image = render_bar_chart(item, fmt, progress)
+    elif graphic.kind == 'chapter-card':
         full = graphic.card_mode == 'full'; q = progress
         if full:
             shade = Image.new('RGBA', image.size, (0, 0, 0, round(165 * q)))

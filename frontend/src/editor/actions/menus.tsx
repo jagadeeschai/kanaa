@@ -125,6 +125,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Lower third', onSelect: () => addExplainerGraphic('lower-third', at) },
       { label: 'Count-up number', onSelect: () => addExplainerGraphic('count-up', at) },
       { label: 'Chapter card', onSelect: () => addExplainerGraphic('chapter-card', at) },
+      { label: 'Bar chart', onSelect: () => addExplainerGraphic('bar-chart', at) },
       'divider',
       { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
       { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },
