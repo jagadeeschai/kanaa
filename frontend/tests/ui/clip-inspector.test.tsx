@@ -30,11 +30,17 @@ describe('Clip panel', () => {
     for (const name of ['Frame', 'Colour', 'Effects', 'Backdrop', 'Motion', 'Sound']) expect(screen.getAllByRole('button', { name }).length).toBeGreaterThan(0);
   });
 
-  it('keeps every effect together under Effects', async () => {
-    await panel('en');
+  it('offers every effect in one Add an effect row, not a group each; adding one changes the clip', async () => {
+    const onChange = await panel('en');
     await tab('Effects');
-    for (const title of ['Colour splash', 'Dreamy glow', 'Mirror and kaleidoscope', 'Zoom blur', 'Echo trail', 'Beat pulse', 'Old film', 'Signal damage', 'Lens surface']) expect(groups()).toContain(title);
+    expect(groups()).toContain('Add an effect');
+    for (const title of ['Colour splash', 'Dreamy glow', 'Mirror and kaleidoscope', 'Zoom blur', 'Echo trail', 'Beat pulse', 'Old film', 'Signal damage', 'Lens surface']) {
+      expect(groups()).not.toContain(title);  // Not on this clip yet: no empty group for it.
+      expect(screen.getByRole('button', { name: title })).toBeTruthy();
+    }
     expect(groups()).not.toContain('Animation');
+    await userEvent.click(screen.getByRole('button', { name: 'Dreamy glow' }));
+    expect(onChange.mock.calls.some(([changes]) => Boolean(changes.dreamy_glow))).toBe(true);
   });
 
   it('Colour has the looks; picking one changes the clip', async () => {

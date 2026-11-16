@@ -58,7 +58,7 @@ describe('Title panel', () => {
     expect(screen.getAllByText('Size').length).toBeGreaterThan(0);
   });
 
-  it('Motion reads in three steps: in and out, while on screen, following the scene', async () => {
+  it('Motion reads in three steps: in and out, while on screen, people and scene', async () => {
     await panel('en');
     await userEvent.click(screen.getAllByRole('button', { name: 'Motion' })[0]);
     const order = [...document.querySelectorAll('.ed-tab-heading, .ed-group-head span')].map((el) => el.textContent);
@@ -66,8 +66,7 @@ describe('Title panel', () => {
     expect(at('In and out')).toBeLessThan(at('Simple animation'));
     expect(at('Cinematic reveal')).toBeLessThan(at('While on screen'));
     expect(at('While on screen')).toBeLessThan(at('Moves'));
-    expect(at('Keyframes')).toBeLessThan(at('Follow the scene'));
-    expect(at('Follow the scene')).toBeLessThan(at('Stay with people'));
+    expect(at('Keyframes')).toBeLessThan(at('People and scene'));  // One group for staying with people, placing, locking and keeping clear.
   });
 
   it('is in Tamil when the interface is', async () => {

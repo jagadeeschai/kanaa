@@ -59,6 +59,15 @@ export const TAMIL: Record<string, string> = {
   'Clip on': 'கிளிப் இயக்கத்தில்',
   'Sound on': 'ஒலி இயக்கத்தில்',
 
+  'Click for the guide': 'வழிகாட்டிக்குச் சொடுக்கவும்',
+
+  'People and scene': 'மக்களும் காட்சியும்',
+  'Make the title travel with people, sit on a wall or the ground, stay locked to the scene, or move aside when someone comes near.': 'தலைப்பை மக்களுடன் நகர்த்தலாம், சுவர் அல்லது தரையில் வைக்கலாம், காட்சியுடன் பூட்டலாம், அல்லது யாராவது அருகில் வந்தால் விலகச் செய்யலாம்.',
+
+  'AI image': 'AI படம்', 'AI video': 'AI காணொளி',
+
+  'Add an effect': 'விளைவு சேர்', '{count} on': '{count} இயக்கத்தில்', 'Click one to add it. Its controls appear below, with Turn off.': 'சேர்க்க ஒன்றைச் சொடுக்கவும். அதன் கட்டுப்பாடுகள் கீழே தோன்றும்; அணைக்கவும் அங்கேயே.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

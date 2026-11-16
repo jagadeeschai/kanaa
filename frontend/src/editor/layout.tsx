@@ -102,7 +102,7 @@ export const RailContext = createContext<{ folded: boolean; setOpen: (open: bool
 /** Set while the settings panel shows a whole layer: only groups a layer can style are shown. */
 export const LayerModeContext = createContext(false);
 const LAYER_TABS = new Set(['style', 'motion', 'frame', 'look', 'effects', 'sound']);
-const LAYER_GROUPS = new Set(['Text', 'Karaoke', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Mirror and kaleidoscope', 'Duotone and split-tone', 'Tilt-shift', 'Beat pulse', 'Echo trail', 'Zoom blur', 'Animation', 'Moves', 'Speed and sound']);
+const LAYER_GROUPS = new Set(['Add an effect', 'Text', 'Karaoke', 'Layout and look', 'Subtitle', 'Simple animation', 'Moves', 'Keyframes', 'Frame', 'Colour', 'Colour splash', 'Dreamy glow', 'Old film', 'Signal damage', 'Lens surface', 'Mirror and kaleidoscope', 'Duotone and split-tone', 'Tilt-shift', 'Beat pulse', 'Echo trail', 'Zoom blur', 'Animation', 'Moves', 'Speed and sound']);
 
 export function Panel({ id, tabs: allTabs, header, children }: { id: string; tabs: PanelTab[]; header?: ReactNode; children: ReactNode }) {
   // A whole layer shows only the tabs a layer can style.
@@ -150,13 +150,15 @@ export function TabHeading({ tab, children }: { tab: string; children: ReactNode
   return <h4 className="ed-tab-heading">{children}</h4>;
 }
 
-export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, summary, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; /** A one-line look at the values, shown in the heading. */ summary?: ReactNode; children: ReactNode }) {
+export function Group({ title, startOpen = false, changed = false, tab, keywords = '', tip, help, pro = false, onlyWhen, summary, children }: { title: string; startOpen?: boolean; changed?: boolean; tab?: string; keywords?: string; tip?: string; help?: string; pro?: boolean; /** false: hidden until in use (an effect not on this clip); a search still finds it. */ onlyWhen?: boolean; /** A one-line look at the values, shown in the heading. */ summary?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(opened.get(title) ?? startOpen);
   useEffect(() => {
     const close = () => { opened.set(title, false); setOpen(false); };
     closers.add(close);
     return () => { closers.delete(close); };
   }, [title]);
+  // An effect just added (onlyWhen turning true) opens, so its controls are there at once.
+  useEffect(() => { if (onlyWhen) { opened.set(title, true); setOpen(true); } }, [onlyWhen, title]);
   const panel = useContext(PanelContext);
   const openHelp = useContext(HelpContext);
   const simple = useContext(SimpleContext);
@@ -165,13 +167,15 @@ export function Group({ title, startOpen = false, changed = false, tab, keywords
   if (simple && pro && !changed) return null;
   const matches = panel?.query ? `${searchText(title)} ${keywords} ${tip ? searchText(tip) : ''}`.toLowerCase().includes(panel.query) : null;
   if (panel && (matches === false || (matches === null && tab && tab !== panel.tab))) return null;
+  if (onlyWhen === false && !matches) return null;
   const showing = open || Boolean(matches);
   return <section className={`ed-group ${showing ? 'open' : ''}`}>
     <div className="ed-group-top">
       <button className="ed-group-head" aria-expanded={showing} onClick={() => { opened.set(title, !open); setOpen(!open); }}><ChevronRight size={14}/><span>{t(title)}</span>{summary && <small className="ed-group-summary">{summary}</small>}{changed && <i title="Changed from the default"/>}</button>
-      {help && <button className="ed-icon small ed-help-button" aria-label={`${t('Learn more')}: ${t(title)}`} title={t('Learn more')} onClick={() => openHelp(help)}><Info size={13}/></button>}
+      {/* The tip shows on hover or focus of the i, not as a paragraph in every group; a click opens the guide. */}
+      {(help || tip) && <button className="ed-icon small ed-help-button" aria-label={tip ? `${t(title)}: ${t(tip)}` : `${t('Learn more')}: ${t(title)}`} onClick={() => { if (help) openHelp(help); }}><Info size={13}/>{<span className="ed-tip-pop" role="tooltip">{tip ? t(tip) : t('Learn more')}{help && tip && <em>{t('Click for the guide')}</em>}</span>}</button>}
     </div>
-    {showing && <div className="ed-group-body">{tip && <p className="ed-group-tip">{t(tip)}</p>}{children}</div>}
+    {showing && <div className="ed-group-body">{children}</div>}
   </section>;
 }
 

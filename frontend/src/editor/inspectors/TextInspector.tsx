@@ -120,8 +120,10 @@ export function TextInspector() {
     <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
-    <TabHeading tab="motion">{t('Follow the scene')}</TabHeading>
-    <Group title="Stay with people" tab="motion" startOpen changed={Boolean(text.stay_with)} keywords="stay with people follow person moving distance bigger smaller near far perspective stick walk attach" tip="The title travels with the people: same distance from them, bigger as they come near, smaller as they walk away." help="cinema-titles">
+    <Group title="People and scene" tab="motion" startOpen={Boolean(text.stay_with || text.pin || text.keep_clear)} changed={Boolean(text.stay_with || text.pin || text.keep_clear)}
+      keywords="stay with people follow person moving distance near far stick walk attach place scene surface wall floor ground sky track perspective billboard sign lock camera pin subject keep clear avoid faces move aside overlap cover"
+      tip="Make the title travel with people, sit on a wall or the ground, stay locked to the scene, or move aside when someone comes near." help="cinema-titles">
+      <h3 className="ed-sub" title={t('The title travels with the people: same distance from them, bigger as they come near, smaller as they walk away.')}>{t('Stay with people')}</h3>
       {text.stay_with ? <>
         <p className="ed-group-tip">This title stays with the people it was nearest, and changes size with them.</p>
         <h3 className="ed-sub">The people pass</h3>
@@ -132,20 +134,17 @@ export function TextInspector() {
         <button className="ed-button wide primary" disabled={staying !== null} onClick={onStay}><Users size={14}/>{staying !== null ? `Finding the people… ${staying}%` : 'Stay with the people'}</button>
       </>}
       {stayNote && staying === null && <p className="ed-group-tip" role="status">{stayNote}</p>}
-    </Group>
-    <Group title="Place in scene" tab="motion" startOpen={!text.stay_with} changed={Boolean(text.pin?.surface)} keywords="place scene surface wall floor ground sky stick track perspective behind people billboard sign" tip="Put the title on a wall, the ground or the sky in the video, in one click.">
+      <h3 className="ed-sub" title={t('Put the title on a wall, the ground or the sky in the video, in one click.')}>{t('Place in scene')}</h3>
       <div className="ed-place">
         <button className={`ed-button wide ${placing === 'waiting' ? 'on' : 'primary'}`} disabled={placing === 'busy' || pinning !== null} onClick={onPlace} aria-pressed={placing === 'waiting'}>
           <Crosshair size={14}/>{placing === 'waiting' ? 'Click a spot in the video…' : placing === 'busy' ? 'Reading the surface…' : pinning !== null ? `Following the surface… ${pinning}%` : text.pin?.region || text.pin?.surface ? 'Place somewhere else' : 'Place in scene'}</button>
         <p className="ed-group-tip">{placing === 'waiting' ? 'Click where the title should go: a wall, the ground, the sky. Esc cancels.' : text.pin?.surface ? 'It lies on that surface, stays there as the camera moves, and people pass in front.' : 'Click a wall, the ground or the sky in the video: the title lies on it, stays there as the camera moves, and people pass in front. No keyframes.'}</p>
         {text.pin?.surface && <Chips label="Surface" options={[{ id: 'floor' as const, label: 'Floor' }, { id: 'wall' as const, label: 'Wall' }, { id: 'upright' as const, label: 'Upright' }, { id: 'sky' as const, label: 'Sky' }]} value={text.pin.surface} onPick={onSurface}/>}
       </div>
-    </Group>
-    <Group title="Move with the scene" tab="motion" startOpen={Boolean(text.pin || text.transform?.keyframes?.x?.length)} changed={Boolean(text.pin)} keywords="lock scene camera pin follow track subject person moving stick" tip="Keep the title fixed to a spot in the scene, or moving with a person." help="follow-movement">
+      <h3 className="ed-sub" title={t('Keep the title fixed to a spot in the scene, or moving with a person.')}>{t('Move with the scene')}</h3>
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.pin)} disabled={pinning !== null} onChange={(event) => onPin(event.target.checked)}/><span>Lock to the scene{pinning !== null ? ` … ${pinning}%` : ''}<small>Stays on the same spot as the camera moves.</small></span></label>
       {follow}
-    </Group>
-    <Group title="Keep the title clear of people" tab="motion" startOpen={Boolean(text.keep_clear)} changed={Boolean(text.keep_clear)} keywords="keep clear avoid people faces move aside overlap cover" tip="The title moves aside when someone comes near, instead of going behind them." help="cinema-titles">
+      <h3 className="ed-sub" title={t('The title moves aside when someone comes near, instead of going behind them.')}>{t('Keep the title clear of people')}</h3>
       {cover === 'people' || cover === 'object' ? <>
         <p className="ed-group-tip">{text.keep_clear ? 'This title also moves aside from people, while they pass in front of it. The two fight, so the title jumps about. Stop moving it aside to keep it still behind them.' : 'People pass in front of this title now. To keep it clear of them instead, choose Nothing in front above.'}</p>
         {text.keep_clear && <button className="ed-button wide primary" onClick={onRemoveClear}>Stop moving it aside</button>}

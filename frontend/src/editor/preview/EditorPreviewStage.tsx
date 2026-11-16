@@ -110,7 +110,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
-    {timeline && !firstRunClosed && !fullScreen && (() => {
+    {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [
         { done: total > 0, label: 'Add your clips or photos', go: () => { setLeftTab('media'); setPanelOpen(true); }, guide: 'getting-started' },
         { done: timeline.layers.some((layer) => layer.kind === 'text' && layer.items.length > 0), label: 'Add a title', go: () => { setLeftTab('text'); setPanelOpen(true); }, guide: 'titles' },

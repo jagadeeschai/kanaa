@@ -13,8 +13,11 @@ import type { EditorLeftRailBindings } from '../EditorLeftRail';
 export function MediaTabSection1() {
   const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'media' && <>
-          <div className="ed-media-create"><span>Create media</span><button className="ed-button wide" disabled={!timeline} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>Create image with AI</button><button className="ed-button wide" disabled={!timeline} onClick={() => openTextToVideo({ addToTimeline: addMedia, folder: projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim() || null })}><Clapperboard size={15}/>{t('Create video with AI')}</button></div>
-          <ImportArea compact onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
+          <div className="ed-media-row">
+            <ImportArea slim onImported={(items) => { setMedia((current) => [...items, ...current]); }}/>
+            <button className="ed-button" disabled={!timeline} title={t('Create image with AI')} onClick={() => setCreatingAIImage(true)}><WandSparkles size={15}/>{t('AI image')}</button>
+            <button className="ed-button" disabled={!timeline} title={t('Create video with AI')} onClick={() => openTextToVideo({ addToTimeline: addMedia, folder: projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim() || null })}><Clapperboard size={15}/>{t('AI video')}</button>
+          </div>
           {folders.length > 0 && (() => {
             // One picker, however many folders there are: this video's own folder first, then the rest A to Z, each with its count.
             const own = projectName.replace(/\s*[–—-]\s*(3D\s+)?lyric\s+video\s*$/i, '').trim();

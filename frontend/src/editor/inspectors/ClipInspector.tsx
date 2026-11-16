@@ -25,6 +25,7 @@ import { AudioLines, Crop, FlipHorizontal, FlipVertical, Lock, Maximize, Minimiz
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
+import { EffectPicker } from './EffectPicker';
 
 export type InspectorBindings = { onReframe: (() => void) | null; reframing: boolean; onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; logos: Photo[]; clipBrandMarks: { id: string; name: string }[]; onClipBrand: (item: Photo) => void; onRemoveClipBrand: (id: string) => void; clip: Clip; source?: PlaybackSource; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void };
 
@@ -45,9 +46,6 @@ export function Inspector() {
     <Panel id="clip" header={<>{clip.id === 'signature-paper' && <SignatureCardGroup/>}<ActiveEffects clip={clip} onChange={onChange}/></>} tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
-    <Group title="Clip visibility" tab="frame" startOpen changed={clip.enabled === false} keywords="active inactive disable hide camera angle multicam" tip="Deactivate an angle without deleting or moving it.">
-      <label className="ed-check"><input type="checkbox" checked={clip.enabled !== false} onChange={(event) => onChange({ enabled: event.target.checked })}/><span>Active clip<small>{clip.enabled === false ? 'Kept on the timeline, but absent from preview, sound and export.' : 'This clip contributes picture and sound.'}</small></span></label>
-    </Group>
     {isEffect && <Group pro title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
       <Chips label="Intensity" options={EFFECT_INTENSITIES} value={clip.transform.opacity <= 0.5 ? 'subtle' : clip.transform.opacity <= 0.85 ? 'medium' : 'strong'} onPick={(strength) => onChange({ transform: { ...clip.transform, opacity: EFFECT_INTENSITY_VALUE[strength] } })}/>
       <More><ValueSlider label="Fine intensity" value={clip.transform.opacity} min={0} max={1} step={0.01} defaultValue={1} unit="%" factor={100} onGestureStart={onPause} onChange={(opacity, group) => onChange({ transform: { ...clip.transform, opacity } }, group)}/></More>
@@ -100,7 +98,8 @@ export function Inspector() {
     </Group>
     <ColourWheelsGroup wheels={clip.wheels} onChange={(wheels, group) => onChange({ wheels }, group)}/>
     {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
-    <Group title="Colour splash" tab="effects" startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
+    <EffectPicker clip={clip} onChange={onChange}/>
+    <Group title="Colour splash" tab="effects" onlyWhen={Boolean(clip.colour_splash)} startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>
       <ValueSlider label="Black and white strength" value={clip.colour_splash.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_COLOUR_SPLASH.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ colour_splash: { ...clip.colour_splash!, intensity } }, group)}/>
@@ -111,7 +110,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ colour_splash: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ colour_splash: { ...DEFAULT_COLOUR_SPLASH } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group title="Dreamy glow" tab="effects" startOpen={Boolean(clip.dreamy_glow)} changed={Boolean(clip.dreamy_glow)} keywords="dreamy glow soft focus bloom portrait skin wedding romantic" tip="Add a gentle warm bloom to highlights while keeping faces readable.">
+    <Group title="Dreamy glow" tab="effects" onlyWhen={Boolean(clip.dreamy_glow)} startOpen={Boolean(clip.dreamy_glow)} changed={Boolean(clip.dreamy_glow)} keywords="dreamy glow soft focus bloom portrait skin wedding romantic" tip="Add a gentle warm bloom to highlights while keeping faces readable.">
     {clip.dreamy_glow ? <>
       <ValueSlider label="Glow" value={clip.dreamy_glow.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, intensity } }, group)}/>
       <ValueSlider label="Softness" value={clip.dreamy_glow.softness} min={0} max={1} step={0.01} defaultValue={DEFAULT_DREAMY_GLOW.softness} unit="%" factor={100} onChange={(softness, group) => onChange({ dreamy_glow: { ...clip.dreamy_glow!, softness } }, group)}/>
@@ -119,7 +118,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ dreamy_glow: { ...DEFAULT_DREAMY_GLOW } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group pro title="Duotone and split-tone" tab="effects" startOpen={Boolean(clip.tone_grade)} changed={Boolean(clip.tone_grade)} keywords="duotone split tone grade teal orange gold sepia colour two colours" tip="Split-tone tints shadows and highlights; duotone paints the whole picture in two colours.">
+    <Group pro title="Duotone and split-tone" tab="effects" onlyWhen={Boolean(clip.tone_grade)} startOpen={Boolean(clip.tone_grade)} changed={Boolean(clip.tone_grade)} keywords="duotone split tone grade teal orange gold sepia colour two colours" tip="Split-tone tints shadows and highlights; duotone paints the whole picture in two colours.">
     {clip.tone_grade ? <>
       <Chips label="Style" options={[{ id: 'split' as const, label: 'Split-tone' }, { id: 'duotone' as const, label: 'Duotone' }]} value={clip.tone_grade.mode} onPick={(mode) => onChange({ tone_grade: { ...clip.tone_grade!, mode } })}/>
       <Chips label="Colours" options={TONE_PRESETS.map((preset) => ({ id: preset.id as string, label: preset.label }))} value={TONE_PRESETS.find((preset) => preset.shadow === clip.tone_grade!.shadow && preset.highlight === clip.tone_grade!.highlight)?.id ?? null} onPick={(id) => { const preset = TONE_PRESETS.find((each) => each.id === id)!; onChange({ tone_grade: { ...clip.tone_grade!, shadow: preset.shadow, highlight: preset.highlight } }); }}/>
@@ -132,7 +131,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ tone_grade: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ tone_grade: { ...DEFAULT_TONE_GRADE } })}>Add a two-colour grade</button>}
     </Group>
-    <Group pro title="Tilt-shift" tab="effects" startOpen={Boolean(clip.tilt_shift)} changed={Boolean(clip.tilt_shift)} keywords="tilt shift miniature toy model blur band city" tip="Works best on scenes filmed from high up: city streets, markets, trains.">
+    <Group pro title="Tilt-shift" tab="effects" onlyWhen={Boolean(clip.tilt_shift)} startOpen={Boolean(clip.tilt_shift)} changed={Boolean(clip.tilt_shift)} keywords="tilt shift miniature toy model blur band city" tip="Works best on scenes filmed from high up: city streets, markets, trains.">
     {clip.tilt_shift ? <>
       <ValueSlider label="Sharp at" value={clip.tilt_shift.focus_y} min={0} max={1} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.focus_y} unit="%" factor={100} onChange={(focus_y, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, focus_y } }, group)}/>
       <ValueSlider label="Sharp band" value={clip.tilt_shift.band} min={0.02} max={0.8} step={0.01} defaultValue={DEFAULT_TILT_SHIFT.band} unit="%" factor={100} onChange={(band, group) => onChange({ tilt_shift: { ...clip.tilt_shift!, band } }, group)}/>
@@ -141,7 +140,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ tilt_shift: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ tilt_shift: { ...DEFAULT_TILT_SHIFT } })}>Add tilt-shift</button>}
     </Group>
-    <Group pro title="Mirror and kaleidoscope" tab="effects" startOpen={Boolean(clip.mirror)} changed={Boolean(clip.mirror)} keywords="mirror reflect symmetry kaleidoscope pattern wedges" tip="Mirror reflects one half onto the other; kaleidoscope turns the picture into mirrored wedges.">
+    <Group pro title="Mirror and kaleidoscope" tab="effects" onlyWhen={Boolean(clip.mirror)} startOpen={Boolean(clip.mirror)} changed={Boolean(clip.mirror)} keywords="mirror reflect symmetry kaleidoscope pattern wedges" tip="Mirror reflects one half onto the other; kaleidoscope turns the picture into mirrored wedges.">
     {clip.mirror ? <>
       <Chips label="Kind" options={[{ id: 'left' as const, label: 'Left' }, { id: 'top' as const, label: 'Top' }, { id: 'quad' as const, label: 'Four ways' }, { id: 'kaleido' as const, label: 'Kaleidoscope' }]} value={clip.mirror.mode} onPick={(mode) => onChange({ mirror: { ...clip.mirror!, mode } })}/>
       {clip.mirror.mode === 'kaleido' && <>
@@ -151,7 +150,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ mirror: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ mirror: { ...DEFAULT_MIRROR } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group pro title="Zoom blur" tab="effects" startOpen={Boolean(clip.zoom_blur)} changed={Boolean(clip.zoom_blur)} keywords="zoom blur radial rush speed punch" tip="Streaks towards a centre. Short clips and quick cuts suit it best.">
+    <Group pro title="Zoom blur" tab="effects" onlyWhen={Boolean(clip.zoom_blur)} startOpen={Boolean(clip.zoom_blur)} changed={Boolean(clip.zoom_blur)} keywords="zoom blur radial rush speed punch" tip="Streaks towards a centre. Short clips and quick cuts suit it best.">
     {clip.zoom_blur ? <>
       <ValueSlider label="Strength" value={clip.zoom_blur.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_ZOOM_BLUR.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ zoom_blur: { ...clip.zoom_blur!, intensity } }, group)}/>
       <More>
@@ -161,7 +160,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ zoom_blur: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ zoom_blur: { ...DEFAULT_ZOOM_BLUR } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group pro title="Echo trail" tab="effects" startOpen={Boolean(clip.echo)} changed={Boolean(clip.echo)} keywords="echo ghost trail smear dance motion blur light trails" tip="Ghosts of the last moments follow movement. The preview shows it once its copy is made in the background.">
+    <Group pro title="Echo trail" tab="effects" onlyWhen={Boolean(clip.echo)} startOpen={Boolean(clip.echo)} changed={Boolean(clip.echo)} keywords="echo ghost trail smear dance motion blur light trails" tip="Ghosts of the last moments follow movement. The preview shows it once its copy is made in the background.">
     {clip.echo ? <>
       <Chips label="Kind" options={[{ id: 'echo' as const, label: 'Echo' }, { id: 'smear' as const, label: 'Light smear' }]} value={clip.echo.mode} onPick={(mode) => onChange({ echo: { ...clip.echo!, mode } })}/>
       {clip.echo.mode === 'echo' && <ValueSlider label="Trails" value={clip.echo.trails} min={2} max={8} step={1} defaultValue={DEFAULT_ECHO.trails} onChange={(trails, group) => onChange({ echo: { ...clip.echo!, trails: Math.round(trails) } }, group)}/>}
@@ -171,7 +170,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ echo: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ echo: { ...DEFAULT_ECHO } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group pro title="Beat pulse" tab="effects" startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
+    <Group pro title="Beat pulse" tab="effects" onlyWhen={Boolean(clip.beat_pulse)} startOpen={Boolean(clip.beat_pulse)} changed={Boolean(clip.beat_pulse)} keywords="beat pulse music rhythm zoom reels bpm" tip="Push the picture gently on each beat. Match Tempo to the song for clean synchronization.">
     {clip.beat_pulse ? <>
       <ValueSlider label="Strength" value={clip.beat_pulse.strength} min={0} max={1} step={0.01} defaultValue={DEFAULT_BEAT_PULSE.strength} unit="%" factor={100} onChange={(strength, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, strength } }, group)}/>
       <ValueSlider label="Tempo" value={clip.beat_pulse.bpm} min={30} max={300} step={1} defaultValue={DEFAULT_BEAT_PULSE.bpm} unit=" BPM" onChange={(bpm, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, bpm } }, group)}/>
@@ -182,7 +181,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ beat_pulse: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ beat_pulse: { ...DEFAULT_BEAT_PULSE } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group title="Old film" tab="effects" startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
+    <Group title="Old film" tab="effects" onlyWhen={Boolean(clip.old_film)} startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>
       <ValueSlider label="Intensity" value={clip.old_film.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ old_film: { ...clip.old_film!, intensity } }, group)}/>
       <ValueSlider label="Grain" value={clip.old_film.grain} min={0} max={1} step={0.01} defaultValue={DEFAULT_OLD_FILM.grain} unit="%" factor={100} onChange={(grain, group) => onChange({ old_film: { ...clip.old_film!, grain } }, group)}/>
@@ -194,7 +193,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ old_film: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ old_film: DEFAULT_OLD_FILM })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group title="Signal damage" tab="effects" startOpen={Boolean(clip.signal_damage)} changed={Boolean(clip.signal_damage)} keywords="glitch rgb split vhs tape scanlines jitter noise retro" tip="Break up the clip like a digital signal or worn VHS tape.">
+    <Group title="Signal damage" tab="effects" onlyWhen={Boolean(clip.signal_damage)} startOpen={Boolean(clip.signal_damage)} changed={Boolean(clip.signal_damage)} keywords="glitch rgb split vhs tape scanlines jitter noise retro" tip="Break up the clip like a digital signal or worn VHS tape.">
     {clip.signal_damage ? <>
       <Chips label="Style" options={[{ id: 'glitch' as const, label: 'Glitch' }, { id: 'vhs' as const, label: 'VHS' }]} value={clip.signal_damage.mode} onPick={(mode) => onChange({ signal_damage: { ...clip.signal_damage!, mode } })}/>
       <ValueSlider label="Intensity" value={clip.signal_damage.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_SIGNAL_DAMAGE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ signal_damage: { ...clip.signal_damage!, intensity } }, group)}/>
@@ -207,7 +206,7 @@ export function Inspector() {
       <button className="ed-button wide" onClick={() => onChange({ signal_damage: null })}>Turn off</button>
     </> : <button className="ed-button wide" onClick={() => onChange({ signal_damage: DEFAULT_SIGNAL_DAMAGE })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
-    <Group title="Lens surface" tab="effects" startOpen={Boolean(clip.lens_surface)} changed={Boolean(clip.lens_surface)} keywords="lens dirt raindrops water glass refraction droplets" tip="Put dirt or refracting water drops on the camera lens.">
+    <Group title="Lens surface" tab="effects" onlyWhen={Boolean(clip.lens_surface)} startOpen={Boolean(clip.lens_surface)} changed={Boolean(clip.lens_surface)} keywords="lens dirt raindrops water glass refraction droplets" tip="Put dirt or refracting water drops on the camera lens.">
     {clip.lens_surface ? <>
       <Chips label="Surface" options={[{ id: 'raindrops' as const, label: 'Raindrops' }, { id: 'dirt' as const, label: 'Lens dirt' }]} value={clip.lens_surface.mode} onPick={(mode) => onChange({ lens_surface: { ...clip.lens_surface!, mode } })}/>
       <ValueSlider label="Intensity" value={clip.lens_surface.intensity} min={0} max={1} step={0.01} defaultValue={DEFAULT_LENS_SURFACE.intensity} unit="%" factor={100} onChange={(intensity, group) => onChange({ lens_surface: { ...clip.lens_surface!, intensity } }, group)}/>

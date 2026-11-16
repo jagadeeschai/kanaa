@@ -133,8 +133,9 @@ export function createEditorMenuActions(getInput: () => Input) {
       change(result.timeline); setSelectedId(null);
     };
     setMenu({ x: event.clientX, y: event.clientY, items: [
-      ...(picked.length ? [{ label: picked.length > 1 ? `Replace the ${picked.length} selected clips` : 'Replace the selected clip', onSelect: replace }, 'divider' as const] : []),
-      { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) }, { label: 'Move to folder…', onSelect: () => setFiling(item) },
+      { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) },
+      // Always third, greyed until main clips are selected, so the menu never changes shape.
+      { label: picked.length > 1 ? `Replace the ${picked.length} selected clips` : 'Replace the selected clip', disabled: !picked.length, onSelect: replace }, 'divider' as const, { label: 'Move to folder…', onSelect: () => setFiling(item) },
       ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
       'divider', { label: 'Delete from Kanaa…', danger: true, onSelect: () => setDeleting(item) },
     ] });
