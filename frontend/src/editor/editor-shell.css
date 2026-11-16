@@ -527,3 +527,14 @@
 .ed-media-picked span{flex:none;color:var(--text-2)}.ed-media-picked .ed-button{flex:1;height:28px;font-size:11.5px;padding:0 6px}
 .ed-tile-add.picked{outline:2px solid var(--accent);outline-offset:1px}
 .ed-tile-order{position:absolute;left:5px;top:5px;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;pointer-events:none}
+/* Media: three tile sizes, the folder named on a tile, and the hover card. */
+.ed-media-grid.size-s{grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px}.ed-media-grid.size-s .ed-tile-label{display:none}
+.ed-media-grid.size-l{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.ed-size-pick{display:flex;gap:1px;padding:2px;border-radius:7px;background:var(--well)}.ed-size-pick button{display:grid;place-items:center;width:22px;height:24px;border:0;border-radius:5px;background:none;color:var(--muted)}.ed-size-pick button.on{background:var(--raised);color:var(--text);box-shadow:var(--shade2)}
+.ed-size-dot{display:block;border:1.5px solid currentColor;border-radius:2px}.ed-size-dot.s{width:7px;height:5px}.ed-size-dot.m{width:10px;height:7px}.ed-size-dot.l{width:13px;height:9px}
+.ed-tile-folder{display:block;font-style:normal;font-size:9.5px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed-media-peek{position:fixed;z-index:70;display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:10px;background:var(--raised);box-shadow:var(--shade3);color:var(--text);pointer-events:none}
+.ed-media-peek img,.ed-media-peek video{width:100%;object-fit:contain;border-radius:6px;background:#000}
+.ed-media-peek b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ed-media-peek small{font-size:11px;color:var(--text-2)}
+/* In a narrow panel the sort gets a line of its own under the toggle and sizes. */
+.ed-media-tools{flex-wrap:wrap}.ed-media-tools .ed-chip-toggle{flex:1}.ed-media-tools .kanaa-select{flex:1 1 100%;order:3}

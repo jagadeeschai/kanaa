@@ -105,6 +105,8 @@ export const TAMIL: Record<string, string> = {
 
   'Not used yet': 'இன்னும் பயன்படுத்தாதவை', 'Show only media not yet in this video': 'இந்தக் காணொளியில் இன்னும் இல்லாத ஊடகத்தை மட்டும் காட்டு', 'Sort': 'வரிசைப்படுத்து', 'Newest first': 'புதியவை முதலில்', 'Oldest first': 'பழையவை முதலில்', 'Name A–Z': 'பெயர் அ–ஃ', 'Pictures, then videos': 'படங்கள், பிறகு காணொளிகள்', '{count} picked': '{count} தேர்ந்தவை', 'Add to timeline in this order': 'இந்த வரிசையில் காலவரிசையில் சேர்', 'Clear the picks': 'தேர்வுகளை அழி', 'Picked {number}': 'தேர்வு {number}', 'Everything here is already in your video.': 'இங்குள்ள அனைத்தும் ஏற்கனவே உங்கள் காணொளியில் உள்ளன.',
 
+  'Tile size': 'அளவு', 'Small tiles': 'சிறிய ஓடுகள்', 'Medium tiles': 'நடுத்தர ஓடுகள்', 'Large tiles': 'பெரிய ஓடுகள்',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

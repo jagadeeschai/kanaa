@@ -1,5 +1,6 @@
 import { Check,Clapperboard,Layers,Minus,Plus,Search,WandSparkles,X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { MediaPeek, PEEK_DELAY, type Peek } from "../../MediaPeek";
 import { insertClip } from "../../../timeline/model";
 import { MEDIA_SORTS, sortMedia, type MediaSort } from "../../../timeline/mediaOrder";
 import { openTextToVideo } from "../../TextToVideoDialog";
@@ -18,6 +19,19 @@ export function MediaTabSection1() {
   const { leftTab, timeline, setCreatingAIImage, setMedia, folders, projectName, media, folder, setFolder, inVideo, otherMedia, draggableAs, addMedia, openMediaMenu, usedIds, addOverlayMedia, change, newId, setSelectedId } = useEditorPanel<EditorLeftRailBindings>('left');
   const [sort, setSort] = useState<MediaSort>(() => { try { return (localStorage.getItem('kanaa.mediaSort') as MediaSort) || 'newest'; } catch { return 'newest'; } });
   const [unusedOnly, setUnusedOnly] = useState(false);
+  // Tile size, remembered; the hover card; and whether tiles name their folder (only when every folder is shown).
+  const [size, setSize] = useState<'s' | 'm' | 'l'>(() => { try { return (localStorage.getItem('kanaa.mediaTile') as 's' | 'm' | 'l') || 'm'; } catch { return 'm'; } });
+  const [peek, setPeek] = useState<Peek | null>(null);
+  const waiting = useRef<number | undefined>(undefined);
+  const hover = (item: Photo, tile: HTMLElement) => {
+    window.clearTimeout(waiting.current);
+    waiting.current = window.setTimeout(() => {
+      const box = tile.getBoundingClientRect(); const panel = tile.closest('.ed-media, .ed-left, aside')?.getBoundingClientRect() ?? box;
+      setPeek({ item, top: box.top, left: panel.right + 10, used: usedIds.has(item.id) });
+    }, PEEK_DELAY);
+  };
+  const unhover = () => { window.clearTimeout(waiting.current); setPeek(null); };
+  const resize = (next: 's' | 'm' | 'l') => { setSize(next); try { localStorage.setItem('kanaa.mediaTile', next); } catch { /* This session only. */ } };
   // Shift- or ⌘-click picks several, in the order clicked; Add puts them on the timeline in that order.
   const [picked, setPicked] = useState<Photo[]>([]);
   const pick = (item: Photo) => setPicked((current) => (current.some((each) => each.id === item.id) ? current.filter((each) => each.id !== item.id) : [...current, item]));
@@ -60,17 +74,19 @@ export function MediaTabSection1() {
             <KanaaSelect aria-label={t('Sort')} value={sort} onChange={(event) => { const next = event.target.value as MediaSort; setSort(next); try { localStorage.setItem('kanaa.mediaSort', next); } catch { /* This session only. */ } }}>
               {MEDIA_SORTS.map((each) => <option key={each.id} value={each.id}>{t(each.label)}</option>)}
             </KanaaSelect>
+            <div className="ed-size-pick" role="group" aria-label={t('Tile size')}>{(['s', 'm', 'l'] as const).map((each) => <button key={each} className={size === each ? 'on' : ''} aria-pressed={size === each} title={t(each === 's' ? 'Small tiles' : each === 'm' ? 'Medium tiles' : 'Large tiles')} onClick={() => resize(each)}><i className={`ed-size-dot ${each}`}/></button>)}</div>
           </div>
+          <MediaPeek peek={peek}/>
           {picked.length > 0 && <div className="ed-media-picked" role="status">
             <span>{t('{count} picked', { count: picked.length })}</span>
             <button className="ed-button primary" disabled={!timeline} onClick={addPicked}>{t('Add to timeline in this order')}</button>
             <button className="ed-icon small" aria-label={t('Clear the picks')} onClick={() => setPicked([])}><X size={12}/></button>
           </div>}
           {(words.length > 0 || unusedOnly) && !found.inVideo.length && !found.otherMedia.length && <p className="ed-tip">{words.length ? t('No media named like that{inFolder}.', { inFolder: folder ? ` ${t('in this folder')}` : '' }) : t('Everything here is already in your video.')}</p>}
-          {([['In this video', found.inVideo], ['Other media', found.otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className="ed-media-grid">{items.map((item) => <div className="ed-tile" key={item.id}>
+          {([['In this video', found.inVideo], ['Other media', found.otherMedia]] as const).map(([heading, items]) => items.length > 0 && <div key={heading}><h3 className="ed-sub">{heading}</h3><div className={`ed-media-grid size-${size}`} onScroll={unhover}>{items.map((item) => <div className="ed-tile" key={item.id} onMouseEnter={(event) => hover(item, event.currentTarget)} onMouseLeave={unhover} onDragStart={unhover}>
             <button className={`ed-tile-add ${picked.some((each) => each.id === item.id) ? 'picked' : ''}`} {...draggableAs({ kind: 'media', id: item.id })}
               onClick={(event) => { if (event.shiftKey || event.metaKey) pick(item); else if (picked.length) pick(item); else addMedia(item); }} onContextMenu={(event) => openMediaMenu(event, item)}
-              title={`Add ${item.filename}, or drag it onto the timeline. Shift-click to pick several. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label"><b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
+              title={`Add ${item.filename}, or drag it onto the timeline. Shift-click to pick several. Right-click for more.`}><img src={photoThumbUrl(item.id)} alt=""  loading="lazy"/><span className="ed-tile-label">{!folder && item.folder && <i className="ed-tile-folder">{item.folder}</i>}<b>{item.filename}</b>{item.duration ? <em>{timecode(item.duration).replace(/\.\d+$/, '')}</em> : null}</span></button>
             {usedIds.has(item.id) && <span className="ed-tile-used" title="In your video"><Check size={11}/></span>}
             {picked.some((each) => each.id === item.id) && <span className="ed-tile-order" aria-label={t('Picked {number}', { number: picked.findIndex((each) => each.id === item.id) + 1 })}>{picked.findIndex((each) => each.id === item.id) + 1}</span>}
             <button className="ed-tile-over" onClick={() => addOverlayMedia(item)} title="Add on top of your video, like a logo" aria-label={`Add ${item.filename} as an overlay`}><Layers size={12}/></button></div>)}</div></div>)}
