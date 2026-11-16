@@ -49,6 +49,11 @@ export function createGraphicActions(getInput: () => Input) {
   const now = () => Math.round((getInput().engineRef.current?.currentTime ?? 0) * 1000) / 1000;
 
   const addExplainerGraphic = (kind: GraphicKind, point: [number, number]) => {
+    if (kind === 'step-list') {
+      place({ kind, style: 'documentary', from: [.5, .5], to: [.5, .5], width: .78, height: .78, line_width: .006,
+        steps: ['திட்டமிடுங்கள்', 'உருவாக்குங்கள்', 'பகிருங்கள்'], highlight_current: true }, 'Step list', '#ffffff', now());
+      return;
+    }
     if (kind === 'lower-third') {
       place({ kind, style: 'clean', from: [.07, .78], to: [.07, .78], width: .42, height: .14, line_width: .006, role: 'Role or organisation' }, 'Name', '#ffffff', now());
       return;
@@ -107,7 +112,7 @@ export function createGraphicActions(getInput: () => Input) {
 
 export function queueGraphicFrames(texts: TextItem[], format: Timeline['format'], keyOf: (text: TextItem, format: Timeline['format']) => string, images: Map<string, string | 'loading'>, ready: () => void) {
   for (const text of texts) {
-    if (!text.graphic || text.enter?.preset !== 'reveal') continue;
+    if (!text.graphic || (text.enter?.preset !== 'reveal' && text.graphic.kind !== 'step-list')) continue;
     for (let frame = 0; frame < graphicStateCount(text, format.fps); frame += 1) {
       const key = `${keyOf(text, format)}|graphic${frame}`;
       if (images.has(key)) continue;

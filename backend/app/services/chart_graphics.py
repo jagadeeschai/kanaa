@@ -127,7 +127,7 @@ def number(value: float, graphic) -> str:
 
 
 def _frame(item: Text, fmt: Format):
-    graphic = item.graphic; assert graphic and graphic.data
+    graphic = item.graphic; assert graphic
     image = Image.new('RGBA', (fmt.width, fmt.height), (0, 0, 0, 0)); draw = ImageDraw.Draw(image)
     cx, cy = round(graphic.to[0] * fmt.width), round(graphic.to[1] * fmt.height)
     width, height = round(graphic.width * fmt.width), round(graphic.height * fmt.height)

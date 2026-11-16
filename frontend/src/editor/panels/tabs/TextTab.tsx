@@ -6,10 +6,12 @@ import { TEMPLATES } from "../../../timeline/templates";
 import { useEditorPanel } from "../../state/EditorContext";
 import { LANGUAGES } from "../../Words";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
+import { GraphicsSection } from './GraphicsSection';
 
 export function TextTabSection1() {
   const { leftTab, draggableAs, addTitle, thumbs, myStyles, forgetStyle, layout, captionsWaiting, wordJob, total, makeCaptions, timeline, language, setLanguage, captionWords, setCaptionWords, clearing, keepClearOfFaces, clearNote } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'text' && <>
+          <GraphicsSection/>
           <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add at the playhead, or drag onto the timeline, then type your words.</p>
             <div className="ed-templates">{TEMPLATES.map((template) => <button key={template.id} className="ed-template" {...draggableAs({ kind: 'title', template: template.id })} onClick={() => addTitle(template)} title={`Add a ${template.label} title`}>
               <span className="ed-template-art">{thumbs[template.id] ? <img src={thumbs[template.id]} alt=""/> : <Type size={16}/>}</span><span>{template.label}</span></button>)}</div>

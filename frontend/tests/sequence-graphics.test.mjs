@@ -1,0 +1,19 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { parseSteps, stepStates } from '../src/timeline/sequence-graphics.ts';
+import { graphicState } from '../src/timeline/graphics.ts';
+
+test('steps strip optional numbering and bullets and validate counts', () => {
+  assert.deepEqual(parseSteps('1. திட்டம்\n• உருவாக்கம்\n3) பகிர்வு').steps, ['திட்டம்', 'உருவாக்கம்', 'பகிர்வு']);
+  assert.ok(parseSteps('one').error);
+  assert.ok(parseSteps(Array(9).fill('one').join('\n')).error);
+});
+
+test('preview event states agree with Python, including both sides of every tap', () => {
+  const item = { id:'steps', start:0, length:3, text:'Steps', enter:{preset:'reveal',duration:1.2}, graphic:{kind:'step-list',style:'clean',from:[.5,.5],to:[.5,.5],steps:['one','two','three'],step_times:[.25,.75,1.25]} };
+  const samples = [0, .25-1e-6,.25,.25+1e-6,.749999,.75,.750001,1.249999,1.25,1.250001,2.9];
+  const backend = JSON.parse(execFileSync('../backend/.venv/bin/python', ['-c', 'import json,sys; from app.services.timeline_schema import Text; from app.services.explainer_graphics import state_at; from app.services.step_graphics import step_states; d=json.load(sys.stdin); i=Text.model_validate(d["item"]); print(json.dumps({"times":step_states(i,24),"states":[state_at(i,t,24) for t in d["samples"]]}))'], { cwd:process.cwd(), env:{...process.env,PYTHONPATH:'../backend'}, input:JSON.stringify({item,samples}), encoding:'utf8' }));
+  assert.deepEqual(stepStates(item), backend.times);
+  assert.deepEqual(samples.map((at)=>graphicState(item,at,24)), backend.states);
+});

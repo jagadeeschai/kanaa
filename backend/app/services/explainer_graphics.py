@@ -15,6 +15,9 @@ MAX_STATES = 90
 
 def state_count(item: Text, fps: int) -> int:
     """Count-up gets roughly one picture per entrance frame; strokes keep their proven 24 states."""
+    if item.graphic and item.graphic.kind == 'step-list':
+        from app.services.step_graphics import step_states
+        return len(step_states(item, fps))
     if item.graphic and item.graphic.kind in ('count-up', 'bar-chart', 'line-chart', 'pie-chart') and item.enter and item.enter.preset == 'reveal':
         duration = max(1e-6, min(item.length, item.enter.duration))
         return min(MAX_STATES, max(2, round(duration * fps) + 1))
@@ -23,6 +26,10 @@ def state_count(item: Text, fps: int) -> int:
 
 def state_at(item: Text, local: float, fps: int = 24) -> int:
     """Quantised stroke state at an item-local time; the preview uses the same formula."""
+    if item.graphic and item.graphic.kind == 'step-list':
+        from bisect import bisect_right
+        from app.services.step_graphics import step_states
+        return max(0, bisect_right(step_states(item, fps), local) - 1)
     if not item.graphic or not item.enter or item.enter.preset != 'reveal':
         return state_count(item, fps) - 1
     states = state_count(item, fps)
@@ -111,7 +118,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind in ('bar-chart', 'line-chart', 'pie-chart'):
+    if graphic.kind == 'step-list':
+        from app.services.step_graphics import render_steps
+        image = render_steps(item, fmt, progress)
+    elif graphic.kind in ('bar-chart', 'line-chart', 'pie-chart'):
         from app.services.chart_graphics import render_bar_chart, render_line_chart, render_pie_chart
         image = render_bar_chart(item, fmt, progress) if graphic.kind == 'bar-chart' else render_line_chart(item, fmt, progress) if graphic.kind == 'line-chart' else render_pie_chart(item, fmt, progress)
     elif graphic.kind == 'chapter-card':

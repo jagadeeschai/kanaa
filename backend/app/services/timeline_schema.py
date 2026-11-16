@@ -376,7 +376,7 @@ class ChartRow(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -401,6 +401,10 @@ class ExplainerGraphic(Strict):
     highlight_index: Optional[int] = Field(default=None, ge=0, le=11)
     show_values: bool = True
     donut: bool = False
+    steps: Optional[List[Annotated[str, Field(min_length=1, max_length=300)]]] = Field(default=None, min_length=2, max_length=8)
+    step_times: Optional[List[Annotated[float, Field(ge=0, allow_inf_nan=False)]]] = Field(default=None, max_length=8)
+    step_bullets: bool = False
+    highlight_current: bool = True
 
     @field_validator('from_', 'to')
     @classmethod
@@ -420,6 +424,11 @@ class ExplainerGraphic(Strict):
     def outline_has_shape(self):
         if self.kind == 'outline' and not self.shape:
             raise ValueError('A glow outline needs the outline of something: right-click on it in the preview.')
+        if self.kind == 'step-list':
+            if not self.steps or any(not step.strip() for step in self.steps):
+                raise ValueError('Add 2–8 steps, one per line.')
+            if self.step_times and (len(self.step_times) > len(self.steps) or any(b <= a for a, b in zip(self.step_times, self.step_times[1:]))):
+                raise ValueError('Step times must increase, with one time per step.')
         if self.kind in ('bar-chart', 'line-chart', 'pie-chart'):
             if not self.data:
                 raise ValueError('Add at least one row as label, value.')
@@ -478,6 +487,12 @@ class Text(Strict):
     @property
     def designed(self) -> bool:
         return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None or self.style == 'plain' or self.layout is not None
+
+    @model_validator(mode='after')
+    def step_times_inside_clip(self):
+        if self.graphic and self.graphic.step_times and self.graphic.step_times[-1] >= self.length_:
+            raise ValueError('Step times must be inside the clip.')
+        return self
 
     @property
     def length(self) -> float:

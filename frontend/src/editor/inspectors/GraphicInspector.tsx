@@ -8,6 +8,7 @@ import { Group, More, Panel } from '../layout';
 import { AnimationPicker, Chips } from './parts';
 import { useEffect, useState } from 'react';
 import { chartDataText, parseChartData } from '../../timeline/chart-data';
+import { SequenceGraphicFields } from './SequenceGraphicFields';
 
 const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
@@ -18,6 +19,7 @@ const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'bar-chart', label: 'Bar chart' },
   { id: 'line-chart', label: 'Line chart' },
   { id: 'pie-chart', label: 'Pie or donut chart' },
+  { id: 'step-list', label: 'Step list' },
 ];
 const STYLES: { id: GraphicStyle; label: string }[] = [
   { id: 'clean', label: 'Clean white' }, { id: 'hand-drawn', label: 'Hand-drawn' },
@@ -34,6 +36,7 @@ const ENTRANCES = [{ id: 'reveal' as const, label: 'Draw on' }, { id: 'pop' as c
 
 export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { text: TextItem; timing: TimeFieldProps[]; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; follow?: React.ReactNode }) {
   const graphic = text.graphic!;
+  const sequence = graphic.kind === 'step-list';
   const [draft, setDraft] = useState(text.text);
   const [dataDraft, setDataDraft] = useState(chartDataText(graphic.data));
   const [dataError, setDataError] = useState('');
@@ -47,7 +50,8 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
   return <Panel id="graphic" tabs={[{ id: 'look', label: 'Graphic', Icon: Circle }, { id: 'motion', label: 'Motion', Icon: MoveRight, changed: Boolean(text.enter) }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Graphic" tab="look" startOpen keywords="arrow circle box callout label pointer explainer" tip="The point you right-clicked is the arrow tip or the centre of the highlight. A glow outline traces what you right-clicked.">
-      {graphic.kind !== 'outline' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: { ...graphic, kind } })}/>}
+      {graphic.kind !== 'outline' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: { ...graphic, kind, ...(kind === 'step-list' && !graphic.steps ? { steps: ['திட்டமிடுங்கள்', 'உருவாக்குங்கள்', 'பகிருங்கள்'], step_times: null, width: .78, height: .78 } : {}) } })}/>}
+      {sequence && <><SequenceGraphicFields key={text.id} text={text} onChange={onChange}/><ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
       {graphic.kind === 'callout' && (
         <textarea className="ed-text" aria-label={t('Callout label')} lang="ta" value={draft} maxLength={200} rows={2}
           onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>
@@ -57,7 +61,7 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
       {graphic.kind === 'chapter-card' && <><label className="ed-field"><span>{t('Chapter title')}</span><input value={text.text} maxLength={200} onChange={(event) => event.target.value.trim() && onChange({ text: event.target.value }, `graphic-chapter-${text.id}`)}/></label><Chips label="Layout" options={CARD_MODES} value={graphic.card_mode ?? 'full'} onPick={(card_mode) => onChange({ graphic: { ...graphic, card_mode } })}/></>}
       {(graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart') && <><label><span>{t('Data')}</span><textarea className="ed-text" lang="ta" rows={6} value={dataDraft} placeholder={t('label, value')} onChange={(event) => { const value = event.target.value; setDataDraft(value); const parsed = parseChartData(value, chartLimit); setDataError(parsed.error ?? ''); if (parsed.rows) onChange({ graphic: { ...graphic, data: parsed.rows } }, `graphic-data-${text.id}`); }}/></label>{dataError && <p className="ed-error">{t(dataError)}</p>}{graphic.kind === 'bar-chart' && <Chips label="Direction" options={BAR_ORIENTATIONS} value={graphic.chart_orientation ?? 'horizontal'} onPick={(chart_orientation) => onChange({ graphic: { ...graphic, chart_orientation } })}/>} {graphic.kind === 'pie-chart' && <Chips label="Shape" options={PIE_KINDS} value={graphic.donut ? 'donut' : 'pie'} onPick={(shape) => onChange({ graphic: { ...graphic, donut: shape === 'donut' } })}/>}<More>{graphic.kind === 'bar-chart' && <label className="ed-field"><span>{t('Highlight bar')}</span><input type="number" min={0} max={graphic.data?.length ?? 1} value={(graphic.highlight_index ?? -1)+1 || ''} onChange={(event) => { const picked=Number(event.target.value)-1; onChange({ graphic: { ...graphic, highlight_index: picked >= 0 ? picked : null } }); }}/></label>}{graphic.kind !== 'pie-chart' && <label className="ed-check"><input type="checkbox" checked={graphic.indian_grouping ?? false} onChange={(event) => onChange({ graphic: { ...graphic, indian_grouping: event.target.checked } })}/>{t('Indian grouping')}</label>}<label className="ed-check"><input type="checkbox" checked={graphic.show_values ?? true} onChange={(event) => onChange({ graphic: { ...graphic, show_values: event.target.checked } })}/>{t(graphic.kind === 'line-chart' ? 'Show end value' : graphic.kind === 'pie-chart' ? 'Show percentages' : 'Show values')}</label></More></>}
       {(graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card' || graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart') && <ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>}
-      <Chips label="Style" options={graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card' || graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart' ? LOWER_STYLES : STYLES} value={graphic.style} onPick={setStyle}/>
+      {!sequence && <Chips label="Style" options={graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card' || graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart' ? LOWER_STYLES : STYLES} value={graphic.style} onPick={setStyle}/>}
       {graphic.kind !== 'pie-chart' && <label className="ed-color"><span>{t('Colour')}</span><input type="color" aria-label="Graphic colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `graphic-colour-${text.id}`)}/></label>}
       <ValueSlider label="Line width" value={graphic.line_width} min={.001} max={.025} step={.001} defaultValue={.006} unit="%" factor={100} decimals={1} onChange={(line_width, group) => onChange({ graphic: { ...graphic, line_width } }, group)}/>
       {graphic.kind === 'spotlight' && <ValueSlider label="Darken the rest" value={graphic.dim ?? .6} min={.1} max={.95} step={.05} defaultValue={.6} unit="%" factor={100} onChange={(dim, group) => onChange({ graphic: { ...graphic, dim } }, group)}/>}

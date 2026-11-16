@@ -128,6 +128,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Bar chart', onSelect: () => addExplainerGraphic('bar-chart', at) },
       { label: 'Line chart', onSelect: () => addExplainerGraphic('line-chart', at) },
       { label: 'Pie or donut chart', onSelect: () => addExplainerGraphic('pie-chart', at) },
+      { label: 'Step list', onSelect: () => addExplainerGraphic('step-list', at) },
       'divider',
       { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
       { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },
