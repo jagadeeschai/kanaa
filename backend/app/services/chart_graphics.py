@@ -106,10 +106,10 @@ def render_bar_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
     width, height = round(graphic.width * fmt.width), round(graphic.height * fmt.height)
     left = min(fmt.width - width - 3, max(3, cx - width // 2)); top = min(fmt.height - height - 3, max(3, cy - height // 2))
     right, bottom = left + width, top + height
-    panel = {'documentary': (44, 38, 18, 238), 'dark-band': (12, 15, 21, 235), 'bold-colour': (58, 70, 180, 238)}.get(graphic.style)
+    panel = {'documentary': (28, 27, 24, 238), 'dark-band': (12, 15, 21, 235), 'bold-colour': (30, 36, 58, 238)}.get(graphic.style)
     if panel: draw.rounded_rectangle((left, top, right, bottom), radius=max(5, height // 24), fill=panel)
-    ink = (245, 193, 27, 255) if graphic.style == 'documentary' else (255, 255, 255, 255)
-    accent = (245, 193, 27, 255) if graphic.style != 'bold-colour' else (255, 216, 76, 255)
+    ink = (255, 255, 255, 255)
+    accent = (245, 193, 27, 255) if graphic.style == 'documentary' else (105, 170, 235, 255) if graphic.style == 'bold-colour' else ink
     pad = max(8, round(height * .06)); rows = bar_geometry(graphic.data, progress); horizontal = graphic.chart_orientation == 'horizontal'
     if horizontal:
         label_w = round(width * .28); chart_l, chart_r = left + pad + label_w, right - pad
@@ -145,9 +145,9 @@ def render_line_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
     image = Image.new('RGBA', (fmt.width, fmt.height), (0,0,0,0)); draw = ImageDraw.Draw(image)
     cx,cy=round(graphic.to[0]*fmt.width),round(graphic.to[1]*fmt.height); width,height=round(graphic.width*fmt.width),round(graphic.height*fmt.height)
     left=min(fmt.width-width-3,max(3,cx-width//2)); top=min(fmt.height-height-3,max(3,cy-height//2)); right,bottom=left+width,top+height
-    panel={'documentary':(44,38,18,238),'dark-band':(12,15,21,235),'bold-colour':(58,70,180,238)}.get(graphic.style)
+    panel={'documentary':(28,27,24,238),'dark-band':(12,15,21,235),'bold-colour':(30,36,58,238)}.get(graphic.style)
     if panel: draw.rounded_rectangle((left,top,right,bottom),radius=max(5,height//24),fill=panel)
-    ink=(245,193,27,255) if graphic.style=='documentary' else (255,255,255,255); accent=(255,216,76,255) if graphic.style=='bold-colour' else ink
+    ink=(255,255,255,255); accent=(245,193,27,255) if graphic.style=='documentary' else (105,170,235,255) if graphic.style=='bold-colour' else ink
     pad=max(8,round(height*.08)); label_h=max(14,round(height*.2)); chart=(left+pad,top+pad,right-pad,bottom-pad-label_h)
     normal=line_geometry(graphic.data); pixels=[(round(chart[0]+p.x*(chart[2]-chart[0])),round(chart[1]+p.y*(chart[3]-chart[1]))) for p in normal]
     shown=_partial(pixels,progress)
@@ -171,10 +171,10 @@ def render_pie_chart(item: Text, fmt: Format, progress: float) -> Image.Image:
     image=Image.new('RGBA',(fmt.width,fmt.height),(0,0,0,0)); draw=ImageDraw.Draw(image)
     cx,cy=round(graphic.to[0]*fmt.width),round(graphic.to[1]*fmt.height); width,height=round(graphic.width*fmt.width),round(graphic.height*fmt.height)
     left=min(fmt.width-width-3,max(3,cx-width//2)); top=min(fmt.height-height-3,max(3,cy-height//2)); right,bottom=left+width,top+height
-    panel={'documentary':(44,38,18,238),'dark-band':(12,15,21,235),'bold-colour':(58,70,180,238)}.get(graphic.style)
+    panel={'documentary':(28,27,24,238),'dark-band':(12,15,21,235),'bold-colour':(30,36,58,238)}.get(graphic.style)
     if panel: draw.rounded_rectangle((left,top,right,bottom),radius=max(5,height//24),fill=panel)
-    ink=(245,193,27,255) if graphic.style=='documentary' else (255,255,255,255)
-    palette=[(245,193,27,255),(77,166,255,255),(239,101,122,255),(91,204,153,255),(174,126,232,255),(255,154,76,255)]
+    ink=(255,255,255,255)
+    palette=[(215,188,105,255),(120,157,181,255),(190,132,140,255),(119,169,145,255),(155,132,178,255),(199,151,105,255)]
     pad=max(8,round(height*.07)); pie_size=min(height-2*pad,round(width*.48)); pie_box=(left+pad,top+(height-pie_size)//2,left+pad+pie_size,top+(height+pie_size)//2)
     sweep=-90+360*progress; slices=pie_geometry(graphic.data)
     for index,slice_ in enumerate(slices):
