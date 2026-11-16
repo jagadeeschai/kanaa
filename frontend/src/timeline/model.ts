@@ -925,11 +925,19 @@ export function trimText(timeline: Timeline, id: string, edge: 'in' | 'out', at:
     const earliest = others.filter((item) => item.start < text.start).reduce((last, item) => Math.max(last, item.start + item.length), 0);
     const start = round(Math.min(Math.max(at, earliest), end - MIN_CLIP_SECONDS));
     const shift = start - text.start;
-    return set({ start, length: round(end - start), ...('transform' in text && text.transform ? { transform: shiftKeys(text.transform, -shift) } : {}), ...('words' in text ? { words: keepWords(text.words, shift, end - start) } : {}) });
+    return set({ start, length: round(end - start), ...('transform' in text && text.transform ? { transform: shiftKeys(text.transform, -shift) } : {}), ...('words' in text ? { words: keepWords(text.words, shift, end - start) } : {}), ...('graphic' in text && text.graphic?.step_times?.length ? { graphic: { ...text.graphic, step_times: keepStepTimes(text.graphic.step_times, shift) } } : {}) });
   }
   const after = others.filter((item) => item.start >= end - 1e-6).reduce((first, item) => Math.min(first, item.start), Infinity);
   const length = round(Math.max(text.start + MIN_CLIP_SECONDS, Math.min(at, after)) - text.start);
   return set({ length, ...('words' in text ? { words: keepWords(text.words, 0, length) } : {}) });
+}
+
+/** Tapped step times after the start moves by `shift`: each step stays on its moment; steps already passed show at
+ * once, a millisecond apart so the times keep increasing. */
+function keepStepTimes(times: number[], shift: number): number[] {
+  const kept: number[] = [];
+  for (const at of times) kept.push(round(Math.max(at - shift, kept.length ? kept[kept.length - 1] + .001 : 0)));
+  return kept;
 }
 
 /** A caption's words after its start moves by `shift`: each stays on its moment, and none falls outside. */

@@ -26,3 +26,14 @@ test('preview event states agree with Python, including both sides of every tap'
   assert.deepEqual(stepStates(item), backend.times);
   assert.deepEqual(samples.map((at)=>graphicState(item,at,24)), backend.states);
 });
+
+test('trimming the start of a step list keeps each tapped step on its moment', async () => {
+  const { trimText } = await import('../src/timeline/model.ts');
+  const steps = { id: 's', start: 10, length: 4, text: 'Steps', style: 'plain', position: 'center', color: '#ffffff', size: 44,
+    graphic: { kind: 'step-list', style: 'clean', from: [.5, .5], to: [.5, .5], width: .8, height: .8, line_width: .006, steps: ['a', 'b', 'c'], step_times: [.5, 1.5, 3] } };
+  const timeline = { format: { width: 1280, height: 720, fps: 24 }, layers: [{ id: 'main', kind: 'video', items: [] }, { id: 'g', kind: 'text', name: 'Graphics', items: [steps] }] };
+  const later = trimText(timeline, 's', 'in', 11).layers[1].items[0];
+  assert.equal(later.start, 11); assert.deepEqual(later.graphic.step_times, [0, .5, 2]);
+  const earlier = trimText(timeline, 's', 'in', 12).layers[1].items[0];
+  assert.deepEqual(earlier.graphic.step_times, [0, .001, 1]);
+});
