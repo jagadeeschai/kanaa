@@ -97,6 +97,8 @@ export const TAMIL: Record<string, string> = {
 
   'Choose who pops out.': 'யார் முன்னே தோன்ற வேண்டும் என்று தேர்ந்தெடுங்கள்.', 'Choose what pops out. Things in the foreground are found; the scenery behind them is not.': 'எது முன்னே தோன்ற வேண்டும் என்று தேர்ந்தெடுங்கள். முன்புறப் பொருட்கள் கண்டறியப்படும்; பின்னணிக் காட்சி அல்ல.',
 
+  'Make it 3D…': '3D ஆக்கு…', 'Split the picture into the person and the scene behind them, so they move apart: the person comes forward, steps back or rises while the scene stays.': 'படத்தை நபராகவும் பின்னணிக் காட்சியாகவும் பிரிக்கும்; அவை தனித்தனியாக அசையும்: காட்சி அப்படியே இருக்க நபர் முன்னே வரலாம், பின்னே செல்லலாம், எழலாம்.',
+
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
   'Cinematic opener': 'திரைப்படத் தொடக்கம்', 'Golden title card': 'தங்கத் தலைப்பு அட்டை', 'Verse change': 'சரண மாற்றம்',

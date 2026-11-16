@@ -21,11 +21,12 @@ import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, More, Panel } from '../layout';
 import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
-import { AudioLines, Crop, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
+import { Layers3, AudioLines, Crop, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
 import { EffectPicker } from './EffectPicker';
+import { openPopout } from '../RemovePersonDialog';
 
 export type InspectorBindings = { onReframe: (() => void) | null; reframing: boolean; onMove: (move: MovePreset) => void; backgrounds: Photo[]; onBackground: (item: Photo) => void; logos: Photo[]; clipBrandMarks: { id: string; name: string }[]; onClipBrand: (item: Photo) => void; onRemoveClipBrand: (id: string) => void; clip: Clip; source?: PlaybackSource; onChange: (changes: Partial<Clip>, group?: string) => void; canDetach: boolean; onDetach: () => void; follow: React.ReactNode; isMain: boolean; copyReady: boolean; onLayout: (layout: 'side' | 'stack') => void; picking: boolean; onPick: () => void; timing: TimeFieldProps[]; overlay: VideoLayer | null; onLayer: (changes: Partial<VideoLayer>) => void; closesWithTransition: boolean; onShowEnter: () => void; onShowExit: () => void };
 
@@ -99,6 +100,10 @@ export function Inspector() {
     <ColourWheelsGroup wheels={clip.wheels} onChange={(wheels, group) => onChange({ wheels }, group)}/>
     {source?.kind === 'image' && <PictureLightsGroup clip={clip} source={source}/>}
     <EffectPicker clip={clip} onChange={onChange}/>
+    {isMain && source?.kind === 'image' && <Group title="Pop-out (3D)" tab="effects" startOpen keywords="3d pop out depth parallax person forward dolly zoom layer cut-out background"
+      tip="Split the picture into the person and the scene behind them, so they move apart: the person comes forward, steps back or rises while the scene stays.">
+      <button className="ed-button wide" onClick={() => openPopout({ clipId: clip.id, mediaId: clip.media_id })}><Layers3 size={14}/>{t('Make it 3D…')}</button>
+    </Group>}
     <Group title="Colour splash" tab="effects" onlyWhen={Boolean(clip.colour_splash)} startOpen={Boolean(clip.colour_splash)} changed={Boolean(clip.colour_splash)} keywords="colour splash color selective red saree black white monochrome wedding" tip="Keep one colour while the rest of the picture becomes black and white.">
     {clip.colour_splash ? <>
       <label className="ed-color"><span>Colour to keep</span><input type="color" aria-label="Colour to keep" value={clip.colour_splash.color} onChange={(event) => onChange({ colour_splash: { ...clip.colour_splash!, color: event.target.value } }, `splash-color-${clip.id}`)}/></label>

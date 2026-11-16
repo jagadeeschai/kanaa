@@ -12,13 +12,13 @@ const clip: Clip = {
 const noop = () => {};
 
 /** The clip panel for a video clip, with everything but the clip and its change handler switched off. */
-async function panel(language: 'en' | 'ta', overrides: Partial<Clip> = {}) {
+async function panel(language: 'en' | 'ta', overrides: Partial<Clip> = {}, sourceKind: 'video' | 'image' = 'video') {
   const { Inspector } = await inLanguage(language, () => import('../../src/editor/inspectors/ClipInspector'));
   const { EditorContext, InspectorBindingsProvider } = await import('../../src/editor/state/EditorContext');
   const { emptyTimeline } = await import('../../src/timeline/model');
   const shared = { timeline: emptyTimeline({ width: 1920, height: 1080, fps: 30 }), change: noop, pause: noop, openGuide: noop, now: 0, seek: noop, selectedId: null, select: noop };
   const onChange = vi.fn();
-  render(<EditorContext.Provider value={shared}><InspectorBindingsProvider name="clip" bindings={{ onReframe: null, reframing: false, onMove: noop, backgrounds: [], onBackground: noop, logos: [], clipBrandMarks: [], onClipBrand: noop, onRemoveClipBrand: noop, clip: { ...clip, ...overrides }, source: { url: '', kind: 'video', width: 1920, height: 1080, duration: 10 }, onChange: onChange, canDetach: false, onDetach: noop, follow: null, isMain: true, copyReady: false, onLayout: noop, picking: false, onPick: noop, timing: [{ label: 'Start', value: 0, fps: 30 }, { label: 'Duration', value: 10, fps: 30 }], overlay: null, onLayer: noop, closesWithTransition: false, onShowEnter: noop, onShowExit: noop }}><Inspector/></InspectorBindingsProvider></EditorContext.Provider>);
+  render(<EditorContext.Provider value={shared}><InspectorBindingsProvider name="clip" bindings={{ onReframe: null, reframing: false, onMove: noop, backgrounds: [], onBackground: noop, logos: [], clipBrandMarks: [], onClipBrand: noop, onRemoveClipBrand: noop, clip: { ...clip, ...overrides }, source: { url: '', kind: sourceKind, width: 1920, height: 1080, duration: 10 }, onChange: onChange, canDetach: false, onDetach: noop, follow: null, isMain: true, copyReady: false, onLayout: noop, picking: false, onPick: noop, timing: [{ label: 'Start', value: 0, fps: 30 }, { label: 'Duration', value: 10, fps: 30 }], overlay: null, onLayer: noop, closesWithTransition: false, onShowEnter: noop, onShowExit: noop }}><Inspector/></InspectorBindingsProvider></EditorContext.Provider>);
   return onChange;
 }
 const tab = (name: string) => userEvent.click(screen.getAllByRole('button', { name })[0]);
@@ -41,6 +41,19 @@ describe('Clip panel', () => {
     expect(groups()).not.toContain('Animation');
     await userEvent.click(screen.getByRole('button', { name: 'Dreamy glow' }));
     expect(onChange.mock.calls.some(([changes]) => Boolean(changes.dreamy_glow))).toBe(true);
+  });
+
+  it('a picture on the main track offers Pop-out (3D) under Effects; a video does not', async () => {
+    await panel('en', {}, 'image');
+    await tab('Effects');
+    expect(groups()).toContain('Pop-out (3D)');
+    expect(screen.getByRole('button', { name: 'Make it 3D…' })).toBeTruthy();
+  });
+
+  it('a video clip has no Pop-out group', async () => {
+    await panel('en');
+    await tab('Effects');
+    expect(groups()).not.toContain('Pop-out (3D)');
   });
 
   it('Colour has the looks; picking one changes the clip', async () => {
