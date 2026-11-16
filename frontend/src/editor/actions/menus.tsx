@@ -156,25 +156,36 @@ export function createEditorMenuActions(getInput: () => Input) {
     if (layer.locked) { setMenu({ ...place, items: [lockItem] }); return; }
     const clip = findClip(timeline, id);
     const sound = findSound(timeline, id)?.sound;
+    // One fixed order for every clip, in groups: edit, frame, AI, clip and sound, effects, arrange, delete. An action
+    // that does not apply to this clip is shown greyed in its place, never left out, so nothing moves between clips.
     const items: MenuItem[] = [];
     if (clip || sound) items.push({ label: 'Split here', hint: 'S', onSelect: () => { const next = sound ? splitSound(timeline, id, t, newId()) : layer === mainLayer(timeline) ? splitClip(timeline, t, newId()) : splitSound(timeline, id, t, newId()); if (next !== timeline) change(next); } });
+    items.push(...clipboard.menuItems(id, t));  // Starts and ends with its own divider.
     const clipItem = clip ? mediaById.get(clip.media_id) : undefined;
-    // Animate: unlocks the frame and opens Motion, in one step.
-    if (clip) items.push({ label: clip.frame_locked ? 'Unlock frame and animate' : 'Animate', onSelect: () => { if (clip.frame_locked) change(updateClip(timeline, id, { frame_locked: false })); setSelectedId(id); openPanelTab('clip', 'motion'); } });
-    if (clip && !clip.frame_locked) items.push({ label: 'Lock frame', onSelect: () => change(updateClip(timeline, id, { frame_locked: true })) });
-    if (clip && clipItem?.media_type === 'image') items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
-    if (clip) items.push({ label: 'Rename clip…', onSelect: () => setRenamingClip(id) });
-    if (clip) items.push({ label: clip.enabled === false ? 'Turn clip on' : 'Turn clip off', onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) });
-    // The tools that study the picture (and take a while) sit together under Smart tools.
-    const smart: MenuItem[] = [];
-    if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
-    if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
-    if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
-    items.push(...clipboard.menuItems(id, t));
-    if (clip && layer === mainLayer(timeline) && clip.freeze == null && mediaById.get(clip.media_id)?.media_type === 'video') items.push({ label: 'Freeze frame here', onSelect: () => freeze(t) }, { label: 'Snapshot freeze here', onSelect: () => { void snapshot(t); } });
     if (clip) {
-      if (!clip.muted && hasSound(clip.media_id)) items.push({ label: 'Detach sound', onSelect: () => detach(clip) });
-      items.push({ label: clip.muted ? 'Turn sound on' : 'Mute clip', onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) });
+      const picture = clipItem?.media_type === 'image';
+      const onMain = layer === mainLayer(timeline);
+      const canFreeze = onMain && clip.freeze == null && clipItem?.media_type === 'video';
+      // What every clip has, always in these places (the clipboard items above end the edit group).
+      items.push(
+        // Animate: unlocks the frame and opens Motion, in one step.
+        { label: 'Animate', onSelect: () => { if (clip.frame_locked) change(updateClip(timeline, id, { frame_locked: false })); setSelectedId(id); openPanelTab('clip', 'motion'); } },
+        { label: 'Frame locked', checked: Boolean(clip.frame_locked), onSelect: () => change(updateClip(timeline, id, { frame_locked: !clip.frame_locked })) },
+        { label: 'Clip on', checked: clip.enabled !== false, onSelect: () => change(updateClip(timeline, id, { enabled: clip.enabled === false })) },
+        { label: 'Rename clip…', onSelect: () => setRenamingClip(id) },
+        'divider');
+      // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
+      if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
+      else {
+        items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
+          { label: 'Detach sound', disabled: clip.muted || !hasSound(clip.media_id), onSelect: () => detach(clip) },
+          { label: 'Freeze frame here', disabled: !canFreeze, onSelect: () => freeze(t) },
+          { label: 'Snapshot freeze here', disabled: !canFreeze, onSelect: () => { void snapshot(t); } });
+        const smart: MenuItem[] = [];
+        if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
+        if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
+        if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
+      }
       if (clipEffects(clip).length) {
         // Built each time the menu draws, from the clip as it is now, so ticks stay true while switches are flipped.
         const now = () => { const latest = timelineRef.current; const found = latest && findClip(latest, id); return latest && found ? { latest, found } : null; };
@@ -197,7 +208,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         });
       }
     }
-    if (sound) items.push({ label: sound.muted ? 'Turn sound on' : 'Mute sound', onSelect: () => change(updateSound(timeline, id, { muted: !sound.muted })) }, { label: sound.duck ? 'Stop dipping under speech' : 'Dip under speech', onSelect: () => change(updateSound(timeline, id, { duck: !sound.duck })) });
+    if (sound) items.push('divider', { label: 'Sound on', checked: !sound.muted, onSelect: () => change(updateSound(timeline, id, { muted: !sound.muted })) }, { label: 'Dip under speech', checked: Boolean(sound.duck), onSelect: () => change(updateSound(timeline, id, { duck: !sound.duck })) });
     items.push('divider');
     const overlays = overlayLayers(timeline);
     const stack = overlays.findIndex((entry) => entry.id === layer.id);
@@ -207,8 +218,8 @@ export function createEditorMenuActions(getInput: () => Input) {
     // Which neighbour grows: the one before when it could, otherwise the one after.
     const main = mainLayer(timeline).items; const at = main.findIndex((each) => each.id === id);
     const grewBefore = Boolean(stretchable && at > 0 && clipLength(mainLayer(stretchable).items[at - 1]) > clipLength(main[at - 1]) + 1e-6);
-    if (stretchable) items.push({ label: grewBefore ? 'Delete and stretch the clip before' : 'Delete and stretch the clip after', hint: isSongVideo(timeline) ? '⌫' : undefined, onSelect: () => { change(stretchable); setSelectedId(null); } });
-    items.push({ label: stretchable ? 'Delete and close the gap' : 'Delete', hint: stretchable && isSongVideo(timeline) ? undefined : '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findAdjust(timeline, id) ? removeAdjust(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
+    if (stretchable) items.push({ label: grewBefore ? 'Delete, clip before fills in' : 'Delete, clip after fills in', hint: isSongVideo(timeline) ? '⌫' : undefined, onSelect: () => { change(stretchable); setSelectedId(null); } });
+    items.push({ label: stretchable ? 'Delete, close the gap' : 'Delete', hint: stretchable && isSongVideo(timeline) ? undefined : '⌫', danger: true, onSelect: () => { change(findSound(timeline, id) ? removeSound(timeline, id) : findText(timeline, id) ? removeText(timeline, id) : findBlur(timeline, id) ? removeBlur(timeline, id) : findAdjust(timeline, id) ? removeAdjust(timeline, id) : findCaption(timeline, id) ? removeCaption(timeline, id) : removeClip(timeline, id)); setSelectedId(null); } });
     setMenu({ ...place, items });
   };
     return invoke(...args);

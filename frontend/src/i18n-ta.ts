@@ -52,9 +52,12 @@ export const TAMIL: Record<string, string> = {
   'Your description goes to the video AI in AI settings → Video, and uses its credits. It comes back silent: your song stays the soundtrack.': 'உங்கள் விவரிப்பு AI அமைப்புகள் → காணொளி-யில் உள்ள காணொளி AI-க்குச் சென்று அதன் கடன்களைப் பயன்படுத்தும். அது ஒலியின்றி வரும்: உங்கள் பாடலே பின்னணி இசை.',
   'Keep in media': 'ஊடகத்தில் வைத்திரு',
 
-  'Delete and stretch the clip before': 'நீக்கி, முந்தைய கிளிப்பை நீட்டு', 'Delete and stretch the clip after': 'நீக்கி, அடுத்த கிளிப்பை நீட்டு', 'Delete and close the gap': 'நீக்கி, இடைவெளியை மூடு',
+  'Delete, clip before fills in': 'நீக்கு, முந்தைய கிளிப் நிரப்பும்', 'Delete, clip after fills in': 'நீக்கு, அடுத்த கிளிப் நிரப்பும்', 'Delete, close the gap': 'நீக்கு, இடைவெளியை மூடு',
   'Replace the selected clip': 'தேர்ந்த கிளிப்பை மாற்று', 'Select clips that are next to each other.': 'அடுத்தடுத்து உள்ள கிளிப்புகளைத் தேர்ந்தெடுங்கள்.',
   'Select the clips on the main track to replace first.': 'மாற்ற வேண்டிய முதன்மைத் தடக் கிளிப்புகளை முதலில் தேர்ந்தெடுங்கள்.',
+
+  'Clip on': 'கிளிப் இயக்கத்தில்',
+  'Sound on': 'ஒலி இயக்கத்தில்',
 
   'Add (bright light)': 'கூட்டு (பிரகாசமான ஒளி)',
 
