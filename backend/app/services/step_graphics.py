@@ -9,7 +9,8 @@ def step_starts(item):
     count = len(item.graphic.steps)
     duration = min(item.length, item.enter.duration) if item.enter else .65
     defaults = [index * max(0, duration - .18) / max(1, count - 1) for index in range(count)]
-    timed = item.graphic.step_times or []
+    # Trimming the clip shorter must not make the project invalid: a tapped time past the end is simply not used.
+    timed = [at for at in item.graphic.step_times or [] if at < item.length]
     if timed:
         # A partially tapped list leaves the remaining steps evenly spaced after the last tap.
         remaining = count - len(timed)
@@ -45,7 +46,9 @@ def wrapped(draw, text, size, width, height, smallest):
         cut = i
     prefix = ''.join(letters[:max(1, cut)])
     space = prefix.rfind(' ')
-    if space > len(prefix) // 2: cut = len(clusters(prefix[:space]))
+    # Break between words whenever the first line has one; only a single long word is broken between letters.
+    if space > 0 and cut < len(letters): cut = len(clusters(prefix[:space]))
+    elif ' ' in text.strip() and cut < len(letters): cut = len(clusters(text[:text.index(' ', 1)]))  # First word too wide: shrink it, don't split it.
     cut = max(1, cut)
     return [_fit(draw, ''.join(letters[:cut]).strip(), size, width, height // 2, smallest),
             _fit(draw, ''.join(letters[cut:]).strip(), size, width, height // 2, smallest)]

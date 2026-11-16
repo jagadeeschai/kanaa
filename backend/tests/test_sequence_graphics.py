@@ -111,9 +111,25 @@ class SequenceGraphics(unittest.TestCase):
                     self.assertGreaterEqual(ys.min(),int(height*.05)-1); self.assertLessEqual(ys.max(),int(height*.95)+1)
 
     def test_step_validation_and_times_inside_clip(self):
-        for changes in ({'steps':['one']}, {'step_times':[.3,.2]}, {'step_times':[0,1,3]}, {'step_times':[float('nan')]}):
+        for changes in ({'steps':['one']}, {'step_times':[.3,.2]}, {'step_times':[float('nan')]}):
             data = step_item().model_dump(by_alias=True); data['graphic'].update(changes)
             with self.subTest(changes=changes), self.assertRaises(ValueError): Text.model_validate(data)
+
+    def test_trimming_shorter_than_a_tapped_step_keeps_the_project_valid(self):
+        data = step_item().model_dump(by_alias=True); data['graphic']['step_times'] = [.5, 1, 2.5]; data['length'] = 2
+        item = Text.model_validate(data)
+        self.assertEqual(step_starts(item)[:2], [.5, 1]); self.assertTrue(all(at < 2 for at in step_starts(item)))
+
+    def test_long_labels_wrap_between_words(self):
+        from PIL import ImageDraw
+        from app.services.step_graphics import wrapped
+        from app.services.chart_graphics import _font
+        draw = ImageDraw.Draw(Image.new('RGBA', (10, 10))); text = 'ஆங்கிலேயர் ஆட்சி'
+        width = draw.textbbox((0, 0), text, font=_font(text, 30))[2] * .8
+        lines = [shown for _, _, shown in wrapped(draw, text, 30, width, 200, 12)]
+        self.assertEqual(lines, ['ஆங்கிலேயர்', 'ஆட்சி'])
+        narrow = draw.textbbox((0, 0), 'ஆங்கிலேயர்', font=_font(text, 30))[2] * .8  # even narrower than the first word
+        self.assertEqual([s for _, _, s in wrapped(draw, text, 30, narrow, 200, 12)], ['ஆங்கிலேயர்', 'ஆட்சி'])
 
     def test_exact_event_states_and_real_pixels_before_and_after(self):
         item = step_item(); item.graphic.step_times = [.25,.75,1.25]; fmt=Format(width=426,height=240,fps=24)

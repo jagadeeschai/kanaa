@@ -499,12 +499,6 @@ class Text(Strict):
     def designed(self) -> bool:
         return bool(self.subtitle) or self.align != 'center' or self.band_color is not None or bool(self.font) or bool(self.tamil_font) or self.spacing > 0 or self.design is not None or self.karaoke is not None or self.style == 'plain' or self.layout is not None
 
-    @model_validator(mode='after')
-    def step_times_inside_clip(self):
-        if self.graphic and self.graphic.step_times and self.graphic.step_times[-1] >= self.length_:
-            raise ValueError('Step times must be inside the clip.')
-        return self
-
     @property
     def length(self) -> float:
         return self.length_

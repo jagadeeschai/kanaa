@@ -10,7 +10,7 @@ export function parseSteps(value: string): { steps?: string[]; error?: string } 
 export function stepStarts(item: TextItem): number[] {
   const count = item.graphic?.steps?.length ?? 2;
   const duration = item.enter ? Math.min(item.length, item.enter.duration) : .65;
-  const timed = item.graphic?.step_times ?? [];
+  const timed = (item.graphic?.step_times ?? []).filter((at) => at < item.length);  // Same rule as step_graphics.py.
   if (timed.length) {
     const remaining = count - timed.length, last = timed[timed.length - 1];
     return [...timed, ...Array.from({ length: remaining }, (_, i) => last + (item.length - last) * (i + 1) / (remaining + 1))];
