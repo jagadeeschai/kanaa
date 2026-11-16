@@ -27,7 +27,7 @@ export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphi
   };
   const handle = (kind: 'from' | 'to' | 'size', point: Point, label: string) => <button className={`ed-graphic-handle ${kind}`} aria-label={t(label)} title={t(label)} style={{ left: `${point[0] * 100}%`, top: `${point[1] * 100}%` }} onPointerDown={(event) => drag(kind, event)}/>;
   const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight' || graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card' || graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart';
-  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar';
+  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar' || graphic.kind === 'icon';
   const outline = graphic.kind === 'outline';
   return <div className="ed-graphic-handles" aria-label={t('Graphic handles')}>
     {!highlight && !outline && !sequence && handle('from', graphic.from, 'Move arrow tail')}

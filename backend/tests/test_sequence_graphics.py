@@ -26,7 +26,13 @@ def timeline_item():
     return Text.model_validate(data)
 
 
-MAKERS = [step_item, timeline_item]
+def icon_item():
+    data=step_item().model_dump(by_alias=True); data['id']='icon'; data['text']='Icon'
+    data['graphic'].update(kind='icon',icon='pin',icon_badge=True,width=.24,height=.42)
+    return Text.model_validate(data)
+
+
+MAKERS = [step_item, timeline_item, icon_item]
 STYLES = ('clean', 'documentary', 'dark-band', 'bold-colour')
 
 
@@ -61,6 +67,20 @@ def compare_gpu(make, style, width=426, height=240, folder=None):
 
 
 class SequenceGraphics(unittest.TestCase):
+    def test_every_icon_is_original_drawn_inside_its_box_and_uses_colour(self):
+        from app.services.icon_graphics import ICONS,render_icon
+        item=icon_item(); fmt=Format(width=426,height=240,fps=24); item.graphic.icon_badge=False
+        hashes=set()
+        for kind in ICONS:
+            item.graphic.icon=kind; item.color='#fd3560'
+            pixels=np.asarray(render_icon(item,fmt,1)); ys,xs=np.nonzero(pixels[:,:,3]>0)
+            self.assertGreater(len(xs),20); self.assertGreaterEqual(xs.min(),160); self.assertLessEqual(xs.max(),266)
+            self.assertGreaterEqual(ys.min(),68); self.assertLessEqual(ys.max(),172)
+            hashes.add(pixels.tobytes()); ink=pixels[pixels[:,:,3]>240][:,:3]
+            self.assertGreater(ink[:,0].mean(),220); self.assertLess(ink[:,1].mean(),80)
+            early=np.asarray(render_icon(item,fmt,.3)); self.assertLess(np.count_nonzero(early[:,:,3]),np.count_nonzero(pixels[:,:,3]))
+        self.assertEqual(len(hashes),9)
+
     def test_timeline_marker_hits_each_point_exactly_when_label_appears(self):
         from app.services.timeline_graphics import marker, point_times, timeline_states, render_timeline_bar
         item=timeline_item(); times=point_times(item); states=timeline_states(item,24)

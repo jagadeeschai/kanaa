@@ -169,7 +169,7 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
         from app.services import explainer_graphics
         paths, shown = explainer_graphics.frames(item, fmt, fps, frames, folder, f'{name}-graphic')
         return {'kind': 'image', 'path': str(paths[0]), 'paths': [str(path) for path in paths], 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
-                **_frames(item.transform, None, item.exit, frames / fps, frames, fps)}
+                **_frames(item.transform, item.enter if item.enter and item.enter.preset != 'reveal' else None, item.exit, frames / fps, frames, fps)}
     if title3d.is_3d(item):
         # Depth, tilt and the letter tricks (pop-letters, reveal, line...): the export's own frames, already in place,
         # each different one drawn once (title3d_render.render_title_sequence).

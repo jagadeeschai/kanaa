@@ -1141,7 +1141,7 @@ class Builder:
                 listing.write_text('\n'.join(rows) + '\n', encoding='utf-8')
                 index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
                 self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
-                shown = self.pose(label, item.transform, None, item.exit, item.length, frames, 1, 0, label)
+                shown = self.pose(label, item.transform, item.enter if item.enter and item.enter.preset != 'reveal' else None, item.exit, item.length, frames, 1, 0, label)
             elif title3d.is_3d(item):
                 # Tilted, extruded or pinned: drawn already posed, frame by frame, through the same corners as the preview.
                 states = None

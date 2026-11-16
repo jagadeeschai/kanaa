@@ -35,6 +35,7 @@ export function graphicState(item: TextItem, local: number, fps = 24): number | 
 /** Where a graphic sits at item-local time `local`, for Follow: its own box, moved by its position keys. */
 export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]): [number, number, number, number] {
   const [dx, dy] = offset;
+  if (graphic.kind === 'icon') return [graphic.to[0]+dx,graphic.to[1]+dy,graphic.width,graphic.height];
   if (graphic.kind === 'outline' && graphic.shape?.length) {
     const xs = graphic.shape.map((p) => p[0]), ys = graphic.shape.map((p) => p[1]);
     const [left, right, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];

@@ -40,7 +40,7 @@ export function createGraphicActions(getInput: () => Input) {
     if (!current) return;
     const id = newId();
     const text: TextItem = { id, start: at, length: 3, text: label, style: 'plain', position: 'center', color: colour, size: 44,
-      enter: { preset: graphic.kind === 'callout' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
+      enter: { preset: graphic.kind === 'callout' || graphic.kind === 'icon' ? 'pop' : 'reveal', duration: graphic.kind === 'spotlight' ? .8 : .65 },
       ...(graphic.kind === 'lower-third' ? { exit: { preset: 'reveal' as const, duration: .45 } } : ['count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart'].includes(graphic.kind) ? { exit: { preset: 'fade' as const, duration: .4 } } : {}), transform: REST_TRANSFORM, graphic };
     change(addGraphic(current, text, newId()));
     setSelectedId(id);
@@ -49,6 +49,11 @@ export function createGraphicActions(getInput: () => Input) {
   const now = () => Math.round((getInput().engineRef.current?.currentTime ?? 0) * 1000) / 1000;
 
   const addExplainerGraphic = (kind: GraphicKind, point: [number, number]) => {
+    if (kind === 'icon') {
+      const format=getInput().timelineRef.current?.format;
+      place({kind,style:'clean',from:point,to:point,width:.22*(format ? format.height/format.width : .5625),height:.22,line_width:.006,icon:'pin',icon_badge:true},'Icon','#ffffff',now());
+      return;
+    }
     if (kind === 'timeline-bar') {
       place({ kind, style: 'documentary', from: [.5,.5], to: [.5,.5], width: .84, height: .64, line_width: .006,
         points: [{date:'300 BCE',label:'சங்க காலம்'},{date:'1947',label:'விடுதலை'},{date:'இன்று',label:'புதிய தொடக்கம்'}] }, 'Timeline bar', '#ffffff', now());

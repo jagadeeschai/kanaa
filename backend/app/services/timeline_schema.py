@@ -381,7 +381,7 @@ class TimelinePoint(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -412,6 +412,8 @@ class ExplainerGraphic(Strict):
     highlight_current: bool = True
     points: Optional[List[TimelinePoint]] = Field(default=None, min_length=2, max_length=8)
     timeline_vertical: bool = False
+    icon: Literal['pin', 'warning', 'tick', 'cross', 'question', 'star', 'heart', 'trend-up', 'trend-down'] = 'pin'
+    icon_badge: bool = False
 
     @field_validator('from_', 'to')
     @classmethod

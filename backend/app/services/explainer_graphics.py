@@ -125,7 +125,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'timeline-bar':
+    if graphic.kind == 'icon':
+        from app.services.icon_graphics import render_icon
+        image = render_icon(item, fmt, progress)
+    elif graphic.kind == 'timeline-bar':
         from app.services.timeline_graphics import render_timeline_bar
         image = render_timeline_bar(item, fmt, progress)
     elif graphic.kind == 'step-list':
