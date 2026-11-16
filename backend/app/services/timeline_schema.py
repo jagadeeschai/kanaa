@@ -376,7 +376,7 @@ class ChartRow(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -396,7 +396,7 @@ class ExplainerGraphic(Strict):
     indian_grouping: bool = False
     tamil_numerals: bool = False
     card_mode: Literal['full', 'corner'] = 'full'
-    data: Optional[List[ChartRow]] = Field(default=None, max_length=12)
+    data: Optional[List[ChartRow]] = None
     chart_orientation: Literal['horizontal', 'vertical'] = 'horizontal'
     highlight_index: Optional[int] = Field(default=None, ge=0, le=11)
     show_values: bool = True
@@ -419,11 +419,13 @@ class ExplainerGraphic(Strict):
     def outline_has_shape(self):
         if self.kind == 'outline' and not self.shape:
             raise ValueError('A glow outline needs the outline of something: right-click on it in the preview.')
-        if self.kind == 'bar-chart':
+        if self.kind in ('bar-chart', 'line-chart'):
             if not self.data:
                 raise ValueError('Add at least one row as label, value.')
-            if len(self.data) > 8:
+            if self.kind == 'bar-chart' and len(self.data) > 8:
                 raise ValueError('A bar chart can have up to 8 rows.')
+            if self.kind == 'line-chart' and len(self.data) > 12:
+                raise ValueError('A line chart can have up to 12 points.')
             if self.highlight_index is not None and self.highlight_index >= len(self.data):
                 raise ValueError('The highlighted bar must be one of the data rows.')
         return self

@@ -4,7 +4,7 @@ export const GRAPHIC_STATES = 24; // Matches backend/app/services/explainer_grap
 export const MAX_GRAPHIC_STATES = 90;
 
 export function graphicStateCount(item: TextItem, fps: number): number {
-  if (item.graphic && ['count-up', 'bar-chart'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
+  if (item.graphic && ['count-up', 'bar-chart', 'line-chart'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
     const duration = Math.max(1e-6, Math.min(item.length, item.enter.duration));
     return Math.min(MAX_GRAPHIC_STATES, Math.max(2, Math.round(duration * fps) + 1));
   }
@@ -38,7 +38,7 @@ export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]):
   if (graphic.kind === 'lower-third') return [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
   if (graphic.kind === 'count-up') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'chapter-card') return graphic.card_mode === 'full' ? [.5 + dx, .5 + dy, 1, 1] : [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
-  if (graphic.kind === 'bar-chart') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
+  if (graphic.kind === 'bar-chart' || graphic.kind === 'line-chart') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   return [graphic.to[0] + dx, graphic.to[1] + dy, .12, .12];  // An arrow or callout follows what its point is on.
 }

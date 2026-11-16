@@ -49,7 +49,7 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
-export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart';
+export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart' | 'line-chart';
 export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary' | 'dark-band' | 'bold-colour';
 export type ChartRow = { label: string; value: number };
 /** Editable explainer artwork. Coordinates are frame shares, so preview and export use the same geometry. */
