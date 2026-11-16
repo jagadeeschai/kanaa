@@ -1,10 +1,11 @@
 import type { ExplainerGraphic, TextItem } from './model';
-import { stepStates } from './sequence-graphics.ts';
+import { stepStates, timelineStates } from './sequence-graphics.ts';
 
 export const GRAPHIC_STATES = 24; // Matches backend/app/services/explainer_graphics.py.
 export const MAX_GRAPHIC_STATES = 90;
 
 export function graphicStateCount(item: TextItem, fps: number): number {
+  if (item.graphic?.kind === 'timeline-bar') return timelineStates(item).length;
   if (item.graphic?.kind === 'step-list') return stepStates(item).length;
   if (item.graphic && ['count-up', 'bar-chart', 'line-chart', 'pie-chart'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
     const duration = Math.max(1e-6, Math.min(item.length, item.enter.duration));
@@ -14,6 +15,7 @@ export function graphicStateCount(item: TextItem, fps: number): number {
 }
 
 export function graphicState(item: TextItem, local: number, fps = 24): number | null {
+  if (item.graphic?.kind === 'timeline-bar') return Math.max(0, timelineStates(item).filter((at) => at <= local).length - 1);
   if (item.graphic?.kind === 'step-list') return Math.max(0, stepStates(item).filter((at) => at <= local).length - 1);
   if (!item.graphic || item.enter?.preset !== 'reveal') return null;
   const states = graphicStateCount(item, fps);
@@ -39,7 +41,7 @@ export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]):
     return [(left + right) / 2 + dx, (top + bottom) / 2 + dy, Math.max(.03, right - left), Math.max(.03, bottom - top)];
   }
   if (graphic.kind === 'lower-third') return [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
-  if (graphic.kind === 'count-up' || graphic.kind === 'step-list') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
+  if (graphic.kind === 'count-up' || graphic.kind === 'step-list' || graphic.kind === 'timeline-bar') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'chapter-card') return graphic.card_mode === 'full' ? [.5 + dx, .5 + dy, 1, 1] : [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
   if (graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];

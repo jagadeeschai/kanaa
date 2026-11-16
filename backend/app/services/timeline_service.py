@@ -1126,7 +1126,7 @@ class Builder:
             render_text_image(item, self.fmt, image)
             frames = self.frames(item.length)
             label, output = f'text{position}_{number}', f't{position}_{number}'
-            if item.graphic and (item.graphic.kind == 'step-list' or item.enter and item.enter.preset == 'reveal'):
+            if item.graphic and (item.graphic.kind in ('step-list', 'timeline-bar') or item.enter and item.enter.preset == 'reveal'):
                 from app.services import explainer_graphics
                 paths, shown_states = explainer_graphics.frames(item, self.fmt, fps, frames, self.folder, f'text-{position}-{number}-graphic')
                 listing = self.folder / f'text-{position}-{number}-graphic.txt'

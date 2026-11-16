@@ -15,6 +15,9 @@ MAX_STATES = 90
 
 def state_count(item: Text, fps: int) -> int:
     """Count-up gets roughly one picture per entrance frame; strokes keep their proven 24 states."""
+    if item.graphic and item.graphic.kind == 'timeline-bar':
+        from app.services.timeline_graphics import timeline_states
+        return len(timeline_states(item, fps))
     if item.graphic and item.graphic.kind == 'step-list':
         from app.services.step_graphics import step_states
         return len(step_states(item, fps))
@@ -26,6 +29,10 @@ def state_count(item: Text, fps: int) -> int:
 
 def state_at(item: Text, local: float, fps: int = 24) -> int:
     """Quantised stroke state at an item-local time; the preview uses the same formula."""
+    if item.graphic and item.graphic.kind == 'timeline-bar':
+        from bisect import bisect_right
+        from app.services.timeline_graphics import timeline_states
+        return max(0, bisect_right(timeline_states(item, fps), local) - 1)
     if item.graphic and item.graphic.kind == 'step-list':
         from bisect import bisect_right
         from app.services.step_graphics import step_states
@@ -118,7 +125,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'step-list':
+    if graphic.kind == 'timeline-bar':
+        from app.services.timeline_graphics import render_timeline_bar
+        image = render_timeline_bar(item, fmt, progress)
+    elif graphic.kind == 'step-list':
         from app.services.step_graphics import render_steps
         image = render_steps(item, fmt, progress)
     elif graphic.kind in ('bar-chart', 'line-chart', 'pie-chart'):

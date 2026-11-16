@@ -4,7 +4,7 @@ import { createGraphicActions } from '../../actions/graphics';
 import { useEditor } from '../../state/EditorContext';
 import type { GraphicKind } from '../../../timeline/model';
 
-const GRAPHICS: { kind: GraphicKind; label: string }[] = [{ kind: 'step-list', label: 'Step list' }];
+const GRAPHICS: { kind: GraphicKind; label: string }[] = [{ kind: 'step-list', label: 'Step list' }, {kind:'timeline-bar',label:'Timeline bar'}];
 
 export function GraphicsSection() {
   const editor = useEditor();

@@ -27,10 +27,11 @@ export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphi
   };
   const handle = (kind: 'from' | 'to' | 'size', point: Point, label: string) => <button className={`ed-graphic-handle ${kind}`} aria-label={t(label)} title={t(label)} style={{ left: `${point[0] * 100}%`, top: `${point[1] * 100}%` }} onPointerDown={(event) => drag(kind, event)}/>;
   const highlight = graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight' || graphic.kind === 'lower-third' || graphic.kind === 'count-up' || graphic.kind === 'chapter-card' || graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart';
-  const outline = graphic.kind === 'outline' || graphic.kind === 'step-list';
+  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar';
+  const outline = graphic.kind === 'outline';
   return <div className="ed-graphic-handles" aria-label={t('Graphic handles')}>
-    {!highlight && !outline && handle('from', graphic.from, 'Move arrow tail')}
-    {handle('to', graphic.to, highlight || outline ? 'Move highlight' : 'Move arrow point')}
-    {highlight && handle('size', [clamp(graphic.to[0] + graphic.width / 2), clamp(graphic.to[1] + graphic.height / 2)], 'Resize highlight')}
+    {!highlight && !outline && !sequence && handle('from', graphic.from, 'Move arrow tail')}
+    {handle('to', graphic.to, highlight || outline || sequence ? 'Move highlight' : 'Move arrow point')}
+    {(highlight || sequence) && handle('size', [clamp(graphic.to[0] + graphic.width / 2), clamp(graphic.to[1] + graphic.height / 2)], 'Resize highlight')}
   </div>;
 }

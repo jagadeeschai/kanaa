@@ -1,13 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { parseSteps, stepStates } from '../src/timeline/sequence-graphics.ts';
+import { parseSteps, parsePoints, stepStates, timelineStates } from '../src/timeline/sequence-graphics.ts';
 import { graphicState } from '../src/timeline/graphics.ts';
 
 test('steps strip optional numbering and bullets and validate counts', () => {
   assert.deepEqual(parseSteps('1. திட்டம்\n• உருவாக்கம்\n3) பகிர்வு').steps, ['திட்டம்', 'உருவாக்கம்', 'பகிர்வு']);
   assert.ok(parseSteps('one').error);
   assert.ok(parseSteps(Array(9).fill('one').join('\n')).error);
+});
+
+test('timeline points preserve free dates, optional labels and order', () => {
+  assert.deepEqual(parsePoints('சங்க காலம், தமிழ்\nMar 2024\n1947, விடுதலை').points,[{date:'சங்க காலம்',label:'தமிழ்'},{date:'Mar 2024',label:''},{date:'1947',label:'விடுதலை'}]);
+  assert.ok(parsePoints('one').error); assert.ok(parsePoints(', label\n1947').error);
+  const item={length:3,enter:{duration:1.2,preset:'reveal'},graphic:{kind:'timeline-bar',points:[{date:'a'},{date:'b'},{date:'c'}]}};
+  const times=timelineStates(item);
+  assert.equal(times[12],.6); assert.equal(times[24],1.2);
+  assert.equal(graphicState(item,.6),12); assert.equal(graphicState(item,.6-1e-6),11);
 });
 
 test('preview event states agree with Python, including both sides of every tap', () => {

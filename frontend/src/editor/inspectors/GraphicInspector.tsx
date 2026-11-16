@@ -9,6 +9,7 @@ import { AnimationPicker, Chips } from './parts';
 import { useEffect, useState } from 'react';
 import { chartDataText, parseChartData } from '../../timeline/chart-data';
 import { SequenceGraphicFields } from './SequenceGraphicFields';
+import { TimelineGraphicFields } from './TimelineGraphicFields';
 
 const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
@@ -20,6 +21,7 @@ const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'line-chart', label: 'Line chart' },
   { id: 'pie-chart', label: 'Pie or donut chart' },
   { id: 'step-list', label: 'Step list' },
+  { id: 'timeline-bar', label: 'Timeline bar' },
 ];
 const STYLES: { id: GraphicStyle; label: string }[] = [
   { id: 'clean', label: 'Clean white' }, { id: 'hand-drawn', label: 'Hand-drawn' },
@@ -36,7 +38,7 @@ const ENTRANCES = [{ id: 'reveal' as const, label: 'Draw on' }, { id: 'pop' as c
 
 export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { text: TextItem; timing: TimeFieldProps[]; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; follow?: React.ReactNode }) {
   const graphic = text.graphic!;
-  const sequence = graphic.kind === 'step-list';
+  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar';
   const [draft, setDraft] = useState(text.text);
   const [dataDraft, setDataDraft] = useState(chartDataText(graphic.data));
   const [dataError, setDataError] = useState('');
@@ -50,8 +52,8 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
   return <Panel id="graphic" tabs={[{ id: 'look', label: 'Graphic', Icon: Circle }, { id: 'motion', label: 'Motion', Icon: MoveRight, changed: Boolean(text.enter) }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Graphic" tab="look" startOpen keywords="arrow circle box callout label pointer explainer" tip="The point you right-clicked is the arrow tip or the centre of the highlight. A glow outline traces what you right-clicked.">
-      {graphic.kind !== 'outline' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: { ...graphic, kind, ...(kind === 'step-list' && !graphic.steps ? { steps: ['திட்டமிடுங்கள்', 'உருவாக்குங்கள்', 'பகிருங்கள்'], step_times: null, width: .78, height: .78 } : {}) } })}/>}
-      {sequence && <><SequenceGraphicFields key={text.id} text={text} onChange={onChange}/><ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
+      {graphic.kind !== 'outline' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: { ...graphic, kind, ...(kind === 'step-list' && !graphic.steps ? { steps: ['திட்டமிடுங்கள்', 'உருவாக்குங்கள்', 'பகிருங்கள்'], step_times: null, width: .78, height: .78 } : {}), ...(kind === 'timeline-bar' && !graphic.points ? { points: [{ date:'1947',label:'விடுதலை' },{date:'இன்று',label:'புதிய தொடக்கம்'}], width:.84,height:.64 } : {}) } })}/>}
+      {sequence && <>{graphic.kind === 'step-list' ? <SequenceGraphicFields key={text.id} text={text} onChange={onChange}/> : <TimelineGraphicFields key={text.id} text={text} onChange={onChange}/>}<ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><More><ValueSlider label="Width" value={graphic.width} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(width,group)=>onChange({graphic:{...graphic,width}},group)}/><ValueSlider label="Height" value={graphic.height} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(height,group)=>onChange({graphic:{...graphic,height}},group)}/></More><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
       {graphic.kind === 'callout' && (
         <textarea className="ed-text" aria-label={t('Callout label')} lang="ta" value={draft} maxLength={200} rows={2}
           onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>

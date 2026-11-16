@@ -26,3 +26,18 @@ export function stepStates(item: TextItem): number[] {
   });
   return [...times].sort((a, b) => a - b);
 }
+
+export function parsePoints(value: string): { points?: { date: string; label: string }[]; error?: string } {
+  const points = value.split('\n').filter((line) => line.trim()).map((line) => {
+    const split = line.search(/[,\t]/);
+    return { date: (split < 0 ? line : line.slice(0, split)).trim(), label: split < 0 ? '' : line.slice(split + 1).trim() };
+  });
+  return points.length < 2 || points.length > 8 || points.some((point) => !point.date || point.date.length > 120 || point.label.length > 300)
+    ? { error: 'Add 2–8 points as date, label.' } : { points };
+}
+
+export function timelineStates(item: TextItem): number[] {
+  const count = item.graphic?.points?.length ?? 2, duration = item.enter ? Math.min(item.length, item.enter.duration) : .65;
+  const times = Array.from({ length: count }, (_, i) => duration * i / (count - 1));
+  return times.slice(0, -1).flatMap((at, i) => Array.from({ length: 12 }, (_, n) => at + (times[i + 1] - at) * n / 12)).concat(times[count - 1]);
+}

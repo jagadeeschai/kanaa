@@ -374,9 +374,14 @@ class ChartRow(Strict):
     value: float = Field(ge=-1_000_000_000_000, le=1_000_000_000_000)
 
 
+class TimelinePoint(Strict):
+    date: str = Field(min_length=1, max_length=120)
+    label: str = Field(default='', max_length=300)
+
+
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -405,6 +410,8 @@ class ExplainerGraphic(Strict):
     step_times: Optional[List[Annotated[float, Field(ge=0, allow_inf_nan=False)]]] = Field(default=None, max_length=8)
     step_bullets: bool = False
     highlight_current: bool = True
+    points: Optional[List[TimelinePoint]] = Field(default=None, min_length=2, max_length=8)
+    timeline_vertical: bool = False
 
     @field_validator('from_', 'to')
     @classmethod
@@ -429,6 +436,8 @@ class ExplainerGraphic(Strict):
                 raise ValueError('Add 2–8 steps, one per line.')
             if self.step_times and (len(self.step_times) > len(self.steps) or any(b <= a for a, b in zip(self.step_times, self.step_times[1:]))):
                 raise ValueError('Step times must increase, with one time per step.')
+        if self.kind == 'timeline-bar' and (not self.points or any(not point.date.strip() for point in self.points)):
+            raise ValueError('Add 2–8 points as date, label.')
         if self.kind in ('bar-chart', 'line-chart', 'pie-chart'):
             if not self.data:
                 raise ValueError('Add at least one row as label, value.')

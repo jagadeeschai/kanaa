@@ -20,7 +20,13 @@ def step_item():
         'steps': ['திட்டமிடுங்கள்', 'உருவாக்குங்கள்', 'பகிருங்கள்'], 'highlight_current': False}})
 
 
-MAKERS = [step_item]
+def timeline_item():
+    data=step_item().model_dump(by_alias=True); data['id']='timeline'; data['text']='Timeline bar'
+    data['graphic'].update(kind='timeline-bar',points=[{'date':'300 BCE','label':'சங்க காலம்'},{'date':'1947','label':'விடுதலை'},{'date':'இன்று','label':'புதிய தொடக்கம்'}])
+    return Text.model_validate(data)
+
+
+MAKERS = [step_item, timeline_item]
 STYLES = ('clean', 'documentary', 'dark-band', 'bold-colour')
 
 
@@ -55,6 +61,35 @@ def compare_gpu(make, style, width=426, height=240, folder=None):
 
 
 class SequenceGraphics(unittest.TestCase):
+    def test_timeline_marker_hits_each_point_exactly_when_label_appears(self):
+        from app.services.timeline_graphics import marker, point_times, timeline_states, render_timeline_bar
+        item=timeline_item(); times=point_times(item); states=timeline_states(item,24)
+        fmt=Format(width=426,height=240,fps=24)
+        for i,at in enumerate(times):
+            self.assertEqual(marker(item,at),i/(len(times)-1))
+            self.assertIn(at,states); self.assertEqual(state_at(item,at),states.index(at))
+            if i:
+                before=np.asarray(render_timeline_bar(item,fmt,state_at(item,at-1e-6)/(len(states)-1)))
+                after=np.asarray(render_timeline_bar(item,fmt,state_at(item,at)/(len(states)-1)))
+                # New text adds opaque pixels away from the marker's horizontal line.
+                self.assertGreater(np.count_nonzero(after[:105,:,3])+np.count_nonzero(after[135:,:,3]),np.count_nonzero(before[:105,:,3])+np.count_nonzero(before[135:,:,3]))
+
+    def test_eight_long_tamil_timeline_points_stay_inside_own_box(self):
+        from app.services.timeline_graphics import render_timeline_bar
+        from app.services.chart_graphics import _fit,least
+        item=timeline_item(); item.graphic.points=[item.graphic.points[0].model_copy(update={'date':'மிகநீளமானசங்ககாலத்தேதி','label':'தமிழ்நாட்டின் மிக நீளமான வரலாற்று விளக்கப்பெயர்'}) for _ in range(8)]
+        for width,height in ((426,240),(1280,720),(1920,1080)):
+            for vertical in (False,True):
+                item.graphic.timeline_vertical=vertical; fmt=Format(width=width,height=height,fps=24); sizes=[]
+                def fitted(*args,**kwargs):
+                    result=_fit(*args,**kwargs); sizes.append(result[0].size); return result
+                with patch('app.services.timeline_graphics._fit',side_effect=fitted),patch('app.services.step_graphics._fit',side_effect=fitted): image=render_timeline_bar(item,fmt,1)
+                ys,xs=np.nonzero(np.asarray(image)[:,:,3]>0)
+                with self.subTest(width=width,vertical=vertical):
+                    self.assertGreaterEqual(min(sizes),least(fmt)*2)
+                    self.assertGreaterEqual(xs.min(),int(width*.05)-1); self.assertLessEqual(xs.max(),int(width*.95)+1)
+                    self.assertGreaterEqual(ys.min(),int(height*.05)-1); self.assertLessEqual(ys.max(),int(height*.95)+1)
+
     def test_step_validation_and_times_inside_clip(self):
         for changes in ({'steps':['one']}, {'step_times':[.3,.2]}, {'step_times':[0,1,3]}, {'step_times':[float('nan')]}):
             data = step_item().model_dump(by_alias=True); data['graphic'].update(changes)
