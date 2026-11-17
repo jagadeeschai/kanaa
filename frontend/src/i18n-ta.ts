@@ -46,6 +46,11 @@ export const TAMIL: Record<string, string> = {
   'Clip guides on: dashed lines at every cut': 'கிளிப் வழிகாட்டிகள் இயக்கத்தில்: ஒவ்வொரு வெட்டிலும் புள்ளிக்கோடுகள்', 'Clip guides off': 'கிளிப் வழிகாட்டிகள் அணைப்பில்',
   'Unlock frame and animate': 'சட்டகத்தைத் திறந்து அசைவூட்டு', 'Animate': 'அசைவூட்டு',
 
+  'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
+  'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
+  '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',
+  'The chorus is already styled.': 'பல்லவி ஏற்கனவே அலங்கரிக்கப்பட்டுள்ளது.', 'Add a song first. The light hits follow its beat.': 'முதலில் ஒரு பாடலைச் சேருங்கள். ஒளி வீச்சுகள் அதன் துடிப்பைப் பின்பற்றும்.',
+  '{count} light hits on the chorus beats. ⌘Z undoes it.': 'பல்லவித் துடிப்புகளில் {count} ஒளி வீச்சுகள். ⌘Z திரும்பப் பெறும்.',
   'Pan left to right': 'இடமிருந்து வலமாக நகர்வு', 'Pan right to left': 'வலமிருந்து இடமாக நகர்வு', 'Ken Burns': 'கென் பர்ன்ஸ்', 'Focus drift': 'கவன நகர்வு', 'Focus drift on every picture': 'எல்லாப் படங்களிலும் கவன நகர்வு', 'A slow push in on the faces or the main subject, drifting it towards the middle': 'முகங்கள் அல்லது முக்கியப் பொருளை நோக்கி மெதுவாக நெருங்கி, நடுவுக்கு நகர்த்தும்', 'Lock frame': 'சட்டகத்தைப் பூட்டு',
   'Slowly travels across the picture over the whole clip': 'கிளிப் முழுவதும் படத்தின் குறுக்கே மெதுவாக நகரும்',
   'Slowly travels across the picture the other way': 'படத்தின் குறுக்கே எதிர்த் திசையில் மெதுவாக நகரும்',

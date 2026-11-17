@@ -6,10 +6,12 @@ import { useEditorPanel } from "../../state/EditorContext";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
 import NarratePanel from '../../NarratePanel';
 import DocumentarySoundPanel from '../../DocumentarySoundPanel';
+import LyricSectionsPanel from '../../LyricSectionsPanel';
 
 export function AudioTabSection1() {
   const { leftTab, library, libraryFolder, musicSearch, musicMood, setMusicSearch, MOODS, setMusicMood, MOOD_LABELS, listening, draggableAs, listen, addingMusic, addLibraryTrack, addMusic, layout, soundEffects, timeline, sfxChoice, setSfxChoice, total, sfxBusy, addSoundEffects, change, sfxNote, beatBusy, cutClipsToBeat, beatNote } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'audio' && <>
+          <LyricSectionsPanel/>
           <NarratePanel/>
           <DocumentarySoundPanel/>
           <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music library</h3>
