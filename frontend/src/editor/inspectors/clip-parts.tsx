@@ -25,6 +25,7 @@ export const EFFECT_INTENSITY_VALUE: Record<string, number> = { subtle: 0.4, med
 
 export const MOVES: { id: MovePreset; label: string; tip: string }[] = [{ id: 'push-in', label: 'Push in', tip: 'Slowly moves closer over the whole clip' }, { id: 'pull-out', label: 'Pull out', tip: 'Slowly moves away over the whole clip' },
   { id: 'pan-right', label: 'Pan left to right', tip: 'Slowly travels across the picture over the whole clip' }, { id: 'pan-left', label: 'Pan right to left', tip: 'Slowly travels across the picture the other way' },
+  { id: 'focus-drift', label: 'Focus drift', tip: 'A slow push in on the faces or the main subject, drifting it towards the middle' },
   { id: 'ken-burns', label: 'Ken Burns', tip: 'A slow push in while drifting across: the classic photo move' },
   { id: 'punch-in', label: 'Punch in here', tip: 'Jumps closer at the playhead, for a word or a beat' }, { id: 'shake', label: 'Shake here', tip: 'A short camera shake at the playhead' }];
 

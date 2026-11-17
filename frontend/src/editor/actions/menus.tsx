@@ -26,6 +26,7 @@ type Input = {
   addExplainerGraphic: (kind: GraphicKind, at: [number, number]) => void;
   addGlowOutline: (at: [number, number]) => Promise<void>;
   addComparison: (clipId: string) => void;
+  focusAllPictures: () => Promise<void>;
   addMedia: (item: Photo) => void;
   addOverlayMedia: (item: Photo, dropAt?: number | undefined) => void;
   blurFaces: () => Promise<void>;
@@ -228,7 +229,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         ...(clip.popout || mainLayer(timeline).items.some((item) => item.popout?.person_clip_id === clip.id) ? [{ label: 'Remove pop-out', onSelect: () => change(removePopout(timeline, clip.id)) }] : []),
         'divider');
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
-      if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
+      if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }, { label: 'Focus drift on every picture', onSelect: () => { void getInput().focusAllPictures(); } }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
       else {
         items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
           { label: 'Detach sound', disabled: clip.muted || !hasSound(clip.media_id), onSelect: () => detach(clip) },

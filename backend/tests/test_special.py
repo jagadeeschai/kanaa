@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.core.config import settings
 from app.main import app
@@ -39,7 +39,18 @@ class Focus(unittest.TestCase):
                 return lambda picture: [((0.75, 0.25, 0.1, 0.15), 0.9)] if picture.shape[:2] == (size[1], size[0]) else []
             result = focus_service.find_focus(path, 'image', 1200, 800, detector_factory=factory)
         self.assertEqual(seen, [(640, 426)])
-        self.assertEqual(result, {'x': 0.75, 'y': 0.25, 'faces': 1})
+        self.assertEqual(result, {'x': 0.75, 'y': 0.25, 'faces': 1, 'kind': 'faces'})
+
+    def test_a_picture_without_faces_aims_at_its_subject(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'scene.png'
+            image = Image.new('RGB', (1200, 800), (30, 40, 60))
+            ImageDraw.Draw(image).ellipse((780, 250, 900, 390), fill=(250, 210, 120))
+            image.save(path)
+            result = focus_service.find_focus(path, 'image', 1200, 800, detector_factory=lambda size: lambda picture: [])
+        self.assertEqual((result['kind'], result['faces']), ('subject', 0))
+        self.assertAlmostEqual(result['x'], 840 / 1200, delta=0.05)
+        self.assertAlmostEqual(result['y'], 320 / 800, delta=0.05)
 
     def test_a_video_frame_can_be_searched(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -215,7 +226,7 @@ class Api(unittest.TestCase):
         media = self.client.post('/api/media', files={'file': ('photo.png', stream.read_bytes(), 'image/png')}).json()
         with patch('urllib.request.urlopen', side_effect=AssertionError('no downloads')):
             found = self.client.get(f"/api/photos/{media['id']}/focus").json()
-        self.assertEqual(found, {'x': None, 'y': None, 'faces': 0, 'model': False})
+        self.assertEqual(found, {'x': None, 'y': None, 'faces': 0, 'kind': None, 'model': False})
 
     def test_scenes_are_found_as_a_job(self):
         video = self.root / 'clip.mp4'

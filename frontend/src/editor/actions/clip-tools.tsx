@@ -206,10 +206,11 @@ export function createClipToolActions(getInput: () => Input) {
     const invoke = async (move: MovePreset) => {
     if (!timeline || !selected) return;
     const clip = selected;
-    const aim = move === 'push-in' || move === 'pull-out' ? await aimFor(clip, timeline) : null;
+    const aim = move === 'push-in' || move === 'pull-out' || move === 'focus-drift' ? await aimFor(clip, timeline) : null;
     const item = getInput().mediaById.get(clip.media_id);
-    const wide = item?.width && item.height ? fittedSize({ width: item.width, height: item.height }, clip.adjust.rotation, timeline.format).width / timeline.format.width : 1;
-    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim, wide) });
+    const fitted = item?.width && item.height ? fittedSize({ width: item.width, height: item.height }, clip.adjust.rotation, timeline.format) : null;
+    const [wide, tall] = fitted ? [fitted.width / timeline.format.width, fitted.height / timeline.format.height] : [1, 1];
+    updateSelected({ transform: applyMove(clip.transform, move, local, (clip.out - clip.in) / clip.speed, aim, wide, tall) });
   };
     return invoke(...args);
   };
@@ -253,5 +254,22 @@ export function createClipToolActions(getInput: () => Input) {
   };
     return invoke(...args);
   };
-  return { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen };
+  /** Focus drift on every picture of the main track in one step (one undo), each aimed at its own faces or subject. */
+  const focusAllPictures = async () => {
+    const { timeline, mediaById, change } = getInput();
+    if (!timeline) return;
+    const pictures = mainLayer(timeline).items.filter((clip) => mediaById.get(clip.media_id)?.media_type === 'image' && !clip.frame_locked);
+    const aims = await Promise.all(pictures.map((clip) => aimFor(clip, timeline)));
+    let next = getInput().timeline ?? timeline;
+    pictures.forEach((clip, index) => {
+      const item = mediaById.get(clip.media_id)!;
+      const current = findClip(next, clip.id);
+      if (!current || !item.width || !item.height) return;
+      const fitted = fittedSize({ width: item.width, height: item.height }, current.adjust.rotation, next.format);
+      next = updateClip(next, clip.id, { transform: applyMove(current.transform, 'focus-drift', 0, clipLength(current), aims[index], fitted.width / next.format.width, fitted.height / next.format.height) });
+    });
+    if (next !== timeline) change(next, 'focus-drift');
+  };
+
+  return { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen, focusAllPictures };
 }

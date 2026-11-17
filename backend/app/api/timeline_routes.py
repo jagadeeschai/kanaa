@@ -521,7 +521,8 @@ def text_letters(body: dict):
         base.parent.mkdir(parents=True, exist_ok=True)
         Image.fromarray(labels, 'L').save(picture)
         found.write_text(json.dumps(boxes))
-    return {'boxes': json.loads(found.read_text()), 'labels': 'data:image/png;base64,' + base64.b64encode(picture.read_bytes()).decode()}
+    from app.services.title_letters import word_numbers
+    return {'boxes': json.loads(found.read_text()), 'labels': 'data:image/png;base64,' + base64.b64encode(picture.read_bytes()).decode(), 'words': word_numbers(item)}
 
 
 def voice_source(media_id: int | None, asset_id: str | None) -> tuple[Path, str]:
@@ -780,15 +781,15 @@ def photo_focus(identifier: int, at: float = 0.0):
     """Where the main faces are in a photo, or in a video at `at` seconds, so a push-in aims at them. x and y are null when there are none."""
     from app.services.face_service import MODEL_NAME
     from app.services.focus_service import cached_focus
-    if not (settings.model_cache_dir / 'face' / MODEL_NAME).is_file():
-        # The face finder is fetched once by Blur faces; moves never download it on their own.
-        return {'x': None, 'y': None, 'faces': 0, 'model': False}
+    # The face finder is fetched once by Blur faces; moves never download it, and aim at the picture's subject without it.
+    model = (settings.model_cache_dir / 'face' / MODEL_NAME).is_file()
     row = get_media(identifier)
     path = Path(row['absolute_path'])
     if not path.is_file():
         raise HTTPException(404, f"{row['filename']} is no longer readable.")
     try:
-        return cached_focus(str(path), row['media_type'], int(row['width'] or 1920), int(row['height'] or 1080), round(max(0.0, at), 2), path.stat().st_mtime)
+        found = cached_focus(str(path), row['media_type'], int(row['width'] or 1920), int(row['height'] or 1080), round(max(0.0, at), 2), path.stat().st_mtime, model)
+        return found if model else {**found, 'model': False}
     except Exception as exc:  # The face finder's first use downloads it; say so plainly if that fails.
         raise HTTPException(503, f'Could not look for faces: {exc}') from exc
 

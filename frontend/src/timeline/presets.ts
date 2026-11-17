@@ -2,13 +2,16 @@ import { valueAt, type AnimatedProperty, type Ease, type Keyframe, type Transfor
 import { fittedSize, type Format } from './model.ts';
 
 /** One-click moves. Each is ordinary keyframes, so it can be adjusted, undone and exported like any other. */
-export type MovePreset = 'push-in' | 'pull-out' | 'punch-in' | 'shake' | 'pan-right' | 'pan-left' | 'ken-burns';
+export type MovePreset = 'push-in' | 'pull-out' | 'punch-in' | 'shake' | 'pan-right' | 'pan-left' | 'ken-burns' | 'focus-drift';
 
 const PUSH = 1.15;
 const PUNCH = 1.25;
 const PAN_ZOOM = 1.2;  // Big enough that a pan never shows the picture's edge.
 const PAN_REACH = 0.07;  // How far a pan travels each way from the middle, of the frame (within (PAN_ZOOM - 1) / 2).
 const PUNCH_SECONDS = 0.12;
+const FOCUS_PUSH = 1.2;  // Focus drift: how much closer it ends.
+const FOCUS_PULL = 0.35;  // Focus drift: how far the subject travels towards the middle of the frame.
+const FOCUS_COVER = 1.04;  // Focus drift: the least zoom at which the picture still covers the frame, with a little spare.
 const SHAKE_SECONDS = 0.5;
 const SHAKE_STEP = 1 / 15;
 const SHAKE_REACH = 0.015; // Of the frame.
@@ -46,7 +49,11 @@ export function focusOnScreen(transform: Transform, focus: Focus, source: { widt
 
 /** `local` is the playhead's time in the item; `length` is the item's. `aim`, a point on screen, is what a push-in moves towards (usually faces).
  * `wide`: the picture's width as a share of the frame's at size 1 (a 3:2 photo in a 16:9 video is 0.84), so a pan zooms enough to never show an edge. */
-export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number, aim?: Focus | null, wide = 1): Transform {
+export function applyMove(transform: Transform, preset: MovePreset, local: number, length: number, aim?: Focus | null, wide = 1, tall = 1): Transform {
+  if (preset === 'focus-drift') {
+    if (!aim) return applyMove(transform, 'ken-burns', local, length, null, wide, tall);
+    return focusDrift(transform, length, aim, wide, tall);
+  }
   if (preset === 'pan-right' || preset === 'pan-left' || preset === 'ken-burns') {
     // Over the whole clip: the camera travels across the picture (it moves the other way on screen), slightly zoomed so
     // no edge shows. Ken Burns also pushes in slowly while it drifts.
@@ -107,4 +114,27 @@ export function slotPlacement(source: { width: number; height: number }, rotatio
   const [slotWidth, slotHeight] = wide ? [format.width / 2, format.height] : [format.width, format.height / 2];
   const scale = Math.min(slotWidth / fitted.width, slotHeight / fitted.height);
   return { x: slot === 'left' ? 0.25 : slot === 'right' ? 0.75 : 0.5, y: slot === 'top' ? 0.25 : slot === 'bottom' ? 0.75 : 0.5, scale };
+}
+
+/**
+ * Focus drift: a slow Ken Burns that pushes in on the subject (faces, or the most striking part of the picture) and drifts so
+ * it ends nearer the middle of the frame. `aim` is where the subject shows on screen at the start. The picture always covers
+ * the frame: `wide` and `tall` are its size as a share of the frame's at scale 1.
+ */
+export function focusDrift(transform: Transform, length: number, aim: Focus, wide = 1, tall = 1): Transform {
+  const start = valueAt(transform, 'scale', 0);
+  const first = round(Math.max(start, FOCUS_COVER / Math.max(0.1, wide), FOCUS_COVER / Math.max(0.1, tall)));
+  const last = round(first * FOCUS_PUSH);
+  let moved = place(transform, 'scale', 0, length, [key(0, first), key(length, last)]);
+  for (const axis of ['x', 'y'] as const) {
+    const share = axis === 'x' ? wide : tall;
+    const fits = (scale: number, value: number) => { const room = Math.max(0, (scale * share - 1) / 2); return Math.min(0.5 + room, Math.max(0.5 - room, value)); };
+    const from = fits(first, valueAt(transform, axis, 0));
+    const point = Math.min(1, Math.max(0, aim[axis]));
+    const target = point + (0.5 - point) * FOCUS_PULL;
+    // The subject's point of the picture lands on `target`: the picture's middle sits that far from it, grown by the push.
+    const to = fits(last, target - (point - from) * last / first);
+    moved = place(moved, axis, 0, length, [key(0, from), key(length, to)]);
+  }
+  return moved;
 }
