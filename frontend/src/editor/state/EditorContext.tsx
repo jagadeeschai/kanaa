@@ -13,6 +13,9 @@ export type EditorShared = {
   timeline: Timeline;
   /** Applies a new timeline; `group` merges quick successive changes into one undo step. */
   change: (next: Timeline, group?: string) => void;
+  /** The project being edited, and opening a finished export (a Short) in the library. */
+  projectId: number;
+  openOutput: (id: number) => void;
   pause: () => void;
   /** Opens the guide, at an article when one is given. */
   openGuide: (article?: string) => void;

@@ -744,6 +744,50 @@ def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
     return {'job_id': job_id,'source_warnings':missing_sources(parsed.model_dump(by_alias=True))}
 
 
+@router.post('/projects/{identifier}/export-short')
+def export_short(identifier: int, body: dict, hardware: str = 'true'):
+    """A vertical Short (9:16) of `start` to `end` of this timeline, usually its chorus, saved as a new video. The project stays as it is."""
+    from app.services.face_service import MODEL_NAME
+    from app.services.focus_service import cached_focus
+    from app.services.shorts import make_short
+    row = project_for(identifier)
+    try:
+        parsed = Timeline.model_validate(body.get('timeline'))
+        start, end = float(body['start']), float(body['end'])
+    except (ValidationError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'This timeline is not valid.') from exc
+    faces = (settings.model_cache_dir / 'face' / MODEL_NAME).is_file()  # Never downloaded for this; the subject finder needs nothing.
+
+    def focus(facts, at):
+        try:
+            found = cached_focus(str(facts.path), facts.media_type, int(facts.width or 1920), int(facts.height or 1080), round(at, 2), facts.path.stat().st_mtime, faces)
+        except Exception:
+            return None  # Centred, as before.
+        return (found['x'], found['y']) if found['x'] is not None else None
+
+    try:
+        short = make_short(parsed, start, end, media_facts, focus)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    target = settings.edit_workspace_dir / f'{uuid.uuid4().hex}.mp4'
+    try:
+        check_disk_space(target.parent, short.duration)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    def run(should_cancel):
+        try:
+            render_timeline(short, media_facts, resolve_audio_asset, target, lambda progress: update_job(job_id, progress=progress), should_cancel, prepared=lambda media_id, steady, backwards, portrait: prepared_copy(media_id, steady, backwards, portrait, should_cancel), masks=lambda facts, pick: instance_service.ensure_mask(facts, instance_service.from_choice(pick), should_cancel), voices=lambda path: voice_service.ensure_clean(path, should_cancel), hardware=hardware != 'false')
+            output = index_media(target, f"{row['name']} — Short.mp4", exported=True)
+            return {'progress': 100, 'output_photo_id': output['id']}
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+
+    job_id = enqueue_render('video_export', f"Short: {row['name']}", run, total=100)
+    return {'job_id': job_id, 'start': start, 'end': min(end, start + short.duration)}
+
+
 @router.get('/photos/{identifier}/screen-colour')
 def photo_screen_colour(identifier: int, at: float = 0.0):
     """The green or blue screen behind this clip, if it was shot on one; null means use the AI cut-out instead."""

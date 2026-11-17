@@ -49,3 +49,11 @@ test('a song with no repeated lines has no chorus', () => {
   const plain = song(); plain.layers[1].items = plain.layers[1].items.filter((item) => item.id.startsWith('v'));
   assert.deepEqual(chorusSections(plain), []);
 });
+
+test('a Short takes the first chorus, from just before it, 15 seconds to a minute', async () => {
+  const { shortRange } = await import('../src/timeline/song-sections.ts');
+  assert.deepEqual(shortRange([[10, 16], [30, 36]], 40), [9.5, 24.5], 'a short chorus is lengthened to 15 seconds');
+  assert.deepEqual(shortRange([[10, 40]], 100), [9.5, 41]);
+  assert.deepEqual(shortRange([[10, 200]], 300), [9.5, 69.5], 'never more than a minute');
+  assert.deepEqual(shortRange([[30, 36]], 40), [29.5, 40], 'not past the end');
+});

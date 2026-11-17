@@ -109,3 +109,12 @@ export function placeLightHits(timeline: Timeline, effect: Clip, hits: Hit[], pe
   }
   return next;
 }
+
+/** The stretch a Short of the chorus takes: the first chorus, from just before it, at least 15 seconds and at most a minute. */
+export const SHORT_LEAD = 0.5, SHORT_TAIL = 1, SHORT_LEAST = 15, SHORT_MOST = 60;
+export function shortRange(sections: [number, number][], total: number): [number, number] {
+  const [first, last] = sections[0] ?? [0, total];
+  const start = Math.max(0, first - SHORT_LEAD);
+  const end = Math.min(total, start + SHORT_MOST, Math.max(last + SHORT_TAIL, start + SHORT_LEAST));
+  return [round(start), round(end)];
+}

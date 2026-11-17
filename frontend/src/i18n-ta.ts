@@ -46,6 +46,8 @@ export const TAMIL: Record<string, string> = {
   'Clip guides on: dashed lines at every cut': 'கிளிப் வழிகாட்டிகள் இயக்கத்தில்: ஒவ்வொரு வெட்டிலும் புள்ளிக்கோடுகள்', 'Clip guides off': 'கிளிப் வழிகாட்டிகள் அணைப்பில்',
   'Unlock frame and animate': 'சட்டகத்தைத் திறந்து அசைவூட்டு', 'Animate': 'அசைவூட்டு',
 
+  'Export a Short of the chorus': 'பல்லவியின் Short வீடியோவை உருவாக்கு', 'Making the Short… {progress}%': 'Short உருவாகிறது… {progress}%', 'Your Short is ready.': 'உங்கள் Short தயார்.', 'Open it': 'திற', 'The Short was not made.': 'Short உருவாகவில்லை.',
+  'A 9:16 video of the chorus for YouTube Shorts and Reels, each picture kept on its subject. Your project stays as it is.': 'YouTube Shorts, Reels-க்கான 9:16 பல்லவி வீடியோ; ஒவ்வொரு படமும் அதன் முக்கியப் பொருளில் இருக்கும். உங்கள் திட்டம் மாறாது.',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',

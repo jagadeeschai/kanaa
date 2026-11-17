@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Sparkles, Sun } from 'lucide-react';
-import { getJobStatus, getPhoto, getSongBeats, makeEffect } from '../api/client';
+import { Smartphone, Sparkles, Sun } from 'lucide-react';
+import { exportShort, getJobStatus, getPhoto, getSongBeats, makeEffect } from '../api/client';
 import { t } from '../i18n';
 import { beatSound, timelineBeats } from '../timeline/beats';
-import { newClip } from '../timeline/model';
-import { chorusSections, hitTimes, placeLightHits, styleChorus } from '../timeline/song-sections';
+import { duration, newClip } from '../timeline/model';
+import { chorusSections, hitTimes, placeLightHits, shortRange, styleChorus } from '../timeline/song-sections';
 import type { Photo } from '../types/photo';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
@@ -27,9 +27,10 @@ async function lightEffect(size: { width: number; height: number }): Promise<Pho
 
 /** Lyric videos: the chorus found from the lyrics, styled stronger, with light hits on its beats. One click each, one undo each. */
 export default function LyricSectionsPanel() {
-  const { timeline, change, addMedia } = useEditor();
+  const { timeline, change, addMedia, projectId, openOutput } = useEditor();
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [short, setShort] = useState<{ progress: number; id?: number } | null>(null);
   const sections = chorusSections(timeline);
   if (!sections.length) return null;
 
@@ -53,10 +54,27 @@ export default function LyricSectionsPanel() {
     } catch (problem) { setNote((problem as Error).message); } finally { setBusy(false); }
   };
 
+  const makeShort = async () => {
+    const [start, end] = shortRange(sections, duration(timeline));
+    setShort({ progress: 0 }); setNote(null);
+    try {
+      const { job_id } = await exportShort(projectId, timeline, start, end);
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const status = await getJobStatus(job_id) as unknown as { status?: string; progress: number; error?: string | null; output_photo_id?: number };
+        if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? t('The Short was not made.'));
+        if (status.status === 'done') { setShort({ progress: 100, id: status.output_photo_id }); return; }
+        setShort({ progress: status.progress ?? 0 });
+      }
+    } catch (problem) { setShort(null); setNote((problem as Error).message); }
+  };
+
   return <section className="ed-add" aria-label={t('Chorus')}><h3 className="ed-sub">{t('Chorus')}</h3>
     <p className="ed-tip">{t('Found {count} chorus parts from the lines sung more than once.', { count: sections.length })}</p>
     <button className="ed-button wide" onClick={style}><Sparkles size={14}/>{t('Make the chorus stand out')}</button>
     <button className="ed-button wide" disabled={busy} onClick={() => { void lights(); }}><Sun size={14}/>{busy ? t('Listening for the beat…') : t('Light hits on the chorus beats')}</button>
+    <button className="ed-button wide" disabled={Boolean(short && short.progress < 100)} title={t('A 9:16 video of the chorus for YouTube Shorts and Reels, each picture kept on its subject. Your project stays as it is.')} onClick={() => { void makeShort(); }}><Smartphone size={14}/>{short && short.progress < 100 ? t('Making the Short… {progress}%', { progress: Math.round(short.progress) }) : t('Export a Short of the chorus')}</button>
+    {short?.id && <p className="ed-tip" role="status">{t('Your Short is ready.')} <button className="ed-link" onClick={() => openOutput(short.id!)}>{t('Open it')}</button></p>}
     {note && <p className="ed-tip" role="status">{note}</p>}
   </section>;
 }

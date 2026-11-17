@@ -152,6 +152,8 @@ export const getProjectTimeline = <T>(id: number) => requestJson<T>(`/api/projec
 export const colourMatch = (timeline: unknown, clipId: string, at: number) => requestJson<{ gain: [number, number, number] }>('/api/timeline/colour-match', { method: 'POST', body: JSON.stringify({ timeline, clip_id: clipId, at }) });
 /** The green or blue screen a clip was shot on, or null (screen_colour.py). */
 export const screenColour = (mediaId: number, at: number) => requestJson<{ colour: string | null }>(`/api/photos/${mediaId}/screen-colour?at=${at.toFixed(3)}`);
+/** A vertical Short (9:16) of `start`–`end` of the timeline (shorts.py); the project stays as it is. */
+export const exportShort = (id: number, timeline: unknown, start: number, end: number) => requestJson<{ job_id: string; start: number; end: number }>(`/api/projects/${id}/export-short`, { method: 'POST', body: JSON.stringify({ timeline, start, end }) });
 export const exportProjectTimeline = (id: number, timeline: unknown, hardware = true) => requestJson<{ job_id: string }>(`/api/projects/${id}/export?hardware=${hardware}`, { method: 'POST', body: JSON.stringify(timeline) });
 /** Phone access on the home Wi-Fi, with a PIN. Only the Mac can read or change it. */
 export type PhoneAccess = { enabled: boolean; pin: string | null; locked: boolean; address: string | null; port: number; listening: boolean; phones: number };
