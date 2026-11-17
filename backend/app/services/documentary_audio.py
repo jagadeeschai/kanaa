@@ -42,20 +42,22 @@ def pause_before(timeline,graphic_id,seconds):
         items=[]
         for item in layer['items']:
             start=item['start'];end=start+length(item)
+            if layer['kind']=='video' and start<at<=end+1e-8 and (item.get('ramp') or item.get('reverse') or item.get('transform',{}).get('keyframes')):
+                raise ValueError('Make the pause on a straight, forward clip without position keyframes first.')
             if start>=at-1e-8:item['start']+=seconds;items.append(item);continue
             if end<=at+1e-8:
                 items.append(item)
                 if layer['kind']=='video' and abs(end-at)<1e-8:
-                    hold=copy.deepcopy(item);hold.update(id=uid(),start=at,**{'in':0,'out':seconds,'speed':1,'freeze':max(0,item['out']-1/timeline['format']['fps']),'muted':True,'enter':None,'exit':None,'transition_in':None});items.append(hold)
+                    hold=copy.deepcopy(item);hold.update(id=uid(),start=at,**{'in':0,'out':seconds,'speed':1,'freeze':item.get('freeze') if item.get('freeze') is not None else max(0,item['out']-1/timeline['format']['fps']),'muted':True,'enter':None,'exit':None,'transition_in':None});items.append(hold)
                 continue
             if layer['kind'] in ('video','audio'):
-                if item.get('ramp') or item.get('reverse') or any(isinstance(v,list) for v in item.get('transform',{}).values()):
+                if item.get('ramp') or item.get('reverse') or item.get('transform',{}).get('keyframes'):
                     raise ValueError('Make the pause on a straight, forward clip without position keyframes first.')
                 cut=item.get('in',0)+(at-start)*item.get('speed',1)
                 tail=copy.deepcopy(item);tail.update(id=uid(),start=at+seconds,**{'in':cut,'fade_in':0});item.update(out=cut,fade_out=0)
                 if layer['kind']=='video':
                     item['exit']=None;tail.update(enter=None,transition_in=None)
-                    hold=copy.deepcopy(item);hold.update(id=uid(),start=at,**{'in':0,'out':seconds,'speed':1,'freeze':max(0,cut-1/timeline['format']['fps']),'muted':True,'enter':None,'exit':None,'transition_in':None})
+                    hold=copy.deepcopy(item);hold.update(id=uid(),start=at,**{'in':0,'out':seconds,'speed':1,'freeze':item.get('freeze') if item.get('freeze') is not None else max(0,cut-1/timeline['format']['fps']),'muted':True,'enter':None,'exit':None,'transition_in':None})
                     items.extend([item,hold,tail])
                 else:items.extend([item,tail])
             else:

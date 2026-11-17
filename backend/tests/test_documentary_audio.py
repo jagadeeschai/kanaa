@@ -24,6 +24,15 @@ class DocumentaryAudio(unittest.TestCase):
         self.assertEqual(data['layers'][0]['items'][0]['start'],0)
         self.assertEqual(shift_narration(sample(),'picture',.5)['layers'][1]['items'][0]['start'],2.5)
 
+    def test_pause_rejects_motion_keys_and_preserves_an_already_held_picture(self):
+        data=sample();data['layers'][0]['items'][0]['transform']={'keyframes':{'x':[{'t':0,'v':.5},{'t':8,'v':.7}]}}
+        with self.assertRaisesRegex(ValueError,'keyframes'):pause_before(data,'number',.5)
+        data['layers'][0]['items'][0]['out']=4
+        with self.assertRaisesRegex(ValueError,'keyframes'):pause_before(data,'number',.5)
+        data=sample();data['layers'][0]['items'][0]['freeze']=1.25
+        result=pause_before(data,'number',.5)
+        self.assertEqual(result['layers'][0]['items'][1]['freeze'],1.25)
+
     def test_automatic_whooshes_are_soft_and_idempotent(self):
         data=sample();data['documentary_sound']={'enabled':True,'asset_id':'c'*32,'duration':.9,'peak':.5}
         data['layers'][-1]['items'][0]['graphic'].update(width=.7,height=.5)
