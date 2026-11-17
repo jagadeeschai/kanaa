@@ -48,6 +48,9 @@ export const TAMIL: Record<string, string> = {
 
   'Export a Short of the chorus': 'பல்லவியின் Short வீடியோவை உருவாக்கு', 'Making the Short… {progress}%': 'Short உருவாகிறது… {progress}%', 'Your Short is ready.': 'உங்கள் Short தயார்.', 'Open it': 'திற', 'The Short was not made.': 'Short உருவாகவில்லை.',
   'A 9:16 video of the chorus for YouTube Shorts and Reels, each picture kept on its subject. Your project stays as it is.': 'YouTube Shorts, Reels-க்கான 9:16 பல்லவி வீடியோ; ஒவ்வொரு படமும் அதன் முக்கியப் பொருளில் இருக்கும். உங்கள் திட்டம் மாறாது.',
+  'Lyrics layout': 'பாடல் வரி அமைப்பு', 'Two lines': 'இரு வரிகள்', 'Big centre': 'பெரிதாக நடுவில்',
+  'The line being sung, with the next one dim beneath it': 'பாடப்படும் வரி; அடுத்த வரி கீழே மங்கலாக', 'Lines bottom left on a soft band, leaving the picture clear': 'வரிகள் கீழ் இடப்புறம் மென் பட்டையில்; படம் தெளிவாக இருக்கும்',
+  'Each line large in the middle: good for Shorts and portrait videos': 'ஒவ்வொரு வரியும் நடுவில் பெரிதாக: Shorts, செங்குத்து வீடியோக்களுக்கு ஏற்றது', 'Every lyric line is laid out again. ⌘Z undoes it.': 'எல்லா வரிகளும் புதிதாக அமைக்கப்பட்டன. ⌘Z திரும்பப் பெறும்.',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',

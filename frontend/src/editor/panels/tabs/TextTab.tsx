@@ -8,10 +8,12 @@ import { LANGUAGES } from "../../Words";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
 import { GraphicsSection } from './GraphicsSection';
 import SourcesPanel from '../../SourcesPanel';
+import LyricLayoutPanel from '../../LyricLayoutPanel';
 
 export function TextTabSection1() {
   const { leftTab, draggableAs, addTitle, thumbs, myStyles, forgetStyle, layout, captionsWaiting, wordJob, total, makeCaptions, timeline, language, setLanguage, captionWords, setCaptionWords, clearing, keepClearOfFaces, clearNote } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'text' && <>
+          <LyricLayoutPanel/>
           <GraphicsSection/>
           <SourcesPanel/>
           <section className="ed-add" aria-label="Titles"><h3 className="ed-sub">Titles</h3><p className="ed-tip">Click to add at the playhead, or drag onto the timeline, then type your words.</p>

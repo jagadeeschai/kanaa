@@ -22,9 +22,10 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
 const CREDITS = new Set(['opening-credit', 'closing-credit']);
 const normal = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
 
-/** The lyric lines of a timeline, in time order: titles that are words, not credits, graphics or laid-out designs. */
+/** The lyric lines of a timeline, in time order: titles that are words, not credits, graphics, laid-out designs or the
+ * dim next lines of the Two lines layout (lyric-layouts.ts). */
 export function lyricLines(timeline: Timeline): TextItem[] {
-  return textLayers(timeline).filter((layer) => !layer.hidden).flatMap((layer) => layer.items)
+  return textLayers(timeline).filter((layer) => !layer.hidden && layer.id !== 'lyric-next-lines').flatMap((layer) => layer.items)
     .filter((item) => !CREDITS.has(item.id) && !item.graphic && !item.design && normal(item.text).length > 0)
     .sort((a, b) => a.start - b.start);
 }
