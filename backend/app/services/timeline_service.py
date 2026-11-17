@@ -1460,6 +1460,8 @@ def apply_bypass(clip):
 
 def playing_timeline(timeline: Timeline) -> Timeline:
     """The timeline with every clip's switched-off effects left out."""
+    from app.services.documentary_audio import decorate
+    timeline=decorate(timeline)
     if not any(layer.kind == 'video' and any(clip.bypass for clip in layer.items) for layer in timeline.layers):
         return timeline
     layers = [layer.model_copy(update={'items': [apply_bypass(clip) for clip in layer.items]}) if layer.kind == 'video' else layer for layer in timeline.layers]

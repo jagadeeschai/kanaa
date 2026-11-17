@@ -57,5 +57,9 @@ def generate(body:VoiceRequest):
         if body.replace_id and (body.timeline is None or len(voice_service.sentences(body.script))!=1 or not any(layer['kind']=='audio' and layer.get('name')=='Narration' and any(item['id']==body.replace_id for item in layer['items']) for layer in body.timeline['layers'])):
             raise ValueError('Select one narration sentence to redo it. No voice was generated.')
         lines=voice_service.generate(body.script,body.voice,body.speed,body.pitch,body.quote,body.max_cost,body.preview)
-        return {'lines':lines,'timeline':add_narration(body.timeline,lines,body.start,body.gap,body.replace_id) if body.timeline is not None and not body.preview else None}
+        timeline=add_narration(body.timeline,lines,body.start,body.gap,body.replace_id) if body.timeline is not None and not body.preview else None
+        if timeline is not None and timeline.get('documentary_sound') is None:
+            from app.services.sound_effect_service import use
+            effect=use('kanaa-whoosh');timeline['documentary_sound']={'enabled':True,**{k:effect[k] for k in ('asset_id','duration','peak')}}
+        return {'lines':lines,'timeline':timeline}
     return checked(run)

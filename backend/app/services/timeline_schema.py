@@ -695,11 +695,19 @@ class Finish(Strict):
     grain: float = Field(default=0, ge=0, le=1)
 
 
+class DocumentarySound(Strict):
+    enabled:bool=True
+    asset_id:str=Field(pattern=r'^[a-f0-9]{32}$')
+    duration:float=Field(gt=0,le=10)
+    peak:float=Field(ge=0,le=10)
+
+
 class Timeline(Strict):
     version: Literal[2] = 2
     format: Format = Field(default_factory=Format)
     layers: List[Layer] = Field(default_factory=list)
     normalize_audio: bool = False
+    documentary_sound: Optional[DocumentarySound] = None
     finish: Optional[Finish] = None
     lut: Optional[str] = Field(default=None, pattern=r'^[a-z0-9-]{1,64}$')
     lut_amount: float = Field(default=1, ge=0, le=1)

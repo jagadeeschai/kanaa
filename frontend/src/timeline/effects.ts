@@ -1,5 +1,6 @@
 import type { Clip, Timeline } from './model.ts';
 import { RAMPS } from './ramp.ts';
+import { documentarySounds } from './documentary.ts';
 
 /**
  * A clip's effects, each of which can be switched off without losing its settings (`clip.bypass`), so the clip can be
@@ -72,6 +73,7 @@ export function applyBypass(clip: Clip): Clip {
 
 /** The whole timeline as it plays. */
 export function playingTimeline(timeline: Timeline): Timeline {
+  timeline=documentarySounds(timeline);
   if (!timeline.layers.some((layer) => layer.kind === 'video' && layer.items.some((clip) => clip.bypass?.length))) return timeline;
   return { ...timeline, layers: timeline.layers.map((layer) => (layer.kind === 'video' ? { ...layer, items: layer.items.map(applyBypass) } : layer)) };
 }
