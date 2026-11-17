@@ -403,9 +403,15 @@ class TimelinePoint(Strict):
     label: str = Field(default='', max_length=300)
 
 
+class MapPlace(Strict):
+    name:str=Field(min_length=1,max_length=120)
+    lat:float=Field(ge=-85,le=85,allow_inf_nan=False)
+    lon:float=Field(ge=-180,le=180,allow_inf_nan=False)
+
+
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -446,6 +452,10 @@ class ExplainerGraphic(Strict):
     split_move: float = Field(default=1.2, gt=0, le=10, allow_inf_nan=False)
     before_label: str = Field(default='முன்', max_length=40)
     after_label: str = Field(default='பின்', max_length=40)
+    map_places:Optional[List[MapPlace]]=Field(default=None,min_length=1,max_length=8)
+    map_region:Literal['world','india','tamil-nadu']='india'
+    map_route:bool=True
+    map_zoom:bool=True
 
     @field_validator('from_', 'to')
     @classmethod
@@ -463,6 +473,8 @@ class ExplainerGraphic(Strict):
 
     @model_validator(mode='after')
     def outline_has_shape(self):
+        if self.kind=='map' and (not self.map_places or any(not place.name.strip() for place in self.map_places)):
+            raise ValueError('Add 1–8 places as name, latitude, longitude.')
         if self.kind == 'outline' and not self.shape:
             raise ValueError('A glow outline needs the outline of something: right-click on it in the preview.')
         if self.kind == 'step-list':

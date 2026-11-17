@@ -9,7 +9,7 @@ export function graphicStateCount(item: TextItem, fps: number): number {
   if (item.graphic?.kind === 'compare-divider') return compareStates(item, fps).length;
   if (item.graphic?.kind === 'timeline-bar') return timelineStates(item).length;
   if (item.graphic?.kind === 'step-list') return stepStates(item).length;
-  if (item.graphic && ['count-up', 'bar-chart', 'line-chart', 'pie-chart'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
+  if (item.graphic && ['count-up', 'bar-chart', 'line-chart', 'pie-chart', 'map'].includes(item.graphic.kind) && item.enter?.preset === 'reveal') {
     const duration = Math.max(1e-6, Math.min(item.length, item.enter.duration));
     return Math.min(MAX_GRAPHIC_STATES, Math.max(2, Math.round(duration * fps) + 1));
   }
@@ -46,7 +46,7 @@ export function graphicBox(graphic: ExplainerGraphic, offset: [number, number]):
     return [(left + right) / 2 + dx, (top + bottom) / 2 + dy, Math.max(.03, right - left), Math.max(.03, bottom - top)];
   }
   if (graphic.kind === 'lower-third') return [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
-  if (graphic.kind === 'count-up' || graphic.kind === 'step-list' || graphic.kind === 'timeline-bar') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
+  if (graphic.kind === 'count-up' || graphic.kind === 'step-list' || graphic.kind === 'timeline-bar' || graphic.kind === 'map') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'chapter-card') return graphic.card_mode === 'full' ? [.5 + dx, .5 + dy, 1, 1] : [graphic.to[0] + graphic.width / 2 + dx, graphic.to[1] + graphic.height / 2 + dy, graphic.width, graphic.height];
   if (graphic.kind === 'bar-chart' || graphic.kind === 'line-chart' || graphic.kind === 'pie-chart') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];
   if (graphic.kind === 'circle' || graphic.kind === 'box' || graphic.kind === 'spotlight') return [graphic.to[0] + dx, graphic.to[1] + dy, graphic.width, graphic.height];

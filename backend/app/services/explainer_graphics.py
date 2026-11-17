@@ -24,7 +24,7 @@ def state_count(item: Text, fps: int) -> int:
     if item.graphic and item.graphic.kind == 'step-list':
         from app.services.step_graphics import step_states
         return len(step_states(item, fps))
-    if item.graphic and item.graphic.kind in ('count-up', 'bar-chart', 'line-chart', 'pie-chart') and item.enter and item.enter.preset == 'reveal':
+    if item.graphic and item.graphic.kind in ('count-up', 'bar-chart', 'line-chart', 'pie-chart', 'map') and item.enter and item.enter.preset == 'reveal':
         duration = max(1e-6, min(item.length, item.enter.duration))
         return min(MAX_STATES, max(2, round(duration * fps) + 1))
     return STATES
@@ -132,7 +132,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'compare-divider':
+    if graphic.kind == 'map':
+        from app.services.map_graphics import render_map
+        image=render_map(item,fmt,progress)
+    elif graphic.kind == 'compare-divider':
         from app.services.compare_graphics import render_compare
         image = render_compare(item, fmt, progress)
     elif graphic.kind == 'icon':

@@ -340,7 +340,7 @@ def build_server(api: KanaaApi) -> MCPServer:
 
     @server.tool(annotations=CHANGES)
     def add_graphic(project_id: int, kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'lower-third', 'count-up', 'chapter-card',
-                                                 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider'],
+                                                 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map'],
                     start: float, length: float = 3, text: str | None = None, x: float = .5, y: float = .5, colour: str | None = None, settings: dict | None = None) -> dict:
         """An explainer graphic on the Graphics layer, made as the editor's Add graphic makes it (its animation, style and
         sample content), then `settings` changes any of its fields. x, y: what an arrow, highlight, callout, spotlight or
@@ -352,6 +352,7 @@ def build_server(api: KanaaApi) -> MCPServer:
           indian_grouping, donut. step-list: steps [2-8 lines], step_times [seconds from its start, increasing],
           highlight_current, step_bullets. timeline-bar: points [{date, label}] (2-8), timeline_vertical. icon: icon (pin,
           warning, tick, cross, question, star, heart, trend-up, trend-down), icon_badge. spotlight: dim, width, height.
+          map: map_places [{name,lat,lon}] (1–8), map_region world|india|tamil-nadu, map_route, map_zoom. Uses installed Natural Earth outlines, never downloads.
           compare-divider (before / after): compare_clip (an overlay clip's id; it shows right of the line), split_from,
           split_to, split_delay, split_move, before_label, after_label; its start and length follow that clip.
         Numbers on screen must be real: only put figures you have a source for. Returns the item, with its id."""

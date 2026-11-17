@@ -13,6 +13,7 @@ import { SequenceGraphicFields } from './SequenceGraphicFields';
 import { TimelineGraphicFields } from './TimelineGraphicFields';
 import { IconGraphicFields } from './IconGraphicFields';
 import { withGraphicKind } from '../../timeline/graphic-defaults';
+import { MapGraphicFields } from './MapGraphicFields';
 
 const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
@@ -26,6 +27,7 @@ const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'step-list', label: 'Step list' },
   { id: 'timeline-bar', label: 'Timeline bar' },
   { id: 'icon', label: 'Icon' },
+  { id: 'map', label: 'Map' },
 ];
 const STYLES: { id: GraphicStyle; label: string }[] = [
   { id: 'clean', label: 'Clean white' }, { id: 'hand-drawn', label: 'Hand-drawn' },
@@ -42,7 +44,7 @@ const ENTRANCES = [{ id: 'reveal' as const, label: 'Draw on' }, { id: 'pop' as c
 
 export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { text: TextItem; timing: TimeFieldProps[]; onChange: (changes: Partial<TextItem>, group?: string) => void; onEnter: () => void; follow?: React.ReactNode }) {
   const graphic = text.graphic!;
-  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar';
+  const sequence = graphic.kind === 'step-list' || graphic.kind === 'timeline-bar' || graphic.kind === 'map';
   const [draft, setDraft] = useState(text.text);
   const [dataDraft, setDataDraft] = useState(chartDataText(graphic.data));
   const [dataError, setDataError] = useState('');
@@ -59,7 +61,7 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
       {graphic.kind === 'compare-divider' && <CompareGraphicFields text={text} onChange={onChange}/>}
       {graphic.kind !== 'outline' && graphic.kind !== 'compare-divider' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: withGraphicKind(graphic,kind) })}/>}
       {graphic.kind === 'icon' && <><IconGraphicFields text={text} onChange={onChange}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit,group)=>onChange({exit},group)} onShow={onEnter}/></>}
-      {sequence && <>{graphic.kind === 'step-list' ? <SequenceGraphicFields key={text.id} text={text} onChange={onChange}/> : <TimelineGraphicFields key={text.id} text={text} onChange={onChange}/>}<ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><More><ValueSlider label="Width" value={graphic.width} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(width,group)=>onChange({graphic:{...graphic,width}},group)}/><ValueSlider label="Height" value={graphic.height} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(height,group)=>onChange({graphic:{...graphic,height}},group)}/></More><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
+      {sequence && <>{graphic.kind === 'step-list' ? <SequenceGraphicFields key={text.id} text={text} onChange={onChange}/> : graphic.kind === 'map' ? <MapGraphicFields key={text.id} text={text} onChange={onChange}/> : <TimelineGraphicFields key={text.id} text={text} onChange={onChange}/>}<ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><More><ValueSlider label="Width" value={graphic.width} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(width,group)=>onChange({graphic:{...graphic,width}},group)}/><ValueSlider label="Height" value={graphic.height} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(height,group)=>onChange({graphic:{...graphic,height}},group)}/></More><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
       {graphic.kind === 'callout' && (
         <textarea className="ed-text" aria-label={t('Callout label')} lang="ta" value={draft} maxLength={200} rows={2}
           onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `graphic-text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>

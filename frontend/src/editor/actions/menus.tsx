@@ -134,6 +134,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Step list', onSelect: () => addExplainerGraphic('step-list', at) },
       { label: 'Timeline bar', onSelect: () => addExplainerGraphic('timeline-bar', at) },
       { label: 'Icon', onSelect: () => addExplainerGraphic('icon', at) },
+      { label: 'Map', onSelect: () => addExplainerGraphic('map', at) },
       'divider',
       { label: 'Spotlight', onSelect: () => addExplainerGraphic('spotlight', at) },
       { label: 'Glow outline around this', onSelect: () => { void addGlowOutline(at); } },

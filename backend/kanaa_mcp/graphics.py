@@ -9,13 +9,14 @@ import copy
 import uuid
 
 KINDS = ('arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'lower-third', 'count-up', 'chapter-card',
-         'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider')
+         'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map')
 CHOKE, WRAP = .35, .5   # The editor's Blend in one click (timeline/composite.ts DEFAULT_COMPOSITE).
 DEFAULT_CHROMA = {'color': '#00b140', 'similarity': .08, 'softness': .06, 'spill': .5}
 REST = {'x': .5, 'y': .5, 'scale': 1, 'opacity': 1, 'rotation': 0}
 
 _CENTRE = {'from': [.5, .5], 'to': [.5, .5]}
 DEFAULTS: dict[str, tuple[dict, str, str]] = {   # kind: (graphic, words, colour)
+    'map':({'style':'documentary',**_CENTRE,'width':.84,'height':.76,'map_region':'tamil-nadu','map_route':True,'map_zoom':True,'map_places':[{'name':'சென்னை','lat':13.0827,'lon':80.2707},{'name':'கோயம்புத்தூர்','lat':11.0168,'lon':76.9558}]},'Map','#ffffff'),
     'lower-third': ({'style': 'clean', 'from': [.07, .78], 'to': [.07, .78], 'width': .42, 'height': .14, 'role': 'Role or organisation'}, 'Name', '#ffffff'),
     'count-up': ({'style': 'clean', **_CENTRE, 'width': .34, 'height': .2, 'count_from': 0, 'count_to': 2000, 'label': 'years', 'prefix': '', 'suffix': ''}, 'Count-up number', '#ffffff'),
     'chapter-card': ({'style': 'documentary', 'from': [.5, .5], 'to': [.08, .12], 'width': .42, 'height': .22, 'card_mode': 'full'}, 'Part 2 — சங்க காலம்', '#f5c11b'),
@@ -49,7 +50,7 @@ def graphic_item(kind: str, start: float, length: float, point: tuple[float, flo
         graphic = {'style': 'documentary' if highlight else 'clean', 'from': tail, 'to': [x, y], 'width': .3 if spot else .25, 'height': .42 if spot else .18, **({'dim': .6} if spot else {})}
         words, ink = ('Type your label' if kind == 'callout' else kind.replace('arrow-', '').replace('-', ' ')), ('#f5c11b' if highlight else '#ffffff')
     graphic = {'kind': kind, 'line_width': .006, **graphic, **(settings or {})}
-    enter = {'preset': 'pop' if kind in ('callout', 'icon') else 'reveal', 'duration': .8 if kind == 'spotlight' else .65}
+    enter = {'preset': 'pop' if kind in ('callout', 'icon') else 'reveal', 'duration': 1.6 if kind == 'map' else .8 if kind == 'spotlight' else .65}
     exit_ = {'preset': 'reveal', 'duration': .45} if kind == 'lower-third' else {'preset': 'fade', 'duration': .4} if kind in ('count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart') else None
     item = {'id': f'graphic-{uuid.uuid4().hex[:8]}', 'start': round(start, 3), 'length': round(length, 3), 'text': text or words, 'style': 'plain', 'position': 'center',
             'color': colour or ink, 'size': 44, 'transform': dict(REST), 'graphic': graphic}
