@@ -12,6 +12,7 @@ import ImportArea from './components/ImportArea';
 import Dialog from './components/Dialog';
 import AISettingsFields from './components/AISettingsFields';
 import VideoAISettingsFields from './components/VideoAISettingsFields';
+import VoiceSettingsFields from './components/VoiceSettingsFields';
 import PhoneAccessFields from './components/PhoneAccessFields';
 import { BulkFolderDialog, CreateFolderDialog, DeleteMediaDialog, FolderDialog, ManageFolderDialog } from './components/MediaDialogs';
 import MediaFolderSidebar, { UNFILED } from './components/MediaFolderSidebar';
@@ -124,7 +125,7 @@ export default function App() {
       </div>
     </main>
     {phoneOpen && <Dialog title="Phone access" onClose={() => setPhoneOpen(false)}><PhoneAccessFields/></Dialog>}
-    {aiSettingsOpen && <Dialog title="AI settings" onClose={() => setAISettingsOpen(false)}><AISettingsFields/><VideoAISettingsFields/></Dialog>}
+    {aiSettingsOpen && <Dialog title="AI settings" onClose={() => setAISettingsOpen(false)}><AISettingsFields/><VideoAISettingsFields/><VoiceSettingsFields/></Dialog>}
     {newKind && <NewProjectDialog kind={newKind} media={media} onClose={() => setNewKind(null)} onImported={imported} onCreated={(project) => { void refresh(); void open(project); }}/>} 
     {preview && <Dialog title={preview.filename} wide onClose={() => setPreview(null)}><div className="media-preview">{preview.media_type === 'video' ? <video src={photoVideoUrl(preview.id)} controls autoPlay/> : <img src={`/api/photos/${preview.id}/image`} alt={preview.filename}/>}</div><footer><span className="muted">{preview.width} × {preview.height}</span><a className="primary" href={`/api/photos/${preview.id}/download`} download><ArrowDownToLine size={17}/>Download</a></footer></Dialog>}
     {editing && <Dialog title={editing.action === 'rename' ? 'Rename project' : 'Delete project?'} onClose={() => setEditing(null)}>{editing.action === 'rename' ? <label className="field-label">Project name<input aria-label="New project name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)}/></label> : <p className="dialog-description">Delete “{editing.project.name}”? Its editing recipe will be removed. Imported media and finished exports will stay.</p>}<footer><button className="secondary" onClick={() => setEditing(null)}>Cancel</button><button className={editing.action === 'delete' ? 'danger' : 'primary'} disabled={saving || (editing.action === 'rename' && !name.trim())} onClick={() => { void saveProjectAction(); }}>{saving ? 'Saving…' : editing.action === 'rename' ? 'Save name' : 'Delete project'}</button></footer></Dialog>}

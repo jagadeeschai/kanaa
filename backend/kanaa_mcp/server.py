@@ -375,6 +375,23 @@ def build_server(api: KanaaApi) -> MCPServer:
         save(project_id, before, after, f'Added {kind}')
         return item
 
+    @server.tool(annotations=READ_ONLY)
+    def narration_estimate(script:str,voice:str,speed:float=1,pitch:float=0)->dict:
+        """Review Google's estimated charge before calling narrate. No speech is generated."""
+        return api.post('/voice/estimate',{'script':script,'voice':voice,'speed':speed,'pitch':pitch})
+
+    @server.tool(annotations=CHANGES)
+    def narrate(project_id:int,script:str,voice:str,start:float=0,speed:float=1,pitch:float=0,max_cost:float=0)->dict:
+        """Add cached Google narration and timed captions. First call narration_estimate and obtain the owner's cost
+        approval; max_cost is that approved USD amount. Default zero permits cached lines only. Never substitute voices."""
+        before=timeline_of(project_id)
+        params={'script':script,'voice':voice,'speed':speed,'pitch':pitch}
+        price=api.post('/voice/estimate',params)
+        if price['usd']>max_cost+1e-8:raise ToolError('Review narration_estimate and obtain approval for the Google charge, then pass max_cost.')
+        result=api.post('/voice/generate',{**params,'quote':price['quote'],'max_cost':max_cost,'timeline':before,'start':start})
+        save(project_id,before,result['timeline'],'Added narration')
+        return {'lines':result['lines'],'estimated_usd':price['usd']}
+
     @server.tool(annotations=CHANGES)
     def add_overlay(project_id: int, media_id: int, start: float, source_in: float = 0, out: float | None = None, x: float = .5, y: float = .5,
                     scale: float = 1, name: str | None = None, before_after: bool = False) -> dict:

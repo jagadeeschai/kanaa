@@ -91,6 +91,8 @@ app.include_router(timeline_router, prefix='/api')
 app.include_router(lights_router, prefix='/api')
 app.include_router(signature_router, prefix='/api')
 app.include_router(still_router, prefix='/api')
+from app.api.voice_routes import router as voice_router
+app.include_router(voice_router, prefix='/api')
 
 
 FRONTEND = Path(__file__).resolve().parents[2] / 'frontend' / 'dist'

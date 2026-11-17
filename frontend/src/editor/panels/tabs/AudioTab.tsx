@@ -4,10 +4,12 @@ import { mainLayer,timecode } from "../../../timeline/model";
 import { removeEffects } from "../../../timeline/sfx";
 import { useEditorPanel } from "../../state/EditorContext";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
+import NarratePanel from '../../NarratePanel';
 
 export function AudioTabSection1() {
   const { leftTab, library, libraryFolder, musicSearch, musicMood, setMusicSearch, MOODS, setMusicMood, MOOD_LABELS, listening, draggableAs, listen, addingMusic, addLibraryTrack, addMusic, layout, soundEffects, timeline, sfxChoice, setSfxChoice, total, sfxBusy, addSoundEffects, change, sfxNote, beatBusy, cutClipsToBeat, beatNote } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'audio' && <>
+          <NarratePanel/>
           <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music library</h3>
             {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : (() => {
               const query = musicSearch.trim().toLowerCase();
