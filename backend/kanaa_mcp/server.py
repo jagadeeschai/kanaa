@@ -340,7 +340,7 @@ def build_server(api: KanaaApi) -> MCPServer:
 
     @server.tool(annotations=CHANGES)
     def add_graphic(project_id: int, kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'lower-third', 'count-up', 'chapter-card',
-                                                 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map'],
+                                                 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map', 'source'],
                     start: float, length: float = 3, text: str | None = None, x: float = .5, y: float = .5, colour: str | None = None, settings: dict | None = None) -> dict:
         """An explainer graphic on the Graphics layer, made as the editor's Add graphic makes it (its animation, style and
         sample content), then `settings` changes any of its fields. x, y: what an arrow, highlight, callout, spotlight or

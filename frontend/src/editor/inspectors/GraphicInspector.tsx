@@ -14,6 +14,7 @@ import { TimelineGraphicFields } from './TimelineGraphicFields';
 import { IconGraphicFields } from './IconGraphicFields';
 import { withGraphicKind } from '../../timeline/graphic-defaults';
 import { MapGraphicFields } from './MapGraphicFields';
+import { SourceField } from './SourceField';
 
 const KINDS: { id: GraphicKind; label: string }[] = [
   { id: 'arrow-straight', label: 'Straight arrow' }, { id: 'arrow-curved', label: 'Curved arrow' },
@@ -55,11 +56,13 @@ export function GraphicInspector({ text, timing, onChange, onEnter, follow }: { 
   useEffect(() => setDataDraft((typed) => JSON.stringify(parseChartData(typed, 99).rows ?? null) === JSON.stringify(graphic.data ?? null) ? typed : chartDataText(graphic.data)), [text.id, graphic.data]);
   useEffect(() => setDataError(''), [text.id]);
   const setStyle = (style: GraphicStyle) => onChange({ graphic: { ...graphic, style } });
+  if(graphic.kind==='source')return <Panel id="source" tabs={[{id:'look',label:'Source',Icon:Circle}]}><Group title="Timing" summary={timingSummary(timing)}><Timing fields={timing}/></Group><Group title="Source" tab="look" startOpen><SourceField text={text} onChange={onChange}/></Group></Panel>;
   return <Panel id="graphic" tabs={[{ id: 'look', label: 'Graphic', Icon: Circle }, { id: 'motion', label: 'Motion', Icon: MoveRight, changed: Boolean(text.enter) }]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="when start length duration" help="timing-and-trimming"><Timing fields={timing}/></Group>
     <Group title="Graphic" tab="look" startOpen keywords="arrow circle box callout label pointer explainer steps timeline icon" help="explainer-graphics" tip="The point you right-clicked is the arrow tip or the centre of the highlight. A glow outline traces what you right-clicked.">
       {graphic.kind === 'compare-divider' && <CompareGraphicFields text={text} onChange={onChange}/>}
       {graphic.kind !== 'outline' && graphic.kind !== 'compare-divider' && <Chips label="Kind" options={KINDS} value={graphic.kind} onPick={(kind) => onChange({ text: kind === 'callout' && !text.text.trim() ? 'Type your label' : text.text, graphic: withGraphicKind(graphic,kind) })}/>}
+      <SourceField text={text} onChange={onChange}/>
       {graphic.kind === 'icon' && <><IconGraphicFields text={text} onChange={onChange}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit,group)=>onChange({exit},group)} onShow={onEnter}/></>}
       {sequence && <>{graphic.kind === 'step-list' ? <SequenceGraphicFields key={text.id} text={text} onChange={onChange}/> : graphic.kind === 'map' ? <MapGraphicFields key={text.id} text={text} onChange={onChange}/> : <TimelineGraphicFields key={text.id} text={text} onChange={onChange}/>}<ValueSlider label="Text size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/><Chips label="Style" options={LOWER_STYLES} value={graphic.style} onPick={setStyle}/><More><ValueSlider label="Width" value={graphic.width} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(width,group)=>onChange({graphic:{...graphic,width}},group)}/><ValueSlider label="Height" value={graphic.height} min={.3} max={.95} step={.01} defaultValue={.78} onChange={(height,group)=>onChange({graphic:{...graphic,height}},group)}/></More><AnimationPicker label="Exit" presets={ENTRANCES} value={text.exit} onChange={(exit, group) => onChange({ exit }, group)} onShow={onEnter}/></>}
       {graphic.kind === 'callout' && (

@@ -9,13 +9,14 @@ import copy
 import uuid
 
 KINDS = ('arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'lower-third', 'count-up', 'chapter-card',
-         'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map')
+         'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map', 'source')
 CHOKE, WRAP = .35, .5   # The editor's Blend in one click (timeline/composite.ts DEFAULT_COMPOSITE).
 DEFAULT_CHROMA = {'color': '#00b140', 'similarity': .08, 'softness': .06, 'spill': .5}
 REST = {'x': .5, 'y': .5, 'scale': 1, 'opacity': 1, 'rotation': 0}
 
 _CENTRE = {'from': [.5, .5], 'to': [.5, .5]}
 DEFAULTS: dict[str, tuple[dict, str, str]] = {   # kind: (graphic, words, colour)
+    'source':({'style':'documentary','from':[.5,.95],'to':[.5,.95],'width':.92,'height':.075},'Source: …','#ddb168'),
     'map':({'style':'documentary',**_CENTRE,'width':.84,'height':.76,'map_region':'tamil-nadu','map_route':True,'map_zoom':True,'map_places':[{'name':'சென்னை','lat':13.0827,'lon':80.2707},{'name':'கோயம்புத்தூர்','lat':11.0168,'lon':76.9558}]},'Map','#ffffff'),
     'lower-third': ({'style': 'clean', 'from': [.07, .78], 'to': [.07, .78], 'width': .42, 'height': .14, 'role': 'Role or organisation'}, 'Name', '#ffffff'),
     'count-up': ({'style': 'clean', **_CENTRE, 'width': .34, 'height': .2, 'count_from': 0, 'count_to': 2000, 'label': 'years', 'prefix': '', 'suffix': ''}, 'Count-up number', '#ffffff'),

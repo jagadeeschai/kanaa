@@ -411,7 +411,7 @@ class MapPlace(Strict):
 
 class ExplainerGraphic(Strict):
     """Editable explainer artwork; every coordinate is a share of the output frame."""
-    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map']
+    kind: Literal['arrow-straight', 'arrow-curved', 'circle', 'box', 'callout', 'spotlight', 'outline', 'lower-third', 'count-up', 'chapter-card', 'bar-chart', 'line-chart', 'pie-chart', 'step-list', 'timeline-bar', 'icon', 'compare-divider', 'map', 'source']
     style: Literal['clean', 'hand-drawn', 'neon', 'documentary', 'dark-band', 'bold-colour'] = 'clean'
     from_: Tuple[float, float] = Field(alias='from')
     to: Tuple[float, float]
@@ -505,6 +505,7 @@ class ExplainerGraphic(Strict):
 
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
+    source:Optional[str]=Field(default=None,max_length=500)
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     start: float = Field(ge=0)
@@ -662,6 +663,7 @@ class BlurLayer(LayerBase):
 
 class CaptionLayer(LayerBase):
     kind: Literal['captions']
+    shared_images:bool=False
     style: Literal['outline', 'shadow', 'band'] = 'outline'
     position: Literal['top', 'center', 'bottom'] = 'bottom'
     color: str = Field(default='#ffffff', pattern=r'^#[0-9a-fA-F]{6}$')
@@ -720,6 +722,7 @@ class Timeline(Strict):
     layers: List[Layer] = Field(default_factory=list)
     normalize_audio: bool = False
     documentary_sound: Optional[DocumentarySound] = None
+    sources_roll:bool=False
     finish: Optional[Finish] = None
     lut: Optional[str] = Field(default=None, pattern=r'^[a-z0-9-]{1,64}$')
     lut_amount: float = Field(default=1, ge=0, le=1)
@@ -741,7 +744,10 @@ class Timeline(Strict):
 
     @property
     def duration(self) -> float:
-        return max((item.start + item.length for layer in self.layers for item in layer.items), default=0)
+        base=max((item.start + item.length for layer in self.layers if not layer.id.startswith('__source_') for item in layer.items), default=0)
+        from app.services.source_graphics import roll_lines,catalog
+        lines=roll_lines(catalog(self.model_dump(by_alias=True))) if self.sources_roll else []
+        return base+(6+max(0,len(lines)-1)*.8 if lines else 0)
 
 
 def frame_at(seconds: float, fps: int) -> int:

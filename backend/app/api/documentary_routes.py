@@ -6,6 +6,13 @@ from app.services.documentary_audio import shift_narration,pause_before
 from app.services.sound_effect_service import use
 
 router=APIRouter()
+@router.post('/documentary/source-check')
+def source_check(body:dict):
+    from app.services.source_graphics import missing_sources
+    try:timeline=Timeline.model_validate(body)
+    except ValueError:raise HTTPException(400,'This timeline is not valid.') from None
+    return {'missing_sources':missing_sources(timeline.model_dump(by_alias=True))}
+
 class Edit(BaseModel):
     timeline:dict
     action:Literal['lead','trail','pause','sounds']

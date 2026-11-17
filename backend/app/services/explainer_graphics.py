@@ -132,7 +132,10 @@ def render(item: Text, fmt: Format, target: Path, progress: float = 1) -> None:
         draw.line(shown, fill=colour, width=width, joint='curve')
         return shown
 
-    if graphic.kind == 'map':
+    if graphic.kind == 'source':
+        from app.services.source_graphics import render_source
+        image=render_source(item,fmt,progress)
+    elif graphic.kind == 'map':
         from app.services.map_graphics import render_map
         image=render_map(item,fmt,progress)
     elif graphic.kind == 'compare-divider':

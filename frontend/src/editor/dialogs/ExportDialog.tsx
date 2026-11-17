@@ -5,6 +5,7 @@ import { cancelRenderJob, exportProjectTimeline, getJobStatus } from "../../api/
 import { duration, exportFormat, timecode, type Timeline } from "../../timeline/model";
 import { coverBrand } from "../../timeline/brand";
 import { exportSpec } from "../export-spec";
+import { missingSources } from "../../timeline/sources";
 
 const QUALITIES = [{ id: 720, label: '720p', note: 'Smallest file' }, { id: 1080, label: '1080p', note: 'Best for most posts' }, { id: 2160, label: '4K', note: 'Slower, larger file' }];
 
@@ -18,6 +19,7 @@ export function ExportDialog({ timeline, projectId, withSound, onNormalize, onCl
   const [job, setJob] = useState<{ id: string; progress: number; status?: string | null; error?: string | null; output?: number | null } | null>(null);
   const [error, setError] = useState('');
   const seconds = duration(timeline);
+  const uncited=missingSources(timeline);
   const [hardware, setHardware] = useState(true);
   const megabytes = Math.round(seconds * (hardware ? hardwareMbps(quality) / 8 : ESTIMATED_MB_PER_SECOND_1080) * (quality / 1080) ** 2);
   const outputFormat = exportFormat(timeline.format, quality);
@@ -45,6 +47,7 @@ export function ExportDialog({ timeline, projectId, withSound, onNormalize, onCl
   return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Export video"><div className="ed-card small">
     <button className="ed-close" aria-label="Close export" onClick={onClose}><X size={17}/></button>
     <h2>Export video</h2>
+    {!job && uncited.length>0 && <p role="alert" className="ed-tip">{uncited.length} {t('numbers or quotes need a source')}. {t('Add Source footnotes before sharing this documentary.')}</p>}
     {!job && <><p>{timecode(seconds)} long · about {megabytes >= 1000 ? `${(megabytes / 1000).toFixed(1)} GB` : `${megabytes} MB`}</p>
       <div className="ed-qualities">{QUALITIES.map((item) => <button key={item.id} className={quality === item.id ? 'on' : ''} aria-pressed={quality === item.id} onClick={() => setQuality(item.id)}><strong>{item.label}</strong><span>{item.note}</span></button>)}</div>
       <p className="ed-export-spec">{exportSpec(outputFormat, withSound)}</p>

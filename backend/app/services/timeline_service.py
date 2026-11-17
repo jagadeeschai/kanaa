@@ -747,6 +747,10 @@ def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
 def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None, graphic_progress: float = 1) -> None:
     """`lit`: for a caption, its highlighted word; for a karaoke title, the last word sung so far."""
     """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
+    if layer is not None and layer.shared_images:
+        from app.services.shared_captions import render_image
+        render_image(item,fmt,target,layer,lit)
+        return
     if layer is None and item.graphic:
         from app.services.explainer_graphics import render
         render(item, fmt, target, graphic_progress)
@@ -850,7 +854,7 @@ class Builder:
                 halves[number] = min(round(clip.transition_in.duration * fps / 2), length // 2, own // 2)
         return halves
 
-    def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str, beat_pulse=None) -> str:
+    def pose(self, label: str, transform: Transform, enter: Animation | None, exit_: Animation | None, length: float, frames: int, canvas_scale: float, lead: float, name: str, beat_pulse=None, pixel_snap=False) -> str:
         """Place one item on a transparent full frame. `lead` is how many seconds of the stream come before the item's own start."""
         if transform.is_default and not enter and not exit_ and canvas_scale == 1 and not beat_pulse:
             return label
@@ -894,7 +898,9 @@ class Builder:
         wide, tall = (W * spread, W * spread) if spread != 1 else (W, H)
         self.graph.append(f"[{label}]{''.join(step + ',' for step in filters)}scale=w='max(2,{wide}*({scale}))':h='max(2,{tall}*({scale}))':eval=frame:flags=bicubic[{sized}]")
         self.transparent_gap(back, frames)
-        self.graph.append(f"[{back}][{sized}]overlay=x='{W}*({x})-overlay_w/2':y='{H}*({y})-overlay_h/2':eval=frame:format=gbrp[{posed}]")
+        px,py=f'{W}*({x})-overlay_w/2',f'{H}*({y})-overlay_h/2'
+        if pixel_snap:px,py=f'floor(({px})+0.5)',f'floor(({py})+0.5)'
+        self.graph.append(f"[{back}][{sized}]overlay=x='{px}':y='{py}':eval=frame:format=gbrp[{posed}]")
         # The item is now cropped to the frame. Moves carry that whole frame, so a zoomed-in clip still slides in from outside.
         shift_x = [extra for preset, p in moves if (extra := offset_expression(preset, 'dx', p))]
         shift_y = [extra for preset, p in moves if (extra := offset_expression(preset, 'dy', p))]
@@ -1251,7 +1257,7 @@ class Builder:
                 pattern = particle_frames.sequence(item, fps, frames, picture_at, self.folder, f'text-{position}-{number}')
                 index = self.add_input('-framerate', str(fps), '-i', str(pattern))
                 self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
-                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
+                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label, pixel_snap=bool(item.graphic and item.graphic.kind=='source'))
             elif item.karaoke and item.karaoke.words and not item.design:
                 # Karaoke: one picture for each word sung so far, shown in turn, then posed and moved as one title.
                 states = karaoke_states(item)
@@ -1273,11 +1279,11 @@ class Builder:
                 listing.write_text('\n'.join(rows) + '\n', encoding='utf-8')
                 index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
                 self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
-                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
+                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label, pixel_snap=bool(item.graphic and item.graphic.kind=='source'))
             else:
                 index = self.add_input('-loop', '1', '-framerate', str(fps), '-t', f'{(frames + 1) / fps:.6f}', '-i', str(image))
                 self.graph.append(f'[{index}:v]format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
-                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label)
+                shown = self.pose(label, item.transform, item.enter, item.exit, item.length, frames, 1, 0, label, pixel_snap=bool(item.graphic and item.graphic.kind=='source'))
             late = f'{label}_late'
             self.graph.append(f'[{shown}]tpad=start={round(item.start * fps)}:color=black@0[{late}]')
             self.graph.append(f'[{base}][{late}]overlay=format=gbrp:eof_action=pass[{output}]')
@@ -1304,6 +1310,9 @@ class Builder:
 
     def add_caption_layer(self, layer: CaptionLayer, position: int, base: str) -> str:
         """Every caption in one subtitle file, drawn in one step: a long talk has hundreds, too many to add one by one."""
+        if layer.shared_images:
+            from app.services.shared_captions import add
+            return add(self,layer,position,base)
         cues, marks = [], []
         for item in sorted(layer.items, key=lambda caption: caption.start):
             for start, end, lit in caption_states(item, bool(layer.highlight)):
@@ -1461,6 +1470,8 @@ def apply_bypass(clip):
 def playing_timeline(timeline: Timeline) -> Timeline:
     """The timeline with every clip's switched-off effects left out."""
     from app.services.documentary_audio import decorate
+    from app.services.source_graphics import decorate as sources
+    timeline=sources(timeline)
     timeline=decorate(timeline)
     if not any(layer.kind == 'video' and any(clip.bypass for clip in layer.items) for layer in timeline.layers):
         return timeline

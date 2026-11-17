@@ -17,6 +17,7 @@ import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, Font
 
 import { MATERIAL_LOOKS } from '../../timeline/titleMaterial';
 import { GraphicInspector } from './GraphicInspector';
+import { SourceField } from './SourceField';
 
 const KARAOKE_SWATCHES: [string, string][] = [['#ffd54a', 'Gold'], ['#ff7aa8', 'Rose'], ['#7dd3fc', 'Sky'], ['#86efac', 'Leaf'], ['#ffffff', 'White']];
 
@@ -52,6 +53,7 @@ export function TextInspector() {
     <Group title="Text" tab="style" startOpen keywords="text title words tamil english type font bigger size colour color band shadow outline style position align spacing" tip="Type in Tamil or English, or double-click the title in the preview. Drag it there to move it." help="titles">
       {!forLayer && <textarea className="ed-text" aria-label="Title" lang="ta" value={draft} placeholder="Type your title" maxLength={500} rows={2} onChange={(event) => { setDraft(event.target.value); if (event.target.value.trim()) onChange({ text: event.target.value }, `text-${text.id}`); }} onBlur={() => { if (!draft.trim()) setDraft(text.text); }}/>}
       {fontsAndSize}
+      {!forLayer && <SourceField text={text} onChange={onChange}/>}
     </Group>
     <Group title="Karaoke" tab="style" startOpen={Boolean(text.karaoke)} changed={Boolean(text.karaoke)} keywords="karaoke highlight sing along words lyrics light up">
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.karaoke)} onChange={(event) => onKaraoke(event.target.checked ? text.karaoke?.color ?? KARAOKE_COLOUR : null)}/><span>Light the words as they are sung<small>{forLayer ? 'Each word changes colour in time with its line.' : 'Each word changes colour in time with the line. For a whole lyrics layer at once, use the layer’s settings (⋯ on the layer → Layer settings).'}</small></span></label>

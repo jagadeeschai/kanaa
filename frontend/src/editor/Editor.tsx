@@ -274,15 +274,15 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   useEffect(() => {
     if (!timeline) return;
     const timer = setTimeout(() => {
-      for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
+      for (const text of textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items)) {
         const key = textKey(text, timeline.format);
         if (textImages.current.has(key)) continue;
         textImages.current.set(key, 'loading');
         void fetchTextImage(text, timeline.format).then((url) => { textImages.current.set(key, url); redrawText(); }).catch((problem: Error) => { textImages.current.delete(key); setError(problem.message); });
       }
-      queueGraphicFrames(textLayers(timeline).flatMap((layer) => layer.items), timeline.format, textKey, textImages.current, redrawText);
+      queueGraphicFrames(textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items), timeline.format, textKey, textImages.current, redrawText);
       // Karaoke lines: one picture for each word sung so far.
-      for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
+      for (const text of textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items)) {
         for (let lit = 0; lit < (text.karaoke?.words.length ?? 0); lit += 1) {
           const key = `${textKey(text, timeline.format)}|lit${lit}`;
           if (textImages.current.has(key)) continue;
@@ -291,7 +291,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         }
       }
       // Letter-by-letter titles also need to know where each letter is (the same map the export finds).
-      for (const text of textLayers(timeline).flatMap((layer) => layer.items)) {
+      for (const text of textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items)) {
         if (![text.enter, text.exit].some((animation) => animation && LETTER_PRESETS.has(animation.preset))) continue;
         const key = textKey(text, timeline.format);
         if (textLetterMaps.current.has(key)) continue;

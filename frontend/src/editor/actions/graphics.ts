@@ -49,6 +49,7 @@ export function createGraphicActions(getInput: () => Input) {
   const now = () => Math.round((getInput().engineRef.current?.currentTime ?? 0) * 1000) / 1000;
 
   const addExplainerGraphic = (kind: GraphicKind, point: [number, number]) => {
+    if(kind==='source'){place({kind,style:'documentary',from:[.5,.95],to:[.5,.95],width:.92,height:.075,line_width:.003},'Source: …','#ddb168',now());return;}
     if(kind==='map'){
       place({kind,style:'documentary',from:[.5,.5],to:[.5,.5],width:.84,height:.76,line_width:.006,map_region:'tamil-nadu',map_route:true,map_zoom:true,map_places:[{name:'சென்னை',lat:13.0827,lon:80.2707},{name:'கோயம்புத்தூர்',lat:11.0168,lon:76.9558}]},'Map','#ffffff',now());return;
     }

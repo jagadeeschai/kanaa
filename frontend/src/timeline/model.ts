@@ -2,6 +2,7 @@ import type { Animation, LookName, Transition } from './animation';
 import type { ColourWheels } from './colourWheels';
 import type { AudioPresetId } from './audioPresets';
 import { karaokeWords } from './karaoke.ts';
+import { sourceDuration } from './sources.ts';
 import type { Chroma } from './chroma';
 import type { Transform } from './evaluate';
 import { scaleKeys, shiftKeys, splitKeys } from './keyframes.ts';
@@ -53,7 +54,7 @@ export const DEFAULT_TITLE_DEPTH: TitleDepth = { amount: 0.18, color: '#6b4a1f',
 /** A laid-out title, drawn by the backend (title_design.py): a bar fading to the right, a formal bar, the subtitle
  * overlapping the title, or title and subtitle in opposite corners. */
 export type TitleDesign = 'gradient' | 'formal' | 'overlap' | 'corners' | 'clouds' | 'paper' | 'torn' | 'organic';
-export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart' | 'line-chart' | 'pie-chart' | 'step-list' | 'timeline-bar' | 'icon' | 'compare-divider' | 'map';
+export type GraphicKind = 'arrow-straight' | 'arrow-curved' | 'circle' | 'box' | 'callout' | 'spotlight' | 'outline' | 'lower-third' | 'count-up' | 'chapter-card' | 'bar-chart' | 'line-chart' | 'pie-chart' | 'step-list' | 'timeline-bar' | 'icon' | 'compare-divider' | 'map' | 'source';
 export type GraphicIcon = 'pin' | 'warning' | 'tick' | 'cross' | 'question' | 'star' | 'heart' | 'trend-up' | 'trend-down';
 export type GraphicStyle = 'clean' | 'hand-drawn' | 'neon' | 'documentary' | 'dark-band' | 'bold-colour';
 export type ChartRow = { label: string; value: number };
@@ -71,6 +72,7 @@ export type ExplainerGraphic = { kind: GraphicKind; style: GraphicStyle; from: [
 export const TITLE_DESIGNS: { id: TitleDesign; label: string }[] = [{ id: 'gradient', label: 'Gradient bar' }, { id: 'formal', label: 'Formal bar' }, { id: 'overlap', label: 'Overlap' }, { id: 'corners', label: 'Four corners' }, { id: 'clouds', label: 'Clouds' }, { id: 'paper', label: 'Paper' }, { id: 'torn', label: 'Torn edge' }, { id: 'organic', label: 'Flourishes' }];
 export type TextItem = { id: string; own?: string[]; start: number; length: number; text: string; design?: TitleDesign | null; style: 'outline' | 'shadow' | 'band' | 'plain'; position: 'top' | 'center' | 'bottom'; color: string; size: number; enter?: Animation | null; exit?: Animation | null; transform?: Transform; glint?: boolean; depth?: TitleDepth | null; pin?: TitlePin | null; keep_clear?: KeepClear | null; stay_with?: StayWith | null;
   graphic?: ExplainerGraphic | null;
+  source?:string|null;
   subtitle?: string | null; subtitle_size?: number | null; subtitle_color?: string | null; subtitle_above?: boolean; subtitle_spacing?: number; spacing?: number; align?: 'left' | 'center' | 'right'; band_color?: string | null; font?: string | null; tamil_font?: string | null ; /** Words light up as they are sung: when each word starts, in the title's own seconds. */ karaoke?: { color: string; words: number[] } | null; /** credits: one title holds a credit block, each line styled by what it is. */ layout?: 'credits' | null };
 export const REST_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 export type TextLayer = { id: string; kind: 'text'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; style?: Record<string, unknown>; hidden?: boolean; muted?: boolean; locked?: boolean; items: TextItem[] };
@@ -82,7 +84,7 @@ export type CaptionWord = { w: string; s: number };
 /** `position`, when set, places this one caption elsewhere than its layer (for example above a face). */
 export type Caption = { id: string; start: number; length: number; words: CaptionWord[]; position?: 'top' | 'center' | 'bottom' | null };
 export type CaptionLook = { style: 'outline' | 'shadow' | 'band'; position: 'top' | 'center' | 'bottom'; color: string; highlight: string | null; size: number };
-export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
+export type CaptionLayer = CaptionLook & { id: string; kind: 'captions'; shared_images?:boolean; name?: string; /** false: stays put when the main track is edited. */ ripple?: boolean; hidden?: boolean; muted?: boolean; locked?: boolean; items: Caption[] };
 export const DEFAULT_CAPTION_LOOK: CaptionLook = { style: 'outline', position: 'bottom', color: '#ffffff', highlight: '#ffd400', size: 48 };
 /** A span of an adjustment layer: its look, colour and glow change everything below it, fading in and out (adjust_layer.py). */
 export type AdjustItem = { id: string; name?: string; start: number; length: number; look?: LookName; adjust: Adjust; dreamy_glow?: DreamyGlow | null; wheels?: ColourWheels | null; fade_in: number; fade_out: number };
@@ -93,7 +95,7 @@ export type Format = { width: number; height: number; fps: number };
 /** A cinematic look over the whole video, under the captions. Each amount 0 (off) to 1. */
 export type Finish = { letterbox: boolean; grade: number; glow: number; vignette: number; grain: number };
 export const CINEMATIC: Finish = { letterbox: false, grade: 0.7, glow: 0.35, vignette: 0.55, grain: 0.3 };
-export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer)[]; normalize_audio?: boolean; documentary_sound?: {enabled:boolean;asset_id:string;duration:number;peak:number}|null; finish?: Finish | null; lut?: string | null; lut_amount?: number };
+export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer)[]; normalize_audio?: boolean; sources_roll?:boolean; documentary_sound?: {enabled:boolean;asset_id:string;duration:number;peak:number}|null; finish?: Finish | null; lut?: string | null; lut_amount?: number };
 
 /** Each letterbox bar's height as a share of the frame: bars to 2.39:1, only on a landscape or square frame. Matches bar_share in finish_service.py. */
 export function barShare(format: { width: number; height: number }): number {
@@ -236,7 +238,8 @@ export function findSound(timeline: Timeline, id: string | null): { sound: Sound
 }
 
 export function duration(timeline: Timeline): number {
-  return timeline.layers.reduce((longest, layer) => Math.max(longest, ...layer.items.map((item) => item.start + ('out' in item ? clipLength(item as Clip) : Number(item.length ?? 0)))), 0);
+  const base=timeline.layers.filter((layer)=>!layer.id.startsWith('__source_')).reduce((longest, layer) => Math.max(longest, ...layer.items.map((item) => item.start + ('out' in item ? clipLength(item as Clip) : Number(item.length ?? 0)))), 0);
+  return sourceDuration(timeline,base);
 }
 
 export function emptyTimeline(format: Format): Timeline {

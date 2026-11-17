@@ -1214,7 +1214,8 @@ export class PlaybackEngine {
     gl.uniform1i(uniforms.titleParticle, magic ? (magic.preset === 'particle-form' ? 1 : 2) : 0);
     gl.uniform1f(uniforms.titleParticleProgress, magicProgress);
     const size = valueAt(transform, 'scale', local) * look.scale;
-    gl.uniform4f(uniforms.box, 0.5 + look.dx + (valueAt(transform, 'x', local) - 0.5) * look.scale, 0.5 + look.dy + (valueAt(transform, 'y', local) - 0.5) * look.scale, size, size);
+    const ty=item.graphic?.kind==='source' ? .5+Math.round((valueAt(transform,'y',local)-.5)*height)/height:valueAt(transform,'y',local);
+    gl.uniform4f(uniforms.box, 0.5 + look.dx + (valueAt(transform, 'x', local) - 0.5) * look.scale, 0.5 + look.dy + (ty - 0.5) * look.scale, size, size);
     gl.uniform1f(uniforms.turn, (valueAt(transform, 'rotation', local) * Math.PI) / 180);
     gl.uniform2f(uniforms.frame, width, height);
     gl.uniform1i(uniforms.keyType, 0);

@@ -31,7 +31,7 @@ def add_narration(timeline,lines,start,gap=.15,replace_id=None):
         if layer['kind']=='audio' and layer.get('name') not in ('Narration','Documentary sounds'):
             for sound in layer['items']: sound['duck']=True
     after['layers'].append({'id':uid(),'kind':'audio','name':'Narration','items':audio})
-    if captions:after['layers'].append({'id':uid(),'kind':'captions','name':'Narration','items':captions})
+    if captions:after['layers'].append({'id':uid(),'kind':'captions','name':'Narration','style':'band','size':48,'shared_images':True,'items':captions})
     if sentences:after['layers'].append({'id':uid(),'kind':'text','name':'Narration','items':sentences})
     Timeline.model_validate(after)
     return after

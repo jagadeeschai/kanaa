@@ -739,7 +739,8 @@ def export_project(identifier: int, timeline: dict, hardware: str = 'true'):
             raise
 
     job_id = enqueue_render('video_export', f"Export: {row['name']}", run, total=100)
-    return {'job_id': job_id}
+    from app.services.source_graphics import missing_sources
+    return {'job_id': job_id,'source_warnings':missing_sources(parsed.model_dump(by_alias=True))}
 
 
 @router.get('/photos/{identifier}/screen-colour')

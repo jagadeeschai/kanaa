@@ -40,6 +40,10 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
     for layer in timeline.layers:
         if layer.hidden or layer.kind == 'audio':
             continue
+        if layer.kind=='captions':
+            if not layer.shared_images:found.add('captions layers')
+            if any(len(item.text)>500 for item in layer.items):found.add('captions longer than 500 characters')
+            continue
         if layer.kind == 'text':
             from app.services import title3d
             for item in layer.items:
@@ -66,9 +70,8 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
             if not clip.enabled:
                 continue
             data = clip.model_dump()
-            if clip.freeze is not None:
-                found.add('freeze')
-            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur', 'old_film'))
+            if clip.freeze is not None and clip.cutout:found.add('frozen cut-out')
+            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur', 'old_film','freeze'))
             if clip.old_film and clip.old_film.intensity > 0 and (clip.old_film.scratches or clip.old_film.dust or clip.old_film.weave):
                 found.add('old film scratches, dust or weave')
             if clip.composite and (clip.composite.choke or clip.composite.wrap or clip.composite.match):
@@ -228,6 +231,10 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
         listing = particle_frames.listing(item, fps, frames, lambda t: Path(paths[shown[min(frames - 1, round(t * fps))]]), folder, name)
         found['paths'] = [str(path) for path, _ in listing]
         found['shown'] = [index for index, (_, count) in enumerate(listing) for _ in range(count)]
+    if item.graphic and item.graphic.kind=='source':
+        # The source roll rounds its overlay offset. Keep it on those same scanlines rather than
+        # interpolating the high-contrast panel between scanlines in Core Image.
+        found['y']=[.5+math.floor((value_at(item.transform,'y',k/fps)-.5)*fmt.height+.5)/fmt.height for k in range(frames)]
     return found
 
 
@@ -267,10 +274,16 @@ def _transition(transition, frames: int, height: int) -> dict:
 
 def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:
     """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`."""
+    from app.services.timeline_service import playing_timeline
+    from app.services import gpu_documentary
+    timeline=playing_timeline(timeline)
     fps = timeline.format.fps
     items = []
     for position, layer in enumerate(timeline.layers):
-        if layer.hidden or layer.kind not in ('video', 'text'):
+        if layer.hidden or layer.kind not in ('video', 'text','captions'):
+            continue
+        if layer.kind=='captions':
+            for number,item in enumerate(layer.items):items.append(gpu_documentary.caption(item,layer,timeline.format,folder or output.parent,f'caption-{position}-{number}'))
             continue
         if layer.kind == 'text':
             for number, item in enumerate(sorted(layer.items, key=lambda text: text.start)):
@@ -282,6 +295,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             head, tail = halves[number], halves[number + 1] if number + 1 < len(clips) else 0
             first, base = clip_frames(clip, fps)
             facts = media(clip.media_id)
+            facts = gpu_documentary.frozen(clip,facts,timeline.format,folder or output.parent,f'clip-{position}-{number}')
             # As the export: a transition is centred on the cut. The clip before plays on for half of it and this one
             # starts half of it early (its first frame held where the source has nothing earlier); their entrances and
             # exits give way to it.
