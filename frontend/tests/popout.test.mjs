@@ -62,3 +62,26 @@ test('with 8 video layers already, a pop-out still fits on a free Pop-out layer'
   assert.equal(more.layers.filter((l) => l.kind === 'video').length, 8);
   assert.throws(() => applyPopout(full, 'b', PICTURES, 'forward', true, 'q', 'pop2'), /8 video layers/);   // words behind needs a new layer
 });
+
+test('Remove pop-out puts the original picture and framing back, and takes the cut-out away', async () => {
+  const { removePopout, removeClip } = await import('../src/timeline/model.ts');
+  const popped = applyPopout(timeline(), 'a', PICTURES, 'forward', false, 'p', 'pop');
+  assert.deepEqual(popped.layers[0].items[0].popout.original_media_id, 1);
+  for (const id of ['a', 'p']) {   // from the clip or from its cut-out
+    const back = removePopout(popped, id);
+    assert.equal(back.layers[0].items[0].media_id, 1);
+    assert.deepEqual(back.layers[0].items[0].transform, timeline().layers[0].items[0].transform);
+    assert.equal(back.layers[0].items[0].popout, null);
+    assert.deepEqual(back.layers.map((l) => l.id), ['main', 'words']);   // the empty Pop-out layer goes too
+  }
+  // Deleting the cut-out on its own never leaves a background with a hole.
+  const deleted = removeClip(popped, 'p');
+  assert.equal(deleted.layers[0].items[0].media_id, 1);
+  // Deleting the popped clip takes its cut-out with it.
+  const gone = removeClip(popped, 'a');
+  assert.ok(!gone.layers.some((l) => l.items.some((item) => item.id === 'p')));
+  // Making it again keeps the first original, not the previous background.
+  const again = applyPopout(popped, 'a', { ...PICTURES, backgroundId: 17, personId: 18 }, 'rise', false, 'q', 'pop2');
+  assert.equal(again.layers[0].items[0].popout.original_media_id, 1);
+  assert.equal(removePopout(again, 'a').layers[0].items[0].media_id, 1);
+});

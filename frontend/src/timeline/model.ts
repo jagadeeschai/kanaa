@@ -30,7 +30,9 @@ export type FocusPull = { to: number[] | null; at: number; length: number };
 export type CutoutPick = { kind: 'people' | 'objects' | 'land'; ids: number[] | null };
 /** How a keyed or cut-out clip sits on what is behind it (timeline_schema.Composite). */
 export type Composite = { choke: number; wrap: number; match: number; match_gain?: [number, number, number] | null };
-export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; /** Settings it sets itself, over its layer's style. */ own?: string[]; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; wheels?: ColourWheels | null; audio_presets?: AudioPresetId[]; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; composite?: Composite | null; bypass?: EffectId[] | null };
+/** Set by Pop-out (3D): the picture and framing the clip had, and its cut-out on the layer above (timeline_schema.PopoutLink). */
+export type PopoutLink = { original_media_id: number; person_clip_id: string; original_transform?: Transform | null };
+export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; /** Settings it sets itself, over its layer's style. */ own?: string[]; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; wheels?: ColourWheels | null; audio_presets?: AudioPresetId[]; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; popout?: PopoutLink | null; composite?: Composite | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'add' | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -342,7 +344,28 @@ export function insertClip(timeline: Timeline, clip: Clip, index?: number): Time
   return withClips(timeline, clips);
 }
 
+/**
+ * Takes a Pop-out (3D) off a main-track clip: its original picture and framing come back, and its cut-out goes (with
+ * its Pop-out layer when that is left empty). The clip is found by its own id or by its cut-out's id.
+ */
+export function removePopout(timeline: Timeline, id: string): Timeline {
+  const main = mainLayer(timeline);
+  const clip = main.items.find((item) => item.popout && (item.id === id || item.popout.person_clip_id === id));
+  if (!clip?.popout) return timeline;
+  const { original_media_id, person_clip_id, original_transform } = clip.popout;
+  const restored: Clip = { ...clip, media_id: original_media_id, transform: original_transform ?? clip.transform, popout: null };
+  const layers = timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((item) => (item.id === clip.id ? restored : item)) }
+    : layer.kind === 'video' ? { ...layer, items: layer.items.filter((item) => item.id !== person_clip_id) } : layer))
+    .filter((layer) => !(layer.kind === 'video' && layer.name === 'Pop-out' && layer.items.length === 0));
+  return { ...timeline, layers };
+}
+
 export function removeClip(timeline: Timeline, id: string): Timeline {
+  // A pop-out's cut-out deleted on its own: its clip gets its own picture back, never a background with a hole.
+  if (mainLayer(timeline).items.some((item) => item.popout?.person_clip_id === id)) return removePopout(timeline, id);
+  // A popped-out clip deleted: its cut-out goes with it.
+  const popped = mainLayer(timeline).items.find((item) => item.id === id && item.popout);
+  if (popped?.popout) timeline = removeClip({ ...timeline, layers: timeline.layers.map((layer) => (layer.kind === 'video' ? { ...layer, items: layer.items.map((item) => (item.id === id ? { ...item, popout: null } : item)) } : layer)) }, popped.popout.person_clip_id);
   const overlay = overlayHolding(timeline, id);
   if (overlay) {
     const items = overlay.items.filter((clip) => clip.id !== id);

@@ -65,14 +65,16 @@ export function applyPopout(timeline: Timeline, clipId: string, pictures: Popout
   const length = clipLength(clip);
   const base = clip.transform.scale ?? 1;
   const [back, front] = popoutMoves(preset, pictures.where, pictures, timeline.format, base, length);
-  const background: Clip = { ...clip, media_id: pictures.backgroundId, transform: back, frame_locked: true };
+  // What it was before any pop-out (applying again keeps the first original), so Remove pop-out can put it back.
+  const popout = { original_media_id: clip.popout?.original_media_id ?? clip.media_id, person_clip_id: personClipId, original_transform: clip.popout?.original_transform ?? clip.transform };
+  const background: Clip = { ...clip, media_id: pictures.backgroundId, transform: back, frame_locked: true, popout };
   // The cut-out comes and goes with its clip: faded over the transitions the clip has on either side.
   const next = main.items[index + 1];
-  const person: Clip = { ...clip, id: personClipId, media_id: pictures.personId, transform: front, frame_locked: true, transition_in: null, volume: 0, muted: true,
+  const person: Clip = { ...clip, popout: null, id: personClipId, media_id: pictures.personId, transform: front, frame_locked: true, transition_in: null, volume: 0, muted: true,
     fade_in: clip.transition_in ? clip.transition_in.duration / 2 : 0, fade_out: next?.transition_in ? next.transition_in.duration / 2 : 0, in: 0, out: round(length), speed: 1 };
   const end = clip.start + length;
   // This clip's earlier cut-out (same time on a Pop-out layer) goes; a layer left empty goes with it.
-  const same = (item: Clip) => Math.abs(item.start - clip.start) < 1e-3 && Math.abs(clipLength(item) - length) < 1e-3;
+  const same = (item: Clip) => item.id === clip.popout?.person_clip_id || (Math.abs(item.start - clip.start) < 1e-3 && Math.abs(clipLength(item) - length) < 1e-3);
   let layers = timeline.layers.map((layer) => (layer === main ? { ...main, items: main.items.map((item) => (item.id === clipId ? background : item)) }
     : layer.kind === 'video' && layer.name === 'Pop-out' ? { ...layer, items: layer.items.filter((item) => !same(item)) } : layer))
     .filter((layer) => !(layer.kind === 'video' && layer.name === 'Pop-out' && layer.items.length === 0));

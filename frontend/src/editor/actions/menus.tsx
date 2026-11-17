@@ -7,7 +7,7 @@ import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
 import { type History } from "../../timeline/history";
-import { clipLength,findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type GraphicKind,type Timeline } from "../../timeline/model";
+import { removePopout,clipLength,findBlur,findCaption,findClip,findSound,findText,layerOf,mainLayer,overlayLayers,removeBlur,removeCaption,removeClip,removeMedia,removeSound,removeText,reorderLayer,splitClip,splitSound,updateClip,updateLayer,updateSound,type BlurBox,type Clip,type GraphicKind,type Timeline } from "../../timeline/model";
 import { canReframe } from "../../timeline/reframe";
 import type { Photo } from "../../types/photo";
 import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
@@ -223,6 +223,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         { label: 'Rename clip…', onSelect: () => setRenamingClip(id) },
         ...(onMain ? [] : [{ label: 'Before / after split', onSelect: () => getInput().addComparison(id) }]),
         ...(onMain ? [virtualBackgroundItem(clip, [...mediaById.values()], mediaById)] : []),
+        ...(clip.popout || mainLayer(timeline).items.some((item) => item.popout?.person_clip_id === clip.id) ? [{ label: 'Remove pop-out', onSelect: () => change(removePopout(timeline, clip.id)) }] : []),
         'divider');
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });

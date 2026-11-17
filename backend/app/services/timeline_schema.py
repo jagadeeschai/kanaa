@@ -146,6 +146,13 @@ class ShapeMask(Strict):
         return points
 
 
+class PopoutLink(Strict):
+    """A Pop-out (3D) clip shows a filled background, its person on a layer above: what it was before, so it can go back."""
+    original_media_id: int
+    person_clip_id: str = Field(min_length=1, max_length=64)
+    original_transform: Optional[Transform] = None
+
+
 class Composite(Strict):
     """How a keyed or cut-out clip sits on what is behind it. Same numbers in the preview shader and the export."""
     choke: float = Field(default=0, ge=0, le=0.9)          # Tightens the edge: alpha below this goes, the rest is stretched.
@@ -305,6 +312,7 @@ class Clip(Strict):
     bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=22)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
+    popout: Optional[PopoutLink] = None  # Set by Pop-out (3D); Remove pop-out puts the original picture back.
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.
 
     @model_validator(mode='after')

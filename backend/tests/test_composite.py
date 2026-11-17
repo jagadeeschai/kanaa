@@ -103,3 +103,12 @@ class ScreenColour(unittest.TestCase):
         self.assertIsNone(screen_colour(Image.fromarray(forest.astype(np.uint8))))  # green, but not one even screen
 
 if __name__ == '__main__': unittest.main()
+
+
+class PopoutLinkSaved(unittest.TestCase):
+    def test_a_popped_out_clip_remembers_its_original(self):
+        from app.services.timeline_schema import Timeline
+        data = plan().model_dump(by_alias=True)
+        data['layers'][0]['items'][0]['popout'] = {'original_media_id': 9, 'person_clip_id': 'front', 'original_transform': {'x': .5, 'y': .5, 'scale': 1.2}}
+        clip = Timeline.model_validate(data).layers[0].items[0]
+        self.assertEqual((clip.popout.original_media_id, clip.popout.person_clip_id, clip.popout.original_transform.scale), (9, 'front', 1.2))
