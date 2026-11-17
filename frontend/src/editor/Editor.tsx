@@ -303,7 +303,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [timeline]);
   // Captions: one image per caption and lit word, drawn by the server like titles, fetched a few at a time.
   const captionImages = useRef(new Map<string, string | 'loading'>());
-  const captionKey = (layer: CaptionLayer, caption: Caption, lit: number | null, format: Format) => JSON.stringify([captionText(caption), lit, layer.style, caption.position ?? layer.position, layer.color, layer.highlight, layer.size, format.width, format.height]);
+  const captionKey = (layer: CaptionLayer, caption: Caption, lit: number | null, format: Format) => JSON.stringify([captionText(caption), lit, layer.style, caption.position ?? layer.position, layer.color, layer.highlight, layer.size, layer.shared_images, format.width, format.height]);
   const captionUrl = useCallback((layer: CaptionLayer, caption: Caption, lit: number | null) => {
     const found = timelineRef.current && captionImages.current.get(captionKey(layer, caption, lit, timelineRef.current.format));
     return found && found !== 'loading' ? found : undefined;
@@ -321,7 +321,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
         if (!job || stopped) return;
         const key = captionKey(job.layer, job.caption, job.lit, timeline.format);
         captionImages.current.set(key, 'loading');
-        const look = { style: job.layer.style, position: job.caption.position ?? job.layer.position, color: job.layer.color, highlight: job.layer.highlight, size: job.layer.size };
+        const look = { style: job.layer.style, position: job.caption.position ?? job.layer.position, color: job.layer.color, highlight: job.layer.highlight, size: job.layer.size, shared_images: job.layer.shared_images };
         try { captionImages.current.set(key, await fetchCaptionImage(job.caption, look, job.lit, timeline.format)); redrawText(); } catch { captionImages.current.delete(key); }
         await next();
       };

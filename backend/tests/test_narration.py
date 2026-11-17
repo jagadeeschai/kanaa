@@ -103,6 +103,24 @@ class Narration(unittest.TestCase):
         self.assertEqual(reply.status_code,200);self.assertEqual(reply.json()['lines'][0]['duration'],1.37)
         self.assertEqual(api.post('/api/voice/estimate',json={**body,'script':'x'*501}).status_code,400)
 
+    def test_preview_caption_route_uses_shared_export_picture_and_separate_cache(self):
+        from app.api import timeline_routes
+        from app.services.timeline_schema import Text,Format,CaptionLayer
+        from app.services.timeline_service import render_text_image
+        from PIL import Image,ImageChops
+        fmt=Format(width=426,height=240,fps=24)
+        layer=CaptionLayer(id='look',kind='captions',items=[],shared_images=True,size=48,style='band')
+        caption={'id':'line','start':0,'length':1,'text':'தமிழில் ஒரு விளக்கம்.'}
+        body={'caption':{k:v for k,v in caption.items() if k!='text'},'layer':layer.model_dump(),'format':fmt.model_dump(),'lit':None}
+        body['caption']['words']=[{'w':word,'s':0} for word in caption['text'].split()]
+        expected=self.root/'expected.png'
+        render_text_image(Text(**caption),fmt,expected,layer=layer,lit=None)
+        with patch.object(timeline_routes,'settings',SimpleNamespace(data_dir=self.root)):
+            actual=timeline_routes.caption_image(body)
+            legacy=timeline_routes.caption_image({**body,'layer':{**body['layer'],'shared_images':False}})
+        self.assertNotEqual(actual.path,legacy.path)
+        self.assertIsNone(ImageChops.difference(Image.open(actual.path),Image.open(expected)).getbbox())
+
 class LiveVoice(unittest.TestCase):
     @unittest.skipUnless(os.getenv('KANAA_LIVE_VOICE_TEST')=='1' and voice.key_path().is_file(),'optional: requires explicit opt-in and Kanaa’s configured key')
     def test_live_voice_catalog_only_no_synthesis_charge(self):

@@ -587,7 +587,7 @@ def caption_image(body: dict):
         lit = None if lit is None else int(lit)
     except (KeyError, TypeError, ValueError, ValidationError) as exc:
         raise HTTPException(400, 'This caption is not valid.') from exc
-    look = [caption.text, lit, layer.style, layer.position, layer.color, layer.highlight, layer.size, fmt.width, fmt.height]
+    look = [caption.text, lit, layer.style, layer.position, layer.color, layer.highlight, layer.size, layer.shared_images, fmt.width, fmt.height]
     key = hashlib.sha256(json.dumps(look, ensure_ascii=False).encode()).hexdigest()[:32]
     folder = settings.data_dir / 'cache' / 'text'
     target = folder / f'caption-{key}.png'
