@@ -30,8 +30,12 @@ def add_narration(timeline,lines,start,gap=.15,replace_id=None):
     for layer in after['layers']:
         if layer['kind']=='audio' and layer.get('name') not in ('Narration','Documentary sounds'):
             for sound in layer['items']: sound['duck']=True
-    after['layers'].append({'id':uid(),'kind':'audio','name':'Narration','items':audio})
-    if captions:after['layers'].append({'id':uid(),'kind':'captions','name':'Narration','style':'band','size':48,'shared_images':True,'items':captions})
-    if sentences:after['layers'].append({'id':uid(),'kind':'text','name':'Narration','items':sentences})
+    # Reuse the existing Narration layers, so redoing a sentence or adding more never piles up layers.
+    def place(kind,items,**extra):
+        if not items:return
+        layer=next((layer for layer in after['layers'] if layer['kind']==kind and layer.get('name')=='Narration'),None)
+        if layer is None:after['layers'].append({'id':uid(),'kind':kind,'name':'Narration',**extra,'items':items})
+        else:layer['items']=sorted(layer['items']+items,key=lambda item:item['start'])
+    place('audio',audio);place('captions',captions,style='band',size=48,shared_images=True);place('text',sentences)
     Timeline.model_validate(after)
     return after

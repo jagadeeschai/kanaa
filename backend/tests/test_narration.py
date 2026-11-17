@@ -125,3 +125,15 @@ class LiveVoice(unittest.TestCase):
     @unittest.skipUnless(os.getenv('KANAA_LIVE_VOICE_TEST')=='1' and voice.key_path().is_file(),'optional: requires explicit opt-in and Kanaa’s configured key')
     def test_live_voice_catalog_only_no_synthesis_charge(self):
         self.assertTrue(voice.voices())
+
+
+class NarrationLayerReuse(unittest.TestCase):
+    def test_adding_twice_keeps_one_narration_layer(self):
+        from app.services.narration_timeline import add_narration
+        line={'asset_id':'a'*32,'text':'ஒன்று','duration':1.0,'words':[]}
+        once=add_narration({'version':2,'layers':[]},[line],0)
+        twice=add_narration(once,[{**line,'text':'இரண்டு'}],3)
+        names=[(l['kind'],l['name']) for l in twice['layers']]
+        self.assertEqual(names.count(('audio','Narration')),1)
+        self.assertEqual(names.count(('text','Narration')),1)
+        self.assertEqual(len(next(l for l in twice['layers'] if l['kind']=='audio')['items']),2)
