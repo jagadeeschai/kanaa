@@ -12,7 +12,46 @@ export function karaokeLit(text: TextItem, local: number): number | null {
   if (!words?.length) return null;
   let lit: number | null = null;
   words.forEach((at, index) => { if (local >= at) lit = index; });
-  return lit;
+  if (lit === null || !text.karaoke?.glow) return lit;
+  // With a glow, the picture is the word × GLOW_LEVELS + the glow's strength at this moment (glow_picture in timeline_service.py).
+  const levels = text.karaoke.levels ?? [];
+  const level = levels.length ? levels[Math.min(levels.length - 1, Math.floor(local * GLOW_RATE + 1e-9))] : GLOW_LEVELS - 1;
+  return (lit as number) * GLOW_LEVELS + level;
+}
+
+/** Sung-word glow: how many strengths, and how often the song's loudness picks one. As timeline_service.py. */
+export const GLOW_LEVELS = 3, GLOW_RATE = 10;
+
+/** Every karaoke picture a line shows (karaokeLit's numbers), so the preview can fetch each once. */
+export function karaokePictures(text: TextItem): number[] {
+  const words = text.karaoke?.words ?? [];
+  if (!text.karaoke?.glow) return words.map((_, index) => index);
+  const found = new Set<number>();
+  const step = 1 / GLOW_RATE;
+  for (let local = 0; local < text.length; local += step) { const lit = karaokeLit(text, local); if (lit !== null) found.add(lit); }
+  for (const at of words) { const lit = karaokeLit(text, at); if (lit !== null) found.add(lit); }
+  return [...found].sort((a, b) => a - b);
+}
+
+/**
+ * The sung word glows with the music: each line's glow strength, GLOW_RATE times a second, from the song's loudness
+ * (`peaks` per second from /video-audio/{id}/peaks), measured against the song's own quiet and loud parts.
+ * `songAt` turns a timeline second into the song's own second, or null where it doesn't play.
+ */
+export function glowLevels(text: TextItem, peaks: number[], perSecond: number, songAt: (t: number) => number | null): number[] {
+  const sorted = [...peaks].sort((a, b) => a - b);
+  const pick = (share: number) => sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
+  const quiet = pick(0.3), loud = Math.max(quiet + 1, pick(0.95));
+  const levels: number[] = [];
+  for (let k = 0; k < Math.ceil(text.length * GLOW_RATE); k += 1) {
+    const at = songAt(text.start + k / GLOW_RATE);
+    if (at === null) { levels.push(0); continue; }
+    const from = Math.floor(at * perSecond), to = Math.max(from + 1, Math.floor((at + 1 / GLOW_RATE) * perSecond));
+    const value = Math.max(0, ...peaks.slice(from, to));
+    const share = Math.min(1, Math.max(0, (value - quiet) / (loud - quiet)));
+    levels.push(Math.min(GLOW_LEVELS - 1, Math.floor(share * GLOW_LEVELS)));
+  }
+  return levels;
 }
 
 /**
@@ -36,6 +75,16 @@ export function setKaraoke(timeline: Timeline, ids: string[], colour: string | n
   for (const id of ids) {
     const found = findText(next, id)?.text;
     if (found) next = updateText(next, id, { karaoke: colour ? { color: colour, words: karaokeWords(found.text, found.length) } : null });
+  }
+  return next;
+}
+
+/** The sung word of every one of `lines` glows with the music (karaoke added where a line has none), or, `off`, stops glowing. */
+export function setSungGlow(timeline: Timeline, lines: TextItem[], levelsFor: ((line: TextItem) => number[]) | null): Timeline {
+  let next = timeline;
+  for (const line of lines) {
+    const karaoke = line.karaoke ?? { color: KARAOKE_COLOUR, words: karaokeWords(line.text, line.length) };
+    next = updateText(next, line.id, { karaoke: levelsFor ? { ...karaoke, glow: true, levels: levelsFor(line) } : { color: karaoke.color, words: karaoke.words } });
   }
   return next;
 }

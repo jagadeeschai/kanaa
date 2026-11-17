@@ -17,7 +17,7 @@ import { buildCaptions,DEFAULT_CAPTION_OPTIONS } from '../timeline/captions';
 import { type Options } from '../timeline/commands';
 import { applyBypass,clipEffects,playingTimeline } from '../timeline/effects';
 import { commit,redo,startHistory,undo,type History } from '../timeline/history';
-import { setKaraoke as setKaraokeFor } from '../timeline/karaoke';
+import { karaokePictures, setKaraoke as setKaraokeFor } from '../timeline/karaoke';
 import { addBlur,applyLayerStyles,audioLayers,captionLayers,captionStates,captionText,clipLength,duration,findBlur,findCaption,findClip,findSound,findText,FORMATS,freezeFrame,isLocked,layerOf,mainLayer,markOwn,MAX_PHOTO_SECONDS,newClip,normalizeTimeline,overrideLayerItems,removeBlur,removeCaption,removeClip,removeSound,removeText,REST_TRANSFORM,setCaptions,setLayerStyle,sharedKeys,splitClip,splitSound,textLayers,timecode,updateBlur,updateClip,type BlurBox,type Caption,type CaptionLayer,type CinemaReveal,type Clip,type Format,type ShapeMask,type Sound,type SourceFacts,type TextItem,type Timeline } from '../timeline/model';
 import { type Focus } from '../timeline/presets';
 import { reframeTransform,type SubjectPoint } from '../timeline/reframe';
@@ -266,7 +266,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   // Where each letter of a letter-by-letter title is, by look (/api/text-letters).
   const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string; words?: number[] } | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
-  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, text.graphic ?? null, format.width, format.height]);
+  const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, text.karaoke?.glow ?? false, text.graphic ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem, lit?: number | null, graphicFrame?: number | null) => {
     const found = timelineRef.current && textImages.current.get(textKey(text, timelineRef.current.format) + (graphicFrame == null ? lit == null ? '' : `|lit${lit}` : `|graphic${graphicFrame}`));
     return found && found !== 'loading' ? found : undefined;
@@ -283,7 +283,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       queueGraphicFrames(textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items), timeline.format, textKey, textImages.current, redrawText);
       // Karaoke lines: one picture for each word sung so far.
       for (const text of textLayers(playingTimeline(timeline)).flatMap((layer) => layer.items)) {
-        for (let lit = 0; lit < (text.karaoke?.words.length ?? 0); lit += 1) {
+        for (const lit of karaokePictures(text)) {
           const key = `${textKey(text, timeline.format)}|lit${lit}`;
           if (textImages.current.has(key)) continue;
           textImages.current.set(key, 'loading');

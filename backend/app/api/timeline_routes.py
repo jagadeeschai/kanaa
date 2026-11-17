@@ -498,7 +498,7 @@ def text_cache(item: Text, fmt: Format) -> Path:
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design')}
     look['graphic'] = item.graphic.model_dump(by_alias=True) if item.graphic else None
     if item.karaoke:
-        look['karaoke'] = item.karaoke.color  # Only the colour changes the pictures; word times pick which one shows.
+        look['karaoke'] = [item.karaoke.color, item.karaoke.glow]  # Only the colour and glow change the pictures; times and levels pick which one shows.
     key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
     return settings.data_dir / 'cache' / 'text' / key
 

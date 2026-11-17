@@ -363,6 +363,10 @@ class Karaoke(Strict):
     """Words light up as they are sung: `words` holds when each word starts, in the title's own seconds."""
     color: str = Field(default='#ffd54a', pattern=r'^#[0-9a-fA-F]{6}$')
     words: List[float] = Field(default_factory=list, max_length=200)
+    # The sung word glows in `color`, as strongly as the song is loud: `levels` holds 0..GLOW_LEVELS-1, GLOW_RATE a
+    # second through the title (karaoke_states). Empty: a steady glow.
+    glow: bool = False
+    levels: List[Annotated[int, Field(ge=0, le=2)]] = Field(default_factory=list, max_length=6000)
 
     @model_validator(mode='after')
     def ordered(self):

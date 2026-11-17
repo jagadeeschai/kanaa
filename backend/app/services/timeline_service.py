@@ -639,9 +639,16 @@ def write_title(path: Path, item: Text, fmt: Format, plain: bool = False, letter
             # other script's font and size, widen the line and wrap it differently from the title without karaoke.
             leading = re.match(r'\s*', text).group()
             body, number = (line(leading, size, colour, spacing)[len(head):] if leading else ''), -1
+            lit_words, glow = glow_picture(item, lit_words)
             for part in re.findall(r'\S+\s*', text):
                 number += 1
                 body += rf'{{\1c{ass_colour(item.karaoke.color if number <= lit_words else colour)}}}'
+                if glow >= 0 and number == lit_words and item.style != 'band':
+                    # The sung word glows in its own colour, wider and softer as the song gets louder.
+                    body += rf'{{\3c{ass_colour(item.karaoke.color)}\3a&H{0x50 - 0x20 * glow:02X}&\bord{(3 + 3 * glow) * unit}\blur{(4 + 4 * glow) * unit}}}'
+                    body += line(part, size, colour, spacing)[len(head):]
+                    body += rf'{{\3c&H{outline_colour[-6:]}&\3a&H{outline_colour[2:4]}&\bord{outline}{blur or chr(92) + "blur0"}}}'  # Back to the title's own edge.
+                    continue
                 body += line(part, size, colour, spacing)[len(head):]
             return head + body
         pieces = []
@@ -687,13 +694,41 @@ Dialogue: 0,{ass_timestamp(0)},{ass_timestamp(1)},Title,,0,0,0,,{r'\N'.join(line
 """, encoding='utf-8')
 
 
+GLOW_LEVELS, GLOW_RATE = 3, 10  # Sung-word glow: how many strengths, and how often the song's loudness picks one. As karaoke.ts.
+
+
 def karaoke_states(item: Text) -> list[tuple[float, float, int | None]]:
-    """(start, end, last word lit) through a karaoke title, in its own seconds: none lit before the first word.
-    Matches karaokeLit in model.ts."""
+    """(start, end, picture) through a karaoke title, in its own seconds: none lit before the first word.
+    The picture is the last word lit; with a glow it is word × GLOW_LEVELS + the glow's strength then (glow_picture).
+    Matches karaokeLit in karaoke.ts."""
     times = [min(max(0.0, at), item.length) for at in item.karaoke.words]
     edges = [0.0, *times, item.length]
     states = [(edges[0], edges[1], None)] + [(edges[n + 1], edges[n + 2], n) for n in range(len(times))]
-    return [state for state in states if state[1] - state[0] > 1e-6]
+    states = [state for state in states if state[1] - state[0] > 1e-6]
+    if not item.karaoke.glow:
+        return states
+    levels = item.karaoke.levels
+    out: list[tuple[float, float, int | None]] = []
+    for start, end, lit in states:
+        if lit is None:
+            out.append((start, end, None))
+            continue
+        cuts = sorted({start, end, *(k / GLOW_RATE for k in range(math.ceil(start * GLOW_RATE), math.ceil(end * GLOW_RATE)) if start < k / GLOW_RATE < end)})
+        for a, b in zip(cuts, cuts[1:]):
+            level = levels[min(len(levels) - 1, int(a * GLOW_RATE + 1e-9))] if levels else GLOW_LEVELS - 1
+            picture = lit * GLOW_LEVELS + level
+            if out and out[-1][2] == picture and abs(out[-1][1] - a) < 1e-9:
+                out[-1] = (out[-1][0], b, picture)
+            else:
+                out.append((a, b, picture))
+    return out
+
+
+def glow_picture(item: Text, picture: int | None) -> tuple[int | None, int]:
+    """A karaoke picture number as (last word lit, glow strength)."""
+    if picture is None or not (item.karaoke and item.karaoke.glow):
+        return picture, -1
+    return picture // GLOW_LEVELS, picture % GLOW_LEVELS
 
 
 # A credit block in one title (layout 'credits'): each line's part is read from the line itself, so a person only types
