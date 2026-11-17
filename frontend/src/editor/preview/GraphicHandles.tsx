@@ -5,7 +5,7 @@ type Point = [number, number];
 const clamp = (value: number) => Math.round(Math.max(.01, Math.min(.99, value)) * 1000) / 1000;
 
 export function GraphicHandles({ graphic, onChange }: { graphic: ExplainerGraphic; onChange: (graphic: ExplainerGraphic, group: string) => void }) {
-  if ((graphic.kind === 'chapter-card' && graphic.card_mode === 'full') || graphic.kind === 'compare-divider') return null;
+  if ((graphic.kind === 'chapter-card' && graphic.card_mode === 'full') || graphic.kind === 'compare-divider' || graphic.kind === 'source') return null;
   const drag = (kind: 'from' | 'to' | 'size', event: React.PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     const target = event.currentTarget, frame = target.parentElement!.getBoundingClientRect();
