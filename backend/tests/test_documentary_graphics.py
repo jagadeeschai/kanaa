@@ -72,6 +72,13 @@ class DocumentaryGraphics(unittest.TestCase):
                 {'id':'main','kind':'video','items':[{'id':'freeze','media_id':1,'start':0,'in':0,'out':1.5,'freeze':.5}]},
                 {'id':'captions','kind':'captions','style':'band','shared_images':True,'items':[{'id':'words','start':0,'length':1.5,'words':[{'w':'தமிழ்','s':0},{'w':'உரை','s':.5},{'w':'விளக்கம்','s':1}]}]}]})
             self.assertEqual(gpu_render.unsupported(timeline,lambda _:facts),[])
+            from app.services.gpu_documentary import frozen
+            from app.services.timeline_service import color_filter
+            held=frozen(timeline.layers[0].items[0],facts,timeline.format,root,'selected')
+            # Check the selected source frame before lossy encoding; a neighbouring frame differs in blue.
+            selected=subprocess.run(['ffmpeg','-v','error','-i',str(base),'-vf',f'select=eq(n\\,12),{color_filter(facts)},scale=in_color_matrix=bt709:out_range=full,format=rgb24','-frames:v','1','-f','rawvideo','-'],capture_output=True,check=True).stdout
+            from PIL import Image
+            self.assertEqual(Image.open(held.path).tobytes(),selected)
             cpu=root/'cpu.mp4';gpu=root/'gpu.mp4';render_timeline(timeline,lambda _:facts,lambda _:None,cpu,lambda _:None,hardware=False)
             with patch('app.services.cutout_service.settings') as settings:
                 settings.data_dir=root;tool=helper(gpu_render.SOURCE)

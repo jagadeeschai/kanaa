@@ -1640,7 +1640,10 @@ class QuickEffects(Clips):
         return facts
 
     def test_freeze_holds_one_frame_and_is_silent(self):
-        path = self.render(self.stack({'start': 0, 'in': 0, 'out': 1}, {'start': 1, 'in': 0, 'out': 1, 'freeze': 1.5, 'muted': False}), 'freeze.mp4')
+        # The source index is encoded in two RGB levels per frame. Keep this exact-level check on the reference
+        # renderer: the native H.264 encoder can round a held image down by two levels. GPU frame selection and
+        # matching are checked with a changing full-colour source in test_documentary_graphics.
+        path = self.render(self.stack({'start': 0, 'in': 0, 'out': 1}, {'start': 1, 'in': 0, 'out': 1, 'freeze': 1.5, 'muted': False}), 'freeze.mp4', hardware=False)
         self.assertEqual([self.source_frame(path, number) for number in (35, 45, 58)], [45, 45, 45])
         self.assertLess(self.tone(path, 1.2, 0.6)[1], 0.01)
         self.assertGreater(self.tone(path, 0.2, 0.6)[1], 0.05)

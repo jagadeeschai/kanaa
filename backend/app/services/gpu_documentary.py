@@ -20,6 +20,6 @@ def frozen(clip,facts,fmt,folder,name):
     import shutil
     from app.services.timeline_service import color_filter
     target=folder/f'{name}-freeze.png'
-    result=subprocess.run([shutil.which('ffmpeg') or 'ffmpeg','-v','error','-ss',f'{max(0,clip.freeze-.25/fmt.fps):.6f}','-i',str(facts.path),'-vf',color_filter(facts)+',scale=in_color_matrix=bt709:out_range=full,format=rgb24','-frames:v','1','-update','1',str(target)],capture_output=True)
+    result=subprocess.run([shutil.which('ffmpeg') or 'ffmpeg','-v','error','-ss',f'{clip.freeze:.6f}','-i',str(facts.path),'-vf',color_filter(facts)+',scale=in_color_matrix=bt709:out_range=full,format=rgb24','-frames:v','1','-update','1',str(target)],capture_output=True)
     if result.returncode or not target.is_file():raise RuntimeError('Could not prepare the paused picture for the GPU.')
     return MediaFacts(path=target,media_type='image',width=facts.width,height=facts.height)
