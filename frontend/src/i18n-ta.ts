@@ -46,7 +46,7 @@ export const TAMIL: Record<string, string> = {
   'Clip guides on: dashed lines at every cut': 'கிளிப் வழிகாட்டிகள் இயக்கத்தில்: ஒவ்வொரு வெட்டிலும் புள்ளிக்கோடுகள்', 'Clip guides off': 'கிளிப் வழிகாட்டிகள் அணைப்பில்',
   'Unlock frame and animate': 'சட்டகத்தைத் திறந்து அசைவூட்டு', 'Animate': 'அசைவூட்டு',
 
-  'Pan left to right': 'இடமிருந்து வலமாக நகர்வு', 'Pan right to left': 'வலமிருந்து இடமாக நகர்வு', 'Ken Burns': 'கென் பர்ன்ஸ்', 'Lock frame': 'சட்டகத்தைப் பூட்டு',
+  'Pan left to right': 'இடமிருந்து வலமாக நகர்வு', 'Pan right to left': 'வலமிருந்து இடமாக நகர்வு', 'Ken Burns': 'கென் பர்ன்ஸ்', 'Focus drift': 'கவன நகர்வு', 'Focus drift on every picture': 'எல்லாப் படங்களிலும் கவன நகர்வு', 'A slow push in on the faces or the main subject, drifting it towards the middle': 'முகங்கள் அல்லது முக்கியப் பொருளை நோக்கி மெதுவாக நெருங்கி, நடுவுக்கு நகர்த்தும்', 'Lock frame': 'சட்டகத்தைப் பூட்டு',
   'Slowly travels across the picture over the whole clip': 'கிளிப் முழுவதும் படத்தின் குறுக்கே மெதுவாக நகரும்',
   'Slowly travels across the picture the other way': 'படத்தின் குறுக்கே எதிர்த் திசையில் மெதுவாக நகரும்',
   'A slow push in while drifting across: the classic photo move': 'குறுக்கே நகர்ந்தபடி மெதுவாக நெருங்கும்: புகைப்படங்களுக்கான பாரம்பரிய அசைவு',
@@ -216,7 +216,7 @@ export const TAMIL: Record<string, string> = {
   'One click moves the title the whole time it shows. Stand still stops it.': 'ஒரே சொடுக்கில் தலைப்பு முழு நேரமும் நகரும்.',
   'Fade': 'மங்கல்', 'Slide': 'சறுக்கு', 'Slide up': 'மேலே சறுக்கு', 'Slide down': 'கீழே சறுக்கு', 'Slide left': 'இடப்புறம் சறுக்கு', 'Slide right': 'வலப்புறம் சறுக்கு',
   'Zoom': 'பெரிதாக்கு', 'Pop': 'துள்ளல்', 'Blur': 'மங்கல்', 'Bounce': 'குதி', 'Blast': 'வெடிப்பு', 'Magic form': 'மாய உருவாக்கம்', 'Magic vanish': 'மாய மறைவு', 'Particle form': 'துகள் உருவாக்கம்', 'Fly through': 'ஊடே பறத்தல்', 'Rapid zoom': 'வேகப் பெரிதாக்கம்',
-  'Reveal': 'வெளிப்படுத்து', 'Soft edge': 'மென் விளிம்பு', 'Line': 'கோடு', 'Chromatic': 'நிறப்பிரிகை', 'Prism': 'பட்டகம்', 'Echo': 'எதிரொலி', 'Pop-up letters': 'துள்ளும் எழுத்துகள்',
+  'Reveal': 'வெளிப்படுத்து', 'Soft edge': 'மென் விளிம்பு', 'Line': 'கோடு', 'Chromatic': 'நிறப்பிரிகை', 'Prism': 'பட்டகம்', 'Echo': 'எதிரொலி', 'Pop-up letters': 'துள்ளும் எழுத்துகள்', 'Words rise': 'சொற்கள் எழும்', 'Words pop': 'சொற்கள் துள்ளும்', 'Words fade in': 'சொற்கள் மெல்லத் தோன்றும்',
   'Gravity': 'ஈர்ப்பு', 'Split': 'பிரி', 'Expand': 'விரி', 'Horizontal blur': 'கிடை மங்கல்', 'Ground rise': 'தரையிலிருந்து எழு', 'Push through': 'ஊடுருவு', 'Push in': 'உள்நோக்கி',
   'Pull out': 'வெளிநோக்கி', 'Drift': 'மிதவை', 'Drifting': 'மிதக்கும்', 'Flash': 'மின்னல்', 'Flashes': 'மின்னல்கள்',
   'Crossfade': 'குறுக்கு மங்கல்', 'Cross blur': 'குறுக்கு மங்கல் மாற்றம்', 'Cross zoom': 'குறுக்கு பெரிதாக்கல்', 'Dip to black': 'கருப்புக்கு மங்கு', 'Wipe': 'துடை', 'Whip': 'விசுக்கு',

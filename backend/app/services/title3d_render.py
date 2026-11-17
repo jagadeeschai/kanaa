@@ -17,7 +17,8 @@ import numpy as np
 from PIL import Image
 
 from app.services import title3d
-from app.services.animation import LETTER_PRESETS, LETTER_REST, STREAK_TAPS, TRICK_COPIES, TRICK_MARGIN, letter_looks
+from app.services.animation import LETTER_PRESETS, LETTER_REST, STREAK_TAPS, TRICK_COPIES, TRICK_MARGIN, letter_looks, words_done
+from app.services.title_letters import word_numbers
 
 PinAt = Callable[[float], 'list[list[float]] | None']  # Timeline seconds to the pin matrix, or None.
 
@@ -51,8 +52,10 @@ def trick_margins(text, letters: tuple[float, float, float, float]) -> tuple[flo
             across = max(across, .62 * w)
         elif preset == 'gravity':
             along = max(along, 1.45 * h)
-        elif preset == 'pop-letters':
+        elif preset in ('pop-letters', 'word-pop'):
             across, along = max(across, .15 * h), max(along, .15 * h)
+        elif preset in ('word-rise', 'word-fade'):
+            along = max(along, .5 * h)
         elif preset == 'blur-sideways':
             across = max(across, 1.0 * h)
     return across, along
@@ -168,7 +171,7 @@ def still_from(text, length: float) -> tuple[float, float] | None:
         return None
     first, last = (text.enter.duration if text.enter else 0), (text.exit.duration if text.exit else 0)
     excess = max(1, (first + last) / length)  # As animated_look shares an overlong entrance and exit.
-    return first / excess + (.9 if text.depth and text.depth.sweep else 0), length - last / excess
+    return max(first / excess, words_done(text)) + (.9 if text.depth and text.depth.sweep else 0), length - last / excess
 
 
 def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, pin_at: PinAt | None, states):
@@ -292,7 +295,7 @@ def frame_at(text, local: float, premultiplied: np.ndarray, box, shares, depth, 
     if lettered is not None:
         labels, boxes = lettered
         middle, wide = (letters[0] + letters[2]) / 2, max(1.0, letters[2] - letters[0])
-        looks = letter_looks(text.enter, text.exit, local, text.length, [((b[0] + b[2]) / 2 - middle) / wide for b in boxes])
+        looks = letter_looks(text.enter, text.exit, local, text.length, [((b[0] + b[2]) / 2 - middle) / wide for b in boxes], word_numbers(text), list(text.karaoke.words) if text.karaoke else None)
         if any(look != LETTER_REST for look in looks):
             crop = moving_letters(crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)
             front_crop = moving_letters(front_crop, labels[y0:y1, x0:x1], boxes, looks, (x0, y0), letters)

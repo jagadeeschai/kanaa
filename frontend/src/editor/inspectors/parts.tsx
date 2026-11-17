@@ -28,7 +28,7 @@ export const DESIGN_TIPS: Record<TitleDesign, string> = {
 
 export const BACKED_DESIGNS = new Set<TitleDesign>(['gradient', 'formal', 'clouds', 'paper', 'torn']);
 
-export const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
+export const TITLE_PICTURE_PRESETS: { id: Preset; label: string }[] = [{ id: 'blur-sideways', label: 'Horizontal blur' }, { id: 'reveal', label: 'Reveal' }, { id: 'soft-edge', label: 'Soft edge' }, { id: 'line', label: 'Line' }, { id: 'chromatic', label: 'Chromatic' }, { id: 'prism', label: 'Prism' }, { id: 'echo', label: 'Echo' }, { id: 'word-rise', label: 'Words rise' }, { id: 'word-pop', label: 'Words pop' }, { id: 'word-fade', label: 'Words fade in' }, { id: 'pop-letters', label: 'Pop-up letters' }, { id: 'gravity', label: 'Gravity' }, { id: 'split', label: 'Split' }, { id: 'expand', label: 'Expand' }];
 
 export const SIMPLE_TITLE_PRESETS = [...PRESETS.filter((preset) => preset.id !== 'ground-rise'), ...TITLE_PICTURE_PRESETS];
 

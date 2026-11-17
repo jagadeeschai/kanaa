@@ -137,3 +137,26 @@ def letters_for(item: Text, fmt: Format) -> tuple[np.ndarray, list[tuple[int, in
         rows, cols = np.nonzero(labels == number)
         boxes.append((int(cols.min()), int(rows.min()), int(cols.max()) + 1, int(rows.max()) + 1) if rows.size else (0, 0, 0, 0))
     return labels, boxes
+
+
+def word_numbers(item: Text) -> list[int]:
+    """Each drawn letter's word (0, 1, ...), in the letter map's numbering: the title's words, then the subtitle's.
+    Words split at spaces, as karaoke times count them. Letters gathered into one number take their first letter's word."""
+    from app.services.timeline_service import letter_clusters
+    words, word = [], -1
+    for line in (item.text, item.subtitle or ''):
+        gap = True
+        for cluster in letter_clusters(line):
+            if cluster.isspace():
+                gap = True
+                continue
+            if gap:
+                word, gap = word + 1, False
+            words.append(word)
+    total = len(words)
+    if total <= MAX_LETTERS:
+        return words
+    first: dict[int, int] = {}
+    for number in range(1, total + 1):
+        first.setdefault((number - 1) * MAX_LETTERS // total + 1, words[number - 1])
+    return [first[number] for number in range(1, MAX_LETTERS + 1)]

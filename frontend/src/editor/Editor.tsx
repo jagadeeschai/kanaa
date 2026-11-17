@@ -264,7 +264,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
 
   const textImages = useRef(new Map<string, string | 'loading'>());
   // Where each letter of a letter-by-letter title is, by look (/api/text-letters).
-  const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string } | 'loading'>());
+  const textLetterMaps = useRef(new Map<string, { boxes: [number, number, number, number][]; labels: string; words?: number[] } | 'loading'>());
   const [textVersion, redrawText] = useReducer((count: number) => count + 1, 0);
   const textKey = (text: TextItem, format: Format) => JSON.stringify([text.text, text.style, text.position, text.color, text.size, text.subtitle ?? null, text.subtitle_size ?? null, text.subtitle_color ?? null, Boolean(text.subtitle_above), text.subtitle_spacing ?? 0, text.spacing ?? 0, text.align ?? 'center', text.band_color ?? null, text.font ?? null, text.tamil_font ?? null, text.design ?? null, text.karaoke?.color ?? null, text.graphic ?? null, format.width, format.height]);
   const textUrl = useCallback((text: TextItem, lit?: number | null, graphicFrame?: number | null) => {
@@ -812,7 +812,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     if (layer.kind === 'video') return layer.items.some((clip) => !clip.muted && clip.volume > 0 && hasSound(clip.media_id));
     return false;
   }));
-  const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen } = createClipToolActions(() => ({
+  const { snapshot, newBackground, updateSelected, clipEffectApplied, applyClipEffect, addMedia, addOverlayMedia, onDropPayload, aimFor, moveSelected, applyToSelected, chooseFormat, splitScreen, focusAllPictures } = createClipToolActions(() => ({
     get timeline(): typeof timeline { return timeline; },
     get selected(): typeof selected { return selected; },
     get moreIds(): typeof moreIds { return moreIds; },
@@ -1054,7 +1054,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     get playing(): typeof playing { return playing; },
     get togglePlay(): typeof togglePlay { return togglePlay; },
     get addBlurBox(): typeof addBlurBox { return addBlurBox; },
-    get addExplainerGraphic(): typeof addExplainerGraphic { return addExplainerGraphic; }, get addGlowOutline(): typeof addGlowOutline { return addGlowOutline; }, get addComparison(): typeof addComparison { return addComparison; },
+    get addExplainerGraphic(): typeof addExplainerGraphic { return addExplainerGraphic; }, get addGlowOutline(): typeof addGlowOutline { return addGlowOutline; }, get addComparison(): typeof addComparison { return addComparison; }, focusAllPictures,
     get faceJob(): typeof faceJob { return faceJob; },
     get blurFaces(): typeof blurFaces { return blurFaces; },
     get followTarget(): typeof followTarget { return followTarget; },

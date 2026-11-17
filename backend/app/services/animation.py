@@ -12,10 +12,14 @@ OPACITY_SPAN = {'fly-through': 0.55, 'fade': 1,  # Rapid zoom has none: a crash 
                 'zoom': 1, 'pop': 1 / 3, 'blur': 1, 'bounce': 1 / 3, 'blast': .22, 'magic-form': .7, 'magic-vanish': .8, 'particle-form': .9, 'rise-behind': .25, 'push-through': .35,
                 'chromatic': .4, 'prism': .4, 'echo': .5, 'blur-sideways': .6}
 # Title picture tricks (PictureLook in animation.ts), drawn in the title's own picture by title3d_render.py.
-PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways'}
+PICTURE_PRESETS = {'reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways', 'word-rise', 'word-pop', 'word-fade'}
 # Letter by letter (letterLook in animation.ts): dx in widths of the title's letters box, dy in its heights, scale about
 # each letter's own middle. Pop-up letters and Gravity start one after another across LETTER_STAGGER of the animation.
-LETTER_PRESETS = {'pop-letters', 'gravity', 'split', 'expand'}
+LETTER_PRESETS = {'pop-letters', 'gravity', 'split', 'expand', 'word-rise', 'word-pop', 'word-fade'}
+# Word by word: each word's letters move together. With karaoke times, each word arrives as it is sung (WORD_LEAD before
+# it, over WORD_SECONDS), however long the entrance; without, the words start one after another across the entrance.
+WORD_PRESETS = {'word-rise', 'word-pop', 'word-fade'}
+WORD_LEAD, WORD_SECONDS, WORD_AFTER = .08, .4, .2  # WORD_AFTER: the gap between subtitle words after the sung ones.
 LETTER_STAGGER = 0.6
 LETTER_REST = {'dx': 0.0, 'dy': 0.0, 'scale': 1.0, 'opacity': 1.0}
 PICTURE_REST = {'reveal': 1.0, 'soft': 0.0, 'rise': 1.0, 'line': -1.0, 'split': 0.0, 'trick': 0, 'streak': 0.0}
@@ -191,12 +195,54 @@ def letter_look(preset: str, progress: float, index: int, count: int, u: float) 
     return {'dx': -u * .85 * (1 - e), 'dy': 0.0, 'scale': 1.0, 'opacity': min(1, k * 2)}
 
 
-def letter_looks(enter, exit_, local: float, length: float, us: list[float]) -> list[dict]:
-    """Every letter's look `local` seconds in, enter and exit together. As letterLooks in animation.ts."""
+def word_look(preset: str, k: float) -> dict:
+    """A word `k` of the way in (0..1). As wordLook in animation.ts."""
+    k = min(1, max(0, k))
+    e = 1 - (1 - k) ** 3
+    if preset == 'word-pop':
+        return {'dx': 0.0, 'dy': 0.0, 'scale': max(0.01, 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2), 'opacity': min(1, k * 3)}
+    if preset == 'word-rise':
+        return {'dx': 0.0, 'dy': .45 * (1 - e), 'scale': 1.0, 'opacity': min(1, k * 2.5)}
+    return {'dx': 0.0, 'dy': .08 * (1 - e), 'scale': 1 + .06 * (1 - e), 'opacity': k * k * (3 - 2 * k)}
+
+
+def word_start(word: int, words: int, times: list[float] | None, duration: float) -> tuple[float, float]:
+    """When word `word` of `words` starts arriving, and over how long. As wordStart in animation.ts."""
+    if times:
+        if word < len(times):
+            return max(0.0, times[word] - WORD_LEAD), WORD_SECONDS
+        return max(0.0, times[-1] - WORD_LEAD) + WORD_AFTER * (word - len(times) + 1), WORD_SECONDS
+    span = duration * (1 - LETTER_STAGGER) if words > 1 else duration
+    return (duration * LETTER_STAGGER * word / (words - 1) if words > 1 else 0.0), max(1e-6, span)
+
+
+def words_done(text) -> float:
+    """When the last word has arrived (title seconds), for a karaoke-timed word entrance; 0 otherwise."""
+    if not (text.enter and text.enter.preset in WORD_PRESETS and text.karaoke and text.karaoke.words):
+        return 0.0
+    from app.services.title_letters import word_numbers
+    count = max(word_numbers(text) or [0]) + 1
+    start, span = word_start(count - 1, count, list(text.karaoke.words), text.enter.duration)
+    return min(text.length, start + span)
+
+
+def letter_looks(enter, exit_, local: float, length: float, us: list[float], words: list[int] | None = None, times: list[float] | None = None) -> list[dict]:
+    """Every letter's look `local` seconds in, enter and exit together. As letterLooks in animation.ts.
+    `words`: each letter's word, for the word presets; `times`: the karaoke word times, when the words are sung."""
     excess = max(1, ((enter.duration if enter else 0) + (exit_.duration if exit_ else 0)) / length)
+    count = max(words) + 1 if words else 1
     out = []
     for index, u in enumerate(us):
-        a = letter_look(enter.preset, local / (enter.duration / excess), index, len(us), u) if enter else LETTER_REST
-        b = letter_look(exit_.preset, (length - local) / (exit_.duration / excess), index, len(us), u) if exit_ else LETTER_REST
+        word = words[index] if words and index < len(words) else 0
+        if enter and enter.preset in WORD_PRESETS:
+            start, span = word_start(word, count, times, enter.duration / excess)
+            a = word_look(enter.preset, (local - start) / span)
+        else:
+            a = letter_look(enter.preset, local / (enter.duration / excess), index, len(us), u) if enter else LETTER_REST
+        if exit_ and exit_.preset in WORD_PRESETS:
+            start, span = word_start(count - 1 - word, count, None, exit_.duration / excess)
+            b = word_look(exit_.preset, (length - local - start) / span)
+        else:
+            b = letter_look(exit_.preset, (length - local) / (exit_.duration / excess), index, len(us), u) if exit_ else LETTER_REST
         out.append({'dx': a['dx'] + b['dx'], 'dy': a['dy'] + b['dy'], 'scale': a['scale'] * b['scale'], 'opacity': a['opacity'] * b['opacity']})
     return out

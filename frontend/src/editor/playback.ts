@@ -1290,7 +1290,7 @@ export class PlaybackEngine {
     if (!map || !labels || !map.boxes.length) { gl.uniform1i(u.letterCount, 0); return; }
     const middle = (letters[0] + letters[2]) / 2, wide = Math.max(1, letters[2] - letters[0]), tall = letters[3] - letters[1];
     const boxes = map.boxes.slice(0, MAX_LETTERS);
-    const looks = letterLooks(item.enter, item.exit, local, item.length, boxes.map((box) => ((box[0] + box[2]) / 2 - middle) / wide));
+    const looks = letterLooks(item.enter, item.exit, local, item.length, boxes.map((box) => ((box[0] + box[2]) / 2 - middle) / wide), map.words, item.karaoke?.words);
     const a = new Float32Array(MAX_LETTERS * 4), b = new Float32Array(MAX_LETTERS * 4);
     boxes.forEach((box, index) => {
       a.set([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, looks[index].dx * wide, looks[index].dy * tall], index * 4);
@@ -1327,7 +1327,7 @@ export class PlaybackEngine {
   }
 
   /** Set by the editor: a title's letter boxes and letter map, once fetched (/api/text-letters). */
-  letterMap: ((item: TextItem) => { boxes: [number, number, number, number][]; labels: string } | null) | null = null;
+  letterMap: ((item: TextItem) => { boxes: [number, number, number, number][]; labels: string; words?: number[] } | null) | null = null;
 
   /** The scene track a pinned title follows, as a matrix from the pin moment's frame to this one; null when not pinned or not ready. */
   private titlePin(item: TextItem): Matrix | null {

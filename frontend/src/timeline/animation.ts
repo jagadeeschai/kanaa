@@ -1,6 +1,6 @@
 /** Enter and exit presets and looks. backend/app/services/animation.py holds the same math. */
 export type Preset = 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'blur' | 'bounce' | 'ground-rise' | 'blast' | 'magic-form' | 'magic-vanish' | 'particle-form' | 'rise-behind' | 'push-through'
-  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom' | 'fly-reveal' | 'fly-through-3d';
+  | 'reveal' | 'soft-edge' | 'line' | 'chromatic' | 'prism' | 'echo' | 'pop-letters' | 'gravity' | 'split' | 'expand' | 'blur-sideways' | 'fly-through' | 'rapid-zoom' | 'fly-reveal' | 'fly-through-3d' | 'word-rise' | 'word-pop' | 'word-fade';
 export type Animation = { preset: Preset; duration: number };
 export type TransitionKind = 'crossfade' | 'wipe' | 'slide' | 'zoom' | 'flash' | 'dip' | 'whip' | 'circle-open' | 'circle-close' | 'cross-blur'
   | 'spin-in' | 'spin-out' | 'doorway' | 'puzzle-left' | 'puzzle-right' | 'mosaic' | 'ripple' | 'cross-zoom' | 'cube' | 'swap' | 'page-curl-left' | 'page-curl-right' | 'light-wipe';
@@ -71,13 +71,16 @@ export const PICTURE_REST: PictureLook = { reveal: 1, soft: 0, rise: 1, line: -1
 /** A sideways blur's taps either side of the middle, out to three of its widths. Matches STREAK_TAPS in animation.py. */
 export const STREAK_TAPS = 8;
 /** Presets drawn as picture tricks: such a title goes through the 3D path on both sides. Matches PICTURE_PRESETS in animation.py. */
-export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways']);
+export const PICTURE_PRESETS = new Set<Preset>(['reveal', 'soft-edge', 'line', 'chromatic', 'prism', 'echo', 'pop-letters', 'gravity', 'split', 'expand', 'blur-sideways', 'word-rise', 'word-pop', 'word-fade']);
 /**
  * Letter by letter: each letter (title_letters.py finds them) moves on its own. dx is in widths of the title's letters
  * box, dy in its heights; scale is about the letter's own middle. Pop-up letters and Gravity start one letter after
  * another across LETTER_STAGGER of the animation; Split and Expand move them all together. Matches letter_look in animation.py.
  */
-export const LETTER_PRESETS = new Set<Preset>(['pop-letters', 'gravity', 'split', 'expand']);
+export const LETTER_PRESETS = new Set<Preset>(['pop-letters', 'gravity', 'split', 'expand', 'word-rise', 'word-pop', 'word-fade']);
+/** Word by word (as animation.py): with karaoke times each word arrives as it is sung; without, one after another across the entrance. */
+export const WORD_PRESETS = new Set<Preset>(['word-rise', 'word-pop', 'word-fade']);
+export const WORD_LEAD = 0.08, WORD_SECONDS = 0.4, WORD_AFTER = 0.2;
 export const MAX_LETTERS = 64; // Matches title_letters.py.
 export const LETTER_STAGGER = 0.6;
 export type LetterLook = { dx: number; dy: number; scale: number; opacity: number };
@@ -96,12 +99,37 @@ export function letterLook(preset: Preset, progress: number, index: number, coun
   return { dx: -u * 0.85 * (1 - e), dy: 0, scale: 1, opacity: Math.min(1, k * 2) };
 }
 
-/** Every letter's look `local` seconds in, enter and exit together (offsets add, scale and opacity multiply). */
-export function letterLooks(enter: Animation | null | undefined, exit: Animation | null | undefined, local: number, length: number, us: number[]): LetterLook[] {
+/** A word `k` of the way in (0..1). As word_look in animation.py. */
+export function wordLook(preset: Preset, progress: number): LetterLook {
+  const k = Math.min(1, Math.max(0, progress));
+  const e = 1 - (1 - k) ** 3;
+  if (preset === 'word-pop') return { dx: 0, dy: 0, scale: Math.max(0.01, 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2), opacity: Math.min(1, k * 3) };
+  if (preset === 'word-rise') return { dx: 0, dy: 0.45 * (1 - e), scale: 1, opacity: Math.min(1, k * 2.5) };
+  return { dx: 0, dy: 0.08 * (1 - e), scale: 1 + 0.06 * (1 - e), opacity: k * k * (3 - 2 * k) };
+}
+
+/** When word `word` of `words` starts arriving, and over how long. As word_start in animation.py. */
+export function wordStart(word: number, words: number, times: number[] | null | undefined, duration: number): [number, number] {
+  if (times?.length) {
+    if (word < times.length) return [Math.max(0, times[word] - WORD_LEAD), WORD_SECONDS];
+    return [Math.max(0, times[times.length - 1] - WORD_LEAD) + WORD_AFTER * (word - times.length + 1), WORD_SECONDS];
+  }
+  const span = words > 1 ? duration * (1 - LETTER_STAGGER) : duration;
+  return [words > 1 ? (duration * LETTER_STAGGER * word) / (words - 1) : 0, Math.max(1e-6, span)];
+}
+
+/** Every letter's look `local` seconds in, enter and exit together (offsets add, scale and opacity multiply).
+ * `words`: each letter's word, for the word presets; `times`: the karaoke word times. */
+export function letterLooks(enter: Animation | null | undefined, exit: Animation | null | undefined, local: number, length: number, us: number[], words?: number[] | null, times?: number[] | null): LetterLook[] {
   const excess = Math.max(1, ((enter?.duration ?? 0) + (exit?.duration ?? 0)) / length);
+  const count = words?.length ? Math.max(...words) + 1 : 1;
   return us.map((u, index) => {
-    const a = enter ? letterLook(enter.preset, local / (enter.duration / excess), index, us.length, u) : LETTER_REST;
-    const b = exit ? letterLook(exit.preset, (length - local) / (exit.duration / excess), index, us.length, u) : LETTER_REST;
+    const word = words?.[index] ?? 0;
+    let a: LetterLook, b: LetterLook;
+    if (enter && WORD_PRESETS.has(enter.preset)) { const [start, span] = wordStart(word, count, times, enter.duration / excess); a = wordLook(enter.preset, (local - start) / span); }
+    else a = enter ? letterLook(enter.preset, local / (enter.duration / excess), index, us.length, u) : LETTER_REST;
+    if (exit && WORD_PRESETS.has(exit.preset)) { const [start, span] = wordStart(count - 1 - word, count, null, exit.duration / excess); b = wordLook(exit.preset, (length - local - start) / span); }
+    else b = exit ? letterLook(exit.preset, (length - local) / (exit.duration / excess), index, us.length, u) : LETTER_REST;
     return { dx: a.dx + b.dx, dy: a.dy + b.dy, scale: a.scale * b.scale, opacity: a.opacity * b.opacity };
   });
 }
