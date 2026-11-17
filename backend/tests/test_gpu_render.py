@@ -72,8 +72,8 @@ class Accepts(unittest.TestCase):
     def test_turns_remain_unsupported(self):
         self.assertIn('turn adjustments', gpu_render.unsupported(timeline(adjust={'flip_horizontal': True}), self.facts))
 
-    def test_zero_second_freeze_and_hdr_keep_reference_path(self):
-        self.assertIn('freeze', gpu_render.unsupported(timeline(freeze=0), self.facts))
+    def test_zero_second_freeze_is_supported_and_hdr_keeps_reference_path(self):
+        self.assertEqual(gpu_render.unsupported(timeline(freeze=0), self.facts), [])
         hdr = lambda _: MediaFacts(path=Path('hdr.mp4'), media_type='video', width=640, height=360, color_transfer='smpte2084')
         self.assertIn('HDR tone mapping', gpu_render.unsupported(timeline(), hdr))
 
