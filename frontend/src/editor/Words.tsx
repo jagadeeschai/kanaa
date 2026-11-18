@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SubTabs, useSubTab } from './panels/tabs/SubTabs';
 import { Scissors, Sparkles } from 'lucide-react';
 import { tokenTime, type Tidy, type Token } from '../timeline/words';
 import type { Clip } from '../timeline/model';
@@ -14,6 +15,8 @@ type Props = {
 };
 
 export const PAUSE_LENGTHS = [0.4, 0.7, 1];
+/** Words in two parts: reading and cutting the transcript, and the automatic clean-up of pauses and fillers. */
+const WORD_TABS = [{ id: 'transcript' as const, label: 'Transcript' }, { id: 'clean' as const, label: 'Clean up' }];
 
 /** The transcript. Selecting words and pressing Delete cuts them from the video. */
 export function WordsPanel({ tokens, clips, language, onLanguage, missing, busy, hasTracks, locked, onTranscribe, onCancel, onSeek, onCut, onMenu, playhead, selection, onSelection, tidy, pauseLength, onPauseLength, fillers, onFillers, onTidy }: Props) {
@@ -43,18 +46,14 @@ export function WordsPanel({ tokens, clips, language, onLanguage, missing, busy,
     return () => { cancelAnimationFrame(frame); lit?.classList.remove('now'); };
   }, [tokens, clipFor, playhead]);
   const words = tokens.filter((token) => token.text).length;
+  const [part, choose] = useSubTab('words', WORD_TABS);
   return <div className="ed-words">
+    <SubTabs label="Words tools" tabs={WORD_TABS} part={part} onChoose={choose}/>
+    {part === 'transcript' && <>
     <label className="ed-words-language"><span>Spoken language</span><KanaaSelect aria-label="Spoken language" value={language} disabled={Boolean(busy)} onChange={(event) => onLanguage(event.target.value)}>{LANGUAGES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</KanaaSelect></label>
     {busy ? <><p className="ed-tip">{busy}</p><button className="ed-button wide" onClick={onCancel}>Cancel</button></>
       : missing > 0 ? <button className="ed-primary wide" onClick={onTranscribe}>Transcribe {missing} clip{missing === 1 ? '' : 's'}</button> : null}
     {!tokens.length && !busy && <p className="ed-tip">{missing ? 'Kanaa listens to your video on this Mac and writes out the words. Nothing is uploaded.' : clips.length ? 'No speech found in your clips.' : 'Add a video to the timeline first.'}</p>}
-    {tokens.length > 0 && tidy && <section className="ed-tidy" aria-label="Remove pauses">
-      <h3 className="ed-sub">Remove pauses</h3>
-      <div className="ed-add-row"><span>Pauses longer than</span><div className="ed-chips ed-even three" role="group" aria-label="Shortest pause to remove">{PAUSE_LENGTHS.map((seconds) => <button key={seconds} className={pauseLength === seconds ? 'on' : ''} aria-pressed={pauseLength === seconds} onClick={() => onPauseLength(seconds)}>{seconds}s</button>)}</div></div>
-      <label className="ed-check"><input type="checkbox" checked={fillers} onChange={(event) => onFillers(event.target.checked)}/><span>Also remove “um” and “uh”</span></label>
-      <p className="ed-tip" role="status">{tidy.keys.size ? `${[tidy.pauses ? `${tidy.pauses} pause${tidy.pauses === 1 ? '' : 's'}` : '', tidy.fillers ? `${tidy.fillers} filler${tidy.fillers === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}, about ${tidy.seconds.toFixed(1)} seconds shorter. A short breath stays at each cut.` : 'Nothing to remove at this length.'}</p>
-      <button className="ed-primary wide" disabled={locked || !tidy.keys.size} onClick={onTidy}><Sparkles size={14}/>Remove pauses</button>
-    </section>}
     {tokens.length > 0 && <>
       <div className="ed-words-bar">{selection.size > 0
         ? <button className="ed-primary" disabled={locked} onClick={() => onCut(selection)}><Scissors size={14}/>Cut {selection.size === 1 ? 'selection' : `${selection.size} items`}</button>
@@ -70,5 +69,14 @@ export function WordsPanel({ tokens, clips, language, onLanguage, missing, busy,
       </div>
       <p className="ed-tip">Click a word to jump to it. Drag or Shift-click to select, then press Delete to cut.{hasTracks ? ' Titles, overlays and separate sounds stay where they are.' : ''}</p>
     </>}
+    </>}
+    {part === 'clean' && tokens.length > 0 && tidy && <section className="ed-tidy" aria-label="Remove pauses">
+      <h3 className="ed-sub">Remove pauses</h3>
+      <div className="ed-add-row"><span>Pauses longer than</span><div className="ed-chips ed-even three" role="group" aria-label="Shortest pause to remove">{PAUSE_LENGTHS.map((seconds) => <button key={seconds} className={pauseLength === seconds ? 'on' : ''} aria-pressed={pauseLength === seconds} onClick={() => onPauseLength(seconds)}>{seconds}s</button>)}</div></div>
+      <label className="ed-check"><input type="checkbox" checked={fillers} onChange={(event) => onFillers(event.target.checked)}/><span>Also remove “um” and “uh”</span></label>
+      <p className="ed-tip" role="status">{tidy.keys.size ? `${[tidy.pauses ? `${tidy.pauses} pause${tidy.pauses === 1 ? '' : 's'}` : '', tidy.fillers ? `${tidy.fillers} filler${tidy.fillers === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}, about ${tidy.seconds.toFixed(1)} seconds shorter. A short breath stays at each cut.` : 'Nothing to remove at this length.'}</p>
+      <button className="ed-primary wide" disabled={locked || !tidy.keys.size} onClick={onTidy}><Sparkles size={14}/>Remove pauses</button>
+    </section>}
+    {part === 'clean' && !tokens.length && <p className="ed-tip">{busy ? busy : 'Transcribe your video in Transcript first; then Kanaa can find the long pauses and the “um” and “uh”.'}</p>}
   </div>;
 }
