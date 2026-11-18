@@ -69,7 +69,7 @@ function TransitionPopoverBody({ transition, anchor: start, before, after, longe
   useEffect(() => { box.current?.querySelector<HTMLElement>('.tp-kind.on, .tp-kind')?.focus({ preventScroll: true }); }, []);
 
   const kind = transition?.kind ?? null;
-  const directional = kind === 'wipe' || kind === 'slide';
+  const directional = kind === 'wipe' || kind === 'slide' || kind === 'split-screen';
   const arrow = place && anchor.left + anchor.width / 2 - place.left;
   return <div ref={box} className={`tp ${place?.below ? 'below' : ''}`} role="dialog" aria-label={kind ? `${transitionLabel(kind)} transition` : 'Add a transition'}
     style={{ width: WIDTH, left: place?.left ?? -9999, top: place?.top ?? -9999, '--arrow': `${arrow ?? WIDTH / 2}px` } as React.CSSProperties}

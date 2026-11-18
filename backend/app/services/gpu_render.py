@@ -28,7 +28,7 @@ FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
-TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe', 'split'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
+TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe', 'split', 'split-screen'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
 
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
@@ -277,7 +277,11 @@ def _transition(transition, frames: int, height: int, width: int = 1920) -> dict
     if kind == 'split':
         from app.services.split_transition import panels
         split = [panels(k/frames, transition.split_panels, transition.split_direction, width, height, transition.split_style) for k in range(frames)]
-    return {'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
+    screen = None
+    if kind == 'split-screen':
+        from app.services.split_screen import parts
+        screen = [parts(k / frames, transition.direction, width, height) for k in range(frames)]
+    return {'screen': screen, 'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
 def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:

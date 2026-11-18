@@ -1073,7 +1073,7 @@ class Builder:
                 shown = self.compare(shown, divider.graphic, offset, frames, label)
             if head:
                 merged = f'x{position}_{number}'
-                if clip.transition_in.kind in MOVING_KINDS or clip.transition_in.kind == 'split':
+                if clip.transition_in.kind in MOVING_KINDS or clip.transition_in.kind in ('split', 'split-screen'):
                     self.moving_transition(clip.transition_in.kind, joined_label, joined_frames, shown, frames, 2 * head, merged, clip.transition_in)
                 else:
                     # The offset a hair early (far less than a frame): written to six places, it can land just after
@@ -1186,6 +1186,9 @@ class Builder:
         if kind == 'split':
             from app.services.split_transition import build
             made = build(moves, tail, head, transition)
+        elif kind == 'split-screen':
+            from app.services.split_screen import build as split_screen
+            made = split_screen(moves, tail, head, transition)
         else:
             made = moves.build(kind, tail, head)
         self.graph += moves.lines

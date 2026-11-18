@@ -9,6 +9,8 @@ import { DEFAULT_ECHO, DEFAULT_MIRROR, DEFAULT_TILT_SHIFT, DEFAULT_TONE_GRADE, D
 
 export const DRAG_TYPE = 'application/x-kanaa';
 export const TRANSITION_SECONDS = 0.6;
+// A split screen needs time to be seen side by side (split-screen.ts).
+const SPLIT_SCREEN_SECONDS = 1.2;
 export type ClipEffectPreset = 'colour-splash' | 'dreamy-glow' | 'beat-pulse' | 'duotone' | 'split-tone' | 'mirror' | 'kaleidoscope' | 'zoom-blur' | 'tilt-shift' | 'echo' | 'old-film' | 'glitch' | 'vhs' | 'raindrops' | 'lens-dirt';
 
 export type DragPayload =
@@ -87,7 +89,7 @@ export function applyClipDrop(timeline: Timeline, payload: DragPayload, clipId: 
   if (payload.kind === 'transition') {
     if (!isMainAfterFirst(timeline, clipId)) return timeline;
     const clip = findAny(timeline, clipId)!;
-    const room = Math.max(0.2, Math.min(TRANSITION_SECONDS, clipLength(clip) / 2));
+    const room = Math.max(0.2, Math.min(payload.transition === 'split-screen' ? SPLIT_SCREEN_SECONDS : TRANSITION_SECONDS, clipLength(clip) / 2));
     return updateClip(timeline, clipId, { transition_in: { kind: payload.transition, duration: Math.round(room * 10) / 10 } });
   }
   return timeline;

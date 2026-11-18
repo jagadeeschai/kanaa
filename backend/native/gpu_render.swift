@@ -127,7 +127,9 @@ kernel vec4 wheels(__sample s, vec3 lift, vec3 gamma, vec3 gain) {
 """)!
 
 struct SplitPanel: Decodable { let rect: [Double]; let move: [Double] }
+struct ScreenParts: Decodable { let a: [Double]; let b: [Double] }  // Window [x, y, w, h] and move [dx, dy], top-left pixels (split_screen.py).
 struct Transition: Decodable {
+    let screen: [ScreenParts]?
     let split: [[SplitPanel]]?
     let split_shadow: Double?
     let kind: String?
@@ -394,7 +396,15 @@ for f in 0..<plan.frames {
                 (posed(index - 1, f - before.start), w[0]), (posed(index, k), w[1]),
                 (CIImage(color: CIColor(red: CGFloat(mix.fill[0]), green: CGFloat(mix.fill[1]), blue: CGFloat(mix.fill[2]))).cropped(to: frameRect), w[2]),
             ]
-            if mix.kind == "split", let states = mix.split, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+            if mix.kind == "split-screen", let states = mix.screen, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+                // The new clip moved onto black, then the old one through its window over it (split_screen.build).
+                let state = states[k]
+                func shown(_ picture: CIImage, _ part: [Double]) -> CIImage {
+                    let window = CGRect(x: part[0], y: Double(plan.height) - part[1] - part[3], width: part[2], height: part[3])
+                    return picture.transformed(by: CGAffineTransform(translationX: part[4], y: -part[5])).cropped(to: window)
+                }
+                layer = shown(a, state.a).composited(over: shown(b, state.b).composited(over: CIImage(color: .black).cropped(to: frameRect)))
+            } else if mix.kind == "split", let states = mix.split, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
                 layer = b
                 let p = Double(k)/Double(mix.frames), eased = p*p*(3-2*p)
                 for panel in states[k] {

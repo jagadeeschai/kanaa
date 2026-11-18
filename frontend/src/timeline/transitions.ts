@@ -23,7 +23,7 @@ export function clearTransitions(timeline: Timeline): Timeline {
 /** Every transition sorted by what it does, for the popover on a cut. Every kind is in exactly one group. */
 export const TRANSITION_GROUPS: { label: string; kinds: TransitionKind[] }[] = [
   { label: 'Blend', kinds: ['crossfade', 'cross-blur', 'dip', 'flash', 'ripple'] },
-  { label: 'Push and wipe', kinds: ['light-wipe', 'wipe', 'slide', 'whip', 'swap'] },
+  { label: 'Push and wipe', kinds: ['light-wipe', 'wipe', 'slide', 'split-screen', 'whip', 'swap'] },
   { label: 'Zoom and spin', kinds: ['zoom', 'cross-zoom', 'spin-in', 'spin-out'] },
   { label: 'Shapes', kinds: ['split', 'circle-open', 'circle-close', 'doorway', 'mosaic', 'puzzle-left', 'puzzle-right'] },
   { label: '3D', kinds: ['cube', 'page-curl-left', 'page-curl-right'] },

@@ -1,4 +1,5 @@
 import { splitPanels, SPLIT_SHADER } from '../timeline/split-transition';
+import { splitScreenParts, SPLIT_SCREEN_SHADER } from '../timeline/split-screen';
 import { karaokeLit } from '../timeline/karaoke';
 import { CHOKE_HIGH, CHOKE_LOW, CHOKE_REACH, matchGain, WRAP_BLUR, WRAP_EDGE, WRAP_GAIN } from '../timeline/composite';
 import { dividerFor, splitAt } from '../timeline/compare';
@@ -196,6 +197,7 @@ vec4 clip(sampler2D on0, sampler2D on1, vec2 at) {
 vec4 A(vec2 at) { return clip(a0, a1, at); }
 vec4 B(vec2 at) { return clip(b0, b1, at); }
 ${SPLIT_SHADER}
+${SPLIT_SCREEN_SHADER}
 float even(float size) { return max(2., floor(size / 2.) * 2.); }
 // A picture scaled by s and laid in the middle: even sizes, a whole-pixel place, and pixel centres mapped as ffmpeg's
 // scale and overlay do.
@@ -208,6 +210,7 @@ void main() {
   vec2 at = vec2(gl_FragCoord.x, viewport.y - gl_FragCoord.y) * frame / viewport - .5;
   if (kind == 0) { color = vec4(texture(under, gl_FragCoord.xy / viewport).rgb, 1.); return; }
   if(kind==14){color=splitPicture(at);return;}
+  if(kind==15){color=splitScreen(at);return;}
   if(kind==13){
     float d=at.x/frame.x+.2*at.y/frame.y-(-.25+1.5*q);
     float m=clamp(.5-d/.1,0.,1.);
@@ -641,7 +644,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(moving, position, 'p');
     gl.linkProgram(moving);
     this.movingProgram = moving;
-    for (const name of ['a0', 'a1', 'b0', 'b1', 'under', 'frame', 'viewport', 'kind', 'q', 'cardA', 'cardB', 'splitRect', 'splitMove', 'splitShadow']) this.movingUniforms[name] = gl.getUniformLocation(moving, name);
+    for (const name of ['a0', 'a1', 'b0', 'b1', 'under', 'frame', 'viewport', 'kind', 'q', 'cardA', 'cardB', 'splitRect', 'splitMove', 'splitShadow', 'screenA', 'screenB', 'screenMoves']) this.movingUniforms[name] = gl.getUniformLocation(moving, name);
     this.backdrop = this.newTexture();
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -1036,6 +1039,11 @@ export class PlaybackEngine {
       const tr=after.transition_in!, {width,height}=this.timeline!.format;const panels=splitPanels(p,tr.split_panels??2,tr.split_direction??'horizontal',width,height,tr.split_style??'clean');
       while(panels.length<4)panels.push({rect:[0,0,0,0],move:[0,0,0,0]});
       gl.uniform4fv(u.splitRect,new Float32Array(panels.flatMap(x=>x.rect)));gl.uniform4fv(u.splitMove,new Float32Array(panels.flatMap(x=>x.move)));gl.uniform1f(u.splitShadow,tr.split_style==='shadow'?Math.max(2,Math.round(height*.012)):0);
+    }
+    if (kind === 'split-screen') {
+      const { width, height } = this.timeline!.format;
+      const { a, b } = splitScreenParts(p, after.transition_in?.direction, width, height);
+      gl.uniform4f(u.screenA, a[0], a[1], a[2], a[3]); gl.uniform4f(u.screenB, b[0], b[1], b[2], b[3]); gl.uniform4f(u.screenMoves, a[4], a[5], b[4], b[5]);
     }
     if (kind === 'cube' || kind === 'swap') {
       // Frame (pixel edges) back to each clip's picture: the inverse of the homography taking its corners where they land.
