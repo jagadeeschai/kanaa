@@ -614,13 +614,14 @@ def build_server(api: KanaaApi) -> MCPServer:
                  'transition_in': clip.get('transition_in')} for clip in made]
 
     @server.tool(annotations=CHANGES)
-    def set_transition(project_id: int, clip_id: str, kind: str | None, duration: float = 0.6, direction: Literal['left', 'right', 'up', 'down'] | None = None) -> dict:
+    def set_transition(project_id: int, clip_id: str, kind: str | None, duration: float = 0.6, direction: Literal['left', 'right', 'up', 'down'] | None = None, split_panels: Literal[2,3,4] = 2, split_direction: Literal['horizontal','vertical','diagonal'] = 'horizontal', split_style: Literal['clean','gap','shadow'] = 'clean') -> dict:
         """The transition into a main-track clip from the one before it (kinds as in add_clips), or none (kind null).
-        direction is for wipe and slide."""
+        direction is for wipe and slide. Split accepts split_panels (2–4), split_direction and split_style."""
         before = timeline_of(project_id)
         after = copy.deepcopy(before)
         _, clip = find(after, clip_id)
         clip['transition_in'] = None if kind is None else {'kind': kind, 'duration': duration, **({'direction': direction} if direction and direction != 'left' else {})}
+        if kind == 'split':clip['transition_in'].update(split_panels=split_panels,split_direction=split_direction,split_style=split_style)
         save(project_id, before, after, f'Transition into {clip_id}: {kind or "none"}')
         return {'id': clip_id, 'transition_in': clip['transition_in']}
 

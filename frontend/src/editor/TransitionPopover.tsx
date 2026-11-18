@@ -1,3 +1,5 @@
+import SplitTransitionDialog from './SplitTransitionDialog';
+import { SplitOptions } from './SplitOptions';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Play, Shuffle, Trash2, X } from 'lucide-react';
 import { ValueSlider } from './controls';
@@ -8,6 +10,8 @@ import type { Transition, TransitionDirection, TransitionKind } from '../timelin
 export type CutPicture = { image: string; tiles: number; tile: number } | null;
 
 type Props = {
+  splitDialog?: boolean;
+  onSplit?: (next: Transition) => void;
   /** The transition at this cut, or null for a plain cut. */
   transition: Transition | null;
   /** The badge the popover hangs from, in viewport pixels. */
@@ -37,7 +41,7 @@ const WIDTH = 452; const GAP = 10; const MARGIN = 8;
  * Hangs from a transition badge on the timeline: the two pictures either side of the cut, every transition in groups,
  * its length and direction, and preview, every cut and remove. Escape or a click outside closes it.
  */
-export default function TransitionPopover({ transition, anchor: start, before, after, longest, locked, onPick, onLength, onDirection, onColour, onRemove, onEveryCut, onPreview, onGestureStart, onClose }: Props) {
+function TransitionPopoverBody({ transition, anchor: start, before, after, longest, locked, onPick, onLength, onDirection, onColour, onSplit, onRemove, onEveryCut, onPreview, onGestureStart, onClose }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number; below: boolean } | null>(null);
   // Where the badge is now: it moves when the timeline scrolls (by hand, or following the playhead in Preview).
@@ -86,6 +90,7 @@ export default function TransitionPopover({ transition, anchor: start, before, a
       </section>)}
     </div>
     {transition && <div className="tp-settings">
+      {transition.kind==='split' && onSplit && <SplitOptions value={transition} disabled={locked} onChange={onSplit}/>}
       <ValueSlider label="Length" value={transition.duration} min={0.2} max={Math.max(0.2, Math.min(2, longest))} step={0.05} defaultValue={Math.min(0.6, longest)} unit="s" decimals={2}
         onGestureStart={onGestureStart} onChange={onLength}/>
       <div className="tp-quick" role="group" aria-label="Quick lengths">{QUICK_LENGTHS.filter((seconds) => seconds <= longest + 1e-6).map((seconds) =>
@@ -109,4 +114,10 @@ function Thumb({ picture, label }: { picture: CutPicture; label: string }) {
   if (!picture) return <span className="tp-thumb empty" aria-label={label} role="img"/>;
   const share = picture.tiles > 1 ? (picture.tile / (picture.tiles - 1)) * 100 : 0;
   return <span className="tp-thumb" role="img" aria-label={label} style={{ backgroundImage: `url(${picture.image})`, backgroundSize: `${picture.tiles * 100}% 100%`, backgroundPosition: `${share}% 0` }}/>;
+}
+
+export default function TransitionPopover(props:Props) {
+  const {splitDialog,transition,onSplit,onPick}=props;
+  useEffect(()=>{if(splitDialog&&transition?.kind!=='split'&&!props.locked)onPick('split');},[splitDialog]);
+  return splitDialog?<SplitTransitionDialog value={transition?.kind==='split'?transition:{kind:'split',duration:.6}} before={props.before} after={props.after} locked={props.locked} longest={props.longest} onChange={(v)=>onSplit?.(v)} onClose={props.onClose}/>:<TransitionPopoverBody {...props}/>;
 }

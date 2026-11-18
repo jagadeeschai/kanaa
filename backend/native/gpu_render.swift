@@ -126,7 +126,10 @@ kernel vec4 wheels(__sample s, vec3 lift, vec3 gamma, vec3 gain) {
 }
 """)!
 
+struct SplitPanel: Decodable { let rect: [Double]; let move: [Double] }
 struct Transition: Decodable {
+    let split: [[SplitPanel]]?
+    let split_shadow: Double?
     let kind: String?
     let frames: Int
     let weights: [[Double]]  // Per frame: the item before, this item, the fill colour.
@@ -359,6 +362,15 @@ func compositeLayer(_ image: CIImage, over base: CIImage, mode: String?) -> CIIm
     }
     return image.composited(over: base)
 }
+let splitShadowKernel = CIColorKernel(source: """
+kernel vec4 panelShadow(__sample image, vec4 rect, float height, float radius, float strength) {
+    vec2 at = vec2(floor(destCoord().x), height - 1.0 - floor(destCoord().y)) - rect.xy;
+    float distance = max(max(-at.x, at.x-(rect.z-1.0)), max(-at.y, at.y-(rect.w-1.0)));
+    float alpha = strength * pow(max(0.0, 1.0-max(0.0,distance)/radius), 2.0);
+    return vec4(0.0,0.0,0.0,alpha) + image*(1.0-alpha);
+}
+""")!
+
 for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
@@ -382,7 +394,22 @@ for f in 0..<plan.frames {
                 (posed(index - 1, f - before.start), w[0]), (posed(index, k), w[1]),
                 (CIImage(color: CIColor(red: CGFloat(mix.fill[0]), green: CGFloat(mix.fill[1]), blue: CGFloat(mix.fill[2]))).cropped(to: frameRect), w[2]),
             ]
-            if mix.kind == "light-wipe", let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+            if mix.kind == "split", let states = mix.split, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+                layer = b
+                let p = Double(k)/Double(mix.frames), eased = p*p*(3-2*p)
+                for panel in states[k] {
+                    let r = panel.rect, m = panel.move, gap = m[3]
+                    if m[2] <= 0 { continue }
+                    if let radius = mix.split_shadow, radius > 0 {
+                        layer = splitShadowKernel.apply(extent: frameRect, arguments: [layer, CIVector(x: r[0]+m[0], y: r[1]+m[1], z: r[2], w: r[3]), Double(plan.height), radius, 0.22*eased*m[2]])!
+                    }
+                    let left = r[0] > 0 ? gap : 0, right = r[0]+r[2] < Double(plan.width) ? gap : 0
+                    let top = r[1] > 0 ? gap : 0, bottom = r[1]+r[3] < Double(plan.height) ? gap : 0
+                    let rect = CGRect(x: r[0]+left, y: Double(plan.height)-r[1]-r[3]+bottom, width: max(0,r[2]-left-right), height: max(0,r[3]-top-bottom))
+                    let piece = a.cropped(to: rect).transformed(by: CGAffineTransform(translationX: m[0], y: -m[1]))
+                    layer = weighted(piece, m[2]).composited(over: layer)
+                }
+            } else if mix.kind == "light-wipe", let a = posed(index - 1, f - before.start), let b = posed(index, k) {
                 guard let kernel = lightWipeKernel, let wiped = kernel.apply(extent: frameRect, arguments: [a, b, Double(plan.width), Double(plan.height), Double(k)/Double(mix.frames)]) else {
                     fatalError("Could not draw the light wipe; use the FFmpeg fallback")
                 }

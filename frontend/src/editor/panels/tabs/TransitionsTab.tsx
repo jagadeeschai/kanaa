@@ -11,7 +11,7 @@ import { SubTabs, useSubTab } from './SubTabs';
 export const TRANSITION_GROUPS: { id: 'simple' | 'dynamic' | 'shapes' | 'three-d'; label: string; kinds: string[] }[] = [
   { id: 'simple', label: 'Simple', kinds: ['crossfade', 'dip', 'flash', 'cross-blur', 'wipe', 'slide'] },
   { id: 'dynamic', label: 'Dynamic', kinds: ['light-wipe', 'zoom', 'whip', 'cross-zoom', 'spin-in', 'spin-out', 'swap'] },
-  { id: 'shapes', label: 'Shapes', kinds: ['circle-open', 'circle-close', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple'] },
+  { id: 'shapes', label: 'Shapes', kinds: ['split', 'circle-open', 'circle-close', 'doorway', 'puzzle-left', 'puzzle-right', 'mosaic', 'ripple'] },
   { id: 'three-d', label: '3D', kinds: ['cube', 'page-curl-left', 'page-curl-right'] },
 ];
 

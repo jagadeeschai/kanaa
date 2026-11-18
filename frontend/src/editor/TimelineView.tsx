@@ -31,7 +31,7 @@ type Props = {
   /** Something from the side panel was dropped on the timeline. */
   onDropPayload?: (payload: DragPayload, target: DropTarget) => void;
   /** A cut's badge was clicked: the clip after the cut, and where the badge is on screen. */
-  onCut?: (clipId: string, anchor: DOMRect) => void;
+  onCut?: (clipId: string, anchor: DOMRect, split?: boolean) => void;
   /** The clip whose cut has its popover open. */
   openCut?: string | null;
   /** Double-click on an item: split it at time `t`. */
@@ -814,7 +814,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
           const label = transition ? `${transitionLabel(transition.kind)}, ${seconds(transition.duration)} ${transition.duration === 1 ? "second" : "seconds"}. Change transition` : `Cut ${index}: add a transition`;
           return <button key={clip.id} className={`tl-cut ${transition ? '' : 'plain'} ${room < 64 ? 'narrow' : ''} ${openCut === clip.id ? 'open' : ''}`} style={{ left: PAD + clip.start * zoom, top: TRACK_TOP + TRACK_HEIGHT / 2 }}
             aria-label={label} title={transition ? `${transitionLabel(transition.kind)} · ${seconds(transition.duration)} s` : 'Add a transition'} aria-haspopup="dialog" aria-expanded={openCut === clip.id}
-            onPointerDown={(event) => event.stopPropagation()} onClick={(event) => onCut(clip.id, event.currentTarget.getBoundingClientRect())}>
+            onContextMenu={(event)=>{event.preventDefault();event.stopPropagation();const anchor=event.currentTarget.getBoundingClientRect();setLayerMenu({x:event.clientX,y:event.clientY,items:[{label:'Split transition…',disabled:Boolean(main.locked),onSelect:()=>onCut(clip.id,anchor,true)}]});}} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => onCut(clip.id, event.currentTarget.getBoundingClientRect())}>
             {transition ? <>{TRANSITION_ICONS[transition.kind]}<span>{seconds(transition.duration)}s</span></> : <Plus size={11}/>}
           </button>;
         })}</div>}

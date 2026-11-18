@@ -1073,8 +1073,8 @@ class Builder:
                 shown = self.compare(shown, divider.graphic, offset, frames, label)
             if head:
                 merged = f'x{position}_{number}'
-                if clip.transition_in.kind in MOVING_KINDS:
-                    self.moving_transition(clip.transition_in.kind, joined_label, joined_frames, shown, frames, 2 * head, merged)
+                if clip.transition_in.kind in MOVING_KINDS or clip.transition_in.kind == 'split':
+                    self.moving_transition(clip.transition_in.kind, joined_label, joined_frames, shown, frames, 2 * head, merged, clip.transition_in)
                 else:
                     # The offset a hair early (far less than a frame): written to six places, it can land just after
                     # the frame it means, and xfade then starts a frame late, with everything after it.
@@ -1169,7 +1169,7 @@ class Builder:
                        f'[{name}_alpha][{name}_shape]blend=all_mode=multiply[{name}_both]', f'[{name}_body][{name}_both]alphamerge[{name}_shaped]']
         return f'{name}_shaped'
 
-    def moving_transition(self, kind: str, joined: str, joined_frames: int, shown: str, frames: int, overlap: int, out: str) -> None:
+    def moving_transition(self, kind: str, joined: str, joined_frames: int, shown: str, frames: int, overlap: int, out: str, transition=None) -> None:
         """As xfade joins two clips over `overlap` frames, but with the frames between built by moving_transitions.py."""
         n = f'{out}m'
         tail, head = f'{n}_tail', f'{n}_head'
@@ -1183,7 +1183,11 @@ class Builder:
         self.graph += [f'[{n}_j2]trim=start_frame={joined_frames - overlap},setpts=PTS-STARTPTS,format=rgba[{tail}]', f'[{shown}]split=2[{n}_s1][{n}_s2]',
                        f'[{n}_s1]trim=end_frame={overlap},setpts=PTS-STARTPTS,format=rgba[{head}]']
         moves = Moves(n, self.fmt.width, self.fmt.height, self.fmt.fps, overlap)
-        made = moves.build(kind, tail, head)
+        if kind == 'split':
+            from app.services.split_transition import build
+            made = build(moves, tail, head, transition)
+        else:
+            made = moves.build(kind, tail, head)
         self.graph += moves.lines
         self.graph.append(f'[{made}]format=gbrap[{n}_made]')
         parts.append(f'{n}_made')

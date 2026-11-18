@@ -28,7 +28,7 @@ FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
-TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
+TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe', 'split'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
 
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
@@ -257,7 +257,7 @@ def _smooth(x: float) -> float:
     return x * x * (3 - 2 * x)
 
 
-def _transition(transition, frames: int, height: int) -> dict:
+def _transition(transition, frames: int, height: int, width: int = 1920) -> dict:
     """How the clip before and this one mix, frame by frame through the transition: weights of the clip before, this
     clip and a fill colour (ffmpeg xfade: fade, and fadeblack/fadewhite or the custom dip of animation.xfade_name),
     and for a cross blur the blur at each frame (Builder.whip_blur)."""
@@ -273,7 +273,11 @@ def _transition(transition, frames: int, height: int) -> dict:
         else:
             weights.append([round(p, 6), round(1 - p, 6), 0])
         blur.append(round(CROSS_BLUR * height * math.sin(math.pi * min(1, (i + 0.5) / frames)), 4) if kind == 'cross-blur' else 0)
-    return {'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
+    split = None
+    if kind == 'split':
+        from app.services.split_transition import panels
+        split = [panels(k/frames, transition.split_panels, transition.split_direction, width, height, transition.split_style) for k in range(frames)]
+    return {'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
 def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:
@@ -341,7 +345,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
                     amount = max(0, 1 - phase / .18) if t >= pulse.offset else 0
                     items[-1]['scale'][k] *= 1 + pulse.size * pulse.strength * amount
             if head:
-                items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height)
+                items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height, timeline.format.width)
     return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(timeline.duration * fps),
             'bitrate': bitrate, 'output': str(output), 'items': items}
 

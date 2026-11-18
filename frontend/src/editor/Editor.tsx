@@ -137,7 +137,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   /** The cut whose transition popover is open: the clip after it, and its badge on screen. */
   /** The clip being renamed right on the timeline. */
   const [renamingClip, setRenamingClip] = useState<string | null>(null);
-  const [cutOpen, setCutOpen] = useState<{ clipId: string; anchor: DOMRect } | null>(null);
+  const [cutOpen, setCutOpen] = useState<{ clipId: string; anchor: DOMRect; split?: boolean } | null>(null);
   /** True while the Remove-all-transitions confirmation is up. */
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [listening, setListening] = useState<string | null>(null);
@@ -1153,7 +1153,7 @@ const followPanel = followTarget && <InspectorBindingsProvider name="follow" bin
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
       onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
       onZoom={(factor) => setZoom((value) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value * factor)))}
-      onCut={(clipId, anchor) => setCutOpen((open) => open?.clipId === clipId ? null : { clipId, anchor })} openCut={cutOpen?.clipId ?? null}/>}
+      onCut={(clipId, anchor, split) => setCutOpen((open) => !split && open?.clipId === clipId ? null : { clipId, anchor, split })} openCut={cutOpen?.clipId ?? null}/>}
     {cutOpen && timeline && (() => {
       const items = mainLayer(timeline).items; const index = items.findIndex((clip) => clip.id === cutOpen.clipId);
       if (index < 1) return null;
@@ -1164,13 +1164,13 @@ const followPanel = followTarget && <InspectorBindingsProvider name="follow" bin
       };
       const set = (next: Transition | null, group?: string) => change(updateClip(timeline, after.id, { transition_in: next }), group);
       const longest = Math.min(2, clipLength(before), clipLength(after));
-      return <TransitionPopover key={after.id} transition={transition} anchor={cutOpen.anchor} longest={longest} locked={Boolean(mainLayer(timeline).locked)}
+      return <TransitionPopover splitDialog={cutOpen.split} onSplit={(value) => set(value)} key={after.id} transition={transition} anchor={cutOpen.anchor} longest={longest} locked={Boolean(mainLayer(timeline).locked)}
         before={picture(before, before.reverse ? before.in : before.out - 0.05)} after={picture(after, after.reverse ? after.out - 0.05 : after.in)}
         onPick={(kind) => { setTransitionPick(kind); set({ kind, duration: transition?.duration ?? Math.min(0.6, longest), direction: transition?.direction ?? null }); }}
         onLength={(duration, group) => transition && set({ ...transition, duration: Math.min(duration, longest) }, group ?? 'transition-length')}
         onDirection={(direction) => transition && set({ ...transition, direction: direction === 'left' ? null : direction })} onColour={(color) => transition && set({ ...transition, color })}
         onRemove={() => { set(null); setCutOpen(null); }}
-        onEveryCut={() => transition && change(transitionEverywhere(timeline, transition.kind, transition.duration), 'transition-all')}
+        onEveryCut={() => transition && change(transitionEverywhere(timeline, transition.kind, transition.duration, transition), 'transition-all')}
         onPreview={() => { const half = (transition?.duration ?? 0) / 2; engineRef.current?.playRange(Math.max(0, after.start - half - 0.8), after.start + half + 0.8); }}
         onGestureStart={pauseEngine} onClose={() => setCutOpen(null)}/>;
     })()}
