@@ -4,6 +4,7 @@
  * its own sound off), try again, or keep both. The picture itself is never changed.
  */
 import { useContext, useEffect, useState } from 'react';
+import KanaaSelect from '../components/KanaaSelect';
 import { createPortal } from 'react-dom';
 import { useEscape } from './useEscape';
 import { Clapperboard, LoaderCircle } from 'lucide-react';
@@ -82,7 +83,7 @@ export function BringToLifeHost() {
       <textarea value={prompt} maxLength={1500} rows={3} autoFocus disabled={busy !== null} placeholder={t('Say how it should move, e.g. hair moving in the wind')} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && prompt.trim()) void run(); }}/>
       {!prompt && <div className="ed-chips">{IDEAS.map((idea) => <button key={idea} onClick={() => setPrompt(t(idea))}>{t(idea)}</button>)}</div>}
-      <label className="ed-ai-seconds">{t('Length')} <select value={seconds} disabled={busy !== null} onChange={(event) => setSeconds(Number(event.target.value))}>{[5, 8, 10, 15].map((s) => <option key={s} value={s}>{s} s</option>)}</select></label>
+      <label className="ed-ai-seconds">{t('Length')} <KanaaSelect value={seconds} disabled={busy !== null} onChange={(event) => setSeconds(Number(event.target.value))}>{[5, 8, 10, 15].map((s) => <option key={s} value={s}>{s} s</option>)}</KanaaSelect></label>
       {error && <p className="ed-error" role="alert">{error}</p>}
       <p className="ed-tip">{t('Your picture and words go to the video AI in AI settings → Video, and use its credits. The picture stays as it is.')}</p>
       <div className="ed-ai-edit-actions">

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import KanaaSelect from '../../components/KanaaSelect';
 import { Type } from 'lucide-react';
 import type { TextItem } from '../../timeline/model';
 import { TAMIL_FONTS } from '../../timeline/templates';
@@ -43,7 +44,7 @@ export function TitleToolbar({ text, top, left, onChange, onEdit }: { text: Text
     <b className="ed-tt-size">{Math.round(text.size)}</b>
     <button onClick={() => onChange({ size: Math.min(100, text.size + 2) }, `size-${text.id}`)} title={t('Bigger')} aria-label={t('Bigger')}>A+</button>
     <label className="ed-tt-colour" title={t('Colour')}><input type="color" aria-label={t('Text colour')} value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/><i style={{ background: text.color }}/></label>
-    <select aria-label={t('Tamil font')} title={t('Tamil font')} value={text.tamil_font ?? 'Noto Sans Tamil'} onChange={(event) => onChange({ tamil_font: event.target.value === 'Noto Sans Tamil' ? null : event.target.value })}>{TAMIL_FONTS.map((font) => <option key={font.family} value={font.family}>{font.label}</option>)}</select>
+    <KanaaSelect aria-label={t('Tamil font')} title={t('Tamil font')} value={text.tamil_font ?? 'Noto Sans Tamil'} onChange={(event) => onChange({ tamil_font: event.target.value === 'Noto Sans Tamil' ? null : event.target.value })}>{TAMIL_FONTS.map((font) => <option key={font.family} value={font.family}>{font.label}</option>)}</KanaaSelect>
     <span className="ed-tt-sep"/>
     {(['band', 'shadow', 'outline', 'plain'] as const).map((style) => <button key={style} className={text.style === style ? 'on' : ''} aria-pressed={text.style === style} onClick={() => onChange({ style })} title={t(style === 'band' ? 'Band' : style === 'shadow' ? 'Shadow' : style === 'outline' ? 'Outline' : 'Plain')}>{style === 'band' ? '▬' : style === 'shadow' ? 'S' : style === 'outline' ? 'O' : 'P'}</button>)}
   </div>;

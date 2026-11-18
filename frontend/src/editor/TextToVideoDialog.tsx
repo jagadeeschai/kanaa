@@ -3,6 +3,7 @@
  * Add it to the end of the timeline, or keep it in Media. Uses the video AI set in AI settings → Video.
  */
 import { useContext, useEffect, useState } from 'react';
+import KanaaSelect from '../components/KanaaSelect';
 import { createPortal } from 'react-dom';
 import { useEscape } from './useEscape';
 import { Clapperboard, LoaderCircle } from 'lucide-react';
@@ -61,7 +62,7 @@ export function TextToVideoHost() {
       <textarea value={prompt} maxLength={2000} rows={3} autoFocus disabled={busy !== null} placeholder={t('Describe the scene and how the camera moves')} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && prompt.trim()) void run(); }}/>
       {!prompt && <div className="ed-chips">{IDEAS.map((idea) => <button key={idea} onClick={() => setPrompt(t(idea))}>{t(idea)}</button>)}</div>}
-      <label className="ed-ai-seconds">{t('Length')} <select value={seconds} disabled={busy !== null} onChange={(event) => setSeconds(Number(event.target.value))}>{[5, 10, 15].map((s) => <option key={s} value={s}>{s} s</option>)}</select><span>· {t(shape === 'landscape' ? 'Landscape, like this video' : shape === 'portrait' ? 'Portrait, like this video' : 'Square, like this video')}</span></label>
+      <label className="ed-ai-seconds">{t('Length')} <KanaaSelect value={seconds} disabled={busy !== null} onChange={(event) => setSeconds(Number(event.target.value))}>{[5, 10, 15].map((s) => <option key={s} value={s}>{s} s</option>)}</KanaaSelect><span>· {t(shape === 'landscape' ? 'Landscape, like this video' : shape === 'portrait' ? 'Portrait, like this video' : 'Square, like this video')}</span></label>
       {error && <p className="ed-error" role="alert">{error}</p>}
       <p className="ed-tip">{t('Your description goes to the video AI in AI settings → Video, and uses its credits. It comes back silent: your song stays the soundtrack.')}</p>
       <div className="ed-ai-edit-actions">

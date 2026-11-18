@@ -5,6 +5,7 @@
  * One change, so Undo takes it all back. A song that already has the card shows the rename instead (SignatureCardGroup).
  */
 import { useEffect, useState } from 'react';
+import KanaaSelect from '../../components/KanaaSelect';
 import { requestJson } from '../../api/client';
 import { t } from '../../i18n';
 import { type Timeline, normalizeTimeline } from '../../timeline/model';
@@ -39,7 +40,7 @@ export function SignatureAddGroup() {
     } finally { setBusy(false); }
   };
   return <Group title="Signature card" tab="brand" startOpen keywords="signature title card poet portrait credits song name template bharathidasan" tip="Your saved title card for every song: the same portrait and credits, with this song's name.">
-    {saved.length > 1 && <label className="ed-field-row">{t('Card')}<select value={chosen} onChange={(event) => setChosen(event.target.value)}>{saved.map((item) => <option key={item.name} value={item.name}>{item.lyricist_english ? `${item.name} · ${item.lyricist_english}` : item.name}</option>)}</select></label>}
+    {saved.length > 1 && <label className="ed-field-row">{t('Card')}<KanaaSelect value={chosen} onChange={(event) => setChosen(event.target.value)}>{saved.map((item) => <option key={item.name} value={item.name}>{item.lyricist_english ? `${item.name} · ${item.lyricist_english}` : item.name}</option>)}</KanaaSelect></label>}
     {saved.length === 1 && <p className="ed-tip">{saved[0].lyricist_english ? `${saved[0].name} · ${saved[0].lyricist_english}` : saved[0].name}</p>}
     <label className="ed-field-row">{t('Song title')}<input value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="கற்கண்டு"/></label>
     <label className="ed-field-row">{t('English title')}<input value={english} maxLength={60} onChange={(event) => setEnglish(event.target.value)} placeholder="Karkandu"/></label>

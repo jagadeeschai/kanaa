@@ -64,7 +64,8 @@ describe('The title toolbar in the preview', () => {
     expect(change).toHaveBeenLastCalledWith({ size: 42 }, 'size-t1');
     await userEvent.click(screen.getByTitle('Band'));
     expect(change).toHaveBeenLastCalledWith({ style: 'band' });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Tamil font' }), 'Arima');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Tamil font' }));  // Kanaa's own dropdown: open it, then pick.
+    await userEvent.click(screen.getByRole('option', { name: 'Arima' }));
     expect(change).toHaveBeenLastCalledWith({ tamil_font: 'Arima' });
     await userEvent.click(screen.getByRole('button', { name: 'Type' }));
     expect(edit).toHaveBeenCalled();

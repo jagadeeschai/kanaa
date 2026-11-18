@@ -1,5 +1,6 @@
 /** The video AI for Bring to life: which API style, address, model and key. Kept apart from the image AI's settings. */
 import { useEffect, useState } from 'react';
+import KanaaSelect from './KanaaSelect';
 import { CheckCircle2, Clapperboard } from 'lucide-react';
 import { getVideoAISettings, saveVideoAISettings, type VideoAISettings } from '../api/client';
 
@@ -34,13 +35,13 @@ export default function VideoAISettingsFields() {
     <h3 className="ai-settings-heading"><Clapperboard size={16}/> Video (Bring to life, Create video)</h3>
     <p className="dialog-description">Turns a picture into a few seconds of video, or makes one from a description. On Atlas Cloud, Wan 2.6 picture-to-video Flash is about $0.02 a second (5 s ≈ 10 cents) and Wan 2.6 text-to-video about $0.07 a second (5 s ≈ 35 cents). Any provider with the same API shape works.</p>
     <fieldset disabled={busy || !config}>
-      <label className="field-label">Provider style<select aria-label="Video provider style" value={provider} onChange={(event) => pick(event.target.value as 'atlas' | 'openai')}>
-        <option value="atlas">Atlas Cloud style (Wan, Kling, Seedance…)</option><option value="openai">OpenAI Videos style</option></select></label>
+      <label className="field-label">Provider style<KanaaSelect aria-label="Video provider style" value={provider} onChange={(event) => pick(event.target.value as 'atlas' | 'openai')}>
+        <option value="atlas">Atlas Cloud style (Wan, Kling, Seedance…)</option><option value="openai">OpenAI Videos style</option></KanaaSelect></label>
       <label className="field-label">API key<input aria-label="Video API key" type="password" autoComplete="new-password" value={key} onChange={(event) => { setKey(event.target.value); setSaved(false); }} placeholder={config?.configured ? 'Key configured · leave blank to keep' : 'Enter your video API key'}/></label>
       <label className="field-label">Picture-to-video model<input aria-label="Video model" value={model} onChange={(event) => { setModel(event.target.value); setSaved(false); }}/></label>
       <label className="field-label">Text-to-video model<input aria-label="Text-to-video model" value={textModel} onChange={(event) => { setTextModel(event.target.value); setSaved(false); }}/></label>
-      <label className="field-label">Quality<select aria-label="Video resolution" value={resolution} onChange={(event) => { setResolution(event.target.value as '480p' | '720p' | '1080p'); setSaved(false); }}>
-        <option value="480p">480p · cheapest drafts</option><option value="720p">720p · recommended</option><option value="1080p">1080p · costs more</option></select></label>
+      <label className="field-label">Quality<KanaaSelect aria-label="Video resolution" value={resolution} onChange={(event) => { setResolution(event.target.value as '480p' | '720p' | '1080p'); setSaved(false); }}>
+        <option value="480p">480p · cheapest drafts</option><option value="720p">720p · recommended</option><option value="1080p">1080p · costs more</option></KanaaSelect></label>
       <details><summary>Provider URL</summary><label className="field-label">API URL<input aria-label="Video provider URL" value={base} onChange={(event) => { setBase(event.target.value); setSaved(false); }}/></label></details>
       <div className="ai-settings-actions"><button type="button" className="primary small" disabled={!model.trim()} onClick={() => { void save(); }}>{busy ? 'Saving…' : 'Save video settings'}</button>{config?.configured && config.key_source !== 'environment' && <button type="button" className="text-button" onClick={() => { void save(true); }}>Remove saved key</button>}</div>
     </fieldset>
