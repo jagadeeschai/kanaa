@@ -3,7 +3,7 @@ import { TransitionsTabSection1 } from './tabs/TransitionsTab';
 import { WordsTabSection1 } from './tabs/WordsTab';
 import { AudioTabSection1 } from './tabs/AudioTab';
 import { TextTabSection1 } from './tabs/TextTab';
-import { EffectsTabSection1, EffectsTabSection2, EffectsTabSection3, EffectsTabSection4, EffectsTabSection5 } from './tabs/EffectsTab';
+import { EffectsTabParts } from './tabs/EffectsTab';
 import { ThemesTabSection1 } from './tabs/ThemesTab';
 import { TemplatesTabSection1 } from './tabs/TemplatesTab';
 import { MediaTabSection1, MediaTabSection2 } from './tabs/MediaTab';
@@ -182,12 +182,8 @@ export function EditorLeftRail() {
         <ThemesTabSection1/>
         <TransitionsTabSection1/>
         <AskTabSection1/>
-        <EffectsTabSection1/>
-        <EffectsTabSection2/>
         <MediaTabSection2/>
-        <EffectsTabSection3/>
-        <EffectsTabSection4/>
-        <EffectsTabSection5/>
+        <EffectsTabParts/>
         <TextTabSection1/>
         <AudioTabSection1/>
         </div>}

@@ -5,6 +5,7 @@ import { ValueSlider } from "../../controls";
 import { Chips } from "../../inspectors/parts";
 import { useEditorPanel } from "../../state/EditorContext";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
+import { SubTabs, useSubTab } from './SubTabs';
 
 export function EffectsTabSection1() {
   const { leftTab, effectSearch, setEffectSearch } = useEditorPanel<EditorLeftRailBindings>('left');
@@ -74,4 +75,22 @@ export function EffectsTabSection5() {
                 : <button className="ed-button ed-add-span" disabled={!total} onClick={() => { void blurFaces(); }} title="Finds every face in the clip at the playhead and blurs each one"><ScanFace size={14}/>Blur faces</button>}
             </div>
             {faceNote && <p className="ed-tip" role="status">{faceNote}</p>}</section>}</>);
+}
+
+/** The Effects tab in parts: overlays added above the video, looks applied to the selected clip, and privacy (blur and
+ * pixelate). While searching, every part that matches shows at once. */
+export function EffectsTabParts() {
+  const { leftTab, effectNeedle } = useEditorPanel<EditorLeftRailBindings>('left');
+  const tabs = [{ id: 'overlays' as const, label: 'Overlays' }, { id: 'looks' as const, label: 'Clip looks' }, { id: 'privacy' as const, label: 'Privacy' }];
+  const [part, choose] = useSubTab('effects', tabs);
+  if (leftTab !== 'effects') return null;
+  const all = Boolean(effectNeedle);
+  return <>
+    <EffectsTabSection1/>
+    {!all && <SubTabs label="Effect tools" tabs={tabs} part={part} onChoose={choose}/>}
+    {(all || part === 'overlays') && <EffectsTabSection3/>}
+    {(all || part === 'looks') && <EffectsTabSection2/>}
+    {(all || part === 'privacy') && <EffectsTabSection5/>}
+    <EffectsTabSection4/>
+  </>;
 }

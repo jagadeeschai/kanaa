@@ -1,5 +1,6 @@
 import { useEditorPanel } from '../state/EditorContext';
 import { BlendEdgesGroup } from './BlendEdgesGroup';
+import { EffectLookGroup } from './EffectLookGroup';
 import { PictureLightsGroup } from './PictureLightsGroup';
 import { SignatureCardGroup } from './SignatureCardGroup';
 import { useEditor, useItemTime } from '../state/EditorContext';
@@ -48,6 +49,7 @@ export function Inspector() {
     <Panel id="clip" header={<>{clip.id === 'signature-paper' && <SignatureCardGroup/>}<ActiveEffects clip={clip} onChange={onChange}/></>} tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
       { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
+    {isEffect && <EffectLookGroup clip={clip} onChange={onChange} onPause={onPause}/>}
     {isEffect && <Group pro title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
       <Chips label="Intensity" options={EFFECT_INTENSITIES} value={clip.transform.opacity <= 0.5 ? 'subtle' : clip.transform.opacity <= 0.85 ? 'medium' : 'strong'} onPick={(strength) => onChange({ transform: { ...clip.transform, opacity: EFFECT_INTENSITY_VALUE[strength] } })}/>
       <More><ValueSlider label="Fine intensity" value={clip.transform.opacity} min={0} max={1} step={0.01} defaultValue={1} unit="%" factor={100} onGestureStart={onPause} onChange={(opacity, group) => onChange({ transform: { ...clip.transform, opacity } }, group)}/></More>
