@@ -57,3 +57,19 @@ test('a Short takes the first chorus, from just before it, 15 seconds to a minut
   assert.deepEqual(shortRange([[10, 200]], 300), [9.5, 69.5], 'never more than a minute');
   assert.deepEqual(shortRange([[30, 36]], 40), [29.5, 40], 'not past the end');
 });
+
+test('section lights: one at each part of the song, on its beat, never overlapping, replacing earlier ones', async () => {
+  const { sectionStarts, placeSectionLights, SECTION_PREFIX } = await import('../src/timeline/song-sections.ts');
+  assert.deepEqual(sectionStarts(song()), [3, 10, 20, 30], 'verse, chorus, verse after a pause, chorus');
+  const effect = { id: 'fx', media_id: 9, start: 0, in: 0, out: 5, speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0, transform: REST, adjust: {} };
+  let n = 0; const id = () => `id${n++}`;
+  const beats = Array.from({ length: 80 }, (_, index) => 0.1 + index * 0.5);
+  const once = placeSectionLights(song(), effect, 'light-leak', [3, 10, 20, 30, 32], beats, id);
+  const lights = (timeline) => timeline.layers.filter((layer) => layer.kind === 'video').flatMap((layer) => layer.items).filter((clip) => clip.id.startsWith(SECTION_PREFIX));
+  assert.equal(once.placed, 4, 'the one at 32 s would overlap the light at 30 s');
+  assert.deepEqual(lights(once.timeline).map((clip) => clip.start), [2.1, 9.1, 19.1, 29.1], 'a leak swells a second before the part begins on its beat');
+  const again = placeSectionLights(once.timeline, effect, 'lens-flare', [3, 10], beats, id);
+  assert.deepEqual(lights(again.timeline).map((clip) => clip.start), [3.1, 10.1], 'the flare starts on the beat; earlier lights are replaced');
+  const early = placeSectionLights(song(), effect, 'light-leak', [0.2], [], id);
+  assert.deepEqual([lights(early.timeline)[0].start, lights(early.timeline)[0].in], [0, 0.8], 'at the very start, the light begins part way in');
+});

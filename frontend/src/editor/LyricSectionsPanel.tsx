@@ -1,29 +1,17 @@
 import { useState } from 'react';
 import { Smartphone, Sparkles, Sun } from 'lucide-react';
-import { exportShort, getJobStatus, getPhoto, getSongBeats, makeEffect } from '../api/client';
+import { exportShort, getJobStatus, getSongBeats } from '../api/client';
+import { effectMedia } from './effect-media';
 import { t } from '../i18n';
 import { beatSound, timelineBeats } from '../timeline/beats';
 import { duration, newClip } from '../timeline/model';
 import { chorusSections, hitTimes, placeLightHits, shortRange, styleChorus } from '../timeline/song-sections';
-import type { Photo } from '../types/photo';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
 
 /** The light the hits use: a warm flash, made once per frame size like any effect (effect_service.py). */
 const LIGHT_EFFECT = 'film-burn';
 const LIGHT_PEAK = 2.5;  // film_burn's flare is brightest halfway through its 5 seconds.
-
-async function lightEffect(size: { width: number; height: number }): Promise<Photo> {
-  const made = await makeEffect(LIGHT_EFFECT, size);
-  if (made.media) return made.media;
-  if (!made.job_id) throw new Error('Could not make the light.');
-  for (;;) {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const status = await getJobStatus(made.job_id) as unknown as { status?: string; error?: string | null; media_id?: number };
-    if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? 'Could not make the light.');
-    if (status.status === 'done' && status.media_id) return getPhoto(status.media_id);
-  }
-}
 
 /** Lyric videos: the chorus found from the lyrics, styled stronger, with light hits on its beats. One click each, one undo each. */
 export default function LyricSectionsPanel() {
@@ -45,7 +33,7 @@ export default function LyricSectionsPanel() {
     if (!song) { setNote(t('Add a song first. The light hits follow its beat.')); return; }
     setBusy(true); setNote(null);
     try {
-      const [{ beats }, item] = await Promise.all([getSongBeats(song.asset_id), lightEffect({ width: timeline.format.width, height: timeline.format.height })]);
+      const [{ beats }, item] = await Promise.all([getSongBeats(song.asset_id), effectMedia(LIGHT_EFFECT, { width: timeline.format.width, height: timeline.format.height })]);
       addMedia(item);
       const hits = hitTimes(sections, timelineBeats(song, beats));
       const effect = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());

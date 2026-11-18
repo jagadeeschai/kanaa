@@ -119,3 +119,42 @@ export function shortRange(sections: [number, number][], total: number): [number
   const end = Math.min(total, start + SHORT_MOST, Math.max(last + SHORT_TAIL, start + SHORT_LEAST));
   return [round(start), round(end)];
 }
+
+/** Where each part of the song starts: the first line, and each line after a pause or where the chorus begins or ends. */
+export function sectionStarts(timeline: Timeline): number[] {
+  const lines = lyricLines(timeline);
+  const chorus = new Set(chorusLines(timeline).map((line) => line.id));
+  const starts: number[] = [];
+  lines.forEach((line, index) => {
+    const before = lines[index - 1];
+    if (!before || line.start - (before.start + before.length) > SECTION_GAP || chorus.has(line.id) !== chorus.has(before.id)) starts.push(line.start);
+  });
+  return starts;
+}
+
+export type SectionLight = 'light-leak' | 'lens-flare';
+export const SECTION_PREFIX = 'section-light-';
+const LIGHT_SPACING = 6;  // Section lights never overlap: each one plays its whole light.
+const SECTION_LIGHT = { 'light-leak': { lead: 1, opacity: 0.7 }, 'lens-flare': { lead: 0, opacity: 0.8 } } as const;
+
+/** A light leak (warm light swelling as the part begins) or a lens flare (sweeping across from its first beat) at each section start. */
+export function placeSectionLights(timeline: Timeline, effect: Clip, kind: SectionLight, starts: number[], beats: number[], newId: () => string): { timeline: Timeline; placed: number } {
+  let next: Timeline = { ...timeline, layers: timeline.layers.flatMap((layer) => {
+    if (layer.kind !== 'video' || !layer.items.some((clip) => clip.id.startsWith(SECTION_PREFIX))) return [layer];
+    const items = layer.items.filter((clip) => !clip.id.startsWith(SECTION_PREFIX));
+    return items.length ? [{ ...layer, items }] : [];
+  }) };
+  const sorted = [...beats].sort((a, b) => a - b);
+  const { lead, opacity } = SECTION_LIGHT[kind];
+  let last = -Infinity; let placed = 0;
+  for (const start of starts) {
+    const beat = sorted.filter((at) => Math.abs(at - start) <= SNAP).sort((a, b) => Math.abs(a - start) - Math.abs(b - start))[0] ?? start;
+    const begin = Math.max(0, beat - lead);
+    if (begin - last < LIGHT_SPACING) continue;
+    const clip: Clip = { ...effect, id: `${SECTION_PREFIX}${newId()}`, start: round(begin), in: round(Math.min(lead, beat) === lead ? 0 : lead - beat), muted: true, fade_in: 0, fade_out: 0,
+      transform: { ...effect.transform, opacity } };
+    next = placeEffect(next, clip, newId());
+    last = begin; placed += 1;
+  }
+  return { timeline: next, placed };
+}
