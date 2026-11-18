@@ -41,3 +41,19 @@ test('a Short has its lyrics large, below the middle, clear of the subject', asy
   assert.deepEqual([a.position, a.size, a.transform.y], ['center', 60, SHORT_LINE]);
   assert.equal(items(short, 'lyrics').find((item) => item.id === 'opening-credit').size, 40, 'credits stay');
 });
+
+test('Original always brings back the lines exactly as they were, after any layouts', async () => {
+  const { currentLyricLayout } = await import('../src/timeline/lyric-layouts.ts');
+  const own = song();
+  own.layers[1].items = own.layers[1].items.map((item, index) => ({ ...item, position: index % 2 ? 'top' : 'bottom', align: 'right', size: 36 + index, own: ['color'], transform: { ...REST, y: 0.4, keyframes: { scale: [{ t: 0, v: 1, ease: 'linear' }, { t: 1, v: 1.1, ease: 'linear' }] } } }));
+  assert.equal(currentLyricLayout(own), 'original');
+  let laid = own;
+  for (const layout of ['two-line', 'big-centre', 'big-centre', 'lower-third', 'two-line']) laid = applyLyricLayout(laid, layout);
+  assert.equal(currentLyricLayout(laid), 'two-line');
+  const back = applyLyricLayout(laid, 'original');
+  assert.equal(currentLyricLayout(back), 'original');
+  assert.deepEqual(back.layers.map((layer) => layer.id), own.layers.map((layer) => layer.id), 'the next-line layer is gone');
+  const strip = ({ layout_original, ...rest }) => rest;  // eslint-disable-line no-unused-vars
+  assert.deepEqual(items(back, 'lyrics').map(strip), items(own, 'lyrics'));
+  assert.equal(items(applyLyricLayout(applyLyricLayout(own, 'big-centre'), 'big-centre'), 'lyrics')[1].size, Math.round(37 * 1.3), 'sizes come from your own, never compound');
+});

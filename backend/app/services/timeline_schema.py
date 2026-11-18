@@ -507,9 +507,20 @@ class ExplainerGraphic(Strict):
         return self
 
 
+class LayoutOriginal(Strict):
+    """A lyric line's own place and look before a one-click lyric layout (lyric-layouts.ts), so Original can put it back."""
+    position: Literal['top', 'center', 'bottom'] = 'bottom'
+    align: Literal['left', 'center', 'right'] = 'center'
+    style: Literal['outline', 'shadow', 'band', 'plain'] = 'band'
+    size: int = Field(default=44, ge=8, le=100)
+    transform: Transform = Field(default_factory=Transform)
+    own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
+
+
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
     source:Optional[str]=Field(default=None,max_length=500)
+    layout_original: Optional[LayoutOriginal] = None  # Set by a lyric layout; Original puts it back.
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     start: float = Field(ge=0)

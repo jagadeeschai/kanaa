@@ -27,3 +27,9 @@ test('each part graded under the lyrics, melting into the next, and replaced or 
   assert.equal(again.layers.filter((layer) => layer.kind === 'adjust').length, 2, 'replaced, not added');
   assert.deepEqual(clearMood(again).layers.map((layer) => layer.id), ['main', 'lyrics']);
 });
+
+test('the mood chosen is known again, so it can be highlighted', async () => {
+  const { currentMood } = await import('../src/timeline/mood-grade.ts');
+  assert.equal(currentMood(song()), null);
+  for (const mood of ['warm-rich', 'cool-to-warm', 'film']) assert.equal(currentMood(applyMood(song(), mood)), mood);
+});

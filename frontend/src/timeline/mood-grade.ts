@@ -60,3 +60,12 @@ export function applyMood(timeline: Timeline, mood: Mood): Timeline {
   const place = at < 0 ? layers.length : at;
   return { ...cleared, layers: [...layers.slice(0, place), even, ...(odd.items.length ? [odd] : []), ...layers.slice(place)] };
 }
+
+/** Which mood the video has now (from its first graded part), or null for none. */
+export function currentMood(timeline: Timeline): Mood | null {
+  const spans = timeline.layers.filter((layer): layer is AdjustLayer => layer.kind === 'adjust' && layer.id.startsWith(MOOD_LAYER)).flatMap((layer) => layer.items);
+  if (!spans.length) return null;
+  const looks = new Set(spans.map((item) => item.look));
+  return (Object.keys(GRADES) as Mood[]).find((mood) => looks.has(GRADES[mood].verse.look) && looks.has(GRADES[mood].chorus.look)) ??
+    (Object.keys(GRADES) as Mood[]).find((mood) => spans.every((item) => item.look === GRADES[mood].verse.look || item.look === GRADES[mood].chorus.look)) ?? null;
+}
