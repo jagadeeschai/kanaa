@@ -61,6 +61,10 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
                     if move and move.preset not in FADES:
                         found.add(f'{move.preset} animation')
             continue
+        if layer.kind == 'adjust':
+            if any(item.dreamy_glow for item in layer.items):
+                found.add('glow on an adjustment layer')
+            continue
         if layer.kind != 'video':
             found.add(f'{layer.kind} layers')
             continue
@@ -280,7 +284,16 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
     fps = timeline.format.fps
     items = []
     for position, layer in enumerate(timeline.layers):
-        if layer.hidden or layer.kind not in ('video', 'text','captions'):
+        if layer.hidden or layer.kind not in ('video', 'text','captions','adjust'):
+            continue
+        if layer.kind == 'adjust':
+            # A grade of everything drawn so far, faded as adjust_layer.strength says (the engine's "grade" items).
+            from app.services.adjust_layer import strength
+            for item in sorted(layer.items, key=lambda entry: entry.start):
+                first, count = round(item.start * fps), max(1, round(item.length * fps))
+                items.append({'kind': 'grade', 'path': '', 'start': first, 'frames': count, 'source_in': 0, 'speed': 1, 'x': [], 'y': [], 'scale': [],
+                              'opacity': [round(strength(item, (first + k) / fps), 5) for k in range(count)],
+                              'colour': colour_constants(item.adjust, item.look), 'wheels': wheel_vectors(item.wheels)})
             continue
         if layer.kind=='captions':
             for number,item in enumerate(layer.items):items.append(gpu_documentary.caption(item,layer,timeline.format,folder or output.parent,f'caption-{position}-{number}'))

@@ -32,8 +32,10 @@ class Strength(unittest.TestCase):
         item = AdjustItem(id='a', start=0, length=1, fade_in=2, fade_out=2)
         self.assertEqual(adjust_layer.strength(item, 0.5), 1)
 
-    def test_kept_on_ffmpeg_by_the_gpu_engine(self):
-        self.assertIn('adjust layers', gpu_render.unsupported(timeline(), lambda _: MediaFacts(path=Path('p.png'), media_type='image', width=426, height=240)))
+    def test_drawn_by_the_gpu_engine_unless_it_glows(self):
+        facts = lambda _: MediaFacts(path=Path('p.png'), media_type='image', width=426, height=240)
+        self.assertEqual(gpu_render.unsupported(timeline(), facts), [], 'graded on the GPU (test_gpu_adjust.py)')
+        self.assertIn('glow on an adjustment layer', gpu_render.unsupported(timeline(dreamy_glow={'intensity': 0.5}), facts))
 
     def test_a_slice_cut_inside_a_fade_uses_the_whole(self):
         with self.assertRaises(render_window._Whole):

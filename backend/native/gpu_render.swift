@@ -229,6 +229,18 @@ var videos: [Int: VideoSource] = [:]
 var masks: [Int: VideoSource] = [:]
 
 /// Scales a picture's alpha (Core Image keeps colour premultiplied, so this scales every channel evenly).
+/// A picture through an item's colour constants and colour wheels, as a clip's own colour is applied.
+func graded(_ image: CIImage, _ item: Item) -> CIImage {
+    var shown = image
+    if let c = item.colour {
+        shown = colourKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: c.tint[0], y: c.tint[1], z: c.tint[2]), c.power, c.fade, c.contrast, c.saturation])!
+    }
+    if let w = item.wheels {
+        shown = wheelsKernel.apply(extent: shown.extent, arguments: [shown, CIVector(x: w.lift[0], y: w.lift[1], z: w.lift[2]), CIVector(x: w.gamma[0], y: w.gamma[1], z: w.gamma[2]), CIVector(x: w.gain[0], y: w.gain[1], z: w.gain[2])])!
+    }
+    return shown
+}
+
 func weighted(_ image: CIImage, _ amount: Double) -> CIImage {
     amount >= 0.999 ? image : image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(amount))])
 }
@@ -348,6 +360,11 @@ for f in 0..<plan.frames {
             videos[index] = nil; masks[index] = nil
             if let path = changingPictures.removeValue(forKey: index) { pictures.removeValue(forKey: path) }
         }  // Finished: let its decoder and changing title textures go.
+        if item.kind == "grade" {
+            // An adjustment span (adjust_layer.py): everything drawn so far, graded, laid back over itself as strongly as it shows now.
+            if k >= 0, k < item.frames, item.opacity[k] > 0.0005 { frame = weighted(graded(frame, item), item.opacity[k]).composited(over: frame) }
+            continue
+        }
         guard k >= 0, k < item.frames, !givesWay(index, f) else { continue }
         if let mix = item.transition, k < mix.frames {
             // The two clips mixed as one layer (xfade), with the fill colour for a dip or flash, then blurred.
