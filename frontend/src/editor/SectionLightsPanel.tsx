@@ -5,6 +5,7 @@ import { t } from '../i18n';
 import { beatSound, timelineBeats } from '../timeline/beats';
 import { newClip } from '../timeline/model';
 import { lyricLines, placeSectionLights, sectionStarts, type SectionLight } from '../timeline/song-sections';
+import { applyMood, clearMood, MOOD_LAYER, MOODS } from '../timeline/mood-grade';
 import { effectMedia } from './effect-media';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
@@ -39,5 +40,9 @@ export default function SectionLightsPanel() {
     <div className="ed-chips" role="group" aria-label={t('Section lights')}>{LIGHTS.map((light) => <button key={light.id} className={kind === light.id ? 'active' : undefined} onClick={() => setKind(light.id)}>{t(light.label)}</button>)}</div>
     <button className="ed-button wide" disabled={busy} onClick={() => { void place(); }}><Sunrise size={14}/>{busy ? t('Making the light…') : t('Add a light at each part')}</button>
     {note && <p className="ed-tip" role="status">{note}</p>}
+    <h3 className="ed-sub">{t('Mood grade')}</h3>
+    <p className="ed-tip">{t('Each part of the song in its own colour: calm verses, a richer chorus. The words keep their colour.')}</p>
+    <div className="ed-chips" role="group" aria-label={t('Mood grade')}>{MOODS.map((mood) => <button key={mood.id} title={t(mood.tip)} onClick={() => change(applyMood(timeline, mood.id))}>{t(mood.label)}</button>)}
+      {timeline.layers.some((layer) => layer.id.startsWith(MOOD_LAYER)) && <button onClick={() => change(clearMood(timeline))}>{t('None')}</button>}</div>
   </section>;
 }
