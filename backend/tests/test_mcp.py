@@ -166,3 +166,36 @@ class Building(Server):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Importing(Server):
+    """import_media copies files from this Mac into the library, through Kanaa's own /api/media."""
+
+    def setUp(self):
+        super().setUp()
+        self.uploaded, self.moved = [], []
+        self.api.upload = lambda path, file: (self.uploaded.append(file.name), {'id': 40 + len(self.uploaded), 'filename': file.name,
+                                              'media_type': 'video' if file.suffix == '.mov' else 'image', 'width': 1920, 'height': 1080, 'duration': 3.0 if file.suffix == '.mov' else None})[1]
+        self.api.patch = lambda path, body: (self.moved.append((path, body)), {'updated': len(body['ids'])})[1]
+
+    def test_a_folder_and_a_file_come_in_with_their_ids_and_into_a_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'shoot').mkdir()
+            for name in ('a.mov', 'b.JPG', 'notes.txt'):
+                (root / 'shoot' / name).write_bytes(b'x')
+            (root / 'shoot' / 'inner').mkdir()
+            (root / 'shoot' / 'inner' / 'c.mov').write_bytes(b'x')
+            (root / 'song.mp3').write_bytes(b'x')
+            made = asyncio.run(self.server.call_tool('import_media', {'paths': [str(root / 'shoot'), str(root / 'song.mp3')], 'folder': 'Wedding'})).structured_content['result']
+        self.assertEqual(self.uploaded, ['a.mov', 'b.JPG'], 'a folder brings its videos and pictures, not its subfolders or other files')
+        self.assertEqual([item.get('media_id') for item in made[:2]], [41, 42])
+        self.assertEqual(made[0]['kind'], 'video')
+        self.assertEqual(made[0]['seconds'], 3.0)
+        self.assertIn('not a video or picture', made[2]['skipped'])
+        self.assertEqual(self.moved, [('/photos/folder', {'ids': [41, 42], 'folder': 'Wedding'})])
+
+    def test_a_missing_path_is_refused(self):
+        with self.assertRaises(ToolError) as refused:
+            self.call('import_media', paths=['/no/such/place.mov'])
+        self.assertIn('There is no file or folder', str(refused.exception))

@@ -689,6 +689,45 @@ def build_server(api: KanaaApi) -> MCPServer:
     def look_up(job: dict, key: str):
         return job.get(key) if job.get(key) is not None else (job.get('result') or {}).get(key)
 
+    MEDIA_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.bmp', '.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi'}  # As /api/media takes.
+
+    @server.tool(annotations=CHANGES)
+    def import_media(paths: list[str], folder: str | None = None) -> list[dict]:
+        """Imports videos and pictures from this Mac into Kanaa's library, so add_clips and add_overlay can use them.
+        Each path is a file, or a folder whose supported files (not its subfolders) are all imported. The files are
+        copied; the originals are only read. `folder`: the library folder to put them in (made if new). Returns each one's
+        media_id, kind, size and length; files Kanaa can't use are listed with the reason instead."""
+        files: list[Path] = []
+        for raw in paths[:200]:
+            place = Path(raw).expanduser()
+            if place.is_dir():
+                files += sorted(item for item in place.iterdir() if item.is_file() and item.suffix.lower() in MEDIA_SUFFIXES)
+            elif place.is_file():
+                files.append(place)
+            else:
+                raise ToolError(f'There is no file or folder at {raw}.')
+        if not files:
+            raise ToolError('No videos or pictures there. Kanaa takes JPG, PNG, WebP, TIFF, MP4, MOV, M4V, WebM, MKV and AVI.')
+        made: list[dict] = []
+        for file in files[:200]:
+            if file.suffix.lower() not in MEDIA_SUFFIXES:
+                made.append({'path': str(file), 'skipped': f'{file.suffix or "no extension"} is not a video or picture Kanaa takes'})
+                continue
+            try:
+                item = api.upload('/media', file)
+            except ToolError as problem:
+                made.append({'path': str(file), 'skipped': str(problem)})
+                continue
+            made.append({'media_id': item['id'], 'kind': item.get('media_type'), 'name': item.get('filename'), 'width': item.get('width'), 'height': item.get('height'),
+                         'seconds': item.get('duration')})
+        ids = [item['media_id'] for item in made if 'media_id' in item]
+        if folder and ids:
+            api.patch('/photos/folder', {'ids': ids, 'folder': folder})
+            for item in made:
+                if 'media_id' in item:
+                    item['folder'] = folder
+        return made
+
     @server.tool(annotations=CHANGES)
     def add_song(path: str) -> dict:
         """Adds a song (wav, mp3, m4a...) from this Mac to Kanaa for a lyric video. The file is copied; the original is
