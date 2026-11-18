@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n';
+import { SubTabs, useSubTab } from './panels/tabs/SubTabs';
 import { Check, Copy, LoaderCircle, Sparkles } from 'lucide-react';
 import { describeVideo, getAISettings, planEdits, type AISettings } from '../api/client';
 import AISettingsFields from '../components/AISettingsFields';
 import { describeCommand, usable, type Options, type Proposed } from '../timeline/commands';
 import type { Timeline } from '../timeline/model';
 
+/** Ask AI in two parts: asking for edits, and writing the words to post with the video. */
+const ASK_TABS = [{ id: 'ask' as const, label: 'Ask for edits' }, { id: 'post' as const, label: 'Words to post' }];
 const EXAMPLES = ['Make it a warm wedding reel with captions', 'Add a title “Pongal 2026” at the start and fireworks at the end', 'Make it vertical and cut it to the beat', 'Translate the captions to Tamil'];
 
 type Props = {
@@ -19,6 +23,7 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
   const [settings, setSettings] = useState<AISettings | null>(null);
   const [editing, setEditing] = useState(false);
   const [request, setRequest] = useState('');
+  const [part, choose] = useSubTab('ask', ASK_TABS);
   const [busy, setBusy] = useState<'plan' | 'apply' | 'describe' | null>(null);
   const [error, setError] = useState('');
   const [plan, setPlan] = useState<{ summary: string; commands: Proposed[]; dropped: number } | null>(null);
@@ -58,7 +63,6 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
   };
 
   return <section className="ed-add ed-ask" aria-label="Ask AI">
-    <p className="ed-tip">Ask in English or Tamil. Kanaa suggests; nothing changes until you apply, and ⌘Z undoes.</p>
     {settings && !editing && <div className="ed-add-row"><span>AI: <b>{settings.text_model}</b> {settings.local ? '· on this Mac' : '· cloud'}</span><button className="ed-button" onClick={() => setEditing(true)}>AI settings</button></div>}
     {editing && <div className="ed-ask-connect" role="group" aria-label="AI settings">
       <h3 className="ed-sub">AI settings</h3>
@@ -66,6 +70,9 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
       <AISettingsFields onSaved={(next) => { setSettings(next); setEditing(!next.text_configured); if (!next.text_configured) setError('Add a text model, and an API key for a cloud provider.'); else setError(''); }}/>
     </div>}
     {settings?.text_configured && !editing && <>
+      <SubTabs label="Ask AI tools" tabs={ASK_TABS} part={part} onChoose={choose}/>
+      {part === 'ask' && <>
+      <p className="ed-tip">{t('Say what you want in English or Tamil. Kanaa suggests edits; nothing changes until you apply them, and ⌘Z undoes.')}</p>
       <textarea className="ed-ask-input" aria-label="What should Kanaa do?" rows={3} value={request} placeholder="For example: make it a warm wedding reel with captions and confetti at the end"
         onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void ask(); }}/>
       <div className="ed-chips ed-ask-examples" role="group" aria-label="Examples">{EXAMPLES.map((text) => <button key={text} onClick={() => { setRequest(text); void ask(text); }}>{text}</button>)}</div>
@@ -78,12 +85,14 @@ export default function AskPanel({ timeline, options, project, onApply }: Props)
         {plan.commands.length > 0 && <button className="ed-primary wide" disabled={!ticked.size || busy !== null} onClick={() => { void apply(); }}>{busy === 'apply' ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}{busy === 'apply' ? 'Applying…' : `Apply ${ticked.size} edit${ticked.size === 1 ? '' : 's'}`}</button>}
         {results.length > 0 && <ul className="ed-ask-results" role="status">{results.map((line, index) => <li key={index}>{line}</li>)}</ul>}
       </div>}
-      <h3 className="ed-sub">Words to post</h3>
+      </>}
+      {part === 'post' && <>
       <p className="ed-tip">Title, lines and hashtags for Instagram, YouTube or WhatsApp, from your project.</p>
       <div className="ed-chips ed-even" role="group" aria-label="Language">{([['both', 'Both'], ['en', 'English'], ['ta', 'தமிழ்']] as const).map(([id, label]) => <button key={id} className={language === id ? 'on' : ''} aria-pressed={language === id} onClick={() => setLanguage(id)}>{label}</button>)}</div>
       <button className="ed-button wide" disabled={busy !== null} onClick={() => { void write(); }}>{busy === 'describe' ? <LoaderCircle className="spin" size={14}/> : <Sparkles size={14}/>}Write the post</button>
       {post && <div className="ed-ask-post"><b>{post.title}</b><p>{post.description}</p><p className="ed-ask-tags">{post.hashtags.join(' ')}</p>
         <button className="ed-button" onClick={() => { void copy(); }}>{copied ? <Check size={13}/> : <Copy size={13}/>}{copied ? 'Copied' : 'Copy'}</button></div>}
+      </>}
     </>}
     {error && <p className="ed-tip ed-ask-error" role="alert">{error}</p>}
   </section>;
