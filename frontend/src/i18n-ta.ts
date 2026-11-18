@@ -67,6 +67,7 @@ export const TAMIL: Record<string, string> = {
   'Narration can start before this picture (J cut) or carry on after it (L cut).': 'குரல் இந்தப் படத்துக்கு முன்பே தொடங்கலாம் (J வெட்டு) அல்லது பின்னும் தொடரலாம் (L வெட்டு).',
   'A silent beat holds the picture before this number; the sound waits too.': 'இந்த எண்ணுக்கு முன் ஒரு அமைதியான இடைவெளி; படமும் ஒலியும் காத்திருக்கும்.',
   'Select a main-track picture for a J or L cut, or a count-up number for a silent beat.': 'J/L வெட்டுக்கு முதன்மைப் படத்தையோ, அமைதியான இடைவெளிக்கு எண்ணிக்கையையோ தேர்ந்தெடுங்கள்.',
+  'Graphics': 'வரைகலை', 'Text tools': 'உரைக் கருவிகள்',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',

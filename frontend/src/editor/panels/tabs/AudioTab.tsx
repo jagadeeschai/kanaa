@@ -1,4 +1,3 @@
-import { useState } from "react";
 import KanaaSelect from '../../../components/KanaaSelect';
 import { AudioLines,LoaderCircle,Music,Pause,Play,Plus,Search,X } from "lucide-react";
 import { type Mood } from "../../../api/client";
@@ -11,22 +10,16 @@ import DocumentarySoundPanel from '../../DocumentarySoundPanel';
 import LyricSectionsPanel from '../../LyricSectionsPanel';
 import SectionLightsPanel from '../../SectionLightsPanel';
 import { lyricLines } from '../../../timeline/song-sections';
-import { t } from '../../../i18n';
-
-type AudioPart = 'music' | 'lyrics' | 'voice' | 'sounds';
-const PART_KEY = 'kanaa.audio-part';
-const remembered = (): AudioPart => { try { const value = localStorage.getItem(PART_KEY); return value === 'lyrics' || value === 'voice' || value === 'sounds' ? value : 'music'; } catch { return 'music'; } };
+import { SubTabs, useSubTab } from './SubTabs';
 
 export function AudioTabSection1() {
   const { leftTab, library, libraryFolder, musicSearch, musicMood, setMusicSearch, MOODS, setMusicMood, MOOD_LABELS, listening, draggableAs, listen, addingMusic, addLibraryTrack, addMusic, layout, soundEffects, timeline, sfxChoice, setSfxChoice, total, sfxBusy, addSoundEffects, change, sfxNote, beatBusy, cutClipsToBeat, beatNote } = useEditorPanel<EditorLeftRailBindings>('left');
   // Four parts, so the tab isn't one long list: music, lyric-video tools (only with lyrics), narration, and sound effects.
-  const [chosen, setChosen] = useState<AudioPart>(remembered);
   const hasLyrics = Boolean(timeline && lyricLines(timeline).length >= 2);
-  const tabs: { id: AudioPart; label: string }[] = [{ id: 'music', label: 'Music' }, ...(hasLyrics ? [{ id: 'lyrics' as const, label: 'Lyrics' }] : []), { id: 'voice', label: 'Voice' }, { id: 'sounds', label: 'Sounds' }];
-  const part: AudioPart = chosen === 'lyrics' && !hasLyrics ? 'music' : chosen;
-  const choose = (next: AudioPart) => { setChosen(next); try { localStorage.setItem(PART_KEY, next); } catch { /* Remembering is only a convenience. */ } };
+  const tabs = [{ id: 'music' as const, label: 'Music' }, ...(hasLyrics ? [{ id: 'lyrics' as const, label: 'Lyrics' }] : []), { id: 'voice' as const, label: 'Voice' }, { id: 'sounds' as const, label: 'Sounds' }];
+  const [part, choose] = useSubTab('audio', tabs);
   return (<>{leftTab === 'audio' && <>
-          <div className="ed-tabs ed-tabs-compact" role="tablist" aria-label={t('Sound tools')} style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)`}}>{tabs.map((tab) => <button key={tab.id} role="tab" aria-selected={part === tab.id} onClick={() => choose(tab.id)}>{t(tab.label)}</button>)}</div>
+          <SubTabs label="Sound tools" tabs={tabs} part={part} onChoose={choose}/>
           {part === 'music' && <>
           <section className="ed-add" aria-label="Your music"><h3 className="ed-sub">Your music library</h3>
             {library === null ? <p className="ed-tip">Reading your Music library…</p> : !library.length ? <p className="ed-tip">No music found in {libraryFolder || 'your Music app folder'}.</p> : (() => {
