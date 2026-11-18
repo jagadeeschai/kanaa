@@ -61,6 +61,24 @@ class ShortTimeline(unittest.TestCase):
         self.assertNotIn('x', first.transform.keyframes, 'the wide pan gives way to the subject')
         self.assertGreater(first.transform.keyframes['scale'][-1].v, first.transform.keyframes['scale'][0].v, 'the zoom stays')
 
+    def test_the_shorts_look_pushes_in_slowly_where_a_picture_has_no_zoom(self):
+        short = make_short(song_video(), 10, 25, MEDIA.__getitem__, lambda facts, at: (0.8, 0.4), look=True)
+        first, second = short.layers[0].items
+        self.assertEqual(len(first.transform.keyframes['scale']), 2, 'its own zoom stays as it was')
+        keys = second.transform.keyframes['scale']
+        self.assertAlmostEqual(keys[-1].v / keys[0].v, 1.12, places=3)
+        self.assertAlmostEqual(keys[-1].t, 13, places=3, msg='over its whole time in the Short')
+        plain = self.short().layers[0].items[1]
+        self.assertNotIn('scale', plain.transform.keyframes, 'only with the look')
+
+    def test_a_mood_grade_under_way_at_the_cut_still_makes_a_short(self):
+        data = song_video().model_dump(by_alias=True)
+        data['layers'].insert(1, {'id': 'mood-grade', 'kind': 'adjust', 'items': [
+            {'id': 'v', 'start': 3, 'length': 7.3, 'look': 'warm', 'fade_in': 0, 'fade_out': 0.6}, {'id': 'c', 'start': 10.7, 'length': 9, 'look': 'vivid', 'fade_in': 0.6, 'fade_out': 0}]})
+        short = make_short(Timeline.model_validate(data), 9.9, 25, MEDIA.__getitem__, lambda facts, at: None)
+        spans = short.layers[1].items
+        self.assertEqual([(item.start, item.look) for item in spans], [(0, 'warm'), (0.8, 'vivid')])
+
     def test_the_song_fades_in_and_out(self):
         sound = self.short().layers[2].items[0]
         self.assertGreater(sound.fade_in, 0)

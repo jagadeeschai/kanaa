@@ -32,3 +32,12 @@ test('changing layout replaces the last, and Big centre grows the lines only onc
   assert.equal(items(big, 'lyrics').find((item) => item.id === 'a').size, 52);
   assert.equal(items(again, 'lyrics').find((item) => item.id === 'a').size, 52);
 });
+
+test('a Short has its lyrics large, below the middle, clear of the subject', async () => {
+  const { shortsLyrics, SHORT_LINE } = await import('../src/timeline/lyric-layouts.ts');
+  const short = shortsLyrics(applyLyricLayout(song(), 'two-line'));
+  assert.equal(items(short, NEXT_LAYER).length, 0);
+  const a = items(short, 'lyrics').find((item) => item.id === 'a');
+  assert.deepEqual([a.position, a.size, a.transform.y], ['center', 60, SHORT_LINE]);
+  assert.equal(items(short, 'lyrics').find((item) => item.id === 'opening-credit').size, 40, 'credits stay');
+});

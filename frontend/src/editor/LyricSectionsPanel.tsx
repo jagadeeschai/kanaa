@@ -8,6 +8,7 @@ import { duration, newClip } from '../timeline/model';
 import { chorusSections, hitTimes, placeLightHits, shortRange, styleChorus } from '../timeline/song-sections';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
+import { shortsLyrics } from '../timeline/lyric-layouts';
 
 /** The light the hits use: a warm flash, made once per frame size like any effect (effect_service.py). */
 const LIGHT_EFFECT = 'film-burn';
@@ -19,6 +20,7 @@ export default function LyricSectionsPanel() {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [short, setShort] = useState<{ progress: number; id?: number } | null>(null);
+  const [shortLook, setShortLook] = useState(true);
   const sections = chorusSections(timeline);
   if (!sections.length) return null;
 
@@ -46,7 +48,8 @@ export default function LyricSectionsPanel() {
     const [start, end] = shortRange(sections, duration(timeline));
     setShort({ progress: 0 }); setNote(null);
     try {
-      const { job_id } = await exportShort(projectId, timeline, start, end);
+      // Shorts look: big lyrics below the middle (lyric-layouts.ts) and a slow push on each picture (shorts.py), for the Short only.
+      const { job_id } = await exportShort(projectId, shortLook ? shortsLyrics(timeline) : timeline, start, end, shortLook);
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const status = await getJobStatus(job_id) as unknown as { status?: string; progress: number; error?: string | null; output_photo_id?: number };
@@ -62,6 +65,7 @@ export default function LyricSectionsPanel() {
     <button className="ed-button wide" onClick={style}><Sparkles size={14}/>{t('Make the chorus stand out')}</button>
     <button className="ed-button wide" disabled={busy} onClick={() => { void lights(); }}><Sun size={14}/>{busy ? t('Listening for the beat…') : t('Light hits on the chorus beats')}</button>
     <button className="ed-button wide" disabled={Boolean(short && short.progress < 100)} title={t('A 9:16 video of the chorus for YouTube Shorts and Reels, each picture kept on its subject. Your project stays as it is.')} onClick={() => { void makeShort(); }}><Smartphone size={14}/>{short && short.progress < 100 ? t('Making the Short… {progress}%', { progress: Math.round(short.progress) }) : t('Export a Short of the chorus')}</button>
+    <label className="ed-check"><input type="checkbox" checked={shortLook} onChange={(event) => setShortLook(event.target.checked)}/>{t('Shorts look: big lyrics, a slow push on each picture')}</label>
     {short?.id && <p className="ed-tip" role="status">{t('Your Short is ready.')} <button className="ed-link" onClick={() => openOutput(short.id!)}>{t('Open it')}</button></p>}
     {note && <p className="ed-tip" role="status">{note}</p>}
   </section>;

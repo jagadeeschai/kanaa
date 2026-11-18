@@ -16,6 +16,7 @@ from app.services.timeline_schema import Format, Timeline, value_at
 WIDTH, HEIGHT = 1080, 1920
 SHORTEST, LONGEST = 5.0, 60.0  # YouTube Shorts are up to 60 seconds.
 FADE_IN, FADE_OUT = 0.3, 1.5
+PUSH = 1.12  # Shorts look: how much closer each picture moves over its time on screen.
 EFFECT_LAYER = 'Effects'
 
 Focus = Callable[[MediaFacts, float], 'tuple[float, float] | None']
@@ -57,6 +58,22 @@ def _fill(clip: dict, facts: MediaFacts, focus: tuple[float, float] | None) -> N
         transform[axis] = round(min(0.5 + room, max(0.5 - room, 0.5 - (point - 0.5) * share * least)), 6)
 
 
+def _grades_from(timeline: Timeline, start: float) -> Timeline:
+    """Adjustment spans (a mood grade) under way at `start` begin there, at full strength: render_window can't cut one
+    inside its fades, and a Short needs only to look right on its own, not to match the long video frame for frame."""
+    if not any(layer.kind == 'adjust' for layer in timeline.layers):
+        return timeline
+    data = timeline.model_dump(by_alias=True, mode='json')
+    for layer in data['layers']:
+        if layer['kind'] != 'adjust':
+            continue
+        for item in layer['items']:
+            stop = item['start'] + item['length']
+            if item['start'] < start < stop:
+                item.update(start=start, length=round(stop - start, 6), fade_in=0, fade_out=min(item.get('fade_out', 0), round((stop - start) / 2, 6)))
+    return Timeline.model_validate(data)
+
+
 def short_range(start: float, end: float, total: float) -> tuple[float, float]:
     """The stretch a Short takes: at least SHORTEST seconds and at most LONGEST, inside the video."""
     start = max(0.0, min(start, total))
@@ -66,10 +83,21 @@ def short_range(start: float, end: float, total: float) -> tuple[float, float]:
     return start, end
 
 
-def make_short(timeline: Timeline, start: float, end: float, media: Callable[[int], MediaFacts], focus: Focus) -> Timeline:
-    """`timeline` from `start` to `end` as a portrait Short. Raises ValueError when the stretch can't be cut exactly."""
+def _push(clip: dict) -> None:
+    """Shorts look: a slow push in on a picture that has no zoom of its own, about its subject (already in the middle)."""
+    transform = clip['transform']
+    keys = transform.setdefault('keyframes', {})
+    if keys.get('scale'):
+        return
+    length = (clip['out'] - clip['in']) / clip.get('speed', 1)
+    keys['scale'] = [{'t': 0.0, 'v': transform['scale'], 'ease': 'easeInOut'}, {'t': round(length, 6), 'v': round(min(8.0, transform['scale'] * PUSH), 6), 'ease': 'easeInOut'}]
+
+
+def make_short(timeline: Timeline, start: float, end: float, media: Callable[[int], MediaFacts], focus: Focus, look: bool = False) -> Timeline:
+    """`timeline` from `start` to `end` as a portrait Short. `look`: each picture without a zoom gets a slow push in.
+    Raises ValueError when the stretch can't be cut exactly."""
     start, end = short_range(start, end, timeline.duration)
-    part = cut_exact(timeline, start, end)
+    part = cut_exact(_grades_from(timeline, start), start, end)
     if part is None:
         raise ValueError('Part of this stretch (a speed ramp, a pinned or tracked title) can’t be cut for a Short. Choose another stretch.')
     length = end - start
@@ -108,6 +136,8 @@ def make_short(timeline: Timeline, start: float, end: float, media: Callable[[in
                 facts = media(item['media_id'])
                 at = item.get('in', 0) if facts.media_type == 'video' else 0.0
                 _fill(item, facts, focus(facts, at) if layer is main else None)
+                if look and layer is main:
+                    _push(item)
                 placed[item['id']] = item['transform']
             items.append(item)
         layer['items'] = items

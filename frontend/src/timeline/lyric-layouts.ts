@@ -66,3 +66,14 @@ export function applyLyricLayout(timeline: Timeline, layout: LyricLayout): Timel
   const at = next.layers.findIndex((each) => each.kind === 'text');
   return { ...next, layers: [...next.layers.slice(0, at), layer, ...next.layers.slice(at)] };
 }
+
+/** Shorts: the lines large, centred a little below the middle (y SHORT_LINE), clear of the subject the picture is kept on. */
+export const SHORT_LINE = 0.7, SHORT_GROWTH = 1.5;
+export function shortsLyrics(timeline: Timeline): Timeline {
+  let next = clearLyricLayout(timeline);
+  for (const line of lyricLines(next)) {
+    next = restyle(next, line, { position: 'center', align: 'center', size: Math.min(100, Math.max(48, Math.round(line.size * SHORT_GROWTH))),
+      transform: { ...REST_TRANSFORM, ...line.transform, x: 0.5, y: SHORT_LINE, keyframes: {} } });
+  }
+  return next;
+}

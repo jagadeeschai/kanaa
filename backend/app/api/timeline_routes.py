@@ -766,7 +766,7 @@ def export_short(identifier: int, body: dict, hardware: str = 'true'):
         return (found['x'], found['y']) if found['x'] is not None else None
 
     try:
-        short = make_short(parsed, start, end, media_facts, focus)
+        short = make_short(parsed, start, end, media_facts, focus, look=bool(body.get('look')))
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     target = settings.edit_workspace_dir / f'{uuid.uuid4().hex}.mp4'
