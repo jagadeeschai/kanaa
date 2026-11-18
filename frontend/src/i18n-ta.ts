@@ -80,6 +80,8 @@ export const TAMIL: Record<string, string> = {
   'Create': 'உருவாக்கு',
   'Media tools': 'ஊடகக் கருவிகள்',
   'Import photos, videos and songs, or make new pictures and videos with AI. They land in your library and in Library here.': 'படங்கள், வீடியோக்கள், பாடல்களை இறக்குங்கள், அல்லது AI மூலம் புதியவற்றை உருவாக்குங்கள். அவை உங்கள் நூலகத்தில் சேரும்.',
+  'Dynamic': 'இயக்கம்',
+  'Transition kinds': 'மாற்ற வகைகள்',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',
