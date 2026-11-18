@@ -548,3 +548,4 @@
 .ed-fullscreen{position:relative}.ed-fullscreen:not(.exit){width:30px;padding:0;justify-content:center}
 .ed-fullscreen::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);right:0;padding:4px 8px;border-radius:6px;background:var(--raised);box-shadow:var(--shade2);color:var(--text);font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s}
 .ed-fullscreen:hover::after,.ed-fullscreen:focus-visible::after{opacity:1}
+.ed-tabs-compact button{font-size:11px;letter-spacing:-.01em}

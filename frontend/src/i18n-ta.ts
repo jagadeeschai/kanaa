@@ -60,6 +60,7 @@ export const TAMIL: Record<string, string> = {
   '{count} parts found: each verse and chorus, and after each pause.': '{count} பகுதிகள்: ஒவ்வொரு சரணம், பல்லவி, ஒவ்வொரு இடைவெளிக்குப் பின்.',
   '{count} lights at the start of each part of the song. ⌘Z undoes it.': 'பாடலின் ஒவ்வொரு பகுதித் தொடக்கத்திலும் {count} ஒளிகள். ⌘Z திரும்பப் பெறும்.',
   'Shorts look: big lyrics, a slow push on each picture': 'Shorts தோற்றம்: பெரிய வரிகள், ஒவ்வொரு படத்திலும் மெதுவான நெருக்கம்',
+  'Lyrics': 'வரிகள்', 'Sounds': 'ஒலிகள்', 'Sound tools': 'ஒலிக் கருவிகள்',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',
