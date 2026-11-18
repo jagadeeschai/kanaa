@@ -90,8 +90,26 @@ class PlanTests(unittest.TestCase):
 
     def test_cut_exact_refuses_instead_of_using_the_whole(self):
         data = song_timeline(100).model_dump(by_alias=True, mode='json')
-        data['layers'][0]['items'][0]['ramp'] = [{'t': 0, 'v': 1}, {'t': 1, 'v': 1}]
+        data['layers'][0]['items'][0].update(cutout='blur', focus_pull={'at': 3, 'length': 1})
         self.assertIsNone(render_window.cut_exact(Timeline.model_validate(data), 5, 50))
+
+    def test_a_speed_ramp_is_cut_on_its_own_curve(self):
+        from app.services.ramp import ramp_share
+        from app.services.timeline_schema import RampPoint
+        data = song_timeline(100).model_dump(by_alias=True, mode='json')
+        clip = data['layers'][0]['items'][0]
+        clip['ramp'] = [{'t': 0, 'v': 1}, {'t': 0.4, 'v': 0.25}, {'t': 1, 'v': 2}]
+        whole = Timeline.model_validate(data)
+        original = whole.layers[0].items[0]
+        part = render_window.cut_exact(whole, 3, 50).layers[0].items[0]
+        self.assertAlmostEqual(part.start + part.length, original.length - 3, places=4, msg='still ends when it did')
+        ramp = [RampPoint(t=p['t'], v=p['v']) for p in clip['ramp']]
+        part_ramp = part.ramp
+        for later in (0, 1, 2.5, part.length - 0.01):
+            # The source moment shown `later` seconds into the cut equals the whole clip's at 3 + later seconds.
+            whole_at = original.in_ + ramp_share(ramp, (3 + later) / original.length) * (original.out - original.in_)
+            part_at = part.in_ + ramp_share(part_ramp, later / part.length) * (part.out - part.in_)
+            self.assertAlmostEqual(part_at, whole_at, places=3, msg=f'{later} s in')
 
     def test_first_slice_leaves_out_later_items(self):
         part = render_window.cut_exact(song_timeline(100), 0, 20)

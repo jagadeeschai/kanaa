@@ -99,7 +99,7 @@ def make_short(timeline: Timeline, start: float, end: float, media: Callable[[in
     start, end = short_range(start, end, timeline.duration)
     part = cut_exact(_grades_from(timeline, start), start, end)
     if part is None:
-        raise ValueError('Part of this stretch (a speed ramp, a pinned or tracked title) can’t be cut for a Short. Choose another stretch.')
+        raise ValueError('Part of this stretch (a pinned or tracked title) can’t be cut for a Short. Choose another stretch.')
     length = end - start
     data = part.model_dump(by_alias=True, mode='json')
     # A move under way at the cut keeps its first key before zero (render_window); a recipe can't, so it starts from where it is.
@@ -122,6 +122,14 @@ def make_short(timeline: Timeline, start: float, end: float, media: Callable[[in
             if over > 1e-6:  # It ran past the end: it stops there.
                 if 'length' in item:
                     item['length'] = round(item['length'] - over, 6)
+                elif item.get('ramp'):
+                    # A speed ramp ends where the Short does: the first part of its curve, its source played as before.
+                    from app.services.ramp import ramp_part
+                    from app.services.timeline_schema import RampPoint
+                    length = (item['out'] - item['in']) / item.get('speed', 1)
+                    points, _, x1 = ramp_part([RampPoint(**point) for point in item['ramp']], 0, (length - over) / length)
+                    item['out'] = round(item['in'] + x1 * (item['out'] - item['in']), 6)
+                    item['speed'], item['ramp'] = (item['out'] - item['in']) / (length - over), points
                 else:
                     item['out'] = round(item['out'] - over * item.get('speed', 1), 6)
                 if 'exit' in item:

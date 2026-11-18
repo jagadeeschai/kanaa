@@ -5,7 +5,8 @@ trimmed to their remaining part (a clip from later in its source, a title alread
 carried on from where they were), items that ended earlier or begin later are left out. ffmpeg then has a handful of
 inputs and no frames to work through before the moment, so a look at minute four takes as long as one at the start.
 
-When an item cannot be trimmed exactly (a speed ramp, a tracked or pinned title), the timeline is used whole, as before.
+A speed ramp is cut exactly: the rest of its curve, at the speed that plays the rest of its source over the time left.
+When an item cannot be trimmed exactly (a tracked or pinned title), the timeline is used whole, as before.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import copy
 
 from app.services.timeline_schema import Keyframe, Timeline, Transform, frame_at, value_at
 
-UNSAFE = ('ramp', 'keep_clear', 'pin', 'stay_with', 'focus_pull')  # Times inside these are not simply shifted.
+UNSAFE = ('keep_clear', 'pin', 'stay_with', 'focus_pull')  # Times inside these are not simply shifted.
 
 
 class _Whole(Exception):
@@ -57,7 +58,26 @@ def _trim(item: dict, by: float, gone: float | None = None) -> dict[str, list[di
     early = _shift_keys(item.get('transform'), by)
     if 'enter' in item:
         item['enter'] = None  # It has already come in.
-    if 'in' in item:  # A clip or a sound: later in its source.
+    if 'in' in item and item.get('ramp'):
+        # A speed ramp: the rest of its curve, and the speed that plays the rest of the source over the time left.
+        from app.services.ramp import ramp_part
+        from app.services.timeline_schema import RampPoint
+        length = _length(item)
+        u0, u1 = by / length, (length - (gone - by)) / length
+        if not 0 <= u0 < u1 <= 1:
+            raise _Whole()
+        ramp = [RampPoint(**point) for point in item['ramp']]
+        points, x0, x1 = ramp_part(ramp, u0, u1)
+        span = item['out'] - item['in']
+        item['in'], item['out'] = round(item['in'] + x0 * span, 6), round(item['in'] + x1 * span, 6)
+        item['speed'] = (item['out'] - item['in']) / (length - gone)  # Unrounded: the clip must end exactly where it did.
+        item['ramp'] = points
+        item['fade_in'] = 0
+        if 'transition_in' in item:
+            item['transition_in'] = None
+        if not 0.05 <= item['speed'] <= 20:
+            raise _Whole()
+    elif 'in' in item:  # A clip or a sound: later in its source.
         item['in'] = round(item['in'] + by * item.get('speed', 1), 6)
         item['out'] = round(item['out'] - (gone - by) * item.get('speed', 1), 6)
         item['fade_in'] = 0

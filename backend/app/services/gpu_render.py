@@ -75,7 +75,7 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
                 continue
             data = clip.model_dump()
             if clip.freeze is not None and clip.cutout:found.add('frozen cut-out')
-            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur', 'old_film','freeze'))
+            found.update(name.replace('_', ' ') for name in EFFECTS if data.get(name) and not (name == 'cutout' and clip.cutout == 'remove') and name not in ('beat_pulse', 'zoom_blur', 'old_film','freeze','ramp'))
             if clip.old_film and clip.old_film.intensity > 0 and (clip.old_film.scratches or clip.old_film.dust or clip.old_film.weave):
                 found.add('old film scratches, dust or weave')
             if clip.composite and (clip.composite.choke or clip.composite.wrap or clip.composite.match):
@@ -316,6 +316,15 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             items.append({'kind': facts.media_type, 'path': str(facts.path), 'start': first - head, 'frames': base + head + tail,
                           'source_in': clip.in_ - head * clip.speed / fps, 'speed': clip.speed, 'colour': colour_constants(clip.adjust, clip.look), 'wheels': wheel_vectors(clip.wheels), 'film': film_constants(clip.old_film), 'glow': glow_constants(clip.dreamy_glow, _canvas_fit(clip, enter, exit_, facts, timeline.format)),
                           **_frames(clip.transform, enter, exit_, base / fps, base + head + tail, fps, head)})
+            if clip.ramp and clip.freeze is None and facts.media_type == 'video':
+                # As the export retimes the source by the ramp (ramp.py): each frame shows the source second the ramp
+                # reaches then. The ramp's first speed carries on into a transition's extra frames before the clip.
+                from app.services.ramp import ramp_share
+                span = clip.out - clip.in_
+                # The export keeps, for each frame, the source frame the ramp moves nearest to it; the engine shows the
+                # latest frame at or before a time. Asking half a frame later makes the two the same frame.
+                items[-1]['times'] = [round(clip.in_ + ramp_share(clip.ramp, (k - head + 0.5) / fps / clip.length) * span, 6) for k in range(base + head + tail)]
+                items[-1]['source_in'] = items[-1]['times'][0]
             from app.services.gpu_masks import resolve
             items[-1]['mask_path'] = resolve(clip, facts, masks)
             items[-1]['blend'] = layer.blend

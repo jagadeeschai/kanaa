@@ -46,3 +46,23 @@ def ramp_time_expression(ramp, x: str) -> str:
         piece = f'({part.t0:.9f}+{into}/{part.r0:.9f})' if abs(k) < 1e-9 else f'({part.t0:.9f}+(sqrt(max(0,{part.r0 * part.r0:.9f}+{2 * k:.9f}*{into}))-{part.r0:.9f})/{k:.9f})'
         tail = f'if(lt({x},{part.x1:.9f}),{piece},{tail})'
     return f'if(lt({x},0),{x}/{parts[0].r0:.9f},{tail})'
+
+
+def ramp_rate(ramp, u: float) -> float:
+    """The ramp's relative speed `u` of the way through the clip (its points scaled to average 1)."""
+    parts = segments(ramp)
+    part = next((item for item in parts if u <= item.t1), parts[-1])
+    share = 0.0 if part.t1 == part.t0 else (min(max(u, part.t0), part.t1) - part.t0) / (part.t1 - part.t0)
+    return part.r0 + (part.r1 - part.r0) * share
+
+
+def ramp_part(ramp, u0: float, u1: float) -> tuple[list[dict], float, float]:
+    """The part of a ramp from `u0` to `u1` of the clip as a ramp of its own (points over 0..1), and the source shares
+    at its ends. Played over its own time at the same average speed, it shows every source frame when the whole did."""
+    inside = [point for point in ramp if u0 < point.t < u1]
+    points = [{'t': 0.0, 'v': ramp_rate(ramp, u0)}, *({'t': (point.t - u0) / (u1 - u0), 'v': point.v / _mean(ramp)} for point in inside), {'t': 1.0, 'v': ramp_rate(ramp, u1)}]
+    return [{'t': round(point['t'], 6), 'v': round(min(10.0, max(0.05, point['v'])), 6)} for point in points], ramp_share(ramp, u0), ramp_share(ramp, u1)
+
+
+def _mean(ramp) -> float:
+    return sum((b.t - a.t) * (a.v + b.v) / 2 for a, b in zip(ramp, ramp[1:]))

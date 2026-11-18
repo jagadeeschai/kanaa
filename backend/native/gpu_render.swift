@@ -26,6 +26,7 @@ struct Item: Decodable {
     let start: Int  // First frame on the timeline.
     let frames: Int
     let sourceIn: Double  // Source seconds at the item's first frame.
+    let times: [Double]?  // A speed ramp: the source second each frame shows (ramp.py). Otherwise sourceIn + frame × speed.
     let speed: Double
     let x: [Double]  // Per frame of the item: centre, as a fraction of the frame (y down).
     let y: [Double]
@@ -241,6 +242,12 @@ func graded(_ image: CIImage, _ item: Item) -> CIImage {
     return shown
 }
 
+/// The source second frame `k` of a video item shows: its ramp's own time, or a steady speed from its in point.
+func sourceTime(_ item: Item, _ k: Int) -> Double {
+    if let times = item.times, !times.isEmpty { return times[min(max(0, k), times.count - 1)] }
+    return item.sourceIn + Double(k) / Double(plan.fps) * item.speed
+}
+
 func weighted(_ image: CIImage, _ amount: Double) -> CIImage {
     amount >= 0.999 ? image : image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(amount))])
 }
@@ -264,14 +271,14 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
         if videos[index] == nil {
             do { videos[index] = try VideoSource(path: item.path, from: item.sourceIn) } catch { fail("Could not read \(item.path): \(error)") }
         }
-        picture = videos[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed)
+        picture = videos[index]!.frame(at: sourceTime(item, k))
     }
     guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
     if let path = item.maskPath {
         if masks[index] == nil {
             do { masks[index] = try VideoSource(path: path, from: item.sourceIn) } catch { fail("Could not read mask: \(error)") }
         }
-        guard let mask = masks[index]!.frame(at: item.sourceIn + Double(k) / Double(plan.fps) * item.speed) else { fail("Mask has no frames") }
+        guard let mask = masks[index]!.frame(at: sourceTime(item, k)) else { fail("Mask has no frames") }
         let alpha = mask.transformed(by: CGAffineTransform(scaleX: shown.extent.width / mask.extent.width, y: shown.extent.height / mask.extent.height))
         shown = shown.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: alpha])
     }
