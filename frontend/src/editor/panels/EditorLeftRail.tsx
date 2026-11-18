@@ -6,7 +6,7 @@ import { TextTabSection1 } from './tabs/TextTab';
 import { EffectsTabParts } from './tabs/EffectsTab';
 import { ThemesTabSection1 } from './tabs/ThemesTab';
 import { TemplatesTabSection1 } from './tabs/TemplatesTab';
-import { MediaTabSection1, MediaTabSection2 } from './tabs/MediaTab';
+import { MediaTabSection1 } from './tabs/MediaTab';
 import { useEditorPanel } from '../state/EditorContext';
 import type { ActiveEffect } from '../../timeline/effects';
 import type { Layout } from '../layout';
@@ -182,7 +182,6 @@ export function EditorLeftRail() {
         <ThemesTabSection1/>
         <TransitionsTabSection1/>
         <AskTabSection1/>
-        <MediaTabSection2/>
         <EffectsTabParts/>
         <TextTabSection1/>
         <AudioTabSection1/>
