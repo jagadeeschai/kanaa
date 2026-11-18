@@ -9,7 +9,7 @@ import type { Timeline } from '../timeline/model';
 
 /** Ask AI in two parts: asking for edits, and writing the words to post with the video. */
 const ASK_TABS = [{ id: 'ask' as const, label: 'Ask for edits' }, { id: 'post' as const, label: 'Words to post' }];
-const EXAMPLES = ['Make it a warm wedding reel with captions', 'Add a title “Pongal 2026” at the start and fireworks at the end', 'Make it vertical and cut it to the beat', 'Translate the captions to Tamil'];
+const EXAMPLES = ['Make it a warm wedding reel with captions', 'Make the chorus pop, with light hits and a warm mood', 'Add a title “Pongal 2026” at the start and fireworks at the end', 'Make it vertical and cut it to the beat', 'Translate the captions to Tamil'];
 
 type Props = {
   timeline: Timeline;

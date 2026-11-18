@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { applyLyricLayout, currentLyricLayout, LYRIC_LAYOUTS } from '../timeline/lyric-layouts';
 import { lyricLines } from '../timeline/song-sections';
 import { useEditor } from './state/EditorContext';
+import { sungGlow } from './lyric-video-actions';
 
 /** Where a lyric video's lines sit, in one click (lyric-layouts.ts). Shown once there are lyric lines. */
 export default function LyricLayoutPanel() {
@@ -18,17 +19,11 @@ export default function LyricLayoutPanel() {
   const chosen = currentLyricLayout(timeline);
 
   const toggleGlow = async () => {
-    if (glowing) { change(setSungGlow(timeline, lines, null)); setGlowNote(null); return; }
-    const song = beatSound(timeline);
-    if (!song) { setGlowNote(t('Add a song first. The glow follows how loud it is.')); return; }
     setBusy(true); setGlowNote(null);
     try {
-      const { peaks, peaks_per_second } = await getSongPeaks(song.asset_id);
-      const end = song.start + (song.out - song.in) / song.speed;
-      const songAt = (at: number) => (at >= song.start && at < end ? song.in + (at - song.start) * song.speed : null);
-      change(setSungGlow(timeline, lines, (line) => glowLevels(line, peaks, peaks_per_second, songAt)));
-      setGlowNote(t('Each sung word glows, brighter where the song is louder. ⌘Z undoes it.'));
-    } catch (problem) { setGlowNote((problem as Error).message); } finally { setBusy(false); }
+      change(await sungGlow(timeline, !glowing));
+      setGlowNote(glowing ? null : t('Each sung word glows, brighter where the song is louder. ⌘Z undoes it.'));
+    } catch (problem) { setGlowNote(t((problem as Error).message)); } finally { setBusy(false); }
   };
   return <section className="ed-add" aria-label={t('Lyrics layout')}><h3 className="ed-sub">{t('Lyrics layout')}</h3>
     <div className="ed-chips" role="group" aria-label={t('Lyrics layout')}>{LYRIC_LAYOUTS.map((layout) =>

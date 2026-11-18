@@ -23,11 +23,25 @@ COMMANDS: dict[str, tuple[str, dict[str, str]]] = {
     'set_format': ('The video\'s shape.', {'format': 'format id'}),
     'make_story': ('Rebuild the video from a story template with the project\'s media, with its theme and music.', {'story': 'story id'}),
     'translate_captions': ('Translate every caption.', {'to': '"ta" (Tamil) or "en" (English)'}),
+    # Lyric videos: only when the project has lyric lines (and, where said, a chorus).
+    'lyric_layout': ('Where the lyric lines sit. "original" puts back the person\'s own layout.', {'layout': '"original", "two-line" (sung line with the next one dim below), "lower-third" or "big-centre"'}),
+    'style_chorus': ('Chorus lines bigger and popping in word by word. Needs a chorus.', {}),
+    'word_motion': ('Each word of the lyric lines arrives on its own, as it is sung.', {'preset': '"word-rise", "word-pop", "word-fade" or "none"', 'lines': '"all" or "chorus"'}),
+    'sung_glow': ('The sung word glows, brighter where the song is louder. Needs a song.', {'on': 'true or false'}),
+    'chorus_light_hits': ('Warm light flashes on the chorus beats. Needs a song and a chorus.', {}),
+    'section_lights': ('A light at the start of each part of the song (verse, chorus).', {'kind': '"light-leak" or "lens-flare"'}),
+    'mood_grade': ('Each part of the song in its own colour.', {'mood': '"warm-rich", "cool-to-warm", "film" or "none"'}),
+    'focus_drift': ('A slow push in on the faces or main subject of every picture.', {}),
+    'make_short': ('Export a 9:16 Short of the first chorus for YouTube Shorts and Reels. Only when asked for a Short or Reel.', {'look': 'true for big lyrics and a slow push on each picture'}),
 }
+CHOICES = {'layout': ('original', 'two-line', 'lower-third', 'big-centre'), 'preset': ('word-rise', 'word-pop', 'word-fade', 'none'), 'lines': ('all', 'chorus'),
+           'kind': ('light-leak', 'lens-flare'), 'mood': ('warm-rich', 'cool-to-warm', 'film', 'none')}
+NEEDS_LYRICS = {'lyric_layout', 'word_motion', 'sung_glow', 'section_lights', 'mood_grade'}
+NEEDS_CHORUS = {'style_chorus', 'chorus_light_hits', 'make_short'}
 OPTION_KINDS = {'theme': 'themes', 'look': 'looks', 'transition': 'transitions', 'effect': 'effects', 'format': 'formats', 'story': 'stories', 'style': 'title_styles'}
 MAX_COMMANDS = 12
 
-SYSTEM = """You are the editing assistant inside Kanaa, a video editor for family, travel and celebration videos, often in Tamil.
+SYSTEM = """You are the editing assistant inside Kanaa, a video editor for family, travel, celebration and lyric (song) videos, often in Tamil.
 Turn the person's request into a short list of commands from the catalogue. Use only these commands and only the ids listed.
 Prefer few, high-impact commands. If something asked for is not possible with the catalogue, leave it out and say so in "summary".
 Reply as: {"summary": "one or two plain sentences, in the person's language", "commands": [{"name": "...", "args": {...}, "why": "a few words"}]}"""
@@ -55,7 +69,7 @@ def _clips(value: Any, count: int, first: int) -> Any:
     return numbers
 
 
-def check_command(raw: Any, options: dict[str, list[dict[str, str]]], duration: float, clips: int) -> dict[str, Any]:
+def check_command(raw: Any, options: dict[str, list[dict[str, str]]], duration: float, clips: int, lyrics: int = 0, chorus: bool = False) -> dict[str, Any]:
     """The command, cleaned, or ValueError saying why it can't be used."""
     if not isinstance(raw, dict) or raw.get('name') not in COMMANDS:
         raise ValueError(f'unknown command {raw.get("name") if isinstance(raw, dict) else raw!r}')
@@ -105,6 +119,22 @@ def check_command(raw: Any, options: dict[str, list[dict[str, str]]], duration: 
         clean = {'format': pick('format')}
     elif name == 'make_story':
         clean = {'story': pick('story')}
+    elif name in NEEDS_LYRICS or name in NEEDS_CHORUS or name == 'focus_drift':
+        if name in NEEDS_LYRICS and lyrics < 2:
+            raise ValueError('this video has no lyric lines')
+        if name in NEEDS_CHORUS and not chorus:
+            raise ValueError('this video has no chorus (no lyric line is sung twice)')
+        if name == 'focus_drift' and clips < 1:
+            raise ValueError('focus drift needs pictures on the main track')
+        clean = {}
+        for key, allowed in CHOICES.items():
+            if key in COMMANDS[name][1]:
+                if args.get(key) not in allowed:
+                    raise ValueError(f'{key} must be one of {", ".join(allowed)}')
+                clean[key] = args[key]
+        for key in ('on', 'look'):
+            if key in COMMANDS[name][1]:
+                clean[key] = bool(args.get(key, True))
     elif name == 'translate_captions':
         if args.get('to') not in ('ta', 'en'):
             raise ValueError('captions can be translated to "ta" or "en"')
@@ -117,12 +147,13 @@ def check_command(raw: Any, options: dict[str, list[dict[str, str]]], duration: 
 def plan(request: str, project: dict[str, Any], options: dict[str, list[dict[str, str]]], ask: Callable[[str, str], Any] | None = None) -> dict[str, Any]:
     duration = float(project.get('duration') or 0)
     clips = int(project.get('clip_count') or 0)
+    lyrics, chorus = int(project.get('lyric_lines') or 0), bool(project.get('chorus'))
     user = f"{catalogue_text(options)}\n\nThe project:\n{_project_text(project)}\n\nThe request:\n{request.strip()[:1000]}"
     answer = (ask or text_ai_service.ask_json)(SYSTEM, user)
     commands, dropped = [], []
     for raw in (answer.get('commands') or [])[:MAX_COMMANDS] if isinstance(answer, dict) else []:
         try:
-            commands.append(check_command(raw, options, duration, clips))
+            commands.append(check_command(raw, options, duration, clips, lyrics, chorus))
         except (ValueError, TypeError) as problem:
             dropped.append({'command': raw, 'reason': str(problem)})
     summary = str(answer.get('summary') or '').strip()[:500] if isinstance(answer, dict) else ''
@@ -133,6 +164,8 @@ def _project_text(project: dict[str, Any]) -> str:
     lines = [f"Shape {project.get('format', '?')}, {float(project.get('duration') or 0):.1f} seconds, {project.get('clip_count', 0)} clips on the main track."]
     for number, clip in enumerate((project.get('clips') or [])[:40], start=1):
         lines.append(f"  clip {number}: {clip.get('kind', '?')} '{str(clip.get('name', ''))[:60]}', {float(clip.get('length') or 0):.1f} s from {float(clip.get('start') or 0):.1f} s")
+    if project.get('lyric_lines'):
+        lines.append(f"A lyric video: {project['lyric_lines']} lyric lines, {'with a chorus' if project.get('chorus') else 'no chorus found'}.")
     for key, label in (('theme', 'Theme'), ('music', 'Music'), ('titles', 'Titles'), ('captions', 'Captions (first lines)'), ('media', 'Other media in the project')):
         value = project.get(key)
         if value:

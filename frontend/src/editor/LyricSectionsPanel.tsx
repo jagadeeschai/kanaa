@@ -8,6 +8,7 @@ import { duration, newClip } from '../timeline/model';
 import { chorusSections, hitTimes, placeLightHits, shortRange, styleChorus } from '../timeline/song-sections';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
+import { chorusLightHits, startChorusShort } from './lyric-video-actions';
 import { shortsLyrics } from '../timeline/lyric-layouts';
 
 /** The light the hits use: a warm flash, made once per frame size like any effect (effect_service.py). */
@@ -31,25 +32,18 @@ export default function LyricSectionsPanel() {
   };
 
   const lights = async () => {
-    const song = beatSound(timeline);
-    if (!song) { setNote(t('Add a song first. The light hits follow its beat.')); return; }
     setBusy(true); setNote(null);
     try {
-      const [{ beats }, item] = await Promise.all([getSongBeats(song.asset_id), effectMedia(LIGHT_EFFECT, { width: timeline.format.width, height: timeline.format.height })]);
-      addMedia(item);
-      const hits = hitTimes(sections, timelineBeats(song, beats));
-      const effect = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());
-      change(placeLightHits(timeline, effect, hits, LIGHT_PEAK, newId));
-      setNote(t('{count} light hits on the chorus beats. ⌘Z undoes it.', { count: hits.length }));
-    } catch (problem) { setNote((problem as Error).message); } finally { setBusy(false); }
+      const result = await chorusLightHits(timeline);
+      addMedia(result.media); change(result.timeline);
+      setNote(t('{count} light hits on the chorus beats. ⌘Z undoes it.', { count: result.count }));
+    } catch (problem) { setNote(t((problem as Error).message)); } finally { setBusy(false); }
   };
 
   const makeShort = async () => {
-    const [start, end] = shortRange(sections, duration(timeline));
     setShort({ progress: 0 }); setNote(null);
     try {
-      // Shorts look: big lyrics below the middle (lyric-layouts.ts) and a slow push on each picture (shorts.py), for the Short only.
-      const { job_id } = await exportShort(projectId, shortLook ? shortsLyrics(timeline) : timeline, start, end, shortLook);
+      const job_id = await startChorusShort(projectId, timeline, shortLook);
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const status = await getJobStatus(job_id) as unknown as { status?: string; progress: number; error?: string | null; output_photo_id?: number };

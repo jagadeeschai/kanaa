@@ -4,8 +4,12 @@
  * Pure ones change the timeline here; the rest (themes, effects, captions…) run through the editor's own actions.
  */
 import type { LookName, TransitionKind } from './animation.ts';
-import { captionLayers, FORMATS, mainLayer, updateClip, type Caption, type Timeline } from './model.ts';
+import { captionLayers, FORMATS, mainLayer, markOwn, updateClip, updateText, type Caption, type Timeline } from './model.ts';
 import { TRANSITION_SECONDS } from './drop.ts';
+import { applyLyricLayout, LYRIC_LAYOUTS, type LyricLayout } from './lyric-layouts.ts';
+import { applyMood, clearMood, MOODS, type Mood } from './mood-grade.ts';
+import { chorusLines, chorusSections, lyricLines, styleChorus, type SectionLight } from './song-sections.ts';
+
 
 export type Command =
   | { name: 'set_theme'; args: { theme: string } }
@@ -18,7 +22,19 @@ export type Command =
   | { name: 'keep_captions_clear'; args: Record<string, never> }
   | { name: 'set_format'; args: { format: string } }
   | { name: 'make_story'; args: { story: string } }
-  | { name: 'translate_captions'; args: { to: 'ta' | 'en' } };
+  | { name: 'translate_captions'; args: { to: 'ta' | 'en' } }
+  // Lyric videos (lyric-layouts.ts, song-sections.ts, mood-grade.ts, karaoke.ts; the async ones in lyric-video-actions.ts).
+  | { name: 'lyric_layout'; args: { layout: LyricLayout } }
+  | { name: 'style_chorus'; args: Record<string, never> }
+  | { name: 'word_motion'; args: { preset: WordMotion; lines: 'all' | 'chorus' } }
+  | { name: 'sung_glow'; args: { on: boolean } }
+  | { name: 'chorus_light_hits'; args: Record<string, never> }
+  | { name: 'section_lights'; args: { kind: SectionLight } }
+  | { name: 'mood_grade'; args: { mood: Mood | 'none' } }
+  | { name: 'focus_drift'; args: Record<string, never> }
+  | { name: 'make_short'; args: { look: boolean } };
+export type WordMotion = 'word-rise' | 'word-pop' | 'word-fade' | 'none';
+export const WORD_MOTIONS: WordMotion[] = ['word-rise', 'word-pop', 'word-fade', 'none'];
 export type Proposed = Command & { why?: string };
 export type Options = Record<'themes' | 'looks' | 'transitions' | 'effects' | 'formats' | 'stories' | 'title_styles', { id: string; label: string }[]>;
 
@@ -40,6 +56,13 @@ export function usable(command: Proposed, options: Options, timeline: Timeline):
     case 'translate_captions': return (a.to === 'ta' || a.to === 'en') && captionLayers(timeline).some((layer) => layer.items.length > 0);
     case 'keep_captions_clear': return captionLayers(timeline).some((layer) => layer.items.length > 0);
     case 'cut_to_beat': case 'add_captions': return clips > 0;
+    case 'lyric_layout': return LYRIC_LAYOUTS.some((each) => each.id === a.layout) && lyricLines(timeline).length >= 2;
+    case 'style_chorus': case 'chorus_light_hits': case 'make_short': return chorusSections(timeline).length > 0;
+    case 'word_motion': return WORD_MOTIONS.includes(a.preset as WordMotion) && (a.lines === 'all' || a.lines === 'chorus') && (a.lines === 'all' ? lyricLines(timeline) : chorusLines(timeline)).length > 0;
+    case 'sung_glow': return typeof a.on === 'boolean' && lyricLines(timeline).length >= 2;
+    case 'section_lights': return (a.kind === 'light-leak' || a.kind === 'lens-flare') && lyricLines(timeline).length >= 2;
+    case 'mood_grade': return (a.mood === 'none' || MOODS.some((each) => each.id === a.mood)) && lyricLines(timeline).length >= 2;
+    case 'focus_drift': return clips > 0;
     default: return false;
   }
 }
@@ -58,6 +81,19 @@ export function applyPure(timeline: Timeline, command: Command): Timeline | null
     const first = [...mainLayer(timeline).items].sort((a, b) => a.start - b.start)[0];
     return chosen(timeline, command.args.clips).filter((clip) => clip.id !== first?.id)
       .reduce((next, clip) => updateClip(next, clip.id, { transition_in: { kind: command.args.transition, duration: Math.min(TRANSITION_SECONDS, Math.max(0.2, (clip.out - clip.in) / clip.speed / 2)) } }), timeline);
+  }
+  if (command.name === 'lyric_layout') return applyLyricLayout(timeline, command.args.layout);
+  if (command.name === 'style_chorus') return styleChorus(timeline).timeline;
+  if (command.name === 'mood_grade') return command.args.mood === 'none' ? clearMood(timeline) : applyMood(timeline, command.args.mood);
+  if (command.name === 'word_motion') {
+    const lines = command.args.lines === 'chorus' ? chorusLines(timeline) : lyricLines(timeline);
+    const preset = command.args.preset;
+    return lines.reduce((next, line) => {
+      // A cinematic line keeps its flight in; others get the words' own entrance (or none).
+      if (line.depth) return next;
+      const changes = { enter: preset === 'none' ? null : { preset, duration: 0.6 } };
+      return markOwn(updateText(next, line.id, changes), line.id, changes);
+    }, timeline);
   }
   if (command.name === 'set_format') {
     const format = FORMATS.find((item) => item.id === command.args.format);
@@ -83,6 +119,16 @@ export function describeCommand(command: Command, options: Options): string {
     case 'set_format': return `Shape: ${label(options.formats, command.args.format)}`;
     case 'make_story': return `Make the video as the story “${label(options.stories, command.args.story)}”`;
     case 'translate_captions': return `Translate captions to ${command.args.to === 'ta' ? 'Tamil' : 'English'}`;
+    case 'lyric_layout': return `Lyrics layout: ${LYRIC_LAYOUTS.find((each) => each.id === command.args.layout)?.label ?? command.args.layout}`;
+    case 'style_chorus': return 'Make the chorus stand out';
+    case 'word_motion': return command.args.preset === 'none' ? `No word animation on ${command.args.lines === 'chorus' ? 'the chorus' : 'the lyrics'}`
+      : `${{ 'word-rise': 'Words rise', 'word-pop': 'Words pop', 'word-fade': 'Words fade in' }[command.args.preset]} on ${command.args.lines === 'chorus' ? 'the chorus' : 'every lyric line'}`;
+    case 'sung_glow': return command.args.on ? 'The sung word glows with the music' : 'No glow on the sung word';
+    case 'chorus_light_hits': return 'Light hits on the chorus beats';
+    case 'section_lights': return `${command.args.kind === 'lens-flare' ? 'A lens flare' : 'A light leak'} at each part of the song`;
+    case 'mood_grade': return command.args.mood === 'none' ? 'No mood grade' : `Mood grade: ${MOODS.find((each) => each.id === command.args.mood)?.label ?? command.args.mood}`;
+    case 'focus_drift': return 'Focus drift on every picture';
+    case 'make_short': return `Export a Short of the chorus${command.args.look ? ' (Shorts look)' : ''}`;
   }
 }
 

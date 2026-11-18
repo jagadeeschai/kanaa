@@ -9,6 +9,7 @@ import { applyMood, clearMood, currentMood, MOODS } from '../timeline/mood-grade
 import { effectMedia } from './effect-media';
 import { newId } from './editor-constants';
 import { useEditor } from './state/EditorContext';
+import { sectionLights } from './lyric-video-actions';
 
 const LIGHTS: { id: SectionLight; label: string }[] = [{ id: 'light-leak', label: 'Light leak' }, { id: 'lens-flare', label: 'Lens flare' }];
 
@@ -25,15 +26,10 @@ export default function SectionLightsPanel() {
   const place = async () => {
     setBusy(true); setNote(null);
     try {
-      const song = beatSound(timeline);
-      const [beats, item] = await Promise.all([song ? getSongBeats(song.asset_id).then((found) => timelineBeats(song, found.beats)) : Promise.resolve([]),
-        effectMedia(kind, { width: timeline.format.width, height: timeline.format.height })]);
-      addMedia(item);
-      const effect = newClip({ media_id: item.id, media_type: 'video', duration: item.duration, width: item.width, height: item.height }, newId());
-      const result = placeSectionLights(timeline, effect, kind, starts, beats, newId);
-      change(result.timeline);
-      setNote(t('{count} lights at the start of each part of the song. ⌘Z undoes it.', { count: result.placed }));
-    } catch (problem) { setNote((problem as Error).message); } finally { setBusy(false); }
+      const result = await sectionLights(timeline, kind);
+      addMedia(result.media); change(result.timeline);
+      setNote(t('{count} lights at the start of each part of the song. ⌘Z undoes it.', { count: result.count }));
+    } catch (problem) { setNote(t((problem as Error).message)); } finally { setBusy(false); }
   };
 
   return <section className="ed-add" aria-label={t('Section lights')}><h3 className="ed-sub">{t('Section lights')}</h3>

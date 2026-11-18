@@ -56,6 +56,37 @@ class Plans(unittest.TestCase):
         for expected in ('clip numbers must be 2 to 3', 'lasers', 'outside the video', 'unknown command', '"ta" or "en"'):
             self.assertIn(expected, reasons)
 
+    def test_lyric_video_edits_are_checked_against_the_video(self):
+        answer = {'commands': [
+            {'name': 'lyric_layout', 'args': {'layout': 'two-line'}},
+            {'name': 'lyric_layout', 'args': {'layout': 'sideways'}},
+            {'name': 'word_motion', 'args': {'preset': 'word-pop', 'lines': 'chorus'}},
+            {'name': 'sung_glow', 'args': {'on': True}},
+            {'name': 'mood_grade', 'args': {'mood': 'cool-to-warm'}},
+            {'name': 'section_lights', 'args': {'kind': 'lens-flare'}},
+            {'name': 'style_chorus', 'args': {}},
+            {'name': 'chorus_light_hits', 'args': {}},
+            {'name': 'focus_drift', 'args': {}},
+            {'name': 'make_short', 'args': {'look': True}},
+        ]}
+        song = {**PROJECT, 'lyric_lines': 24, 'chorus': True}
+        plan = edit_plan_service.plan('make the chorus pop', song, OPTIONS, self.ask(answer))
+        self.assertEqual([command['name'] for command in plan['commands']], ['lyric_layout', 'word_motion', 'sung_glow', 'mood_grade', 'section_lights', 'style_chorus', 'chorus_light_hits', 'focus_drift', 'make_short'])
+        self.assertEqual(plan['commands'][1]['args'], {'preset': 'word-pop', 'lines': 'chorus'})
+        self.assertEqual(plan['commands'][8]['args'], {'look': True})
+        self.assertIn('layout must be one of', plan['dropped'][0]['reason'])
+        # Without a chorus, the chorus tools are left out; without lyrics, the lyric tools too.
+        no_chorus = edit_plan_service.plan('x', {**PROJECT, 'lyric_lines': 24, 'chorus': False}, OPTIONS, self.ask(answer))
+        self.assertNotIn('style_chorus', [command['name'] for command in no_chorus['commands']])
+        plain = edit_plan_service.plan('x', PROJECT, OPTIONS, self.ask(answer))
+        self.assertEqual([command['name'] for command in plain['commands']], ['focus_drift'])
+
+    def test_the_ai_is_told_about_the_lyrics(self):
+        seen = {}
+        edit_plan_service.plan('hello', {**PROJECT, 'lyric_lines': 12, 'chorus': True}, OPTIONS, lambda system, user: seen.update(user=user) or {'commands': []})
+        self.assertIn('A lyric video: 12 lyric lines, with a chorus.', seen['user'])
+        self.assertIn('make_short(look:', seen['user'])
+
     def test_the_prompt_lists_the_editors_own_options_and_the_project(self):
         seen = {}
         edit_plan_service.plan('hello', PROJECT, OPTIONS, lambda system, user: seen.update(system=system, user=user) or {'commands': []})
