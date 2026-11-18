@@ -1,0 +1,22 @@
+/* Narrate panel (NarratePanel.tsx): labelled fields stacked with even spacing, one row for the voice and its refresh,
+   the cost as a small card with its two actions. Uses the editor's own tokens, so it follows the theme. */
+.ed-narrate fieldset{display:flex;flex-direction:column;gap:12px;margin:10px 0 0;padding:0;border:0;min-width:0}
+.ed-narrate-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ed-narrate-field>span{font-size:11px;line-height:14px;font-weight:600;color:var(--text-2)}
+.ed-narrate-voice{display:flex;gap:6px;align-items:stretch;min-width:0}
+.ed-narrate-voice>:first-child{flex:1;min-width:0}
+.ed-narrate-more{border-radius:7px;background:var(--well);padding:0 8px}
+.ed-narrate-more>summary{cursor:pointer;padding:7px 0;font-size:12px;font-weight:500;color:var(--text-2);list-style-position:inside}
+.ed-narrate-more[open]{padding-bottom:6px}
+.ed-narrate-quote{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:8px;background:var(--well);box-shadow:var(--inset)}
+.ed-narrate-cost{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.ed-narrate-cost strong{font-size:16px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.ed-narrate-cost span{font-size:11px;color:var(--muted)}
+.ed-narrate-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ed-narrate-actions>*{width:100%;min-width:0;padding:0 8px}
+.ed-narrate-actions em{font-style:normal;font-size:10px;color:var(--muted)}
+.ed-narrate-note{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:8px;border-radius:7px;background:var(--well);font-size:12px;color:var(--text-2)}
+.ed-narrate-audio{width:100%;margin-top:10px;height:32px}
+.ed-narrate-busy{display:flex;align-items:center;gap:6px}
+.ed-narrate{container-type:inline-size}
+@container (max-width:200px){.ed-narrate-voice{flex-direction:column}.ed-narrate-actions{grid-template-columns:1fr}}

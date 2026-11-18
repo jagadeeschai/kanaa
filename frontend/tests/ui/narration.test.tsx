@@ -13,12 +13,13 @@ it('requires a cost estimate, keeps the script as typed, and places the returned
     return {ok:true,json:async()=>data};
   });vi.stubGlobal('fetch',fetcher);
   render(<EditorContext.Provider value={{timeline:base,now:2,selectedId:null,select:vi.fn(),change:changed,pause:vi.fn(),seek:vi.fn(),openGuide:vi.fn(),addMedia:vi.fn(),drawBox:vi.fn()}}><NarratePanel/></EditorContext.Provider>);
-  expect((screen.getByRole('button',{name:'Add to timeline'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole('button',{name:'Add to timeline'})).toBeNull();  // Nothing is recorded before the cost is shown.
+  expect((screen.getByRole('button',{name:'Estimate voice cost'}) as HTMLButtonElement).disabled).toBe(true);
   await userEvent.type(screen.getByRole('textbox'),'முதல் வரி.{Enter}இரண்டாம்');
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('முதல் வரி.\nஇரண்டாம்');
   await userEvent.click(screen.getByRole('button',{name:'Load Google voices'}));
   await userEvent.click(screen.getByRole('button',{name:'Estimate voice cost'}));
-  expect(screen.getByText(/US\$0.00200/)).toBeTruthy();
+  expect(screen.getByText(/US\$0.0020/)).toBeTruthy();
   await userEvent.click(screen.getByRole('button',{name:'Add to timeline'}));
   expect(changed).toHaveBeenCalledWith(base);
   const call=fetcher.mock.calls.find(([url])=>url.endsWith('/generate'))!;
