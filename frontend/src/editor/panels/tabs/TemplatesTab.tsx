@@ -5,8 +5,15 @@ import { fillRest,STORIES,storySeconds } from "../../../timeline/stories";
 import { THEMES } from "../../../timeline/themes";
 import { useEditorPanel } from "../../state/EditorContext";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
+import { SubTabs, useSubTab } from './SubTabs';
+import { THEME_TABS } from './ThemesTab';
+
+/** Story templates by occasion, as the Themes tab groups their themes: each story goes where its theme is. */
+const STORY_TABS = THEME_TABS.filter((tab) => tab.themes).map(({ id, label }) => ({ id, label }));
+export const storyGroup = (theme: string) => THEME_TABS.find((tab) => tab.themes?.includes(theme))?.id ?? 'everyday';
 
 export function TemplatesTabSection1() {
+  const [part, choose] = useSubTab('templates', STORY_TABS);
   const { leftTab, timeline, story, setStory, mediaById, storyMedia, facts, themeBusy, momentProgress, makeStory } = useEditorPanel<EditorLeftRailBindings>('left');
   return (<>{leftTab === 'templates' && timeline && <div data-keep-panel>{(() => {
           if (story) {
@@ -28,8 +35,9 @@ export function TemplatesTabSection1() {
             </section>;
           }
           return <section className="ed-add" aria-label="Story templates">
+            <SubTabs label="Story kinds" tabs={STORY_TABS} part={part} onChoose={choose}/>
             <p className="ed-tip">Fill each moment with a clip or photo; Kanaa makes the video, theme and music included.</p>
-            <div className="ed-stories">{STORIES.map((item) => <button key={item.id} className="ed-story" onClick={() => setStory({ story: item, fills: item.slots.map(() => null), choosing: null })} title={`${item.slots.map((each) => each.label).join(' → ')}`}>
+            <div className="ed-stories">{STORIES.filter((item) => storyGroup(item.theme) === part).map((item) => <button key={item.id} className="ed-story" onClick={() => setStory({ story: item, fills: item.slots.map(() => null), choosing: null })} title={`${item.slots.map((each) => each.label).join(' → ')}`}>
               <b>{item.label}</b><em lang="ta">{item.tamil}</em><small>{item.slots.length} moments · about {storySeconds(item)}s · {THEMES.find((look) => look.id === item.theme)?.label}</small></button>)}</div>
           </section>;
         })()}</div>}</>);

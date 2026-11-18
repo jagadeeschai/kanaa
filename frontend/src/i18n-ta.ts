@@ -91,6 +91,7 @@ export const TAMIL: Record<string, string> = {
   'Clean up': 'சுத்தம் செய்',
   'Words tools': 'சொற்கருவிகள்',
   'Transcribe your video in Transcript first; then Kanaa can find the long pauses and the “um” and “uh”.': 'முதலில் எழுத்துப்படியில் உங்கள் வீடியோவை எழுத்தாக்குங்கள்; பிறகு நீண்ட இடைவெளிகளையும் “um”, “uh”-ஐயும் கனா கண்டறியும்.',
+  'Story kinds': 'கதை வகைகள்',
   'Chorus': 'பல்லவி', 'Listening for the beat…': 'துடிப்பைக் கேட்கிறது…', 'Make the chorus stand out': 'பல்லவியைத் தனித்துக் காட்டு', 'Light hits on the chorus beats': 'பல்லவித் துடிப்புகளில் ஒளி வீச்சு',
   'Found {count} chorus parts from the lines sung more than once.': 'ஒன்றுக்கு மேல் பாடப்படும் வரிகளிலிருந்து {count} பல்லவிப் பகுதிகள் கண்டறியப்பட்டன.',
   '{count} chorus lines are bigger and pop in word by word. ⌘Z undoes it.': '{count} பல்லவி வரிகள் பெரிதாகி, சொல் சொல்லாகத் துள்ளி வரும். ⌘Z திரும்பப் பெறும்.',
