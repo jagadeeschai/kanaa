@@ -93,6 +93,8 @@ app.include_router(signature_router, prefix='/api')
 app.include_router(still_router, prefix='/api')
 from app.api.voice_routes import router as voice_router
 app.include_router(voice_router, prefix='/api')
+from app.api.visualiser_routes import router as visualiser_router
+app.include_router(visualiser_router, prefix='/api')
 from app.api.youtube_routes import router as youtube_router
 app.include_router(youtube_router, prefix='/api')
 from app.api.documentary_routes import router as documentary_router

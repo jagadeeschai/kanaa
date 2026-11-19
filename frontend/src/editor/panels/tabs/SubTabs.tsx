@@ -13,7 +13,7 @@ export function useSubTab<T extends string>(name: string, offered: { id: T; labe
 }
 
 export function SubTabs<T extends string>({ label, tabs, part, onChoose }: { label: string; tabs: { id: T; label: string }[]; part: T; onChoose: (id: T) => void }) {
-  return <div className="ed-tabs ed-tabs-compact" role="tablist" aria-label={t(label)} style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+  return <div className="ed-tabs ed-tabs-compact" role="tablist" aria-label={t(label)} style={{ gridTemplateColumns: `repeat(${tabs.length}, auto)` }}>
     {tabs.map((tab) => <button key={tab.id} role="tab" aria-selected={part === tab.id} onClick={() => onChoose(tab.id)}>{t(tab.label)}</button>)}
   </div>;
 }

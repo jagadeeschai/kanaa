@@ -6,6 +6,7 @@ import { Chips } from "../../inspectors/parts";
 import { useEditorPanel } from "../../state/EditorContext";
 import type { EditorLeftRailBindings } from '../EditorLeftRail';
 import { SubTabs, useSubTab } from './SubTabs';
+import VisualiserPanel from '../../VisualiserPanel';
 
 export function EffectsTabSection1() {
   const { leftTab, effectSearch, setEffectSearch } = useEditorPanel<EditorLeftRailBindings>('left');
@@ -81,7 +82,7 @@ export function EffectsTabSection5() {
  * pixelate). While searching, every part that matches shows at once. */
 export function EffectsTabParts() {
   const { leftTab, effectNeedle } = useEditorPanel<EditorLeftRailBindings>('left');
-  const tabs = [{ id: 'overlays' as const, label: 'Overlays' }, { id: 'looks' as const, label: 'Clip looks' }, { id: 'privacy' as const, label: 'Privacy' }];
+  const tabs = [{ id: 'overlays' as const, label: 'Overlays' }, { id: 'looks' as const, label: 'Looks' }, { id: 'music' as const, label: 'Music' }, { id: 'privacy' as const, label: 'Privacy' }];
   const [part, choose] = useSubTab('effects', tabs);
   if (leftTab !== 'effects') return null;
   const all = Boolean(effectNeedle);
@@ -90,6 +91,7 @@ export function EffectsTabParts() {
     {!all && <SubTabs label="Effect tools" tabs={tabs} part={part} onChoose={choose}/>}
     {(all || part === 'overlays') && <EffectsTabSection3/>}
     {(all || part === 'looks') && <EffectsTabSection2/>}
+    {!all && part === 'music' && <VisualiserPanel/>}
     {(all || part === 'privacy') && <EffectsTabSection5/>}
     <EffectsTabSection4/>
   </>;
