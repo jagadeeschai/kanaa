@@ -27,6 +27,39 @@ class Clicks(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
+    def test_fix_the_selection_starts_from_what_was_found_then_adds_and_takes_away_regions(self):
+        # Found: the person (left half). A click takes away the region it lands on, another adds one.
+        found_folder = remove_person._folder(self.picture, 'people')
+        found_folder.mkdir(parents=True, exist_ok=True)
+        person = np.zeros((800, 1200), np.uint8); person[:, :600] = 255
+        Image.fromarray(person).save(found_folder / 'person-1.png')
+        encoder = mock.Mock(return_value=np.zeros((1, 256, 64, 64), np.float32))
+        regions = {'left-top': (slice(0, 100), slice(0, 200)), 'right': (slice(300, 400), slice(800, 900))}
+
+        def decoder(feed):
+            x, y = feed['point_coords'][0, 0]
+            out = np.full((1, 1, int(feed['orig_im_size'][0]), int(feed['orig_im_size'][1])), -1.0, np.float32)
+            rows, cols = regions['left-top'] if x < 512 else regions['right']
+            out[0, 0, rows, cols] = 1
+            return out
+        start = {'kind': 'people', 'numbers': [1]}
+        whole = click_select.refine(3, start, [], encoder, decoder)
+        self.assertAlmostEqual(whole['area'], 0.5, places=2)
+        fixed = click_select.refine(3, start, [{'x': 0.05, 'y': 0.05, 'add': False}, {'x': 0.8, 'y': 0.5, 'add': True}], encoder, decoder)
+        mask = np.asarray(Image.open(remove_person._folder(self.picture, 'clicks') / 'person-1.png')) > 127
+        self.assertFalse(mask[50, 100])   # The taken-away corner is out.
+        self.assertTrue(mask[50, 400])    # The rest of the person stays.
+        self.assertTrue(mask[350, 850])   # The added region is in.
+        self.assertAlmostEqual(fixed['area'], 0.5 - 100 * 200 / (1024 * 683) + 100 * 100 / (1024 * 683), places=3)
+        with self.assertRaisesRegex(ValueError, 'not found'):
+            click_select.refine(3, {'kind': 'people', 'numbers': [7]}, [], encoder, decoder)
+        # A brush stroke takes away exactly where it goes, and nothing else.
+        click_select.refine(3, start, [{'stroke': [[0.1, 0.5], [0.4, 0.5]], 'radius': 0.02, 'add': False}], encoder, decoder)
+        brushed = np.asarray(Image.open(remove_person._folder(self.picture, 'clicks') / 'person-1.png')) > 127
+        self.assertFalse(brushed[341, 250])   # On the stroke.
+        self.assertTrue(brushed[250, 250])    # Above it, still chosen.
+        self.assertTrue(brushed[341, 500])    # Past its end, still chosen.
+
     def test_clicks_are_sent_in_the_models_pixels_and_saved_as_removes_choice(self):
         sent = {}
         encoder = mock.Mock(return_value=np.zeros((1, 256, 64, 64), np.float32))

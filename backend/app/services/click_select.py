@@ -83,3 +83,50 @@ def outline(media_id: int, points: list[dict], encoder=None, decoder=None) -> di
     preview[mask] = (preview[mask] * 0.45 + TINT * 0.55).astype(np.uint8)
     Image.fromarray(preview).save(folder / 'preview.jpg', quality=88)
     return {'area': round(float(mask.mean()), 4), 'preview': f'/api/photos/{media_id}/people/preview?kind=clicks'}
+
+
+def refine(media_id: int, start: dict | None, edits: list[dict], encoder=None, decoder=None) -> dict:
+    """Fix the selection: begin from what was found (`start`: {kind: 'people' | 'objects', numbers}) or from nothing,
+    then each click in turn adds the region it lands on (`add` true) or takes it away, and each brush stroke (`stroke`:
+    [[x, y]...], `radius`) paints exactly where it goes. Saved as Remove's and Pop-out's
+    'clicks' choice, with a tinted preview, like outline()."""
+    from app.services import remove_person
+    item = dict(get_media(media_id))
+    if item['media_type'] != 'image':
+        raise ValueError('Fixing the selection works on pictures.')
+    picture = Path(item['absolute_path'])
+    width, height = _small(picture).size
+    chosen = np.zeros((height, width), bool)
+    if start and start.get('numbers'):
+        folder = remove_person._folder(picture, start['kind'])
+        for number in start['numbers']:
+            path = folder / f'person-{number}.png'
+            if not path.exists():
+                raise ValueError('Look again: that one was not found.')
+            with Image.open(path) as found:
+                chosen |= np.asarray(found.convert('L').resize((width, height), Image.NEAREST)) > 127
+    for edit in edits:
+        if edit.get('stroke'):
+            # Brush: a painted line, `radius` a share of the picture's shorter side.
+            import cv2
+            region = np.zeros((height, width), np.uint8)
+            points = np.array([[round(x * width), round(y * height)] for x, y in edit['stroke']], np.int32)
+            thick = max(1, round(edit.get('radius', 0.02) * min(width, height)))
+            if len(points) == 1:
+                cv2.circle(region, tuple(int(v) for v in points[0]), thick, 1, -1, cv2.LINE_AA)
+            else:
+                cv2.polylines(region, [points], False, 1, thick * 2, cv2.LINE_AA)
+            region = region.astype(bool)
+            chosen = chosen | region if edit.get('add', True) else chosen & ~region
+            continue
+        region = mask_at(picture, [{'x': edit['x'], 'y': edit['y'], 'keep': True}], encoder, decoder)
+        if region.shape != chosen.shape:
+            region = np.asarray(Image.fromarray(region.astype(np.uint8) * 255).resize((width, height), Image.NEAREST)) > 127
+        chosen = chosen | region if edit.get('add', True) else chosen & ~region
+    folder = remove_person._folder(picture, 'clicks')
+    folder.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(chosen.astype(np.uint8) * 255).save(folder / 'person-1.png')
+    preview = np.asarray(_small(picture)).copy()
+    preview[chosen] = (preview[chosen] * 0.45 + TINT * 0.55).astype(np.uint8)
+    Image.fromarray(preview).save(folder / 'preview.jpg', quality=88)
+    return {'area': round(float(chosen.mean()), 4), 'preview': f'/api/photos/{media_id}/people/preview?kind=clicks'}

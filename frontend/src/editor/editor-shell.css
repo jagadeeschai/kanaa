@@ -567,3 +567,5 @@
 .ed-add-font{position:relative;margin-top:6px}.ed-add-font input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .ed-pair-colours{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}
 .ed-fill-pictures{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-height:156px;overflow:auto;margin-top:6px;padding:2px}.ed-fill-pictures button{padding:0;border:0;border-radius:6px;background:var(--well);aspect-ratio:16/9;overflow:hidden;cursor:pointer}.ed-fill-pictures button.on{box-shadow:0 0 0 2px var(--accent)}.ed-fill-pictures img{width:100%;height:100%;object-fit:cover;display:block}
+.ed-pick-wrap{position:relative;display:block}.ed-pick-wrap img{display:block;width:100%;touch-action:none;user-select:none}.ed-click-pick.brush{cursor:crosshair}
+.ed-pick-stroke{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.ed-pick-stroke polyline{fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.55}.ed-pick-stroke .add{stroke:#ff3c8c}.ed-pick-stroke .cut{stroke:#ffffff}

@@ -186,6 +186,9 @@ export const findPeople = (id: number, kind: 'people' | 'objects' = 'people') =>
 export const startRemovePeople = (id: number, people: number[], method: 'local' | 'ai' = 'local', kind: 'people' | 'objects' | 'clicks' = 'people') =>
   requestJson<{ job_id: string }>(`/api/photos/${id}/remove-people`, { method: 'POST', body: JSON.stringify({ people, method, kind }) });
 /** Click to choose: outlines what was clicked (x, y are shares of the picture; keep false takes away). */
+/** Fix the selection: from what was found (or nothing), each click adds or takes away the region it lands on. */
+export const refineSelection = (id: number, start: { kind: 'people' | 'objects'; numbers: number[] } | null, edits: { x?: number; y?: number; add: boolean; stroke?: [number, number][]; radius?: number }[]) =>
+  requestJson<{ area: number; preview: string }>(`/api/photos/${id}/refine`, { method: 'POST', body: JSON.stringify({ start, edits }) });
 export const outlineByClicks = (id: number, points: { x: number; y: number; keep: boolean }[]) =>
   requestJson<{ area: number; preview: string }>(`/api/photos/${id}/outline`, { method: 'POST', body: JSON.stringify({ points }) });
 /** Glow outline: the edge of what is at (x, y) in a picture, or in a video `at` seconds in, as shares of the source. */

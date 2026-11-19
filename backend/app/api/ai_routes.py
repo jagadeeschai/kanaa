@@ -268,6 +268,36 @@ def outline_by_clicks(identifier: int, data: OutlineRequest):
         raise HTTPException(400, str(exc)) from exc
 
 
+class RefineEdit(BaseModel):
+    x: float = Field(default=0, ge=0, le=1)
+    y: float = Field(default=0, ge=0, le=1)
+    add: bool = True
+    stroke: list[tuple[float, float]] | None = Field(default=None, max_length=2000)  # A brush stroke, shares of the picture.
+    radius: float = Field(default=0.02, gt=0, le=0.2)
+
+
+class RefineStart(BaseModel):
+    kind: Literal['people', 'objects']
+    numbers: list[int] = Field(min_length=1, max_length=20)
+
+
+class RefineRequest(BaseModel):
+    start: RefineStart | None = None
+    edits: list[RefineEdit] = Field(default_factory=list, max_length=200)
+
+
+@router.post('/photos/{identifier}/refine')
+def refine_selection(identifier: int, data: RefineRequest):
+    """Fix the selection: from what was found (or nothing), each click adds or takes away the region it lands on."""
+    from app.services.click_select import available, refine
+    if not available():
+        raise HTTPException(409, 'Fixing the selection needs Click to choose: run ./install-fill.sh in the Kanaa folder.')
+    try:
+        return refine(identifier, data.start.model_dump() if data.start else None, [edit.model_dump() for edit in data.edits])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 class PopoutRequest(BaseModel):
     people: list[int] = Field(min_length=1, max_length=6)
     kind: Literal['people', 'objects', 'clicks'] = 'people'
