@@ -24,6 +24,7 @@ from app.services.ramp import ramp_time_expression, segments as ramp_segments
 from app.services.animation import BEAT_SLACK, chroma_yuv, CROSS_BLUR, LOOKS, OPACITY_SPAN, WHIP_BLUR, look_at, xfade_name, offset_expression, scale_expression
 from app.services import particle_frames, title3d
 from app.services.title3d_render import render_title_frames
+from app.services.font_service import fonts_dir
 from app.services.moving_transitions import MOVING_KINDS, Moves
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
@@ -790,6 +791,44 @@ def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
     return VideoEditRequest(canvas='original', lyric_style=layer.style, lyric_size=layer.size, lyric_position=layer.position, lyric_color=layer.color, lyrics=cues)
 
 
+GOLD = [(0, (122, 86, 18)), (0.38, (247, 224, 138)), (0.5, (201, 149, 43)), (0.62, (255, 238, 170)), (1, (140, 98, 22))]
+
+
+def _ramp(stops, shares: np.ndarray) -> np.ndarray:
+    return np.stack([np.interp(shares, [at for at, _ in stops], [colour[c] for _, colour in stops]) for c in range(3)], axis=-1)
+
+
+def text_fill(fill, body: np.ndarray) -> np.ndarray:
+    """The fill's colours over the frame, stretched across the letters' own box (`body`: how much each pixel is letter)."""
+    height, width = body.shape
+    rows, cols = np.nonzero(body > 0.5)
+    top, bottom = (rows.min(), rows.max()) if rows.size else (0, height - 1)
+    left, right = (cols.min(), cols.max()) if cols.size else (0, width - 1)
+    ys = np.clip((np.arange(height) - top) / max(1, bottom - top), 0, 1)[:, None] * np.ones((1, width))
+    if fill.kind == 'gold':
+        return _ramp(GOLD, ys)
+    if fill.kind == 'gradient':
+        first, second = (fill.colours + ['#ffffff', '#ffffff'])[:2]
+        a, b = (np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], np.float32) for c in (first, second))
+        xs = np.clip((np.arange(width) - left) / max(1, right - left), 0, 1)[None, :] * np.ones((height, 1))
+        share = np.clip(0.65 * ys + 0.35 * xs, 0, 1)[..., None]  # Mostly top to bottom, leaning to the right.
+        return a * (1 - share) + b * share
+    from PIL import Image, ImageOps
+    from app.services.media_service import get_media
+    try:
+        row = get_media(fill.media_id) if fill.media_id is not None else None
+    except Exception:
+        row = None
+    if row is None or row['media_type'] != 'image':
+        return np.full((height, width, 3), 255, np.float32)
+    box = (max(1, right - left + 1), max(1, bottom - top + 1))
+    with Image.open(row['absolute_path']) as picture:
+        fitted = np.asarray(ImageOps.fit(ImageOps.exif_transpose(picture).convert('RGB'), box, Image.LANCZOS), np.float32)
+    canvas = np.full((height, width, 3), 255, np.float32)
+    canvas[top:top + box[1], left:left + box[0]] = fitted
+    return canvas
+
+
 def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None, graphic_progress: float = 1) -> None:
     """`lit`: for a caption, its highlighted word; for a karaoke title, the last word sung so far."""
     """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
@@ -804,6 +843,16 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
         card[..., :3] = [int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)]
         card[..., 3] = 255 - hole
         Image.fromarray(card, 'RGBA').save(target)
+        return
+    if layer is None and not item.graphic and item.fill and not item.karaoke:
+        # The letters drawn white, then their white body (not the outline or shadow) refilled with the fill.
+        render_text_image(item.model_copy(update={'fill': None, 'color': '#ffffff', 'subtitle_color': '#ffffff' if item.subtitle_color else None}), fmt, target, graphic_progress=graphic_progress)
+        from PIL import Image
+        with Image.open(target) as drawn:
+            pixels = np.asarray(drawn.convert('RGBA')).astype(np.float32)
+        body = np.clip((pixels[..., :3].min(axis=2) - 40) / 215, 0, 1) * (pixels[..., 3] > 0)  # Dark outline and shadow stay as they are.
+        pixels[..., :3] += body[..., None] * (text_fill(item.fill, body) - 255)
+        Image.fromarray(np.clip(pixels, 0, 255).astype(np.uint8), 'RGBA').save(target)
         return
     if layer is not None and layer.shared_images:
         from app.services.shared_captions import render_image
@@ -828,7 +877,7 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
             write_title(folder / 'lyrics.ass', item, fmt, lit=lit)
         else:
             write_lyrics(folder / 'lyrics.ass', edit, Path('/dev/null'), size=(fmt.width, fmt.height), marks=marks, mark_color=layer.highlight if layer else None)
-        (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
+        (folder / 'fonts').symlink_to(fonts_dir())
         result = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black@0:s={fmt.width}x{fmt.height}:r=30:d=0.5,format=rgba',
                                  '-vf', 'ass=filename=lyrics.ass:shaping=complex:fontsdir=fonts:alpha=1', '-frames:v', '1', '-update', '1', str(target)],
                                 cwd=folder, capture_output=True, text=True)
@@ -1389,7 +1438,7 @@ class Builder:
         write_lyrics(self.folder / name, caption_edit(layer, cues), Path('/dev/null'), size=(self.fmt.width, self.fmt.height), marks=marks, mark_color=layer.highlight)
         fonts = self.folder / 'fonts'
         if not fonts.exists():
-            fonts.symlink_to(LYRIC_FONTS_DIR)
+            fonts.symlink_to(fonts_dir())
         output = f'cap{position}'
         self.graph.append(f'[{base}]format=rgb24,ass=filename={name}:shaping=complex:fontsdir=fonts,format=gbrp[{output}]')
         return output

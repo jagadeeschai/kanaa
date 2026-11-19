@@ -5,7 +5,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
@@ -496,7 +496,10 @@ def text_image(body: dict):
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout')}
+    look['fill'] = item.fill.model_dump() if item.fill else None
     look['graphic'] = item.graphic.model_dump(by_alias=True) if item.graphic else None
+    from app.services.font_service import own_dir
+    look['own_fonts'] = sorted(path.name for path in own_dir().glob('*')) if own_dir().is_dir() else []  # A font added later redraws the title.
     if item.karaoke:
         look['karaoke'] = [item.karaoke.color, item.karaoke.glow]  # Only the colour and glow change the pictures; times and levels pick which one shows.
     key = hashlib.sha256(json.dumps([look, fmt.width, fmt.height], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
@@ -555,11 +558,38 @@ def clean_voice_file(request: Request, media_id: int | None = None, asset_id: st
 
 @router.get('/fonts/{name}')
 def font_file(name: str):
-    """A bundled font, so the editor can show each font's name in itself."""
-    target = LYRIC_FONTS_DIR / name
-    if not name.endswith('.ttf') or '/' in name or not target.is_file():
+    """A bundled font or one of yours, so the editor can show each font's name in itself."""
+    from app.services.font_service import font_file as find
+    target = find(name)
+    if target is None:
         raise HTTPException(404, 'No such font.')
-    return FileResponse(target, media_type='font/ttf')
+    return FileResponse(target, media_type='font/otf' if target.suffix.lower() == '.otf' else 'font/ttf')
+
+
+@router.get('/own-fonts')
+def own_fonts():
+    from app.services.font_service import own_fonts as listed
+    return listed()
+
+
+@router.post('/own-fonts')
+async def add_own_font(file: UploadFile = File(...)):
+    from app.services.font_service import MAX_BYTES, add_font
+    data = await file.read(MAX_BYTES + 1)
+    try:
+        return add_font(file.filename or '', data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete('/own-fonts/{name}')
+def remove_own_font(name: str):
+    from app.services.font_service import remove_font
+    try:
+        remove_font(name)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {'success': True}
 
 
 @router.post('/shape-mask')

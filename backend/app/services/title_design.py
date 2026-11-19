@@ -35,11 +35,11 @@ def _hex(colour: str) -> np.ndarray:
 def letters(item: Text, fmt: Format, plain: bool) -> np.ndarray:
     """The words alone as straight RGBA in 0..1, the frame's size, through the same libass path as any title."""
     from app.services.timeline_service import write_title
-    from app.services.video_edit_service import LYRIC_FONTS_DIR
+    from app.services.font_service import fonts_dir
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         write_title(folder / 'title.ass', item.model_copy(update={'design': None}), fmt, plain=plain)
-        (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
+        (folder / 'fonts').symlink_to(fonts_dir())
         result = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black@0:s={fmt.width}x{fmt.height}:r=30:d=0.5,format=rgba',
                                  '-vf', 'ass=filename=title.ass:shaping=complex:fontsdir=fonts:alpha=1', '-frames:v', '1', '-update', '1', 'out.png'],
                                 cwd=folder, capture_output=True, text=True)

@@ -422,13 +422,6 @@ def delete_project(identifier: int):
     return {'success': True}
 
 
-@router.get('/fonts/{filename}')
-def lyric_font(filename: str):
-    if Path(filename).name != filename or not filename.endswith('.ttf') or not (LYRIC_FONTS_DIR / filename).is_file():
-        raise HTTPException(404, 'Font not found')
-    return FileResponse(LYRIC_FONTS_DIR / filename)
-
-
 @router.get('/render-jobs')
 def jobs():
     # can_retry: a failed or cancelled job Kanaa still knows how to run again (since it last started).

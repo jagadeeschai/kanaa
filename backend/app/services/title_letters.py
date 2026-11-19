@@ -25,14 +25,14 @@ REACH = 0.3  # Of the title's size, in pixels at 720 wide: how far a glow or sha
 
 def _draw(item: Text, fmt: Format, letter_ids: list[int] | None, group=lambda number: number) -> np.ndarray:
     from app.services.timeline_service import render_text_image, write_title
-    from app.services.video_edit_service import LYRIC_FONTS_DIR
+    from app.services.font_service import fonts_dir
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         if letter_ids is None:
             render_text_image(item, fmt, folder / 'out.png')
         else:
             write_title(folder / 'title.ass', item, fmt, letter_ids=letter_ids, letter_group=group)
-            (folder / 'fonts').symlink_to(LYRIC_FONTS_DIR)
+            (folder / 'fonts').symlink_to(fonts_dir())
             result = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black@0:s={fmt.width}x{fmt.height}:r=30:d=0.5,format=rgba',
                                      '-vf', 'ass=filename=title.ass:shaping=complex:fontsdir=fonts:alpha=1', '-frames:v', '1', '-update', '1', 'out.png'],
                                     cwd=folder, capture_output=True, text=True)

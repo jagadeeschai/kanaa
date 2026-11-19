@@ -536,10 +536,18 @@ class LayoutOriginal(Strict):
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
 
 
+class TextFill(Strict):
+    """What fills the letters: a gold foil, a two-colour gradient, or a picture. The outline and shadow stay as they are."""
+    kind: Literal['gold', 'gradient', 'picture']
+    colours: List[Annotated[str, Field(pattern=r'^#[0-9a-fA-F]{6}$')]] = Field(default_factory=list, max_length=2)
+    media_id: Optional[int] = None
+
+
 class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
     source:Optional[str]=Field(default=None,max_length=500)
     layout_original: Optional[LayoutOriginal] = None  # Set by a lyric layout; Original puts it back.
+    fill: Optional[TextFill] = None  # Gold, a gradient or a picture inside the letters.
     knockout: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # Video inside the words: a card in this colour with the letters cut out.
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)

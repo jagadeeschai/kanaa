@@ -564,3 +564,6 @@
 .ed-media-row.ed-media-create>*{flex:none}
 /* Themes, This video: the theme in use as a small card. */
 .ed-theme-current{display:flex;align-items:center;gap:10px;padding:8px;margin:4px 0 10px;border-radius:8px;background:var(--well)}.ed-theme-current .ed-theme-art{width:40px;height:40px;border-radius:7px;flex:none}.ed-theme-current span:last-child{display:flex;flex-direction:column;gap:2px}.ed-theme-current b{font-size:13px}.ed-theme-current em{font-style:normal;font-size:11px;color:var(--muted)}
+.ed-add-font{position:relative;margin-top:6px}.ed-add-font input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.ed-pair-colours{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}
+.ed-fill-pictures{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-height:156px;overflow:auto;margin-top:6px;padding:2px}.ed-fill-pictures button{padding:0;border:0;border-radius:6px;background:var(--well);aspect-ratio:16/9;overflow:hidden;cursor:pointer}.ed-fill-pictures button.on{box-shadow:0 0 0 2px var(--accent)}.ed-fill-pictures img{width:100%;height:100%;object-fit:cover;display:block}

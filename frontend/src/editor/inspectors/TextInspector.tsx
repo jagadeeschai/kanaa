@@ -3,7 +3,7 @@ import { KARAOKE_COLOUR } from '../../timeline/karaoke';
 import { useEditor, useItemTime } from '../state/EditorContext';
 import { t } from '../../i18n';
 import { type CinemaReveal, type Clip, type CoverKind, DEFAULT_TITLE_DEPTH, type KeepClear, REST_TRANSFORM, type SurfaceKind, TITLE_DESIGNS, TITLE_SPACE, type TextItem, duration, titleSpaceOf } from '../../timeline/model';
-import { ENGLISH_FONTS, TAMIL_FONTS } from '../../timeline/templates';
+import { FontsWithYours, LetterFill } from './TextLooks';
 import { TITLE_MOVES, applyTitleMove, stillTitle } from '../../timeline/titleMoves';
 import { MotionPanel } from '../Keyframes';
 import { DrawPathButton } from '../PathDraw';
@@ -14,7 +14,7 @@ import { SONG_IDS } from '../../timeline/signatureTitles';
 import { SignatureCardGroup } from './SignatureCardGroup';
 import { ALargeSmall, Bookmark, Check, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
-import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, FontPicker, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
+import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
 
 import { MATERIAL_LOOKS } from '../../timeline/titleMaterial';
 import { GraphicInspector } from './GraphicInspector';
@@ -37,11 +37,11 @@ export function TextInspector() {
   const forLayer = useContext(LayerModeContext);
   if (text.graphic) return <GraphicInspector text={text} timing={timing} onChange={onChange} onEnter={onEnter} follow={follow}/>;
   const fontsAndSize = <>
-    <FontPicker label="Tamil font" fonts={TAMIL_FONTS} value={text.tamil_font ?? 'Noto Sans Tamil'} sample="அ" onPick={(tamil_font) => onChange({ tamil_font: tamil_font === 'Noto Sans Tamil' ? null : tamil_font })}/>
-    <FontPicker label="English font" fonts={ENGLISH_FONTS} value={text.font ?? 'Noto Sans'} sample="Aa" onPick={(font) => onChange({ font: font === 'Noto Sans' ? null : font })}/>
+    <FontsWithYours text={text} onChange={onChange}/>
     <ValueSlider label="Size" value={text.size} min={20} max={100} step={1} defaultValue={44} onChange={(size, group) => onChange({ size }, group)}/>
     <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
     <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }, { id: 'plain', label: 'Plain' }]} value={text.style} onPick={(style) => onChange({ style })}/>
+    <LetterFill text={text} onChange={onChange}/>
     <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
     <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
     <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
