@@ -59,6 +59,16 @@ def bar_share(width: int, height: int) -> float:
     return max(0.0, (1 - aspect / BARS_RATIO) / 2) if aspect >= 1 else 0.0
 
 
+def bar_shares(width: int, height: int, ratio: float | None) -> tuple[float, float]:
+    """(side, top) bar sizes as shares of the frame's width and height, so the picture between them has the shape
+    `ratio`: bars above and below when the frame is taller than that, at the sides when it is wider. Without a ratio,
+    the classic 2.39 bars on wide frames only. Matches barShares in model.ts."""
+    if ratio is None:
+        return 0.0, bar_share(width, height)
+    aspect = width / height
+    return (max(0.0, (1 - ratio / aspect) / 2), 0.0) if aspect > ratio else (0.0, max(0.0, (1 - aspect / ratio) / 2))
+
+
 def finish_filters(finish, width: int, height: int, folder: Path, label: str, source: str) -> tuple[list[str], str, list[str]]:
     """Graph lines from `source` to the finished label, and any extra inputs (the vignette mask)."""
     steps, current, inputs = [], source, []
@@ -89,7 +99,10 @@ def finish_filters(finish, width: int, height: int, folder: Path, label: str, so
         current = f'{label}_dark'
     if finish.grain > 0:
         step(f'format=yuv444p,noise=c0s={finish.grain * GRAIN_SPAN * 255 / 2:.2f}:c0f=t+u,format=gbrp')
-    bar = round(bar_share(width, height) * height) if finish.letterbox else 0
+    side, top = bar_shares(width, height, finish.bars_ratio) if finish.letterbox else (0.0, 0.0)
+    bar, pillar, colour = round(top * height), round(side * width), '0x' + finish.bars_colour.lstrip('#')
     if bar > 0:
-        step(f'drawbox=x=0:y=0:w=iw:h={bar}:color=black:t=fill,drawbox=x=0:y=ih-{bar}:w=iw:h={bar}:color=black:t=fill')
+        step(f'drawbox=x=0:y=0:w=iw:h={bar}:color={colour}:t=fill,drawbox=x=0:y=ih-{bar}:w=iw:h={bar}:color={colour}:t=fill')
+    if pillar > 0:
+        step(f'drawbox=x=0:y=0:w={pillar}:h=ih:color={colour}:t=fill,drawbox=x=iw-{pillar}:y=0:w={pillar}:h=ih:color={colour}:t=fill')
     return steps, current, inputs

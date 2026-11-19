@@ -6,7 +6,8 @@ import KanaaSelect from '../../components/KanaaSelect';
 import { t } from '../../i18n';
 import { BRAND_SIZES, brandClip, fadeBrand, moveBrand, resizeBrand } from '../../timeline/brand';
 import { CINEMATIC_PRESETS, activeCinematicPreset, applyCinematicPreset, clearCinematicPreset } from '../../timeline/cinematic';
-import { type Adjust, CINEMATIC, type Corner, FORMATS, type Finish, type Format, type Sound, type Timeline, audioLayers, barShare, duration, mainLayer, soundLength, timecode } from '../../timeline/model';
+import { BarsPicker } from './BarsPicker';
+import { type Adjust, CINEMATIC, type Corner, FORMATS, type Finish, type Format, type Sound, type Timeline, audioLayers, duration, mainLayer, soundLength, timecode } from '../../timeline/model';
 import { activeTheme } from '../../timeline/themes';
 import { type Photo } from '../../types/photo';
 import { ValueSlider } from '../controls';
@@ -74,8 +75,7 @@ export function ProjectInspector() {
           {part('grade', 'Teal and orange')}{part('glow', 'Glow')}{part('vignette', 'Dark edges')}{part('grain', 'Film grain')}
         </>}
         <h4 className="ed-finish-head">Frame</h4>
-        {barShare(format) > 0 ? <label className="ed-check"><input type="checkbox" checked={Boolean(finish?.letterbox)} onChange={(event) => { const next = { ...(finish ?? { ...CINEMATIC, grade: 0, glow: 0, vignette: 0, grain: 0 }), letterbox: event.target.checked }; setFinish(event.target.checked || next.grade || next.glow || next.vignette || next.grain ? next : null); }}/><span>Widescreen bars<small>Black bars to the 2.39:1 cinema shape, with or without a look.</small></span></label>
-          : <p className="ed-group-tip">Widescreen bars are for landscape and square projects.</p>}
+        <BarsPicker finish={finish ?? null} format={format} onChange={setFinish}/>
       </Group>
       <Group title="Brand watermark" tab="brand" startOpen changed={Boolean(brand)} keywords="logo watermark brand mark corner badge" tip="Your logo stays over the whole video, preview and export alike. A PNG with a transparent background looks best." help="brand-watermark">
         {!brand ? <>

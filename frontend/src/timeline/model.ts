@@ -93,7 +93,7 @@ export type TrackLayer = VideoLayer | TextLayer | CaptionLayer | BlurLayer | Adj
 export type TrackItem = TextItem | Caption | BlurBox | AdjustItem | Sound | Clip;
 export type Format = { width: number; height: number; fps: number };
 /** A cinematic look over the whole video, under the captions. Each amount 0 (off) to 1. */
-export type Finish = { letterbox: boolean; grade: number; glow: number; vignette: number; grain: number };
+export type Finish = { letterbox: boolean; /** The shape between the bars; none is 2.39 on wide frames. */ bars_ratio?: number | null; bars_colour?: string; grade: number; glow: number; vignette: number; grain: number };
 export const CINEMATIC: Finish = { letterbox: false, grade: 0.7, glow: 0.35, vignette: 0.55, grain: 0.3 };
 export type Timeline = { version: 2; format: Format; layers: (VideoLayer | AudioLayer | TextLayer | CaptionLayer | BlurLayer | AdjustLayer)[]; normalize_audio?: boolean; sources_roll?:boolean; documentary_sound?: {enabled:boolean;asset_id:string;duration:number;peak:number}|null; finish?: Finish | null; lut?: string | null; lut_amount?: number };
 
@@ -101,6 +101,13 @@ export type Timeline = { version: 2; format: Format; layers: (VideoLayer | Audio
 export function barShare(format: { width: number; height: number }): number {
   const aspect = format.width / format.height;
   return aspect >= 1 ? Math.max(0, (1 - aspect / 2.39) / 2) : 0;
+}
+/** (side, top) bar sizes as shares of the frame's width and height, so the picture between them has the shape `ratio`:
+ *  above and below when the frame is taller than that, at the sides when it is wider. Matches bar_shares in finish_service.py. */
+export function barShares(format: { width: number; height: number }, ratio?: number | null): [number, number] {
+  if (!ratio) return [0, barShare(format)];
+  const aspect = format.width / format.height;
+  return aspect > ratio ? [Math.max(0, (1 - ratio / aspect) / 2), 0] : [0, Math.max(0, (1 - aspect / ratio) / 2)];
 }
 export type SourceFacts = { media_id: number; media_type: 'video' | 'image'; duration?: number | null; width?: number | null; height?: number | null };
 

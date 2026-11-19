@@ -768,6 +768,8 @@ Layer = Annotated[Union[VideoLayer, TextLayer, BlurLayer, AdjustLayer, CaptionLa
 class Finish(Strict):
     """A cinematic look over the whole video, under the captions. Each part 0 (off) to 1 (strong)."""
     letterbox: bool = False
+    bars_ratio: Optional[float] = Field(default=None, ge=0.3, le=4, allow_inf_nan=False)  # The shape shown between the bars; none is 2.39 on wide frames.
+    bars_colour: str = Field(default='#000000', pattern=r'^#[0-9a-fA-F]{6}$')
     grade: float = Field(default=0, ge=0, le=1)  # Teal shadows, orange highlights.
     glow: float = Field(default=0, ge=0, le=1)
     vignette: float = Field(default=0, ge=0, le=1)

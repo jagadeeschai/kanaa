@@ -11,7 +11,7 @@ import { blurGrid, BLUR_FEATHER, BLUR_REACH } from '../timeline/blur';
 import { rampShare, rampSpeed } from '../timeline/ramp';
 import { litWord } from '../timeline/captions';
 import { lutAtlasUrl } from '../api/client';
-import { REST_TRANSFORM, barShare, clipLength, duration, fittedSize, transitionHalf, type AdjustLayer, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
+import { REST_TRANSFORM, barShares, clipLength, duration, fittedSize, transitionHalf, type AdjustLayer, type BlurLayer, type Caption, type ShapeMask, type CaptionLayer, type Clip, type Sound, type TextItem, type TextLayer, type Timeline, type VideoLayer } from '../timeline/model';
 import { isBrandLayer } from '../timeline/brand';
 import { adjustStrength } from '../timeline/adjust';
 import { wheelVectors } from '../timeline/colourWheels';
@@ -65,7 +65,7 @@ in vec2 p; void main(){ gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
 const FINISH_FRAGMENT = `#version 300 es
 precision highp float; out vec4 color; uniform sampler2D backdrop; uniform vec2 viewport;
 uniform sampler2D lutTex; uniform int useLut; uniform float lutAmount;
-uniform float grade, glow, vignette, grain, bars, seed;
+uniform float grade, glow, vignette, grain, seed; uniform vec2 bars; uniform vec3 barColour;
 float luma(vec3 c){ return dot(c, vec3(.2126, .7152, .0722)); }
 vec3 lookup(vec3 c){ float n=float(textureSize(lutTex,0).y); float blue=clamp(c.b,0.,1.)*(n-1.); float lo=floor(blue), hi=min(n-1.,lo+1.);
   float y=(clamp(c.g,0.,1.)*(n-1.)+.5)/n; float red=clamp(c.r,0.,1.)*(n-1.);
@@ -90,7 +90,7 @@ void main(){
   }
   if (vignette > 0.) { vec2 d = (at - .5) * vec2(aspect, 1.); c *= 1. - vignette * smoothstep(.45, 1.05, length(d) / length(vec2(aspect, 1.) * .5)); }
   if (grain > 0.) c = clamp(c + (hash(floor(gl_FragCoord.xy)) - .5) * grain * .16, 0., 1.);
-  if (at.y < bars || at.y > 1. - bars) c = vec3(0.);
+  if (at.y < bars.y || at.y > 1. - bars.y || at.x < bars.x || at.x > 1. - bars.x) c = barColour;
   color = vec4(c, 1.);
 }`;
 /** A title in 3D: every frame pixel is taken back into the title picture through the inverse of its homography
@@ -633,7 +633,7 @@ export class PlaybackEngine {
     gl.bindAttribLocation(finishing, position, 'p');
     gl.linkProgram(finishing);
     this.finishing = finishing;
-    for (const name of ['backdrop', 'viewport', 'lutTex', 'useLut', 'lutAmount', 'grade', 'glow', 'vignette', 'grain', 'bars', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
+    for (const name of ['backdrop', 'viewport', 'lutTex', 'useLut', 'lutAmount', 'grade', 'glow', 'vignette', 'grain', 'bars', 'barColour', 'seed']) this.finishUniforms[name] = gl.getUniformLocation(finishing, name);
     const titles = gl.createProgram()!;
     gl.attachShader(titles, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
     gl.attachShader(titles, shader(gl.FRAGMENT_SHADER, TITLE_FRAGMENT));
@@ -1438,7 +1438,10 @@ export class PlaybackEngine {
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.lutTexture); gl.uniform1i(u.lutTex, 2); gl.uniform1i(u.useLut, lut ? 1 : 0); gl.uniform1f(u.lutAmount, this.timeline?.lut_amount ?? 1); gl.activeTexture(gl.TEXTURE0);
     gl.uniform2f(u.viewport, this.canvas.width, this.canvas.height);
     gl.uniform1f(u.grade, finish?.grade ?? 0); gl.uniform1f(u.glow, finish?.glow ?? 0); gl.uniform1f(u.vignette, finish?.vignette ?? 0); gl.uniform1f(u.grain, finish?.grain ?? 0);
-    gl.uniform1f(u.bars, finish?.letterbox ? barShare(this.timeline!.format) : 0);
+    const [side, top] = finish?.letterbox ? barShares(this.timeline!.format, finish.bars_ratio) : [0, 0];
+    gl.uniform2f(u.bars, side, top);
+    const colour = finish?.bars_colour ?? '#000000';
+    gl.uniform3f(u.barColour, ...([1, 3, 5].map((at) => parseInt(colour.slice(at, at + 2), 16) / 255) as [number, number, number]));
     gl.uniform1f(u.seed, Math.floor(this.time * this.timeline!.format.fps) % 997);
     gl.disable(gl.BLEND);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
