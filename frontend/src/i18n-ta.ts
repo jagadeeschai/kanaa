@@ -804,4 +804,7 @@ export const TAMIL: Record<string, string> = {
   'Zooms through to the scene': 'எழுத்துக்குள் நுழைந்து காட்சிக்குச் செல்கிறது',
   'It flies into a letter at the end and the scene fills the frame. ⌘Z undoes it.': 'இறுதியில் ஒரு எழுத்துக்குள் பறந்து, காட்சி திரை முழுவதும் நிறையும். ⌘Z செயல்தவிர்க்கும்.',
   'Turn on Video inside the letters first.': 'முதலில் எழுத்துகளுக்குள் வீடியோவை இயக்கவும்.',
+  'Soft black': 'மென் கருப்பு',
+  'Soft white': 'மென் வெள்ளை',
+  'The clip shows around the words through a soft wash, and each letter gets a thin border.': 'சொற்களைச் சுற்றி மென்மையான பூச்சின் வழியே கிளிப் தெரியும்; ஒவ்வொரு எழுத்துக்கும் மெல்லிய ஓரம்.',
 };

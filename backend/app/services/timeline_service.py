@@ -843,6 +843,12 @@ def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer
         card = np.empty((*hole.shape, 4), np.uint8)
         card[..., :3] = [int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)]
         card[..., 3] = 255 - hole
+        if item.knockout_wash:
+            # Soft: the clip shows around the letters through a wash of the colour, and a thin border rings each letter.
+            import cv2
+            width = max(2, round(min(fmt.width, fmt.height) / 300))
+            ring = np.clip(cv2.dilate(hole, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * width + 1, 2 * width + 1))).astype(np.int32) - hole, 0, 255)
+            card[..., 3] = np.maximum(((255 - hole) * item.knockout_wash).astype(np.uint8), ring.astype(np.uint8))
         Image.fromarray(card, 'RGBA').save(target)
         return
     if layer is None and not item.graphic and item.fill and not item.karaoke:

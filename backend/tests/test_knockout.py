@@ -31,8 +31,22 @@ class KnockoutTest(unittest.TestCase):
         self.assertGreater((made[..., 3] < 20).mean(), 0.01)  # There are holes.
         self.assertEqual(made[0, 0, 3], 255)  # The corners are covered.
 
+    def test_soft_shows_the_clip_around_the_letters_with_a_thin_border(self):
+        with tempfile.TemporaryDirectory() as folder:
+            plain, soft = Path(folder) / 'plain.png', Path(folder) / 'soft.png'
+            render_text_image(title(), FMT, plain)
+            render_text_image(title(knockout='#ffffff', knockout_wash=0.55), FMT, soft)
+            letters = np.asarray(Image.open(plain).convert('RGBA'))[..., 3].astype(int)
+            made = np.asarray(Image.open(soft).convert('RGBA'))[..., 3].astype(int)
+        self.assertEqual(made[0, 0], round(255 * 0.55))  # A wash, not a solid card.
+        self.assertLessEqual(made[letters > 250].max(), 5)  # The letters stay clear.
+        border = (made > 250) & (letters < 5)
+        self.assertGreater(border.sum(), 200)  # A thin ring round the letters.
+        self.assertLess(border.sum(), (letters > 128).sum())
+
     def test_cached_apart_from_the_plain_title(self):
         self.assertNotEqual(text_cache(title(), FMT), text_cache(title(knockout='#000000'), FMT))
+        self.assertNotEqual(text_cache(title(knockout='#000000'), FMT), text_cache(title(knockout='#000000', knockout_wash=0.55), FMT))
         with self.assertRaises(Exception):
             title(knockout='black')
 

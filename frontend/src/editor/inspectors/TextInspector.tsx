@@ -44,9 +44,9 @@ export function TextInspector() {
     <LetterFill text={text} onChange={onChange}/>
     <h3 className="ed-sub">{t('Video inside the letters')}</h3>
     <div className="ed-chips" role="group" aria-label={t('Video inside the letters')}>
-      {([[null, 'Off'], ['#000000', 'Black around'], ['#ffffff', 'White around']] as const).map(([colour, label]) => <button key={label} className={(text.knockout ?? null) === colour ? 'on' : undefined} aria-pressed={(text.knockout ?? null) === colour}
-        title={colour ? t('The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>)}
-    </div>
+      {([[null, null, 'Off'], ['#000000', null, 'Black around'], ['#ffffff', null, 'White around'], ['#000000', 0.55, 'Soft black'], ['#ffffff', 0.55, 'Soft white']] as const).map(([colour, wash, label]) => { const on = (text.knockout ?? null) === colour && (colour === null || (text.knockout_wash ?? null) === wash); return <button key={label} className={on ? 'on' : undefined} aria-pressed={on}
+          title={colour ? t(wash ? 'The clip shows around the words through a soft wash, and each letter gets a thin border.' : 'The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, knockout_wash: wash, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>; })}
+      </div>
     <ZoomThrough text={text} format={timeline.format} onChange={onChange}/>
     <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
     <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>

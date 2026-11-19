@@ -513,7 +513,7 @@ def text_hole(body: dict):
 
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
-    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout')}
+    look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout', 'knockout_wash')}
     look['fill'] = item.fill.model_dump() if item.fill else None
     look['graphic'] = item.graphic.model_dump(by_alias=True) if item.graphic else None
     from app.services.font_service import own_dir

@@ -557,6 +557,7 @@ class Text(Strict):
     layout_original: Optional[LayoutOriginal] = None  # Set by a lyric layout; Original puts it back.
     fill: Optional[TextFill] = None  # Gold, a gradient or a picture inside the letters.
     knockout: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # Video inside the words: a card in this colour with the letters cut out.
+    knockout_wash: Optional[float] = Field(default=None, gt=0, lt=1)  # Soft: the clip shows around the letters through this much colour, and each letter gets a thin border.
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     start: float = Field(ge=0)

@@ -42,7 +42,7 @@ def frames(item, picture: Path, size: tuple[int, int], fps: int, count: int, fol
     width, height = size
     with Image.open(picture) as image:
         card = np.asarray(image.convert('RGBA'))
-    around = tuple(int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)) + (255,)  # The card's colour, past its edges too.
+    around = tuple(int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)) + (round(255 * (item.knockout_wash or 1)),)  # The card's colour (or wash), past its edges too.
     pose = _frames(item.transform, item.enter, item.exit, count / fps, count, fps)
     paths, shown, seen = [], [], {}
     for k in range(count):
