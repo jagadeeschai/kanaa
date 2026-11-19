@@ -2,10 +2,11 @@
  * Publish to YouTube: the details come filled in from the project (title, credits, lyrics as captions), so it is one
  * click. First time only: add your Google client file, then Connect YouTube. Details beyond the basics are under More.
  */
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ExternalLink, LoaderCircle, Upload, X } from 'lucide-react';
-import { cancelRenderJob, getJobStatus, requestJson } from '../api/client';
+import { cancelRenderJob, getJobStatus, listPhotos, photoThumbUrl, photoVideoUrl, requestJson } from '../api/client';
+import type { Photo } from '../types/photo';
 import KanaaSelect from '../components/KanaaSelect';
 import { t } from '../i18n';
 import { duration, type Timeline } from '../timeline/model';
@@ -30,6 +31,9 @@ export function YouTubeDialog({ mediaId, projectName, timeline, seconds, onClose
   const [captions, setCaptions] = useState(filled.captions.length > 0);
   const [category, setCategory] = useState('music'), [schedule, setSchedule] = useState(''), [kids, setKids] = useState(false);
   const [playlists, setPlaylists] = useState<{ id: string; title: string }[] | null>(null), [playlist, setPlaylist] = useState('');
+  const [thumb, setThumb] = useState<'auto' | 'frame' | 'picture'>('auto'), [frameAt, setFrameAt] = useState(Math.round(seconds * 0.3 * 10) / 10);
+  const [pictures, setPictures] = useState<Photo[] | null>(null), [pictureId, setPictureId] = useState<number | null>(null);
+  const frame = useRef<HTMLVideoElement>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState('');
   const running = Boolean(job && !['done', 'failed', 'cancelled'].includes(job.status ?? ''));
@@ -62,6 +66,11 @@ export function YouTubeDialog({ mediaId, projectName, timeline, seconds, onClose
     setError('');
     try { const { url } = await connectYouTube(); window.open(url, '_blank'); setWaiting(true); } catch (problem) { setError((problem as Error).message); }
   };
+  useEffect(() => { if (frame.current) frame.current.currentTime = frameAt; }, [frameAt, thumb]);
+  const choosePictures = () => {
+    setThumb('picture');
+    if (pictures === null) { setPictures([]); listPhotos({ media_type: 'image', limit: 60 }).then((found) => setPictures(found.photos ?? [])).catch(() => setPictures([])); }
+  };
   const loadPlaylists = () => { if (playlists === null) { setPlaylists([]); getPlaylists().then(setPlaylists).catch(() => setPlaylists([])); } };
   const publish = async () => {
     setError('');
@@ -70,7 +79,8 @@ export function YouTubeDialog({ mediaId, projectName, timeline, seconds, onClose
     try {
       const { job_id } = await publishToYouTube({ media_id: mediaId, title: title.trim() || filled.title, description, category, language: filled.language, privacy: when ? 'private' : privacy,
         publish_at: when ? when.toISOString() : null, made_for_kids: kids, tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-        captions: captions ? filled.captions : [], playlist_id: playlist || null });
+        captions: captions ? filled.captions : [], playlist_id: playlist || null,
+        thumbnail_at: thumb === 'frame' ? frameAt : null, thumbnail_media_id: thumb === 'picture' ? pictureId : null });
       setJob({ id: job_id, progress: 0, status: 'queued' });
     } catch (problem) { setError((problem as Error).message); }
   };
@@ -102,6 +112,21 @@ export function YouTubeDialog({ mediaId, projectName, timeline, seconds, onClose
       <label className="ed-label">{t('Title')}<input className="ed-youtube-input" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)}/></label>
       <label className="ed-label">{t('Description')}<textarea rows={4} value={description} maxLength={5000} onChange={(event) => setDescription(event.target.value)}/></label>
       <div className="ed-qualities" role="group" aria-label={t('Who can watch')}>{PRIVACY.map((item) => <button key={item.id} className={privacy === item.id && !schedule ? 'on' : ''} aria-pressed={privacy === item.id && !schedule} onClick={() => { setPrivacy(item.id); setSchedule(''); }}><strong>{t(item.label)}</strong><span>{t(item.note)}</span></button>)}</div>
+      <div className="ed-label">{t('Thumbnail')}
+        <div className="ed-chips three ed-youtube-thumb-kind" role="group" aria-label={t('Thumbnail')}>
+          {([['auto', 'YouTube picks'], ['frame', 'From the video'], ['picture', 'A picture']] as const).map(([id, label]) => <button key={id} className={thumb === id ? 'on' : ''} aria-pressed={thumb === id} onClick={() => id === 'picture' ? choosePictures() : setThumb(id)}>{t(label)}</button>)}
+        </div>
+        {thumb === 'frame' && <div className="ed-youtube-frame">
+          <video ref={frame} src={photoVideoUrl(mediaId)} muted playsInline preload="auto" onLoadedData={(event) => { event.currentTarget.currentTime = frameAt; }}/>
+          <input type="range" aria-label={t('Frame')} min={0} max={Math.max(0.1, seconds - 0.1)} step={0.1} value={frameAt} onChange={(event) => setFrameAt(Number(event.target.value))}/>
+          <small>{t('Slide to pick the frame')} · {frameAt.toFixed(1)}s</small>
+        </div>}
+        {thumb === 'picture' && <div className="ed-youtube-pictures" role="listbox" aria-label={t('Pictures')}>
+          {pictures?.length === 0 && <small>{t('No pictures in the library yet.')}</small>}
+          {(pictures ?? []).map((picture) => <button key={picture.id} role="option" aria-selected={pictureId === picture.id} className={pictureId === picture.id ? 'on' : ''} title={picture.filename} onClick={() => setPictureId(picture.id)}><img src={photoThumbUrl(picture.id)} alt={picture.filename}/></button>)}
+        </div>}
+        {thumb !== 'auto' && <small className="ed-tip">{t('Custom thumbnails need a verified channel (youtube.com/verify).')}</small>}
+      </div>
       {filled.captions.length > 0 && <label className="ed-check"><input type="checkbox" checked={captions} onChange={(event) => setCaptions(event.target.checked)}/><span>{t('Add the lyrics as captions')}<small>{filled.captions.map((track) => track.name).join(' + ')} · {t('timed to the song, helps people find it')}</small></span></label>}
       <details className="ed-youtube-more" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open) loadPlaylists(); }}><summary>{t('More')}</summary>
         <label className="ed-label">{t('Tags')}<input className="ed-youtube-input" value={tags} onChange={(event) => setTags(event.target.value)}/></label>
@@ -111,7 +136,7 @@ export function YouTubeDialog({ mediaId, projectName, timeline, seconds, onClose
         <label className="ed-check"><input type="checkbox" checked={kids} onChange={(event) => setKids(event.target.checked)}/><span>{t('Made for kids')}<small>{t('YouTube requires this answer by law (COPPA).')}</small></span></label>
         <button className="ed-button" onClick={() => { void disconnectYouTube().then(setAccount); }}>{t('Disconnect YouTube')}</button>
       </details>
-      <button className="ed-primary wide" onClick={() => { void publish(); }}><Upload size={16}/>{schedule ? t('Schedule on YouTube') : t('Publish')}</button>
+      <button className="ed-primary wide" disabled={thumb === 'picture' && pictureId === null} onClick={() => { void publish(); }}><Upload size={16}/>{schedule ? t('Schedule on YouTube') : t('Publish')}</button>
     </>}
 
     {job && running && <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div>

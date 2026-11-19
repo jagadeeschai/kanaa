@@ -760,4 +760,12 @@ export const TAMIL: Record<string, string> = {
   'People & blogs': 'மக்கள் & வலைப்பதிவுகள்',
   'Education': 'கல்வி',
   'Travel & events': 'பயணம் & நிகழ்வுகள்',
+  'Thumbnail': 'சிறுபடம்',
+  'YouTube picks': 'YouTube தேர்ந்தெடுக்கும்',
+  'From the video': 'வீடியோவிலிருந்து',
+  'A picture': 'ஒரு படம்',
+  'Slide to pick the frame': 'சட்டகத்தைத் தேர்ந்தெடுக்க நகர்த்தவும்',
+  'Pictures': 'படங்கள்',
+  'No pictures in the library yet.': 'நூலகத்தில் இன்னும் படங்கள் இல்லை.',
+  'Custom thumbnails need a verified channel (youtube.com/verify).': 'தனிப்பயன் சிறுபடங்களுக்குச் சரிபார்க்கப்பட்ட சேனல் தேவை (youtube.com/verify).',
 };

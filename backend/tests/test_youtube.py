@@ -146,6 +146,30 @@ class YouTubeTest(unittest.TestCase):
         quota = httpx.Response(403, json={'error': {'errors': [{'reason': 'quotaExceeded'}]}})
         self.assertIn('daily upload allowance', youtube._explain(quota))
 
+    def test_thumbnail_fills_the_frame_and_fits_the_limit(self):
+        from PIL import Image
+        import numpy as np
+        noisy = self.root / 'big.png'
+        Image.fromarray(np.random.default_rng(1).integers(0, 255, (2000, 3000, 3), dtype=np.uint8)).save(noisy)
+        made = youtube.make_thumbnail(noisy, self.root / 'thumb.jpg')
+        with Image.open(made) as picture:
+            self.assertEqual((picture.size, picture.format), ((1280, 720), 'JPEG'))
+        self.assertLessEqual(made.stat().st_size, youtube.THUMB_LIMIT)
+        with Image.open(youtube.make_thumbnail(noisy, self.root / 'tall.jpg', upright=True)) as picture:
+            self.assertEqual(picture.size, (720, 1280))
+
+    def test_thumbnail_from_a_video_frame(self):
+        import shutil as tools, subprocess
+        if not tools.which('ffmpeg'):
+            self.skipTest('needs ffmpeg')
+        clip = self.root / 'clip.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:d=2', '-pix_fmt', 'yuv420p', str(clip)], check=True)
+        from PIL import Image
+        with Image.open(youtube.make_thumbnail(clip, self.root / 'f.jpg', at=1.0)) as picture:
+            red, green, _ = picture.convert('RGB').getpixel((640, 360))
+            self.assertEqual(picture.size, (1280, 720)); self.assertGreater(red, 200); self.assertLess(green, 60)
+        self.assertEqual(sorted(path.name for path in self.root.glob('*.frame.png')), [])
+
     def test_not_connected(self):
         video = self.root / 'v.mp4'; video.write_bytes(b'x')
         youtube.save_client(CLIENT)

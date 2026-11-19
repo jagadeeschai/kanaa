@@ -1,5 +1,6 @@
 """Publish to YouTube: connect a channel once, then upload an export with its details in one click."""
 import html
+import tempfile
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -48,6 +49,7 @@ class Publish(BaseModel):
     publish_at: Optional[str] = Field(default=None, max_length=40, pattern=r'^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$')
     made_for_kids: bool = False
     thumbnail_media_id: Optional[int] = None
+    thumbnail_at: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)  # A frame of the video itself, at this second.
     captions: List[Caption] = Field(default_factory=list, max_length=4)
     playlist_id: Optional[str] = Field(default=None, max_length=64, pattern=r'^[A-Za-z0-9_-]+$')
 
@@ -109,19 +111,24 @@ def youtube_publish(body: Publish):
     thumbnail = None
     if body.thumbnail_media_id is not None:
         picture = get_media(body.thumbnail_media_id)
-        if picture['media_type'] != 'image' or Path(picture['absolute_path']).suffix.lower() not in ('.png', '.jpg', '.jpeg'):
-            raise HTTPException(400, 'The thumbnail must be a PNG or JPEG picture.')
-        if Path(picture['absolute_path']).stat().st_size > 2 * 1024 * 1024:
-            raise HTTPException(400, 'YouTube takes thumbnails up to 2 MB. Pick a smaller picture.')
-        thumbnail = picture['absolute_path']
-    meta = {**body.model_dump(exclude={'media_id', 'thumbnail_media_id', 'captions'}), 'thumbnail': thumbnail,
+        if picture['media_type'] != 'image':
+            raise HTTPException(400, 'Pick a picture for the thumbnail.')
+        thumbnail = ('picture', Path(picture['absolute_path']))
+    elif body.thumbnail_at is not None:
+        thumbnail = ('frame', path)
+    upright = bool(row['height'] and row['width'] and row['height'] > row['width'])
+    meta = {**body.model_dump(exclude={'media_id', 'thumbnail_media_id', 'thumbnail_at', 'captions'}), 'thumbnail': None,
             'captions': [caption.model_dump() for caption in body.captions]}
     holder: dict = {}
 
     def run(should_cancel):
         def progress(value: float, phase: str):
             update_job(holder['id'], progress=round(value), phase=phase)
-        result = youtube.upload_video(path, meta, progress, should_cancel)
+        with tempfile.TemporaryDirectory(prefix='kanaa-thumb-') as folder:
+            if thumbnail:
+                kind, source = thumbnail
+                meta['thumbnail'] = str(youtube.make_thumbnail(source, Path(folder) / 'thumbnail.jpg', body.thumbnail_at if kind == 'frame' else None, upright))
+            result = youtube.upload_video(path, meta, progress, should_cancel)
         if body.privacy != 'private' and not body.publish_at and result.get('privacy') == 'private':
             result['notes'].insert(0, 'YouTube kept it private: Google locks uploads from apps it has not audited yet. Make it public in YouTube Studio.')
         return result

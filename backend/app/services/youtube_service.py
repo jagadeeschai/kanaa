@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -20,6 +21,7 @@ from typing import Any, Callable
 from urllib.parse import urlencode
 
 import httpx
+from PIL import Image, ImageOps
 
 from app.core.config import settings
 
@@ -213,6 +215,34 @@ def access_token(http: httpx.Client) -> str:
     with _lock:
         _access.update(token=tokens['access_token'], until=time.time() + int(tokens.get('expires_in', 0)) - 60)
     return tokens['access_token']
+
+
+# --- Thumbnail ------------------------------------------------------------------------------------------------------
+
+THUMB_SIZE = (1280, 720)
+THUMB_LIMIT = 2 * 1024 * 1024
+
+
+def make_thumbnail(source: Path, target: Path, at: float | None = None, upright: bool = False) -> Path:
+    """A YouTube thumbnail from a picture, or from the video's frame at `at` seconds: 1280×720 (720×1280 upright),
+    filled edge to edge, as a JPEG under YouTube's 2 MB limit."""
+    if at is not None:
+        frame = target.with_suffix('.frame.png')
+        made = subprocess.run([shutil.which('ffmpeg') or 'ffmpeg', '-nostdin', '-v', 'error', '-y', '-ss', f'{max(0.0, at):.3f}', '-i', str(source),
+                               '-frames:v', '1', str(frame)], capture_output=True)
+        if made.returncode != 0 or not frame.exists():
+            raise YouTubeError('Could not take that frame from the video.')
+        source = frame
+    size = THUMB_SIZE[::-1] if upright else THUMB_SIZE
+    with Image.open(source) as picture:
+        picture = ImageOps.fit(ImageOps.exif_transpose(picture).convert('RGB'), size, Image.LANCZOS)
+        for quality in (92, 85, 75, 60):
+            picture.save(target, 'JPEG', quality=quality, optimize=True)
+            if target.stat().st_size <= THUMB_LIMIT:
+                break
+    if at is not None:
+        source.unlink(missing_ok=True)
+    return target
 
 
 # --- Upload ---------------------------------------------------------------------------------------------------------

@@ -2,7 +2,8 @@ import { requestJson } from '../api/client';
 
 export type YouTubeStatus = { client: boolean; connected: boolean; channel: string | null; channel_id: string | null };
 export type PublishRequest = { media_id: number; title: string; description: string; tags: string[]; category: string; language?: string | null;
-  privacy: 'private' | 'unlisted' | 'public'; publish_at?: string | null; made_for_kids: boolean; captions: { language: string; name: string; srt: string }[]; playlist_id?: string | null };
+  privacy: 'private' | 'unlisted' | 'public'; publish_at?: string | null; made_for_kids: boolean; captions: { language: string; name: string; srt: string }[]; playlist_id?: string | null;
+  thumbnail_at?: number | null; thumbnail_media_id?: number | null };
 export type PublishResult = { youtube_id?: string; youtube_url?: string; studio_url?: string; notes?: string[] };
 
 export const getYouTube = () => requestJson<YouTubeStatus>('/api/youtube');
