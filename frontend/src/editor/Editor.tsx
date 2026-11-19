@@ -1189,7 +1189,7 @@ const followPanel = followTarget && <InspectorBindingsProvider name="follow" bin
     {palette && createPortal(<div data-ed-theme={theme}><CommandPalette commands={paletteCommands()} onClose={() => setPalette(false)} onSettings={findSetting}/></div>, rootRef.current ?? document.body)}
     {showingHelp && createPortal(<div className="ed-guide-layer" data-ed-theme={theme}><Guide article={guideArticle} shortcuts={SHORTCUTS} onClose={() => setShowingHelp(false)} onResetLayout={resetLayout}/></div>, rootRef.current ?? document.body)}
     {choosingFormat && timeline && <FormatDialog clipFormat={firstClipFormat} current={timeline.format} onChoose={chooseFormat}/>}
-    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
+    {exporting && timeline && <ExportDialog timeline={timeline} projectId={projectId} projectName={projectName} withSound={hasAudibleAudio} onNormalize={(normalize_audio) => change({ ...timeline, normalize_audio })} onClose={() => setExporting(false)} onOpen={onOpenOutput}/>}
     {creatingAIImage && timeline && <AIImageGenerator
       projectId={projectId}
       canvas={timeline.format.width === timeline.format.height ? 'square' : timeline.format.width > timeline.format.height ? 'landscape' : 'portrait'}

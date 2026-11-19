@@ -14,6 +14,7 @@ import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
 import { newId } from "../editor-constants";
 import { cannotSlice, SLICES, sliceIntoPieces } from "../../timeline/slice";
 import { openSmartSlice } from "../SmartSliceDialog";
+import { openYouTube } from "../../publish/YouTubeDialog";
 import { withVirtualBackground } from "../../timeline/virtual-background";
 import { screenColour } from "../../api/client";
 import { findAdjust, removeAdjust } from '../../timeline/adjust';
@@ -187,6 +188,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       { label: 'Add to timeline', onSelect: () => addMedia(item) }, { label: 'Add as overlay', onSelect: () => addOverlayMedia(item) },
       // Always third, greyed until main clips are selected, so the menu never changes shape.
       { label: picked.length > 1 ? `Replace the ${picked.length} selected clips` : 'Replace the selected clip', disabled: !picked.length, onSelect: replace }, 'divider' as const, { label: 'Move to folder…', onSelect: () => setFiling(item) },
+      ...(item.media_type === 'video' ? [{ label: 'Publish to YouTube…', onSelect: () => openYouTube(item.id) }] : []),
       ...(usedIds.has(item.id) ? ['divider' as const, { label: 'Remove from this video', onSelect: () => { if (timeline) { change(removeMedia(timeline, item.id)); setSelectedId(null); } } }] : []),
       'divider', { label: 'Delete from Kanaa…', danger: true, onSelect: () => setDeleting(item) },
     ] });

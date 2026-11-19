@@ -34,12 +34,14 @@ RenderTarget = Callable[[Callable[[], bool]], dict[str, Any]]
 
 # Exports and renders to watch go in one lane; finding people, 3D pictures, preview copies, effects and the rest in the other.
 EXPORT_KINDS = frozenset({'video_export', 'look', 'preview_render'})
-LANES = ('export', 'work', 'build')
+LANES = ('export', 'work', 'build', 'upload')
 # A lyric video build waits on work jobs (finding people, effects, 3D), so it runs in a lane of its own.
 BUILD_KINDS = {'lyric_build'}
 
 
 def lane_of(kind: str) -> str:
+    if kind == 'youtube_upload':
+        return 'upload'  # Uploading waits on the network, not this Mac: it never holds up exports or other work.
     return 'export' if kind in EXPORT_KINDS else 'build' if kind in BUILD_KINDS else 'work'
 
 

@@ -89,6 +89,6 @@ export function SmartSliceHost() {
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions"><button className="ed-primary" disabled={working} onClick={() => setTarget(null)}>{t('Done')}</button></div>
     </div>
-  </div>, document.body);
+  </div>, document.querySelector('.ed') ?? document.body);
 }
 

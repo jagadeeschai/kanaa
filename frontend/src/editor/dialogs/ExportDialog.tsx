@@ -1,6 +1,7 @@
 import { t } from "../../i18n";
 import { useEffect, useState } from "react";
-import { Check, Download, LoaderCircle, X } from "lucide-react";
+import { Check, Download, LoaderCircle, Upload, X } from "lucide-react";
+import { YouTubeDialog } from "../../publish/YouTubeDialog";
 import { cancelRenderJob, exportProjectTimeline, getJobStatus } from "../../api/client";
 import { duration, exportFormat, timecode, type Timeline } from "../../timeline/model";
 import { coverBrand } from "../../timeline/brand";
@@ -13,11 +14,12 @@ const ESTIMATED_MB_PER_SECOND_1080 = 1.1;
 
 const hardwareMbps = (shortSide: number) => ({ 720: 9, 1080: 16, 1440: 28 } as Record<number, number>)[shortSide] ?? (shortSide >= 2160 ? 50 : Math.round(shortSide * 0.015));
 
-export function ExportDialog({ timeline, projectId, withSound, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; withSound: boolean; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {
+export function ExportDialog({ timeline, projectId, projectName, withSound, onNormalize, onClose, onOpen }: { timeline: Timeline; projectId: number; projectName: string; withSound: boolean; onNormalize: (on: boolean) => void; onClose: () => void; onOpen: (id: number) => void }) {
   const shortest = Math.min(timeline.format.width, timeline.format.height);
   const [quality, setQuality] = useState(shortest >= 2160 ? 2160 : Math.max(720, Math.min(1080, shortest)));
   const [job, setJob] = useState<{ id: string; progress: number; status?: string | null; error?: string | null; output?: number | null } | null>(null);
   const [error, setError] = useState('');
+  const [publishing, setPublishing] = useState(false);
   const seconds = duration(timeline);
   const uncited=missingSources(timeline);
   const [hardware, setHardware] = useState(true);
@@ -44,6 +46,7 @@ export function ExportDialog({ timeline, projectId, withSound, onNormalize, onCl
     return () => clearTimeout(timer);
   }, [job]);
   const running = job && !['done', 'failed', 'cancelled'].includes(job.status ?? '');
+  if (publishing && job?.output) return <YouTubeDialog mediaId={job.output} projectName={projectName} timeline={timeline} seconds={seconds} onClose={onClose}/>;
   return <div className="ed-modal" role="dialog" aria-modal="true" aria-label="Export video"><div className="ed-card small">
     <button className="ed-close" aria-label="Close export" onClick={onClose}><X size={17}/></button>
     <h2>Export video</h2>
@@ -58,7 +61,7 @@ export function ExportDialog({ timeline, projectId, withSound, onNormalize, onCl
     {running && <><div className="ed-progress"><i style={{ width: `${job.progress}%` }}/></div><p>{job.status === 'queued' ? 'Waiting for another job to finish…' : `Exporting… ${job.progress}%`}</p>
       <p className="ed-tip">You can keep editing. This continues in the background and appears in Exports.</p>
       <div className="ed-pair"><button className="ed-button" onClick={onClose}>Keep editing</button><button className="ed-button" onClick={() => { void cancelRenderJob(job.id); }}>Cancel export</button></div></>}
-    {job?.status === 'done' && <><p className="ed-good"><Check size={16}/>Your video is ready</p><button className="ed-primary wide" onClick={() => { if (job.output) onOpen(job.output); onClose(); }}>Open video</button></>}
+    {job?.status === 'done' && <><p className="ed-good"><Check size={16}/>Your video is ready</p><button className="ed-primary wide" onClick={() => { if (job.output) onOpen(job.output); onClose(); }}>Open video</button><button className="ed-button wide ed-youtube-go" onClick={() => setPublishing(true)}><Upload size={15}/>{t('Publish to YouTube')}</button></>}
     {job?.status === 'failed' && <><p role="alert" className="ed-bad">{job.error}</p><button className="ed-button wide" onClick={() => setJob(null)}>Try again</button></>}
     {job?.status === 'cancelled' && <><p>Export cancelled.</p><button className="ed-button wide" onClick={() => setJob(null)}>Back</button></>}
     {running && job.status === 'queued' && <LoaderCircle className="spin" size={16}/>}

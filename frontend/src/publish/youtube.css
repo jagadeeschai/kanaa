@@ -1,0 +1,7 @@
+.ed-youtube .ed-label{margin:0 0 10px}
+.ed-youtube-input{box-sizing:border-box;width:100%;padding:8px;border:0;border-radius:7px;background:var(--well);box-shadow:var(--inset);color:var(--text);font:inherit;user-select:text}
+.ed-youtube-input[type=datetime-local]{color-scheme:light dark}
+.ed-youtube-steps{margin:0 0 14px;padding-left:18px;color:var(--text-2);font-size:12px;line-height:18px}.ed-youtube-steps li{margin-bottom:6px}.ed-youtube-steps a{color:var(--accent);white-space:nowrap}
+.ed-youtube-file{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}.ed-youtube-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.ed-youtube-more{margin:4px 0 12px}.ed-youtube-more summary{cursor:pointer;color:var(--text-2);font-size:12px;margin-bottom:8px}
+.ed-youtube .ed-pair a{display:inline-flex;align-items:center;justify-content:center;gap:4px;text-decoration:none}
