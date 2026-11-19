@@ -3,7 +3,7 @@ import { KARAOKE_COLOUR } from '../../timeline/karaoke';
 import { useEditor, useItemTime } from '../state/EditorContext';
 import { t } from '../../i18n';
 import { type CinemaReveal, type Clip, type CoverKind, DEFAULT_TITLE_DEPTH, type KeepClear, REST_TRANSFORM, type SurfaceKind, TITLE_DESIGNS, TITLE_SPACE, type TextItem, duration, titleSpaceOf } from '../../timeline/model';
-import { FontsWithYours, LetterFill } from './TextLooks';
+import { FontsWithYours, LetterFill, ZoomThrough } from './TextLooks';
 import { TITLE_MOVES, applyTitleMove, stillTitle } from '../../timeline/titleMoves';
 import { MotionPanel } from '../Keyframes';
 import { DrawPathButton } from '../PathDraw';
@@ -27,7 +27,7 @@ export type TextInspectorBindings = { onKaraoke: (colour: string | null) => void
 export function TextInspector() {
   const { onKaraoke, onDecorate, decorating, staying, stayNote, onStay, onStopStay, onStayCover, text, groundGap, onGroundGap, onSaveStyle, onCinema, onCinemaFront, onCinemaClear, pinning, onPin, placing, onPlace, onSurface, clearing, clearNote, clearUnder, onKeepClear, onRemoveClear, onBehindShape, cover, shapingMode, timing, follow, onChange, onEnter, onExit } = useEditorPanel<TextInspectorBindings>('text');
   const { local, seekLocal: onSeekLocal } = useItemTime(text.start, text.length);
-  const { pause: onPause } = useEditor();
+  const { pause: onPause, timeline } = useEditor();
 
   // The words as typed: they may be empty for a moment while retyping. A title can't be empty, so only words are
   // saved, and leaving the box empty puts the last words back.
@@ -42,6 +42,12 @@ export function TextInspector() {
     <label className="ed-color"><span>Colour</span><input type="color" aria-label="Text colour" value={text.color} onChange={(event) => onChange({ color: event.target.value }, `color-${text.id}`)}/></label>
     <Chips label="Style" options={[{ id: 'band', label: 'Band' }, { id: 'shadow', label: 'Shadow' }, { id: 'outline', label: 'Outline' }, { id: 'plain', label: 'Plain' }]} value={text.style} onPick={(style) => onChange({ style })}/>
     <LetterFill text={text} onChange={onChange}/>
+    <h3 className="ed-sub">{t('Video inside the letters')}</h3>
+    <div className="ed-chips" role="group" aria-label={t('Video inside the letters')}>
+      {([[null, 'Off'], ['#000000', 'Black around'], ['#ffffff', 'White around']] as const).map(([colour, label]) => <button key={label} className={(text.knockout ?? null) === colour ? 'on' : undefined} aria-pressed={(text.knockout ?? null) === colour}
+        title={colour ? t('The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>)}
+    </div>
+    <ZoomThrough text={text} format={timeline.format} onChange={onChange}/>
     <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
     <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
     <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>
@@ -117,11 +123,6 @@ export function TextInspector() {
       <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
       <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.glint)} onChange={(event) => onChange({ glint: event.target.checked })}/><span>{t('Glint')}</span></label>
-      <span className="ed-who-title">{t('Video inside the letters')}</span>
-      <div className="ed-chips" role="group" aria-label={t('Video inside the letters')}>
-        {([[null, 'Off'], ['#000000', 'Black around'], ['#ffffff', 'White around']] as const).map(([colour, label]) => <button key={label} className={(text.knockout ?? null) === colour ? 'on' : undefined} aria-pressed={(text.knockout ?? null) === colour}
-          title={colour ? t('The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>)}
-      </div>
       <div className="ed-chips" role="group" aria-label="Around the words">
         <button disabled={decorating} title="Soap bubbles rising around the words, for as long as the title shows" onClick={() => onDecorate('bubbles')}>Bubbles around it</button>
         <button disabled={decorating} title="A streak of light crossing the words every few seconds" onClick={() => onDecorate('shine')}>Shine across it</button>

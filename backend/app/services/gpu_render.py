@@ -200,6 +200,11 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
         paths, shown = explainer_graphics.frames(item, fmt, fps, frames, folder, f'{name}-graphic')
         return {'kind': 'image', 'path': str(paths[0]), 'paths': [str(path) for path in paths], 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
                 **_frames(item.transform, item.enter if item.enter and item.enter.preset != 'reveal' else None, item.exit, frames / fps, frames, fps)}
+    from app.services import zoom_reveal
+    if zoom_reveal.needs_frames(item):
+        paths, shown = zoom_reveal.frames(item, image, (fmt.width, fmt.height), fps, frames, folder, name)
+        return {'kind': 'image', 'path': paths[0], 'paths': paths, 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
+                'x': [0.5] * frames, 'y': [0.5] * frames, 'scale': [1.0] * frames, 'opacity': [1.0] * frames}
     if title3d.is_3d(item):
         # Depth, tilt and the letter tricks (pop-letters, reveal, line...): the export's own frames, already in place,
         # each different one drawn once (title3d_render.render_title_sequence).

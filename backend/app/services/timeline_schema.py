@@ -9,7 +9,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 MAX_LAYERS = 8  # Lyric videos carry lights, effects, brand, credits and a person layer; sparse layers cost the preview little.
 MAX_ITEMS = 2000  # Captions on a long talk add up.
-FONT_NAME = r'^[A-Za-z0-9 ]{1,40}$'  # A font family name, which can't carry ASS formatting.
+FONT_NAME = r'^[A-Za-z0-9 ]{1,40}$'
+MAX_SCALE = 8  # How big anything may grow...
+FLIGHT_SCALE = 60  # ...except a video-inside-text title zooming through its letters (zoom_reveal.py draws it).
+
+
+def check_size(transform, allowed: float = MAX_SCALE) -> None:
+    if transform is not None and any(key.v > allowed for key in transform.keyframes.get('scale', [])):
+        raise ValueError(f'Size keyframes must be at most {allowed:g}.')  # A font family name, which can't carry ASS formatting.
 Ease = Literal['linear', 'easeOut', 'easeInOut', 'bounce', 'snap']
 
 
@@ -54,8 +61,8 @@ class Transform(Strict):
                 raise ValueError('Keyframes must be in time order.')
         if any(not 0 <= key.v <= 1 for key in self.keyframes.get('opacity', [])):
             raise ValueError('Opacity keyframes must be between 0 and 1.')
-        if any(key.v <= 0 or key.v > 8 for key in self.keyframes.get('scale', [])):
-            raise ValueError('Size keyframes must be above 0 and at most 8.')
+        if any(key.v <= 0 or key.v > FLIGHT_SCALE for key in self.keyframes.get('scale', [])):
+            raise ValueError(f'Size keyframes must be above 0 and at most {FLIGHT_SCALE}.')
         return self
 
     @property
@@ -338,6 +345,7 @@ class Clip(Strict):
     def valid_range(self):
         if self.out <= self.in_:
             raise ValueError('A clip must end after it starts.')
+        check_size(self.transform)
         if any(move and move.preset in ('fly-reveal', 'fly-through-3d') for move in (self.enter, self.exit)):
             raise ValueError('Letter-window reveals are for titles only.')
         if self.ramp is not None and (len(self.ramp) < 2 or self.ramp[0].t != 0 or self.ramp[-1].t != 1 or any(b.t <= a.t for a, b in zip(self.ramp, self.ramp[1:]))):
@@ -594,6 +602,12 @@ class Text(Strict):
         return self.length_
 
 
+
+    @model_validator(mode='after')
+    def sized(self):
+        check_size(self.transform, FLIGHT_SCALE if self.knockout else MAX_SCALE)  # Only a video-inside title flies further.
+        return self
+
 class CaptionWord(Strict):
     w: str = Field(min_length=1, max_length=80)
     s: float = Field(ge=0)  # Seconds from the caption's start.
@@ -639,6 +653,12 @@ class BlurBox(Strict):
     def length(self) -> float:
         return self.length_
 
+
+
+    @model_validator(mode='after')
+    def sized(self):
+        check_size(self.transform)
+        return self
 
 class Sound(Strict):
     """Audio on an audio layer: an uploaded song, or the sound of a media item."""

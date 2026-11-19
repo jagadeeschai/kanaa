@@ -493,6 +493,24 @@ def text_image(body: dict):
     return FileResponse(target, media_type='image/png')
 
 
+@router.post('/text-hole')
+def text_hole(body: dict):
+    """Where to fly into a video-inside-text title: the middle of its thickest letter, as shares of the frame."""
+    from app.services.zoom_reveal import deepest_point
+    try:
+        item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
+    except (KeyError, ValidationError) as exc:
+        raise HTTPException(400, 'This text is not valid.') from exc
+    if not item.knockout:
+        raise HTTPException(400, 'Turn on Video inside the letters first.')
+    target = text_cache(item, fmt).with_suffix('.png')
+    if not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        render_text_image(item, fmt, target)
+    x, y = deepest_point(target)
+    return {'x': x, 'y': y}
+
+
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout')}

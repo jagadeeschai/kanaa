@@ -25,6 +25,7 @@ from app.services.animation import BEAT_SLACK, chroma_yuv, CROSS_BLUR, LOOKS, OP
 from app.services import particle_frames, title3d
 from app.services.title3d_render import render_title_frames
 from app.services.font_service import fonts_dir
+from app.services import zoom_reveal
 from app.services.moving_transitions import MOVING_KINDS, Moves
 from app.services.job_service import JobCancelled, stop_process_when
 from app.services.media_probe import MediaFacts
@@ -1341,6 +1342,21 @@ class Builder:
                 index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
                 self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
                 shown = self.pose(label, item.transform, item.enter if item.enter and item.enter.preset != 'reveal' else None, item.exit, item.length, frames, 1, 0, label)
+            elif zoom_reveal.needs_frames(item):
+                # Zooming through the letters: drawn frame by frame, already in place, as the GPU engine draws it.
+                paths, shown_states = zoom_reveal.frames(item, image, (self.fmt.width, self.fmt.height), fps, frames, self.folder, f'text-{position}-{number}')
+                listing = self.folder / f'text-{position}-{number}-zoom.txt'
+                rows, run_start = [], 0
+                for at in range(1, frames + 1):
+                    if at < frames and shown_states[at] == shown_states[run_start]:
+                        continue
+                    rows += [f"file '{Path(paths[shown_states[run_start]]).name}'", f'option framerate {fps}', f'duration {(at - run_start) / fps:.6f}']
+                    run_start = at
+                rows += [f"file '{Path(paths[shown_states[-1]]).name}'", f'option framerate {fps}']
+                listing.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+                index = self.add_input('-f', 'concat', '-safe', '0', '-i', str(listing))
+                self.graph.append(f'[{index}:v]fps={fps},format=gbrap,trim=end_frame={frames},setpts=PTS-STARTPTS,settb=AVTB[{label}]')
+                shown = label
             elif title3d.is_3d(item):
                 # Tilted, extruded or pinned: drawn already posed, frame by frame, through the same corners as the preview.
                 states = None

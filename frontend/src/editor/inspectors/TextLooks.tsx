@@ -10,6 +10,7 @@ import type { TextItem } from '../../timeline/model';
 import { ENGLISH_FONTS, TAMIL_FONTS, type FontChoice } from '../../timeline/templates';
 import type { Photo } from '../../types/photo';
 import { FontPicker } from './parts';
+import { hasZoomReveal, zoomReveal } from '../../timeline/zoom-reveal';
 
 type OwnFont = { family: string; file: string; tamil: boolean; latin: boolean };
 let own: OwnFont[] | null = null;
@@ -84,5 +85,25 @@ export function LetterFill({ text, onChange }: { text: TextItem; onChange: (chan
       {pictures.map((picture) => { const on = fill?.kind === 'picture' && fill.media_id === picture.id; return <button key={picture.id} role="option" aria-selected={on} className={on ? 'on' : ''} title={picture.filename} onClick={() => { choose({ kind: 'picture', media_id: picture.id }); setPictures(null); }}><img src={photoThumbUrl(picture.id)} alt={picture.filename}/></button>; })}
     </div>}
     {fill && text.karaoke && <p className="ed-tip">{t('Sung lyric lines keep their plain colour so the sung word can light up.')}</p>}
+  </>;
+}
+
+/** Zoom through the letters to the scene, at the end of a video-inside-text title. One click; ⌘Z undoes it. */
+export function ZoomThrough({ text, format, onChange }: { text: TextItem; format: { width: number; height: number; fps: number }; onChange: (changes: Partial<TextItem>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  if (!text.knockout) return null;
+  const on = hasZoomReveal(text);
+  const go = async () => {
+    setBusy(true); setNote(null);
+    try {
+      const hole = await requestJson<{ x: number; y: number }>('/api/text-hole', { method: 'POST', body: JSON.stringify({ text, format }) });
+      onChange(zoomReveal(text, hole));
+      setNote(t('It flies into a letter at the end and the scene fills the frame. ⌘Z undoes it.'));
+    } catch (problem) { setNote((problem as Error).message); } finally { setBusy(false); }
+  };
+  return <>
+    <button className={`ed-button wide ${on ? 'on' : ''}`} aria-pressed={on} disabled={busy || on} onClick={() => { void go(); }}>{t(on ? 'Zooms through to the scene' : 'Zoom through to the scene')}</button>
+    {note && <p className="ed-tip" role="status">{note}</p>}
   </>;
 }

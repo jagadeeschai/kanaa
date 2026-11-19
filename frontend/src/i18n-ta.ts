@@ -800,4 +800,8 @@ export const TAMIL: Record<string, string> = {
   'Gradient start colour': 'சாய்வின் தொடக்க நிறம்',
   'Gradient end colour': 'சாய்வின் இறுதி நிறம்',
   'Sung lyric lines keep their plain colour so the sung word can light up.': 'பாடப்படும் சொல் ஒளிர, பாடல் வரிகள் ஒரே நிறத்தில் இருக்கும்.',
+  'Zoom through to the scene': 'எழுத்துக்குள் நுழைந்து காட்சிக்கு',
+  'Zooms through to the scene': 'எழுத்துக்குள் நுழைந்து காட்சிக்குச் செல்கிறது',
+  'It flies into a letter at the end and the scene fills the frame. ⌘Z undoes it.': 'இறுதியில் ஒரு எழுத்துக்குள் பறந்து, காட்சி திரை முழுவதும் நிறையும். ⌘Z செயல்தவிர்க்கும்.',
+  'Turn on Video inside the letters first.': 'முதலில் எழுத்துகளுக்குள் வீடியோவை இயக்கவும்.',
 };
