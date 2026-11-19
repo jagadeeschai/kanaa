@@ -44,7 +44,7 @@ class Hole(unittest.TestCase):
         self.assertTrue(zoom_reveal.needs_frames(item))
         with self.assertRaises(ValueError):  # Only a video-inside title may grow that far.
             Text.model_validate({**title(), 'knockout': None})
-        self.assertFalse(zoom_reveal.needs_frames(Text.model_validate({**title(), 'transform': {'x': .5, 'y': .5, 'scale': 1.8, 'opacity': 1}})))
+        self.assertTrue(zoom_reveal.needs_frames(Text.model_validate({**title(), 'transform': {'x': .5, 'y': .5, 'scale': 1.8, 'opacity': 1}})))
         with tempfile.TemporaryDirectory() as folder:
             picture = Path(folder) / 'card.png'
             render_text_image(item.model_copy(update={'transform': item.transform.model_copy(update={'keyframes': {}})}), fmt, picture)
@@ -83,6 +83,19 @@ class FlightOnTheGpu(unittest.TestCase):
             before, last = a[30], a[-2]
             self.assertGreater((before.max(axis=2) < 10).mean(), 0.5, 'mostly black card with the letters before the flight')
             self.assertLess((last.max(axis=2) < 10).mean(), 0.02, 'the scene fills the frame at the end')
+
+    def test_a_small_moved_title_still_covers_the_whole_frame(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            fmt = Format.model_validate({'width': W, 'height': H, 'fps': FPS})
+            item = Text.model_validate({**title(), 'knockout': '#ffffff', 'enter': None, 'transform': {'x': .3, 'y': .3, 'scale': .5, 'opacity': 1}})
+            card = root / 'card.png'
+            render_text_image(item, fmt, card)
+            paths, shown = zoom_reveal.frames(item, card, (W, H), FPS, 10, root, 'small')
+            frame = np.asarray(Image.open(paths[shown[0]]).convert('RGBA'))
+        self.assertTrue((frame[-1, -1] == [255, 255, 255, 255]).all(), 'white beyond the moved card')
+        self.assertTrue((frame[0, 0] == [255, 255, 255, 255]).all())
+        self.assertGreater((frame[..., 3] < 30).mean(), 0.003, 'the letters are still holes')
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 """Zoom through the letters: a video-inside-text title flies into one of its letters until the scene fills the frame.
 
 The preview zooms the title's one picture (a GPU texture can be magnified any amount). The exports can't scale a frame
-40 times over, so such a title is drawn here frame by frame, already in place, from the same per-frame values the GPU
+40 times over, so every video-inside title is drawn here frame by frame, already in place, from the same per-frame values the GPU
 engine uses (gpu_render._frames): its position, size, see-through and any enter or exit move."""
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
-BIG = 4.0  # Past this size a knockout title is drawn frame by frame.
 
 
 def needs_frames(item) -> bool:
-    keys = item.transform.keyframes.get('scale') or []
-    return bool(item.knockout) and max([item.transform.scale, *(key.v for key in keys)]) > BIG
+    """Every video-inside-text title: drawn here so its colour always fills the whole frame around the letters, however
+    the title is moved or sized (a plain picture would leave its edges showing), and so it can zoom any amount."""
+    return bool(item.knockout)
 
 
 def deepest_point(picture: Path) -> tuple[float, float]:
@@ -42,6 +42,7 @@ def frames(item, picture: Path, size: tuple[int, int], fps: int, count: int, fol
     width, height = size
     with Image.open(picture) as image:
         card = np.asarray(image.convert('RGBA'))
+    around = tuple(int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)) + (255,)  # The card's colour, past its edges too.
     pose = _frames(item.transform, item.enter, item.exit, count / fps, count, fps)
     paths, shown, seen = [], [], {}
     for k in range(count):
@@ -52,7 +53,7 @@ def frames(item, picture: Path, size: tuple[int, int], fps: int, count: int, fol
         key = (round(s, 5), round(cx, 2), round(cy, 2), round(pose['opacity'][k], 4))
         if key not in seen:
             matrix = np.float32([[s, 0, cx - s * width / 2], [0, s, cy - s * height / 2]])
-            posed = cv2.warpAffine(card, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+            posed = cv2.warpAffine(card, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=around)
             if pose['opacity'][k] < 1:
                 posed = posed.copy(); posed[..., 3] = (posed[..., 3] * pose['opacity'][k]).astype(np.uint8)
             path = folder / f'{name}-zoom{len(paths)}.png'

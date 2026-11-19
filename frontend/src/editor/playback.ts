@@ -1248,6 +1248,23 @@ export class PlaybackEngine {
     gl.uniform2f(uniforms.flip, 0, 0); gl.uniform4f(uniforms.cropBox, 0, 0, 1, 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.uniform1i(uniforms.titleParticle, 0);
+    if (item.knockout) {
+      // Video inside the words: the card's colour fills the frame beyond its edges too, wherever the title is moved or
+      // however small it is, as the exports draw it (zoom_reveal.py). Four bands around the card, a pixel into it.
+      const cx = 0.5 + look.dx + (valueAt(transform, 'x', local) - 0.5) * look.scale, cy = 0.5 + look.dy + (ty - 0.5) * look.scale;
+      const [px, py] = [1 / width, 1 / height];
+      const left = cx - size / 2 + px, right = cx + size / 2 - px, top = cy - size / 2 + py, bottom = cy + size / 2 - py;
+      const colour = [1, 3, 5].map((at) => parseInt(item.knockout!.slice(at, at + 2), 16) / 255) as [number, number, number];
+      const seen = look.opacity * Math.max(0, Math.min(1, valueAt(transform, 'opacity', local)));  // Fades with the title.
+      const band = (x0: number, y0: number, x1: number, y1: number) => {
+        [x0, y0, x1, y1] = [Math.max(0, x0), Math.max(0, y0), Math.min(1, x1), Math.min(1, y1)];
+        if (x1 <= x0 || y1 <= y0) return;
+        gl.uniform4f(uniforms.box, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0); gl.uniform1f(uniforms.turn, 0);
+        gl.uniform4f(uniforms.fill, ...colour, seen); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      };
+      band(0, 0, 1, top); band(0, bottom, 1, 1); band(0, top, left, bottom); band(right, top, 1, bottom);
+      gl.uniform4f(uniforms.fill, 0, 0, 0, 0);
+    }
   }
 
   /** A title with tilt, depth or a pin: each depth layer from back to front, warped through its homography (title3d.ts). */
