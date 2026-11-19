@@ -334,6 +334,8 @@ uniform int toneMode; uniform float toneBalance, toneAmount; uniform vec3 toneSh
 // Keyed-clip compositing, mirrored in timeline_service.py (composited, light_wrap): edge tightening pulls the matte in,
 // colour match multiplies by measured gains, light wrap lays the blurred backdrop over a narrow band inside the edge.
 uniform vec2 chokeSigma, wrapSigma; uniform float wrapAmount, wrapBlur; uniform vec3 matchGain;
+// A clip's crop (timeline_schema.Crop): the part of its picture shown, x0, y0, x1, y1 from the top left. As crop_filters.
+uniform vec4 cropBox;
 float filmHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 vec4 pick(vec2 at){
   vec4 c=texture(tex,at);
@@ -396,6 +398,7 @@ vec4 hidden(){
   return vec4(rgb * a, a);
 }
 void main(){
+  if (uv.x < cropBox.x || uv.y < cropBox.y || uv.x >= cropBox.z || uv.y >= cropBox.w) { color = vec4(0.); return; }
   if (fill.a > 0.) { color = vec4(fill.rgb * fill.a, fill.a); return; }
   if (hideMode > 0) { color = hidden(); return; }
   vec2 q = mix(shaped(uv), 1. - shaped(uv), flip);
@@ -622,7 +625,7 @@ export class PlaybackEngine {
     const position = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh', 'useWheels', 'wheelLift', 'wheelGamma', 'wheelGain', 'chokeSigma', 'wrapSigma', 'wrapAmount', 'wrapBlur', 'matchGain']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['crossMode', 'crossFlip', 'crossShift', 'box', 'opacity', 'brightness', 'contrast', 'saturation', 'gamma', 'fade', 'rotation', 'flip', 'tint', 'blur', 'blurAspect', 'turn', 'frame', 'blendMode', 'backdrop', 'keyType', 'keyColor', 'keySimilarity', 'keySoftness', 'keySpill', 'hideMode', 'hideShape', 'hideAmount', 'pixelGrid', 'fill', 'useShape', 'shapeTex', 'viewport', 'oldFilm', 'oldGrain', 'oldScratches', 'oldDust', 'oldWeave', 'oldSeed', 'signalMode', 'signalAmount', 'signalSplit', 'signalJitter', 'signalScanlines', 'signalNoise', 'lensMode', 'lensAmount', 'lensCount', 'lensRefraction', 'lensSoftness', 'splashAmount', 'splashTolerance', 'splashSoftness', 'splashColor', 'dreamyAmount', 'dreamySoftness', 'dreamyWarmth', 'titleParticle', 'titleParticleProgress', 'mirrorMode', 'mirrorSegments', 'mirrorTurn', 'picAspect', 'zoomReach', 'zoomCenter', 'tiltBlur', 'tiltFocus', 'tiltBand', 'tiltSat', 'tiltSigma', 'toneMode', 'toneBalance', 'toneAmount', 'toneShadow', 'toneHigh', 'useWheels', 'wheelLift', 'wheelGamma', 'wheelGain', 'chokeSigma', 'wrapSigma', 'wrapAmount', 'wrapBlur', 'matchGain', 'cropBox']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.main = program;
     const finishing = gl.createProgram()!;
     gl.attachShader(finishing, shader(gl.VERTEX_SHADER, FINISH_VERTEX));
@@ -980,6 +983,7 @@ export class PlaybackEngine {
     gl.uniform2f(uniforms.blurAspect, height / (fitted.width * scale), sideways ? 0 : 1);
     gl.uniform1i(uniforms.rotation, clip.adjust.rotation);
     gl.uniform2f(uniforms.flip, clip.adjust.flip_horizontal ? 1 : 0, clip.adjust.flip_vertical ? 1 : 0);
+    const crop = clip.crop; gl.uniform4f(uniforms.cropBox, crop?.x0 ?? 0, crop?.y0 ?? 0, crop?.x1 ?? 1, crop?.y1 ?? 1);
     const shapeUrl = clip.shape_mask && this.shapeUrl(clip.shape_mask);
     const shape = shapeUrl ? this.imageTexture(shapeUrl) : null;
     // Until its shape picture arrives, a shaped clip draws nothing rather than the whole frame.
@@ -1200,7 +1204,7 @@ export class PlaybackEngine {
     gl.uniform3f(uniforms.tint, 1, 1, 1);
     gl.uniform1f(uniforms.blur, 0);
     gl.uniform1i(uniforms.rotation, 0);
-    gl.uniform2f(uniforms.flip, 0, 0);
+    gl.uniform2f(uniforms.flip, 0, 0); gl.uniform4f(uniforms.cropBox, 0, 0, 1, 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
@@ -1241,7 +1245,7 @@ export class PlaybackEngine {
     gl.uniform1f(uniforms.blur, look.blur / size);
     gl.uniform2f(uniforms.blurAspect, height / width, 1);
     gl.uniform1i(uniforms.rotation, 0);
-    gl.uniform2f(uniforms.flip, 0, 0);
+    gl.uniform2f(uniforms.flip, 0, 0); gl.uniform4f(uniforms.cropBox, 0, 0, 1, 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.uniform1i(uniforms.titleParticle, 0);
   }

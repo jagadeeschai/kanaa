@@ -26,6 +26,7 @@ struct Item: Decodable {
     let start: Int  // First frame on the timeline.
     let frames: Int
     let sourceIn: Double  // Source seconds at the item's first frame.
+    let crop: [Double]?  // The part of the picture shown: x0, y0, x1, y1 as shares, top left (timeline_schema.Crop).
     let times: [Double]?  // A speed ramp: the source second each frame shows (ramp.py). Otherwise sourceIn + frame × speed.
     let speed: Double
     let x: [Double]  // Per frame of the item: centre, as a fraction of the frame (y down).
@@ -102,6 +103,14 @@ kernel vec4 soften(__sample sharp, __sample blurred, float amount, float lift, f
 """)!
 
 // Same RGB order as picture_filters. Round at the 8-bit intermediate filter boundaries.
+/// A clip's crop: see-through outside the kept box (left, bottom, right, top in image pixels).
+let cropKernel = CIColorKernel(source: """
+kernel vec4 cropTo(__sample s, vec4 box) {
+    vec2 at = destCoord();
+    return (at.x >= box.x && at.x < box.z && at.y >= box.y && at.y < box.w) ? s : vec4(0.0);
+}
+""")!
+
 let colourKernel = CIColorKernel(source: """
 kernel vec4 grade(__sample s, vec3 tint, float power, float fade, float contrast, float saturation) {
     vec3 c = s.a > 0.0 ? s.rgb / s.a : vec3(0.0);
@@ -279,6 +288,13 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
         picture = videos[index]!.frame(at: sourceTime(item, k))
     }
     guard var shown = picture, item.opacity[k] > 0.001 else { return nil }
+    if let c = item.crop, c != [0, 0, 1, 1] {
+        // As the export's crop_filters: whole pixels of the picture, from its top left.
+        let e = shown.extent, w = e.width, h = e.height
+        let box = CIVector(x: e.minX + (w * c[0] + 0.5).rounded(.down), y: e.minY + h - (h * c[3] + 0.5).rounded(.down),
+                           z: e.minX + (w * c[2] + 0.5).rounded(.down), w: e.minY + h - (h * c[1] + 0.5).rounded(.down))
+        shown = cropKernel.apply(extent: e, arguments: [shown, box])!
+    }
     if let path = item.maskPath {
         if masks[index] == nil {
             do { masks[index] = try VideoSource(path: path, from: item.sourceIn) } catch { fail("Could not read mask: \(error)") }

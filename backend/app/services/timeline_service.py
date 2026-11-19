@@ -474,6 +474,15 @@ def source_steps(facts: MediaFacts) -> list[str]:
     return [color_filter(facts), 'scale=trunc(iw*sar/2)*2:ih', 'setsar=1']
 
 
+def crop_filters(crop) -> list[str]:
+    """A clip's crop: outside the kept part of the fitted picture is see-through, in whole pixels as the GPU engine
+    (cropKernel) and the preview (pick in playback.ts) draw it."""
+    if crop is None or (crop.x0, crop.y0, crop.x1, crop.y1) == (0, 0, 1, 1):
+        return []
+    inside = f"gte(X,floor(W*{crop.x0}+0.5))*lt(X,floor(W*{crop.x1}+0.5))*gte(Y,floor(H*{crop.y0}+0.5))*lt(Y,floor(H*{crop.y1}+0.5))"
+    return [f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*{inside}'"]
+
+
 def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int, frames: int, held_head: int = 0, timing: str | None = None, sourced: bool = False, tag: str = 'clip') -> str:
     """Bring any source to one size, rate and color, and exactly `frames` long. held_head repeats the first frame. `sourced` skips source_steps, already done."""
     W, H = canvas
@@ -483,7 +492,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     echo = echo_filter(clip.echo)
-    steps += [f'fps={fps}', *([echo] if echo else []), f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap',
+    steps += [f'fps={fps}', *([echo] if echo else []), f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap', *crop_filters(clip.crop),
               *mirror_filters(clip.mirror, tag, frames + 2), *zoom_blur_filters(clip.zoom_blur, tag), *tilt_shift_filters(clip.tilt_shift, canvas, tag, frames + 2),
               f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash), *dreamy_glow_filters(clip.dreamy_glow), *tone_grade_filters(clip.tone_grade, tag)]
     if held_head:

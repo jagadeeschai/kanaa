@@ -136,6 +136,21 @@ class FocusPull(Strict):
     length: float = Field(default=1, ge=0.2, le=4)
 
 
+class Crop(Strict):
+    """The part of its own picture a clip shows, as shares of it (x0, y0 the top left kept, x1, y1 the bottom right). The
+    rest is see-through; the picture keeps its place and size, so a piece moves with the clip (Slice into pieces)."""
+    x0: float = Field(default=0, ge=0, le=1)
+    y0: float = Field(default=0, ge=0, le=1)
+    x1: float = Field(default=1, ge=0, le=1)
+    y1: float = Field(default=1, ge=0, le=1)
+
+    @model_validator(mode='after')
+    def kept(self):
+        if self.x1 - self.x0 < 0.01 or self.y1 - self.y0 < 0.01:
+            raise ValueError('A crop must keep some of the picture.')
+        return self
+
+
 class ShapeMask(Strict):
     """Only the part of the frame inside `points` shows, with a soft edge. Points are 0 to 1 across and down the frame."""
     points: List[Tuple[float, float]] = Field(min_length=3, max_length=200)
@@ -315,6 +330,7 @@ class Clip(Strict):
     bypass: Optional[List[Literal['look', 'colour', 'old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'dreamy_glow', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo', 'background', 'green_screen', 'steady', 'reverse', 'speed_effect', 'motion', 'enter_exit', 'transition', 'clean_voice']]] = Field(default=None, max_length=22)  # Effects switched off, their settings kept.
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
+    crop: Optional[Crop] = None  # The part of its picture it shows (Crop).
     popout: Optional[PopoutLink] = None  # Set by Pop-out (3D); Remove pop-out puts the original picture back.
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.
 
