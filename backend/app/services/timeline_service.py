@@ -80,7 +80,9 @@ class Compiled:
 
 def ease_expression(name: str, p: str) -> str:
     return {'linear': p, 'easeOut': f'(1-pow(1-{p},3))',
-            'easeInOut': f'if(lt({p},0.5),4*pow({p},3),1-pow(-2*{p}+2,3)/2)'}[name]
+            'easeInOut': f'if(lt({p},0.5),4*pow({p},3),1-pow(-2*{p}+2,3)/2)',
+            'bounce': f'(1+2.70158*pow({p}-1,3)+1.70158*pow({p}-1,2))',
+            'snap': f'if(gte({p},1),1,1-pow(2,-10*{p}))'}[name]
 
 
 def property_expression(transform: Transform, prop: str, clock: str = 't') -> str:

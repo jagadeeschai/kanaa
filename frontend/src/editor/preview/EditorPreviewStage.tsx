@@ -18,6 +18,7 @@ import { clipLength,REST_TRANSFORM,timecode,type AudioLayer,type BlurBox,type Ca
 import { ON_ITEM } from "../editor-constants";
 import { ARTICLES } from "../guide-articles";
 import { MotionPath } from "../Keyframes";
+import { PathDrawer } from "../PathDraw";
 import { PlaybackEngine,type PlaybackSource } from "../playback";
 import { type SaveState } from "../project-save";
 import { ResizeBox } from "../ResizeBox";
@@ -137,7 +138,10 @@ export function EditorPreviewStage() {
           <canvas ref={canvasRef} aria-label="Preview" onContextMenu={openPreviewMenu} onPointerDown={previewDown} onPointerMove={previewMove} onPointerUp={() => { dragPreview.current = null; }} onDoubleClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const hit = titleAt((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height); if (hit) { engineRef.current?.pause(); setPickedInPreview(hit.id); setSelectedId(hit.id); if (!hit.graphic) setEditingTitle(hit.id); } }} className={(placing && !placing.busy) || pickingKey ? 'picking' : selected && selected.enabled !== false && !selected.frame_locked ? 'movable' : ''}/>
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && !pickingKey && !shaping && !drawing && timeline && now >= selected.start && now < selected.start + clipLength(selected) && (() => { const source = sourceFor(selected.media_id); return source && <ResizeBox clip={selected} source={source} format={timeline.format} local={local} onChange={(transform, group) => updateSelected({ transform }, group)}/>; })()}
           {selected && selected.enabled !== false && !selectedLayer?.locked && !selected.frame_locked && <MotionPath transform={selected.transform} length={clipLength(selected)} onChange={(transform, group) => updateSelected({ transform }, group)} onSeek={(t) => seek(selected.start + t)}/>}
+          {/* Drawing a path frees a frame-locked picture to move, as Animate does. */}
+          {selected && selected.enabled !== false && !selectedLayer?.locked && <PathDrawer transform={selected.transform} length={clipLength(selected)} local={now - selected.start} onChange={(transform, group) => updateSelected({ transform, frame_locked: false }, group)}/>}
           {selectedText && !selectedText.graphic && !selectedLayer?.locked && !isFollowed(selectedText.transform ?? REST_TRANSFORM) && <MotionPath transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} onChange={(transform, group) => updateSelectedText({ transform }, group)} onSeek={(t) => seek(selectedText.start + t)}/>}
+          {selectedText && !selectedText.graphic && !selectedLayer?.locked && <PathDrawer transform={selectedText.transform ?? REST_TRANSFORM} length={selectedText.length} local={now - selectedText.start} onChange={(transform, group) => updateSelectedText({ transform }, group)}/>}
           {selectedText?.graphic && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && <GraphicHandles graphic={selectedText.graphic} onChange={(graphic, group) => updateSelectedText({ graphic }, group)}/>}
           {selectedText && !selectedText.graphic && pickedInPreview === selectedText.id && !selectedLayer?.locked && now >= selectedText.start && now < selectedText.start + selectedText.length && (() => {
             const rect = titleRect(selectedText);

@@ -19,6 +19,7 @@ import { type MovePreset } from '../../timeline/presets';
 import { RAMPS } from '../../timeline/ramp';
 import { type Photo } from '../../types/photo';
 import { MotionPanel } from '../Keyframes';
+import { DrawPathButton } from '../PathDraw';
 import { Timing, timingSummary } from '../Timing';
 import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, More, Panel } from '../layout';
@@ -267,6 +268,7 @@ export function Inspector() {
     </Group>
     <Group title="Moves" tab="motion" startOpen changed={Object.keys(clip.transform.keyframes ?? {}).length > 0} keywords="zoom in push pull shake move keyframe position size tilt see-through animate" tip="A gentle zoom in one click; More lets you animate anything." help="animations-and-moves">
     <div className="ed-chips" role="group" aria-label="Quick moves">{MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onMove(move.id)}>{move.label}</button>)}</div>
+    <DrawPathButton/>
     <More label="Animate position, size and more">
     <MotionPanel transform={clip.transform} local={local} length={(clip.out - clip.in) / clip.speed} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </More>

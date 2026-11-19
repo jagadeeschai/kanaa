@@ -6,6 +6,7 @@ import { type CinemaReveal, type Clip, type CoverKind, DEFAULT_TITLE_DEPTH, type
 import { ENGLISH_FONTS, TAMIL_FONTS } from '../../timeline/templates';
 import { TITLE_MOVES, applyTitleMove, stillTitle } from '../../timeline/titleMoves';
 import { MotionPanel } from '../Keyframes';
+import { DrawPathButton } from '../PathDraw';
 import { Timing, timingSummary } from '../Timing';
 import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, LayerModeContext, More, Panel, TabHeading } from '../layout';
@@ -122,6 +123,7 @@ export function TextInspector() {
       </div>
     </Group>
     <Group title="Keyframes" tab="motion" changed={Object.keys(text.transform?.keyframes ?? {}).length > 0} keywords="move position size tilt see-through animate keyframe" help="animations-and-moves">
+      <DrawPathButton/>
       <MotionPanel transform={text.transform ?? REST_TRANSFORM} local={local} length={text.length} onChange={(transform, group) => onChange({ transform }, group)} onSeek={onSeekLocal} onGestureStart={onPause}/>
     </Group>
     <Group title="People and scene" tab="motion" startOpen={Boolean(text.stay_with || text.pin || text.keep_clear)} changed={Boolean(text.stay_with || text.pin || text.keep_clear)}

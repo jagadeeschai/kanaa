@@ -6,7 +6,7 @@ import { valueAt, type AnimatedProperty, type Ease, type Transform } from '../ti
 import { addKey, hasKeyAt, isAnimated, isFollowed, keyTimes, moveKey, removeKey, setEase, toggleAnimated, writeValue, type Control } from '../timeline/keyframes';
 
 const SAMPLES_PER_SECOND = 30;
-const EASES: { id: Ease; label: string }[] = [{ id: 'easeInOut', label: 'Smooth' }, { id: 'easeOut', label: 'Slow down' }, { id: 'linear', label: 'Steady' }];
+const EASES: { id: Ease; label: string }[] = [{ id: 'easeInOut', label: 'Smooth' }, { id: 'easeOut', label: 'Slow down' }, { id: 'linear', label: 'Steady' }, { id: 'bounce', label: 'Bounce' }, { id: 'snap', label: 'Snap' }];
 const SLIDERS: Record<Exclude<Control, 'position'>, { label: string; property: AnimatedProperty; min: number; max: number; step: number; rest: number; unit: string; factor: number }> = {
   scale: { label: 'Size', property: 'scale', min: 0.05, max: 8, step: 0.01, rest: 1, unit: '%', factor: 100 },
   rotation: { label: 'Tilt', property: 'rotation', min: -360, max: 360, step: 1, rest: 0, unit: '°', factor: 1 },

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 MAX_LAYERS = 8  # Lyric videos carry lights, effects, brand, credits and a person layer; sparse layers cost the preview little.
 MAX_ITEMS = 2000  # Captions on a long talk add up.
 FONT_NAME = r'^[A-Za-z0-9 ]{1,40}$'  # A font family name, which can't carry ASS formatting.
-Ease = Literal['linear', 'easeOut', 'easeInOut']
+Ease = Literal['linear', 'easeOut', 'easeInOut', 'bounce', 'snap']
 
 
 class Strict(BaseModel):
@@ -807,6 +807,8 @@ def value_at(transform: Transform, prop: str, t: float) -> float:
         if t < b.t:
             p = (t - a.t) / (b.t - a.t)
             eased = {'linear': p, 'easeOut': 1 - (1 - p) ** 3,
-                     'easeInOut': 4 * p ** 3 if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2}[a.ease]
+                     'easeInOut': 4 * p ** 3 if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2,
+                     'bounce': 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2,
+                     'snap': 1 if p >= 1 else 1 - 2 ** (-10 * p)}[a.ease]
             return a.v + (b.v - a.v) * eased
     return keys[-1].v

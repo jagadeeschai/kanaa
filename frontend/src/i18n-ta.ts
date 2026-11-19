@@ -779,4 +779,9 @@ export const TAMIL: Record<string, string> = {
   'Any colour': 'எந்த நிறமும்',
   'Drawing the music…': 'இசையை வரைகிறது…',
   'It moves with the song. Drag or resize it in the preview; ⌘Z undoes it.': 'இது பாடலுடன் அசையும். முன்னோட்டத்தில் இழுக்கலாம் அல்லது அளவு மாற்றலாம்; ⌘Z செயல்தவிர்க்கும்.',
+  'Draw its path': 'அதன் பாதையை வரை',
+  'How it travels': 'எப்படிப் பயணிக்கும்',
+  'Snap': 'சட்டென',
+  'Drag where it should travel': 'அது பயணிக்க வேண்டிய இடத்தில் இழுக்கவும்',
+  'Drag where it should travel. Esc cancels.': 'அது பயணிக்க வேண்டிய இடத்தில் இழுக்கவும். Esc ரத்துசெய்யும்.',
 };
