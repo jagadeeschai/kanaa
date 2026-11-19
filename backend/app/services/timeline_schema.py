@@ -540,6 +540,7 @@ class Text(Strict):
     id: str = Field(min_length=1, max_length=64)
     source:Optional[str]=Field(default=None,max_length=500)
     layout_original: Optional[LayoutOriginal] = None  # Set by a lyric layout; Original puts it back.
+    knockout: Optional[str] = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')  # Video inside the words: a card in this colour with the letters cut out.
     # Settings this item sets for itself, over its layer's style (Layer.style). Names of the item's own fields.
     own: List[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=80)
     start: float = Field(ge=0)

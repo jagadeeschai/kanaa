@@ -784,4 +784,9 @@ export const TAMIL: Record<string, string> = {
   'Snap': 'சட்டென',
   'Drag where it should travel': 'அது பயணிக்க வேண்டிய இடத்தில் இழுக்கவும்',
   'Drag where it should travel. Esc cancels.': 'அது பயணிக்க வேண்டிய இடத்தில் இழுக்கவும். Esc ரத்துசெய்யும்.',
+  'Video inside text': 'எழுத்துக்குள் வீடியோ',
+  'Video inside the letters': 'எழுத்துகளுக்குள் வீடியோ',
+  'Black around': 'சுற்றிலும் கருப்பு',
+  'White around': 'சுற்றிலும் வெள்ளை',
+  'The picture under the title shows only through its letters.': 'தலைப்பின் கீழுள்ள படம் அதன் எழுத்துகள் வழியே மட்டும் தெரியும்.',
 };

@@ -117,6 +117,11 @@ export function TextInspector() {
       <div className="ed-chips" role="group" aria-label="Title moves">{TITLE_MOVES.map((move) => <button key={move.id} title={move.tip} onClick={() => onChange(applyTitleMove(text, move.id))}>{move.label}</button>)}</div>
       <button className="ed-button wide" onClick={() => onChange(stillTitle(text, local))} title="Stops the title moving, where it is now">Stand still</button>
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.glint)} onChange={(event) => onChange({ glint: event.target.checked })}/><span>{t('Glint')}</span></label>
+      <span className="ed-who-title">{t('Video inside the letters')}</span>
+      <div className="ed-chips" role="group" aria-label={t('Video inside the letters')}>
+        {([[null, 'Off'], ['#000000', 'Black around'], ['#ffffff', 'White around']] as const).map(([colour, label]) => <button key={label} className={(text.knockout ?? null) === colour ? 'on' : undefined} aria-pressed={(text.knockout ?? null) === colour}
+          title={colour ? t('The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>)}
+      </div>
       <div className="ed-chips" role="group" aria-label="Around the words">
         <button disabled={decorating} title="Soap bubbles rising around the words, for as long as the title shows" onClick={() => onDecorate('bubbles')}>Bubbles around it</button>
         <button disabled={decorating} title="A streak of light crossing the words every few seconds" onClick={() => onDecorate('shine')}>Shine across it</button>

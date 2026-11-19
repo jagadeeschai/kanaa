@@ -793,6 +793,18 @@ def caption_edit(layer: CaptionLayer, cues: list[dict]) -> VideoEditRequest:
 def render_text_image(item: Text, fmt: Format, target: Path, layer: CaptionLayer | None = None, lit: int | None = None, graphic_progress: float = 1) -> None:
     """`lit`: for a caption, its highlighted word; for a karaoke title, the last word sung so far."""
     """Text goes through libass once, so preview and export share the same letters. With `layer`, `item` is a caption in that layer's look."""
+    if layer is None and not item.graphic and item.knockout:
+        # Video inside the words: a card in the knockout colour with the letters cut out, so whatever is under the
+        # title shows through them. One picture, so the preview, the GPU and FFmpeg all show the same holes.
+        render_text_image(item.model_copy(update={'knockout': None}), fmt, target, lit=lit, graphic_progress=graphic_progress)
+        from PIL import Image
+        with Image.open(target) as letters:
+            hole = np.asarray(letters.convert('RGBA'))[..., 3]
+        card = np.empty((*hole.shape, 4), np.uint8)
+        card[..., :3] = [int(item.knockout[i:i + 2], 16) for i in (1, 3, 5)]
+        card[..., 3] = 255 - hole
+        Image.fromarray(card, 'RGBA').save(target)
+        return
     if layer is not None and layer.shared_images:
         from app.services.shared_captions import render_image
         render_image(item,fmt,target,layer,lit)

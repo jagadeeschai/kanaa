@@ -36,6 +36,9 @@ export const TEMPLATES: Template[] = [
   // A credit as labels show it: the role in Tamil and English above the name, gold title alone, no box behind.
   // Song credits in one title: type the lines in order (title, its English name, then label · ROLE, name, English name,
   // a blank line between credits); each line is styled by what it is.
+  // Video inside the words: a black card with the letters cut out, big, pushing in slowly; the picture under it shows through.
+  { id: 'video-inside', label: 'Video inside text', look: { font: 'Futura', tamil_font: 'Baloo Thambi 2', text: 'கனா', style: 'plain', position: 'center', color: '#ffffff', size: 100, knockout: '#000000',
+    enter: fade(0.4), exit: fade(0.8) }, motion: { length: 4, transform: { x: 0.5, y: 0.5, scale: 1.8, opacity: 1, rotation: 0, keyframes: { scale: [{ t: 0, v: 1.8, ease: 'easeOut' }, { t: 4, v: 2.05 }] } } } },
   { id: 'song-details', label: 'Song credits', look: { font: 'Arima', tamil_font: 'Arima', layout: 'credits',
     text: 'பாடல் பெயர்\nSONG NAME\n\nபாடல் வரிகள் · LYRICS\nபெயர்\nName\n\nஇசை · MUSIC\nபெயர்', style: 'shadow', position: 'center', color: '#f2c46d', subtitle_color: '#ffffff', size: 34, enter: fade(0.6), exit: fade(0.6) } },
   { id: 'cinematic', label: 'Cinematic', look: { font: 'Futura', tamil_font: 'Arima', text: 'கனவு', subtitle: 'A FILM BY YOU', subtitle_size: 30, subtitle_spacing: 9, subtitle_color: '#d9c7a0', style: 'outline', position: 'center', color: '#ffffff', size: 88, spacing: 14, enter: fade(1), exit: fade(0.6) } },
