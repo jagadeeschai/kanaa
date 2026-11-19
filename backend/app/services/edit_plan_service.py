@@ -32,6 +32,7 @@ COMMANDS: dict[str, tuple[str, dict[str, str]]] = {
     'section_lights': ('A light at the start of each part of the song (verse, chorus).', {'kind': '"light-leak" or "lens-flare"'}),
     'mood_grade': ('Each part of the song in its own colour.', {'mood': '"warm-rich", "cool-to-warm", "film" or "none"'}),
     'focus_drift': ('A slow push in on the faces or main subject of every picture.', {}),
+    'smart_slice': ('At the end of a clip, slice its picture into pieces that slide away to show the next clip; Kanaa picks how (around the people, beside the subject, or across the scene).', {'clip': 'clip number from 1, not the last'}),
     'make_short': ('Export a 9:16 Short of the first chorus for YouTube Shorts and Reels. Only when asked for a Short or Reel.', {'look': 'true for big lyrics and a slow push on each picture'}),
 }
 CHOICES = {'layout': ('original', 'two-line', 'lower-third', 'big-centre'), 'preset': ('word-rise', 'word-pop', 'word-fade', 'none'), 'lines': ('all', 'chorus'),
@@ -135,6 +136,11 @@ def check_command(raw: Any, options: dict[str, list[dict[str, str]]], duration: 
         for key in ('on', 'look'):
             if key in COMMANDS[name][1]:
                 clean[key] = bool(args.get(key, True))
+    elif name == 'smart_slice':
+        number = int(args.get('clip') or 0)
+        if not 1 <= number < clips:
+            raise ValueError(f'slice a clip from 1 to {clips - 1}: the pieces show the clip after it')
+        clean = {'clip': number}
     elif name == 'translate_captions':
         if args.get('to') not in ('ta', 'en'):
             raise ValueError('captions can be translated to "ta" or "en"')

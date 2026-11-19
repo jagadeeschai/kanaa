@@ -1,4 +1,5 @@
 import { AiEditHost } from '../AiEditDialog';
+import { SmartSliceHost } from '../SmartSliceDialog';
 import { ClipQuickBar } from './ClipQuickBar';
 import { BringToLifeHost } from '../BringToLifeDialog';
 import { TextToVideoHost } from '../TextToVideoDialog';
@@ -113,6 +114,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
     <RemovePersonHost/>
+    <SmartSliceHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [

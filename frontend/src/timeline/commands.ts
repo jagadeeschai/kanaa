@@ -32,7 +32,8 @@ export type Command =
   | { name: 'section_lights'; args: { kind: SectionLight } }
   | { name: 'mood_grade'; args: { mood: Mood | 'none' } }
   | { name: 'focus_drift'; args: Record<string, never> }
-  | { name: 'make_short'; args: { look: boolean } };
+  | { name: 'make_short'; args: { look: boolean } }
+  | { name: 'smart_slice'; args: { clip: number } };
 export type WordMotion = 'word-rise' | 'word-pop' | 'word-fade' | 'none';
 export const WORD_MOTIONS: WordMotion[] = ['word-rise', 'word-pop', 'word-fade', 'none'];
 export type Proposed = Command & { why?: string };
@@ -63,6 +64,7 @@ export function usable(command: Proposed, options: Options, timeline: Timeline):
     case 'section_lights': return (a.kind === 'light-leak' || a.kind === 'lens-flare') && lyricLines(timeline).length >= 2;
     case 'mood_grade': return (a.mood === 'none' || MOODS.some((each) => each.id === a.mood)) && lyricLines(timeline).length >= 2;
     case 'focus_drift': return clips > 0;
+    case 'smart_slice': return Number.isInteger(a.clip) && (a.clip as number) >= 1 && (a.clip as number) < clips;
     default: return false;
   }
 }
@@ -129,6 +131,7 @@ export function describeCommand(command: Command, options: Options): string {
     case 'mood_grade': return command.args.mood === 'none' ? 'No mood grade' : `Mood grade: ${MOODS.find((each) => each.id === command.args.mood)?.label ?? command.args.mood}`;
     case 'focus_drift': return 'Focus drift on every picture';
     case 'make_short': return `Export a Short of the chorus${command.args.look ? ' (Shorts look)' : ''}`;
+    case 'smart_slice': return `Smart slice at the end of clip ${command.args.clip}`;
   }
 }
 

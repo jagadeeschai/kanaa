@@ -1,5 +1,6 @@
 import { translateLines } from "../../api/client";
 import { chorusLightHits, sectionLights, startChorusShort, sungGlow } from "../lyric-video-actions";
+import { openSmartSlice } from "../SmartSliceDialog";
 import { chorusSections, lyricLines } from "../../timeline/song-sections";
 import { applyPure,describeCommand,translateCaptions,type Options,type Proposed } from "../../timeline/commands";
 import type { Transform } from '../../timeline/evaluate';
@@ -70,6 +71,10 @@ export function createAskActions(getInput: () => Input) {
           act.change(result.timeline); done.push(`✓ ${describeCommand(command, askOptions)} (${result.count})`);
         } else if (command.name === 'sung_glow') { act.change(await sungGlow(current, command.args.on)); done.push(`✓ ${describeCommand(command, askOptions)}`); }
         else if (command.name === 'focus_drift') { await act.focusAllPictures(); done.push(`✓ ${describeCommand(command, askOptions)}`); }
+        else if (command.name === 'smart_slice') {
+          const clip = [...mainLayer(current).items].sort((a, b) => a.start - b.start)[command.args.clip - 1];
+          if (clip) { openSmartSlice({ clipId: clip.id, mediaId: clip.media_id }); done.push(`✓ ${describeCommand(command, askOptions)}: see the Smart slice window`); }
+        }
         else if (command.name === 'make_short') { await startChorusShort(act.projectId, current, command.args.look); done.push('✓ The Short of the chorus is being made; it appears in Exports when ready'); }
         else if (command.name === 'translate_captions') {
           const captions = captionLayers(current).flatMap((layer) => layer.items);

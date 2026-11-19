@@ -38,7 +38,7 @@ export function cannotSlice(timeline: Timeline, clipId: string, style: SliceStyl
 }
 
 /** The timeline with the end of `clipId` sliced into pieces over the start of the next clip. */
-export function sliceIntoPieces(timeline: Timeline, clipId: string, style: SliceStyle, source: SourceFacts | undefined, newId: () => string, seconds = SLICE_SECONDS): Timeline {
+export function sliceIntoPieces(timeline: Timeline, clipId: string, style: SliceStyle, source: SourceFacts | undefined, newId: () => string, seconds = SLICE_SECONDS, cuts?: number[]): Timeline {
   const problem = cannotSlice(timeline, clipId, style);
   if (problem) throw new Error(problem);
   const main = mainLayer(timeline);
@@ -56,7 +56,8 @@ export function sliceIntoPieces(timeline: Timeline, clipId: string, style: Slice
   const inPoint = video ? Math.max(0, Math.min(last, clip.out - length)) : 0;
   const travel = AWAY * Math.max(1, pose.scale);
   const layers: VideoLayer[] = Array.from({ length: choice.pieces }, (_, index) => {
-    const lo = round(index / choice.pieces), hi = round((index + 1) / choice.pieces);
+    const lines = cuts && cuts.length === choice.pieces - 1 ? [0, ...cuts, 1] : null;
+    const lo = round(lines ? lines[index] : index / choice.pieces), hi = round(lines ? lines[index + 1] : (index + 1) / choice.pieces);
     const crop = choice.strips === 'rows' ? { x0: 0, y0: lo, x1: 1, y1: hi } : { x0: lo, y0: 0, x1: hi, y1: 1 };
     // Neighbours go opposite ways: rows left and right, columns up and down; diagonal adds the other way too.
     const sign = index % 2 === 0 ? -1 : 1;
@@ -70,6 +71,50 @@ export function sliceIntoPieces(timeline: Timeline, clipId: string, style: Slice
       } } };
     return { id: newId(), kind: 'video', name: `${SLICE_LAYER} ${index + 1}`, items: [piece] };
   });
+  const position = timeline.layers.indexOf(main) + 1;
+  return { ...timeline, layers: [...timeline.layers.slice(0, position), ...layers, ...timeline.layers.slice(position)] };
+}
+
+/**
+ * A: where to cut beside the subject (faces, or the picture's most striking part, from focus_service), so it is never cut
+ * through: one line for two pieces, a share of the way across (or down), well clear of the subject.
+ */
+export function cutBeside(subject: number): number[] {
+  const clear = 0.22;
+  return [round(subject < 0.5 ? Math.min(0.85, Math.max(0.55, subject + clear)) : Math.max(0.15, Math.min(0.45, subject - clear)))];
+}
+
+/** Pictures Pop-out made for one picture: the scene filled behind, and the cut-out (same size and place). */
+export type SlicePictures = { backgroundId: number; personId: number; where: { x: number; top: number; bottom: number; left: number; right: number } };
+
+/**
+ * B: people and background split apart. At the end of the clip, its picture becomes three layers held on that moment:
+ * the scene (filled behind the person) in two halves parting left and right from where the person stands, and the
+ * person, rising and growing, above them; the next clip shows behind.
+ */
+export function sliceAroundPeople(timeline: Timeline, clipId: string, pictures: SlicePictures, newId: () => string, seconds = SLICE_SECONDS): Timeline {
+  const problem = cannotSlice(timeline, clipId, 'opposite');
+  if (problem) throw new Error(problem);
+  const main = mainLayer(timeline);
+  const clip = main.items.find((item) => item.id === clipId)!;
+  const after = nextClip(timeline, clip)!;
+  const at = clip.start + clipLength(clip);
+  const length = round(Math.max(0.2, Math.min(seconds, clipLength(after))));
+  const end = clipLength(clip);
+  const pose = { x: valueAt(clip.transform, 'x', end), y: valueAt(clip.transform, 'y', end), scale: valueAt(clip.transform, 'scale', end),
+    rotation: valueAt(clip.transform, 'rotation', end), opacity: valueAt(clip.transform, 'opacity', end) };
+  const travel = AWAY * Math.max(1, pose.scale);
+  const split = round(Math.min(0.85, Math.max(0.15, pictures.where.x)));
+  const still = (media: number, name: string, crop: Clip['crop'], keyframes: NonNullable<Clip['transform']['keyframes']>): VideoLayer => ({ id: newId(), kind: 'video', name: `${SLICE_LAYER} ${name}`, items: [{
+    ...clip, id: newId(), media_id: media, name: `${clip.name ?? 'Picture'} · ${name.toLowerCase()}`, start: round(at), in: 0, out: length, speed: 1, volume: 0, muted: true, fade_in: 0, fade_out: 0,
+    enter: null, exit: null, transition_in: null, ramp: null, reverse: false, popout: null, freeze: null, cutout: null, chroma: null, crop, transform: { ...REST_TRANSFORM, ...pose, keyframes } }] });
+  const move = (property: 'x' | 'y' | 'scale', from: number, to: number) => [{ t: 0, v: round(from), ease: 'easeInOut' as const }, { t: length, v: round(to), ease: 'easeInOut' as const }];
+  const layers = [
+    still(pictures.backgroundId, 'scene left', { x0: 0, y0: 0, x1: split, y1: 1 }, { x: move('x', pose.x, pose.x - travel) }),
+    still(pictures.backgroundId, 'scene right', { x0: split, y0: 0, x1: 1, y1: 1 }, { x: move('x', pose.x, pose.x + travel) }),
+    // The person rises out of the frame and grows a little, about where they stand.
+    still(pictures.personId, 'person', null, { y: move('y', pose.y, pose.y - travel), scale: move('scale', pose.scale, pose.scale * 1.15) }),
+  ];
   const position = timeline.layers.indexOf(main) + 1;
   return { ...timeline, layers: [...timeline.layers.slice(0, position), ...layers, ...timeline.layers.slice(position)] };
 }

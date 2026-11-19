@@ -13,6 +13,7 @@ import type { Photo } from "../../types/photo";
 import { isEditable,type MenuItem,type MenuState } from "../ContextMenu";
 import { newId } from "../editor-constants";
 import { cannotSlice, SLICES, sliceIntoPieces } from "../../timeline/slice";
+import { openSmartSlice } from "../SmartSliceDialog";
 import { withVirtualBackground } from "../../timeline/virtual-background";
 import { screenColour } from "../../api/client";
 import { findAdjust, removeAdjust } from '../../timeline/adjust';
@@ -228,12 +229,12 @@ export function createEditorMenuActions(getInput: () => Input) {
         ...(onMain ? [] : [{ label: 'Before / after split', onSelect: () => getInput().addComparison(id) }]),
         ...(onMain ? [virtualBackgroundItem(clip, [...mediaById.values()], mediaById)] : []),
         // Slice into pieces: the end of this clip cut into strips that slide away to show the next one (slice.ts).
-        ...(onMain ? [{ label: 'Slice into pieces', disabled: Boolean(cannotSlice(timeline, clip.id, 'sideways')), submenu: SLICES.map((choice) => ({ label: choice.label, onSelect: () => {
+        ...(onMain ? [{ label: 'Slice into pieces', disabled: Boolean(cannotSlice(timeline, clip.id, 'sideways')), submenu: [{ label: 'Smart slice (Kanaa decides)', onSelect: () => openSmartSlice({ clipId: clip.id, mediaId: clip.media_id }) }, 'divider' as const, ...SLICES.map((choice) => ({ label: choice.label, onSelect: () => {
           try {
             const item = mediaById.get(clip.media_id);
             change(sliceIntoPieces(timeline, clip.id, choice.id, item ? { media_id: item.id, media_type: item.media_type === 'video' ? 'video' : 'image', duration: item.duration } : undefined, newId), 'slice');
           } catch (problem) { getInput().setError((problem as Error).message); }
-        } })) }] : []),
+        } }))] }] : []),
         ...(clip.popout || mainLayer(timeline).items.some((item) => item.popout?.person_clip_id === clip.id) ? [{ label: 'Remove pop-out', onSelect: () => change(removePopout(timeline, clip.id)) }] : []),
         'divider');
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
