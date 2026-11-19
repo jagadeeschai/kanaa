@@ -338,6 +338,8 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
                 # latest frame at or before a time. Asking half a frame later makes the two the same frame.
                 items[-1]['times'] = [round(clip.in_ + ramp_share(clip.ramp, (k - head + 0.5) / fps / clip.length) * span, 6) for k in range(base + head + tail)]
                 items[-1]['source_in'] = items[-1]['times'][0]
+            if clip.stretch != 1:
+                items[-1]['stretch'] = clip.stretch
             if clip.crop is not None:
                 items[-1]['crop'] = [clip.crop.x0, clip.crop.y0, clip.crop.x1, clip.crop.y1]
             from app.services.gpu_masks import resolve

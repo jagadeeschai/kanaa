@@ -33,7 +33,7 @@ export type CutoutPick = { kind: 'people' | 'objects' | 'land'; ids: number[] | 
 export type Composite = { choke: number; wrap: number; match: number; match_gain?: [number, number, number] | null };
 /** Set by Pop-out (3D): the picture and framing the clip had, and its cut-out on the layer above (timeline_schema.PopoutLink). */
 export type PopoutLink = { original_media_id: number; person_clip_id: string; original_transform?: Transform | null };
-export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; /** Settings it sets itself, over its layer's style. */ own?: string[]; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; wheels?: ColourWheels | null; audio_presets?: AudioPresetId[]; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; /** The part of its picture shown, shares from the top left (Slice into pieces). */ crop?: { x0: number; y0: number; x1: number; y1: number } | null; popout?: PopoutLink | null; composite?: Composite | null; bypass?: EffectId[] | null };
+export type Clip = { id: string; /** What it is for, shown on it in the timeline; none shows the file's name. */ name?: string | null; /** Settings it sets itself, over its layer's style. */ own?: string[]; media_id: number; start: number; in: number; out: number; speed: number; volume: number; muted: boolean; enabled?: boolean; fade_in: number; fade_out: number; transform: Transform; adjust: Adjust; frame_locked?: boolean; enter?: Animation | null; exit?: Animation | null; transition_in?: Transition | null; look?: LookName; old_film?: OldFilm | null; signal_damage?: SignalDamage | null; lens_surface?: LensSurface | null; colour_splash?: ColourSplash | null; dreamy_glow?: DreamyGlow | null; wheels?: ColourWheels | null; audio_presets?: AudioPresetId[]; beat_pulse?: BeatPulse | null; tone_grade?: ToneGrade | null; mirror?: Mirror | null; zoom_blur?: ZoomBlur | null; tilt_shift?: TiltShift | null; echo?: Echo | null; chroma?: Chroma | null; freeze?: number | null; reverse?: boolean; stabilise?: boolean; ramp?: RampPoint[] | null; cutout?: 'remove' | 'blur' | null; cutout_pick?: CutoutPick | null; depth_gap?: 0 | 1 | 2 | 3 | 4 | 5; blur_amount?: BlurAmount; focus_pull?: FocusPull | null; clean_voice?: boolean; shape_mask?: ShapeMask | null; /** The part of its picture shown, shares from the top left (Slice into pieces). */ crop?: { x0: number; y0: number; x1: number; y1: number } | null; /** Width against height before fitting: 1 keeps the picture's shape. */ stretch?: number; popout?: PopoutLink | null; composite?: Composite | null; bypass?: EffectId[] | null };
 /** Only the frame inside `points` shows (0 to 1 across and down), with a soft edge `feather` of the frame height. */
 export type ShapeMask = { points: [number, number][]; feather: number };
 export type BlendMode = 'add' | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
@@ -727,15 +727,16 @@ export function snapPoints(timeline: Timeline, playhead: number, except?: string
 }
 
 /** The size a source fits to inside the frame, before any scaling. */
-export function fittedSize(source: { width: number; height: number }, rotation: number, format: Format) {
-  const [w, h] = rotation % 180 ? [source.height, source.width] : [source.width, source.height];
+export function fittedSize(source: { width: number; height: number }, rotation: number, format: Format, stretch = 1) {
+  // stretch: the picture made wider (above 1) or narrower before it is fitted, as clip_chain and the GPU engine do.
+  const [w, h] = rotation % 180 ? [source.height * stretch, source.width] : [source.width * stretch, source.height];
   const fit = Math.min(format.width / w, format.height / h);
   return { width: w * fit, height: h * fit };
 }
 
 /** The scale that makes a fitted clip fill the whole frame. */
-export function fillScale(source: { width: number; height: number }, rotation: number, format: Format): number {
-  const fitted = fittedSize(source, rotation, format);
+export function fillScale(source: { width: number; height: number }, rotation: number, format: Format, stretch = 1): number {
+  const fitted = fittedSize(source, rotation, format, stretch);
   return Math.max(format.width / fitted.width, format.height / fitted.height);
 }
 

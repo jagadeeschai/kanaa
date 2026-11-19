@@ -496,7 +496,7 @@ def clip_chain(clip: Clip, facts: MediaFacts, canvas: tuple[int, int], fps: int,
     elif clip.speed != 1:
         steps.append(f'setpts=PTS/{clip.speed}')
     echo = echo_filter(clip.echo)
-    steps += [f'fps={fps}', *([echo] if echo else []), f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap', *crop_filters(clip.crop),
+    steps += [f'fps={fps}', *([echo] if echo else []), *([f'scale=w=max(2\\,round(iw*{clip.stretch:.6f}/2)*2):h=ih:flags=bicubic'] if clip.stretch != 1 else []), f'scale={W}:{H}:force_original_aspect_ratio=decrease:flags=bicubic', 'format=gbrap', *crop_filters(clip.crop),
               *mirror_filters(clip.mirror, tag, frames + 2), *zoom_blur_filters(clip.zoom_blur, tag), *tilt_shift_filters(clip.tilt_shift, canvas, tag, frames + 2),
               f'pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0', 'setsar=1', *old_film_filters(clip.old_film, canvas), *signal_damage_filters(clip.signal_damage, canvas), *lens_surface_filters(clip.lens_surface, canvas), *colour_splash_filters(clip.colour_splash), *dreamy_glow_filters(clip.dreamy_glow), *tone_grade_filters(clip.tone_grade, tag)]
     if held_head:

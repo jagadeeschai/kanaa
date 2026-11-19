@@ -338,6 +338,7 @@ class Clip(Strict):
     clean_voice: bool = False  # Its sound plays from the cleaned copy.
     shape_mask: Optional[ShapeMask] = None  # Shows only part of the frame, to put a title behind scenery.
     crop: Optional[Crop] = None  # The part of its picture it shows (Crop).
+    stretch: float = Field(default=1, ge=0.1, le=10, allow_inf_nan=False)  # Width against height: 1 keeps the picture's shape, more is wider. Before it is fitted.
     popout: Optional[PopoutLink] = None  # Set by Pop-out (3D); Remove pop-out puts the original picture back.
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.
 

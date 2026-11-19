@@ -26,6 +26,7 @@ struct Item: Decodable {
     let start: Int  // First frame on the timeline.
     let frames: Int
     let sourceIn: Double  // Source seconds at the item's first frame.
+    let stretch: Double?  // Width against height, before the picture is fitted (timeline_schema.Clip.stretch).
     let crop: [Double]?  // The part of the picture shown: x0, y0, x1, y1 as shares, top left (timeline_schema.Crop).
     let times: [Double]?  // A speed ramp: the source second each frame shows (ramp.py). Otherwise sourceIn + frame × speed.
     let speed: Double
@@ -331,6 +332,11 @@ func posed(_ index: Int, _ k: Int) -> CIImage? {
     }
     if let blur = item.blur, blur[k] > 0 {
         shown = shown.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blur[k] * Double(H)]).cropped(to: shown.extent)
+    }
+    if let st = item.stretch, st != 1 {
+        // As the export: the picture made wider or narrower first, then fitted inside the frame.
+        let r = shown.extent
+        shown = shown.transformed(by: CGAffineTransform(translationX: -r.minX, y: 0)).transformed(by: CGAffineTransform(scaleX: st, y: 1)).transformed(by: CGAffineTransform(translationX: r.minX, y: 0))
     }
     let e = shown.extent
     let size = min(Double(W) / e.width, Double(H) / e.height) * item.scale[k]

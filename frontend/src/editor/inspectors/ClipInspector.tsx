@@ -7,6 +7,8 @@ import { SignatureCardGroup } from './SignatureCardGroup';
 import { useEditor, useItemTime } from '../state/EditorContext';
 import { photoThumbUrl } from '../../api/client';
 import { t } from '../../i18n';
+import { stretchToFrame } from '../../timeline/resize';
+import { setResizeShape, useResizeShape } from '../resize-shape';
 import { type Animation, type Transition } from '../../timeline/animation';
 import { DEFAULT_CHROMA } from '../../timeline/chroma';
 import { EFFECT_LAYER } from '../../timeline/drop';
@@ -25,7 +27,7 @@ import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, More, Panel } from '../layout';
 import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
-import { Layers3, AudioLines, Crop, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
+import { Layers3, AudioLines, Crop, Expand, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
@@ -41,9 +43,12 @@ export function Inspector() {
 
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
-  const fill = source ? fillScale(source, clip.adjust.rotation, format) : 1;
+  const fill = source ? fillScale(source, clip.adjust.rotation, format, clip.stretch ?? 1) : 1;
   const size = valueAt(clip.transform, 'scale', local);
   const filling = Math.abs(size - fill) < 0.01;
+  const stretched = Math.abs((clip.stretch ?? 1) - 1) > 1e-3;
+  const stretchedToFrame = Boolean(source) && stretched && Math.abs((clip.stretch ?? 1) - stretchToFrame(source!, clip.adjust.rotation, format)) < 1e-3 && Math.abs(size - 1) < 0.01;
+  const shape = useResizeShape();
   const place = (scale: number) => writeValue(writeValue(writeValue(clip.transform, 'x', local, 0.5), 'y', local, 0.5), 'scale', local, scale);
   const isEffect = overlay?.name === EFFECT_LAYER;
   const effectFadeMax = Math.min(2, clipLength(clip) / 2);
@@ -63,9 +68,13 @@ export function Inspector() {
     </Group>}
     <Group title="Frame" tab="frame" startOpen keywords="fit fill crop zoom rotate turn sideways mirror flip resize size bigger smaller corner picture in picture pip" tip="Fit shows everything; Fill covers the screen. Drag the picture to move it, or a corner to resize it." help="framing-and-rotating">
     <div className="ed-pair">
-      <button className={`ed-button ${!filling && size === 1 ? 'on' : ''}`} disabled={clip.frame_locked} onClick={() => onChange({ transform: place(1) })}><Minimize size={14}/>Fit</button>
-      <button className={`ed-button ${filling ? 'on' : ''}`} disabled={clip.frame_locked} onClick={() => onChange({ transform: place(fill) })}><Maximize size={14}/>Fill</button>
+      <button className={`ed-button ${!stretched && !filling && size === 1 ? 'on' : ''}`} disabled={clip.frame_locked} title={t('The whole picture in its own shape')} onClick={() => onChange({ transform: place(1), stretch: 1 })}><Minimize size={14}/>{t('Fit')}</button>
+      <button className={`ed-button ${!stretched && filling ? 'on' : ''}`} disabled={clip.frame_locked} title={t('Covers the frame in its own shape; the edges may be cut off')} onClick={() => onChange({ transform: place(source ? fillScale(source, clip.adjust.rotation, format) : 1), stretch: 1 })}><Maximize size={14}/>{t('Fill')}</button>
+      <button className={`ed-button ${stretchedToFrame ? 'on' : ''}`} disabled={clip.frame_locked || !source} title={t('Fills the frame with nothing cut off, changing the picture\'s shape')} onClick={() => source && onChange({ transform: place(1), stretch: stretchToFrame(source, clip.adjust.rotation, format) })}><Expand size={14}/>{t('Stretch')}</button>
     </div>
+    {!clip.frame_locked && <div className="ed-add-row"><span>{t('Corners')}</span><div className="ed-chips" role="group" aria-label={t('How the corners resize')}>
+      {([['keep', 'Keep shape'], ['free', 'Free']] as const).map(([id, label]) => <button key={id} className={shape === id ? 'on' : undefined} aria-pressed={shape === id} title={t(id === 'keep' ? 'Corners resize evenly, keeping the picture\'s shape' : 'Corners change width and height on their own, so the whole picture fits any box')} onClick={() => setResizeShape(id)}>{t(label)}</button>)}
+    </div></div>}
     {!clip.frame_locked && <ValueSlider label="Zoom" value={valueAt(clip.transform, 'scale', local)} min={ZOOM_MIN} max={ZOOM_MAX} step={0.01} defaultValue={1} unit="%" factor={100}
       onGestureStart={onPause} onChange={(scale, group) => onChange({ transform: writeValue(clip.transform, 'scale', local, scale) }, group)}/>}
     <button className={`ed-button wide ${clip.frame_locked ? 'on' : ''}`} aria-pressed={Boolean(clip.frame_locked)} onClick={() => onChange({ frame_locked: !clip.frame_locked })} title={clip.frame_locked ? 'Allow this picture to be moved and resized again' : 'Prevent accidental movement and resizing'}>{clip.frame_locked ? <Lock size={14}/> : <Unlock size={14}/>} {clip.frame_locked ? 'Frame locked' : 'Lock frame'}</button>

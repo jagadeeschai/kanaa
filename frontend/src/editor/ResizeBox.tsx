@@ -2,16 +2,18 @@ import { useRef } from 'react';
 import { writeValue } from '../timeline/keyframes';
 import type { Transform } from '../timeline/evaluate';
 import type { Clip, Format } from '../timeline/model';
-import { boxCorners, clipBox, resizeTo } from '../timeline/resize';
+import { boxCorners, clipBox, resizeFree, resizeTo } from '../timeline/resize';
+import { useResizeShape } from './resize-shape';
 
 const NAMES = ['top left', 'top right', 'bottom left', 'bottom right'];
 /** Handles stay this far inside the frame, so a clip that fills it can still be grabbed by its corners. */
 const INSET = '9px';
 
 /** The selected clip's outline in the preview, with a handle at each corner to make it bigger or smaller. */
-export function ResizeBox({ clip, source, format, local, onChange }: { clip: Clip; source: { width: number; height: number }; format: Format; local: number; onChange: (transform: Transform, group: string) => void }) {
+export function ResizeBox({ clip, source, format, local, onChange }: { clip: Clip; source: { width: number; height: number }; format: Format; local: number; onChange: (transform: Transform, group: string, stretch?: number) => void }) {
   const drag = useRef<{ corner: readonly [number, number]; start: ReturnType<typeof clipBox>; from: { x: number; y: number }; at: { x: number; y: number }; group: string } | null>(null);
   const box = clipBox(clip, source, format, local);
+  const shape = useResizeShape();
   const corners = boxCorners(box, format);
   const move = (event: React.PointerEvent<HTMLButtonElement>) => {
     const frame = event.currentTarget.closest('.ed-frame')?.getBoundingClientRect();
@@ -19,14 +21,16 @@ export function ResizeBox({ clip, source, format, local, onChange }: { clip: Cli
     const { start, corner, from, at, group } = drag.current;
     // The corner follows the pointer from where it really is, even when its handle is held inside the frame.
     const to = { x: at.x * frame.width + event.clientX - from.x, y: at.y * frame.height + event.clientY - from.y };
-    const next = resizeTo(start, corner, to, frame, event.altKey);
-    onChange(writeValue(writeValue(writeValue(clip.transform, 'scale', local, next.scale), 'x', local, next.x), 'y', local, next.y), group);
+    // Free: width and height on their own (Shift switches for this drag); Keep shape: evenly.
+    const free = (shape === 'free') !== event.shiftKey;
+    const next = free ? resizeFree(start, corner, to, frame, event.altKey, source, clip.adjust.rotation, format) : resizeTo(start, corner, to, frame, event.altKey);
+    onChange(writeValue(writeValue(writeValue(clip.transform, 'scale', local, next.scale), 'x', local, next.x), 'y', local, next.y), group, 'stretch' in next ? (next as { stretch: number }).stretch : undefined);
   };
   const stop = () => { drag.current = null; };
   return <div className="ed-resize">
     <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"><polygon points={[0, 1, 3, 2].map((index) => `${corners[index].x},${corners[index].y}`).join(' ')} vectorEffect="non-scaling-stroke"/></svg>
     {corners.map((corner, index) => <button key={NAMES[index]} type="button" className={`ed-resize-handle ${corner.sx * corner.sy > 0 ? 'down' : 'up'}`} aria-label={`Resize from the ${NAMES[index]} corner`}
-      title="Drag to resize. Hold Option to resize from the middle."
+      title={shape === 'free' ? 'Drag to change width and height. Shift keeps the shape; Option resizes from the middle.' : 'Drag to resize. Shift changes width and height on their own; Option resizes from the middle.'}
       style={{ left: `clamp(${INSET}, ${corner.x * 100}%, calc(100% - ${INSET}))`, top: `clamp(${INSET}, ${corner.y * 100}%, calc(100% - ${INSET}))` }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

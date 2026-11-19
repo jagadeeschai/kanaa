@@ -807,4 +807,13 @@ export const TAMIL: Record<string, string> = {
   'Soft black': 'மென் கருப்பு',
   'Soft white': 'மென் வெள்ளை',
   'The clip shows around the words through a soft wash, and each letter gets a thin border.': 'சொற்களைச் சுற்றி மென்மையான பூச்சின் வழியே கிளிப் தெரியும்; ஒவ்வொரு எழுத்துக்கும் மெல்லிய ஓரம்.',
+  'Corners': 'மூலைகள்',
+  'How the corners resize': 'மூலைகள் எப்படி அளவு மாற்றும்',
+  'Keep shape': 'வடிவம் மாறாமல்',
+  'Free': 'சுதந்திரமாக',
+  'The whole picture in its own shape': 'முழுப் படமும் அதன் சொந்த வடிவில்',
+  'Covers the frame in its own shape; the edges may be cut off': 'சொந்த வடிவில் திரையை நிரப்பும்; ஓரங்கள் வெட்டப்படலாம்',
+  "Fills the frame with nothing cut off, changing the picture's shape": 'எதையும் வெட்டாமல் திரையை நிரப்பும்; படத்தின் வடிவம் மாறும்',
+  "Corners resize evenly, keeping the picture's shape": 'படத்தின் வடிவம் மாறாமல் மூலைகள் சீராக அளவு மாற்றும்',
+  'Corners change width and height on their own, so the whole picture fits any box': 'மூலைகள் அகலத்தையும் உயரத்தையும் தனித்தனியாக மாற்றும்; முழுப் படமும் எந்தப் பெட்டியிலும் பொருந்தும்',
 };
