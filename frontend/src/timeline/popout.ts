@@ -25,7 +25,7 @@ const keys = (from: number, to: number, length: number): Keyframe[] => [{ t: 0, 
  * A move that grows the picture from `k0` to `k1` times its size about one point of it (shares of the picture), so
  * that point stays where it is on screen, plus a slide of `dx`, `dy` (shares of the frame) over the clip.
  */
-function about(base: number, fw: number, fh: number, ax: number, ay: number, k0: number, k1: number, length: number, dx = [0, 0], dy = [0, 0]): Transform {
+export function about(base: number, fw: number, fh: number, ax: number, ay: number, k0: number, k1: number, length: number, dx = [0, 0], dy = [0, 0]): Transform {
   const x = (k: number, d: number) => 0.5 + (ax - 0.5) * fw * base * (1 - k) + d;
   const y = (k: number, d: number) => 0.5 + (ay - 0.5) * fh * base * (1 - k) + d;
   const still = k0 === k1 && dx[0] === dx[1] && dy[0] === dy[1];

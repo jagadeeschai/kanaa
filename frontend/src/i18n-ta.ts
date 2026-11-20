@@ -849,4 +849,12 @@ export const TAMIL: Record<string, string> = {
   'Old TV: bars at the sides': 'பழைய தொலைக்காட்சி: பக்கங்களில் பட்டைகள்',
   'A square picture in the middle': 'நடுவில் ஒரு சதுரப் படம்',
   'Black': 'கருப்பு',
+  'Finding the people in this clip…': 'இந்தக் கிளிப்பில் உள்ளவர்களைத் தேடுகிறது…',
+  'The clip with each person numbered': 'ஒவ்வொருவருக்கும் எண்ணிட்ட கிளிப்',
+  'Quick pop': 'சட்டென முன்னே',
+  'The person grows toward you over the clip; the scene stays': 'கிளிப் முழுவதும் நபர் உங்களை நோக்கி வளர்கிறார்; காட்சி அப்படியே',
+  'The scene pulls away behind them while they keep their size': 'அவர் அளவு மாறாமல், பின்னால் காட்சி விலகுகிறது',
+  'The person jumps forward at the start, then holds: good on a beat': 'தொடக்கத்தில் நபர் முன்னே தாவி நிற்கிறார்: தாளத்துக்கு ஏற்றது',
+  'In a video the scene behind the person can’t be filled in, so the moves are the ones where they come toward you. Best when they stay in view.': 'வீடியோவில் நபருக்குப் பின்னாலுள்ள காட்சியை நிரப்ப முடியாது; எனவே அவர் உங்களை நோக்கி வரும் நகர்வுகள் மட்டும். அவர் திரையில் இருக்கும்போது சிறப்பு.',
+  'No people were found in this clip.': 'இந்தக் கிளிப்பில் யாரும் கண்டறியப்படவில்லை.',
 };

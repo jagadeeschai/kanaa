@@ -176,6 +176,8 @@ class PopoutLink(Strict):
     original_media_id: int
     person_clip_id: str = Field(min_length=1, max_length=64)
     original_transform: Optional[Transform] = None
+    softened: bool = False  # Video pop-out dimmed the scene behind the person; removing it puts `original_adjust` back.
+    original_adjust: Optional[Adjust] = None
 
 
 class Composite(Strict):
