@@ -68,3 +68,18 @@ class SteadySpaceTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NoTrail(unittest.TestCase):
+    def test_no_space_trails_behind_someone_walking_sideways(self):
+        # Fast sideways walking, 8 pixels a frame: the space never reaches further behind them than the gap itself.
+        frames = []
+        for index in range(30):
+            frame = np.zeros((120, 400), np.uint8)
+            frame[30:90, 20 + 8 * index:50 + 8 * index] = 255
+            frames.append(frame)
+        from app.services.cutout_service import GAP_PIXELS
+        reach = GAP_PIXELS[3] + 6  # The gap plus its soft edge.
+        for person, space in list(zip(frames, steady(frames, gap=3)))[8:22]:
+            left = np.nonzero(person.any(axis=0))[0].min()
+            self.assertFalse(space[:, :max(0, left - reach)].any(), 'space left behind the walker')

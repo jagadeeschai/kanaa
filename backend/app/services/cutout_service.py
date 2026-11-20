@@ -54,7 +54,8 @@ GAP_PIXELS = (0, 3, 7, 12, 20, 30)  # At the prepared mask size: none, small, me
 # pixels in the title area from 92 to 6 a frame, with none of a person uncovered.
 SPACE_SECONDS = 0.3
 SPACE_LEVEL = 90  # Of 255: where the averaged, rounded shape counts as space.
-SPACE_VERSION = 1
+NEAR_LEVEL = 8  # Of 255: how far past where they are now the steadied space may reach (a few pixels, never a trail).
+SPACE_VERSION = 2  # 2: the space follows them, no trailing band when they move.
 INSTALL_TOOLS = 'xcode-select --install'
 _build = threading.Lock()
 _active: dict[str, str] = {}
@@ -234,7 +235,10 @@ class SteadySpace:
     def _out(self, index: int, last: int) -> np.ndarray:
         picks = [self.rounded[min(max(index + offset, 0), last) - self.first] for offset in range(-self.reach, self.reach + 1)]
         average = np.tensordot(self.weights, np.stack(picks), axes=1)
-        return np.where((average >= SPACE_LEVEL) | (self.people[index - self.first] >= 128), 255, 0).astype(np.uint8)
+        # Steady, but only within the space around where they are now: averaged over time it would also keep the space
+        # where they were, a trailing band that hid a title too early when they walk sideways.
+        near = self.rounded[index - self.first] >= NEAR_LEVEL  # A little past the space's edge: room for its steadying.
+        return np.where((average >= SPACE_LEVEL) & near | (self.people[index - self.first] >= 128), 255, 0).astype(np.uint8)
 
     def _trim(self) -> None:
         keep = self.sent - self.reach  # The earliest frame still needed.

@@ -61,9 +61,14 @@ export const hexColour = (colour: string | null | undefined): [number, number, n
 };
 
 /** Each layer's share of the full depth, front (0) to back. */
-export function layers(depth: TitleDepth | null | undefined): number[] {
+export const SMOOTH_STEP = 2;  // Pixels between depth layers at most, so the side reads as one smooth face.
+export const MAX_SMOOTH_LAYERS = 48;
+
+/** Each layer's share of the full depth, front to back; with the frame's height, at most SMOOTH_STEP pixels apart. Matches title3d.layers. */
+export function layers(depth: TitleDepth | null | undefined, height = 0): number[] {
   if (!depth || depth.amount <= 0) return [0];
-  const count = 1 + Math.round(depth.amount * (MAX_LAYERS - 1));
+  let count = 1 + Math.round(depth.amount * (MAX_LAYERS - 1));
+  if (height) count = Math.max(count, Math.min(MAX_SMOOTH_LAYERS, 1 + Math.ceil(depth.amount * DEPTH_SPAN * height * EXTRUDE_XY / SMOOTH_STEP)));
   return count > 1 ? Array.from({ length: count }, (_, k) => k / (count - 1)) : [0];
 }
 

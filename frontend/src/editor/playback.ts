@@ -1280,7 +1280,7 @@ export class PlaybackEngine {
     if (opacity <= 0) return;
     const source: Point[] = [[frameBox[0], frameBox[1]], [frameBox[2], frameBox[1]], [frameBox[2], frameBox[3]], [frameBox[0], frameBox[3]]];
     const depth = item.depth && (item.depth.amount > 0 || item.depth.material) ? item.depth : null;
-    const shades = layers(depth);
+    const shades = layers(depth, height);
     const colour = depth ? [1, 3, 5].map((at) => parseInt(depth.color.slice(at, at + 2), 16) / 255) : [0, 0, 0];
     gl.useProgram(this.titleProgram);
     gl.bindTexture(gl.TEXTURE_2D, texture);

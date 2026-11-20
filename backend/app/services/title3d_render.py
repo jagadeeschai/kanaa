@@ -188,7 +188,7 @@ def _drawer(text, picture: Path, size: tuple[int, int], fps: int, frames: int, p
     box = alpha_box((premultiplied[..., 3] * 255).astype(np.uint8))
     loaded = [(start, end, load(path)) for start, end, path in states or []]
     depth = text.depth if text.depth and (text.depth.amount > 0 or text.depth.material) else None
-    shares = title3d.layers(depth)
+    shares = title3d.layers(depth, height)
     # Letter by letter: where each letter is, found once (title_letters.py), as the preview fetches it.
     lettered = None
     if box is not None and any(animation and animation.preset in LETTER_PRESETS for animation in (text.enter, text.exit)):

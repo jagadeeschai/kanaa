@@ -46,11 +46,18 @@ def animated_look(enter, exit_, local: float, length: float) -> dict[str, float]
             **picture_look(first, last)}
 
 
-def layers(depth) -> list[float]:
-    """Each layer's share of the full depth, front (0) to back."""
+SMOOTH_STEP = 2.0  # Pixels between depth layers at most, so the side reads as one smooth face.
+MAX_SMOOTH_LAYERS = 48  # Enough for a deep 4K title; keeps moving titles quick to draw.
+
+
+def layers(depth, height: int = 0) -> list[float]:
+    """Each layer's share of the full depth, front (0) to back. With the frame's `height`, enough layers that each is
+    at most SMOOTH_STEP pixels from the next (else a deep title on a big frame shows stair steps). Matches title3d.ts."""
     if not depth or depth.amount <= 0:
         return [0.0]
     count = 1 + round(depth.amount * (MAX_LAYERS - 1))
+    if height:
+        count = max(count, min(MAX_SMOOTH_LAYERS, 1 + math.ceil(depth.amount * DEPTH_SPAN * height * EXTRUDE_XY / SMOOTH_STEP)))
     return [k / (count - 1) for k in range(count)] if count > 1 else [0.0]
 
 
