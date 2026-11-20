@@ -1100,7 +1100,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const inspectorOpen = layout.inspectorOpen;
   const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
-  const isEmpty = timeline && !mainLayer(timeline).items.length;
+  const isEmpty = timeline && timeline.layers.every((layer) => !layer.items.length);  // A title, song or caption alone is a video too (on black).
   // ---- Ask AI ----
   useEffect(() => { if (leftTab === 'ask' && !effects.length) listEffects().then(setEffects).catch(() => { /* Effects just won't be offered. */ }); }, [leftTab, effects.length]);
   const askOptions: Options = {
