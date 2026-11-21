@@ -79,3 +79,19 @@ class Masks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Skyline(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('ffmpeg'), 'needs ffmpeg')
+    def test_finds_where_land_meets_sky(self):
+        root = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, root)
+        clip = root / 'clip.mp4'
+        # Sky (far, blue) above a ridge at 40% down (near, red).
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x000040:s=320x180:d=1:r=30', '-vf', 'drawbox=x=0:y=72:w=320:h=108:color=0xff0000:t=fill',
+                        '-pix_fmt', 'yuv420p', str(clip)], check=True)
+        facts = MediaFacts(path=clip, media_type='video', width=320, height=180, duration=1, fps=30)
+        with mock.patch('app.services.asset_service.settings.data_dir', root):
+            depth.make_depth_map(facts, lambda _: None, lambda: False, model=fake_model)
+            found = depth.skyline(facts, [0.2, 0.6], 0.1, 0.9)
+        for value in found:
+            self.assertAlmostEqual(value, 0.4, delta=0.04)

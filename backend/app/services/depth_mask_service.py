@@ -173,3 +173,30 @@ def make_depth_mask(facts: MediaFacts, near: float, target: Path, on_progress: C
         raise RuntimeError('Could not make the depth mask.')
     temporary.replace(target)
     on_progress(100)
+
+
+SKY_LEVEL = 0.25  # Behind the scene: what is nearer than this is land (hills, trees, buildings); the rest is sky.
+
+
+def skyline(facts: MediaFacts, times: list[float], x0: float, x1: float, level: float = SKY_LEVEL) -> list[float | None]:
+    """Where the land meets the sky between x0 and x1 (shares of the picture), at each of `times` (source seconds), as
+    a share of the picture's height; None where no sky is seen above the land. From the clip's depth map: in each
+    column, the first row from the top that is land, then the middle of the columns. Smoothed over time."""
+    depth = make_depth_map(facts, lambda _: None, lambda: False)
+    found: list[float | None] = []
+    for at in times:
+        raw = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-ss', f'{max(0.0, at):.3f}', '-i', str(depth), '-frames:v', '1',
+                              '-vf', 'format=gray,scale=320:180', '-f', 'rawvideo', '-'], capture_output=True).stdout
+        if len(raw) < 320 * 180:
+            found.append(None); continue
+        near = np.frombuffer(raw[:320 * 180], np.uint8).reshape(180, 320) / 255
+        columns = near[:, max(0, int(x0 * 320)):max(int(x0 * 320) + 1, min(320, int(x1 * 320)))]
+        land = columns >= level
+        rows = [int(np.argmax(column)) for column in land.T if column.any() and column[:3].mean() < 0.5]  # Sky above, then land.
+        found.append(float(np.median(rows) / 180) if len(rows) >= max(3, columns.shape[1] // 4) else None)
+    # A step of noise isn't the horizon: each point takes the middle of itself and its neighbours.
+    steady = []
+    for index in range(len(found)):
+        near_ones = [value for value in found[max(0, index - 1):index + 2] if value is not None]
+        steady.append(float(np.median(near_ones)) if near_ones else None)
+    return steady

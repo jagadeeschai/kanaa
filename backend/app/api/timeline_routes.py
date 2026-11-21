@@ -511,6 +511,46 @@ def text_hole(body: dict):
     return {'x': x, 'y': y}
 
 
+@router.post('/skyline')
+def find_skyline(body: dict):
+    """Sit on the skyline: where the land meets the sky behind a title, at each moment asked, and where the title's
+    letters are (shares of the frame, unmoved). Works out the clip's depth first when it isn't yet (a background job)."""
+    from app.services import depth_mask_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    try:
+        item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
+        facts = media_facts(int(body['media_id']))
+        times = [float(value) for value in body['times']][:200]
+    except (KeyError, ValueError, TypeError, ValidationError) as exc:
+        raise HTTPException(400, 'This title or clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Sit on the skyline needs a video clip under the title.')
+    if not depth_mask_service.map_path(facts.path).is_file():
+        holder: dict = {}
+
+        def run(should_cancel):
+            depth_mask_service.make_depth_map(facts, lambda value: update_job(holder['id'], progress=value), should_cancel)
+            return {'progress': 100}
+        job_id = enqueue_render('depth_map', 'Finding how near everything is', run, reserve=lambda job: holder.update(id=job), total=100)
+        return {'status': 'preparing', 'job_id': job_id}
+    target = text_cache(item.model_copy(update={'transform': item.transform.model_copy(update={'x': 0.5, 'y': 0.5, 'scale': 1, 'keyframes': {}})}), fmt).with_suffix('.png')
+    if not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        render_text_image(item, fmt, target)
+    from PIL import Image
+    import numpy as np
+    with Image.open(target) as picture:
+        alpha = np.asarray(picture.convert('RGBA'))[..., 3]
+    rows, cols = np.nonzero(alpha > 40)
+    if not rows.size:
+        raise HTTPException(400, 'This title has no letters to place.')
+    box = [float(cols.min() / fmt.width), float(rows.min() / fmt.height), float((cols.max() + 1) / fmt.width), float((rows.max() + 1) / fmt.height)]
+    x = item.transform.x; scale = item.transform.scale
+    x0, x1 = x + (box[0] - 0.5) * scale, x + (box[2] - 0.5) * scale
+    return {'status': 'ready', 'box': box, 'skyline': depth_mask_service.skyline(facts, times, max(0.0, x0), min(1.0, x1))}
+
+
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout', 'knockout_wash')}
