@@ -28,7 +28,7 @@ export type BlurAmount = 'subtle' | 'medium' | 'strong';
 /** The focus moves to `to` (null: all of them) `at` source seconds in, of the steadied or reversed copy when there is one, over `length`. */
 export type FocusPull = { to: number[] | null; at: number; length: number };
 /** land: everything but the sky (always all of it), for a title that shows only in the sky. */
-export type CutoutPick = { kind: 'people' | 'objects' | 'land'; ids: number[] | null };
+export type CutoutPick = { kind: 'people' | 'objects' | 'land' | 'depth'; ids: number[] | null; /** depth: everything nearer than this, 0 far to 1 near. */ near?: number | null };
 /** How a keyed or cut-out clip sits on what is behind it (timeline_schema.Composite). */
 export type Composite = { choke: number; wrap: number; match: number; match_gain?: [number, number, number] | null };
 /** Set by Pop-out (3D): the picture and framing the clip had, and its cut-out on the layer above (timeline_schema.PopoutLink). */
@@ -496,8 +496,32 @@ export function onSkyline(timeline: Timeline, textId: string): boolean {
   return above?.kind === 'video' && !above.hidden && above.items.some((clip) => clip.enabled !== false && clip.cutout_pick?.kind === 'land' && !clip.bypass?.includes('background'));
 }
 
+/** Place in depth: everything nearer than `near` (0 far to 1 near) comes in front of the title, whatever it is: people,
+ *  walls, trees, buildings. A copy of the clip under the title, cut to those, on the layer just above it. */
+export function placeInDepth(timeline: Timeline, textId: string, near: number, ids: [string, string]): Timeline {
+  return putInFront(timeline, textId, { cutout: 'remove', cutout_pick: { kind: 'depth', ids: null, near: Math.round(near * 100) / 100 }, depth_gap: 0, shape_mask: null }, ids, 'Depth');
+}
+
+/** The depth the title is placed at, or null when nothing is placed in front of it that way. */
+export function depthOf(timeline: Timeline, textId: string): number | null {
+  const found = findText(timeline, textId);
+  if (!found) return null;
+  const above = timeline.layers[timeline.layers.indexOf(found.layer) + 1];
+  const pick = above?.kind === 'video' && above.name === 'Depth' ? above.items[0]?.cutout_pick : null;
+  return pick?.kind === 'depth' ? pick.near ?? null : null;
+}
+
+/** Takes away whatever was put in front of the title (Depth, Person, Object, Land or a shape). */
+export function clearInFront(timeline: Timeline, textId: string): Timeline {
+  const found = findText(timeline, textId);
+  if (!found) return timeline;
+  const above = timeline.layers[timeline.layers.indexOf(found.layer) + 1];
+  if (!(above?.kind === 'video' && ['Person', 'Object', 'Land', 'Depth', 'In front'].includes(above.name ?? ''))) return timeline;
+  return { ...timeline, layers: timeline.layers.filter((layer) => layer !== above) };
+}
+
 export type CoverKind = 'person' | 'object' | 'land';
-const COVER_LAYERS = ['Person', 'Object', 'Land'];
+const COVER_LAYERS = ['Person', 'Object', 'Land', 'Depth'];
 const COVER_NAME: Record<CoverKind, string> = { person: 'Person', object: 'Object', land: 'Land' };
 
 /** Makes a title rise from ground level while a chosen foreground kind passes in front of it. */
@@ -623,7 +647,7 @@ export function setGroundRiseGap(timeline: Timeline, textId: string, depth_gap: 
 export function cutoutToken(clip: Clip): string {
   const pick = clip.cutout ? clip.cutout_pick : null;
   const everyone = !pick || (pick.kind === 'people' && !pick.ids?.length);
-  const who = everyone ? 'all' : `${pick.kind}-${pick.ids?.length ? [...pick.ids].sort((a, b) => a - b).join('-') : 'all'}`;
+  const who = everyone ? 'all' : pick.kind === 'depth' ? `depth-${Math.round((pick.near ?? 0.5) * 100)}` : `${pick.kind}-${pick.ids?.length ? [...pick.ids].sort((a, b) => a - b).join('-') : 'all'}`;
   if (clip.cutout === 'blur') {
     const amount = clip.blur_amount ?? 'medium';
     const pull = clip.focus_pull;
@@ -650,7 +674,7 @@ function putInFront(timeline: Timeline, textId: string, changes: Partial<Clip>, 
   const copy: Clip = { ...clip, id: ids[0], ...changes, muted: true, clean_voice: false, enter: null, exit: null, transition_in: null, fade_in: 0, fade_out: 0 };
   const after = timeline.layers.indexOf(found.layer) + 1;
   const existing = timeline.layers[after];
-  if (existing?.kind === 'video' && ['Person', 'Object', 'In front'].includes(existing.name ?? '')) {
+  if (existing?.kind === 'video' && ['Person', 'Object', 'Land', 'Depth', 'In front'].includes(existing.name ?? '')) {
     return { ...timeline, layers: timeline.layers.map((layer) => layer !== existing ? layer : {
       ...existing,
       name,

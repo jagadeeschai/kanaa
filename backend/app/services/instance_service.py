@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 SOURCE = Path(__file__).resolve().parents[2] / 'native' / 'instance_mask.swift'
 KINDS = ('people', 'objects')  # Found one by one and numbered.
 LAND = 'land'  # Everything but the sky (sky_service): one whole, never numbered.
+DEPTH = 'depth'  # Everything nearer than a level (depth_mask_service): one whole, the level in place of numbers.
 VERSION = 2  # 2: solid, steady masks (cutout_service.Steadier).
 MAX_TRACKS = 6  # The helper sends at most this many a frame, and no more are followed.
 SMALL = 8  # Outlines are compared at an eighth of the mask's size.
@@ -51,14 +52,19 @@ _guard = threading.Lock()
 class Pick:
     kind: str
     ids: Optional[tuple[int, ...]]  # None is all of them.
+    near: Optional[float] = None  # A depth pick's level, 0 far to 1 near.
 
     @property
     def token(self) -> str:
+        if self.kind == DEPTH:
+            return f'{DEPTH}-{round((self.near or 0) * 100)}'
         return f"{self.kind}-{'-'.join(str(number) for number in self.ids) if self.ids else 'all'}"
 
 
 def from_choice(choice) -> Optional[Pick]:
     """A timeline clip's cutout_pick to a pick."""
+    if choice is not None and choice.kind == DEPTH:
+        return Pick(DEPTH, None, round(choice.near, 2))
     return Pick(choice.kind, tuple(choice.ids) if choice.ids else None) if choice is not None else None
 
 
@@ -67,6 +73,8 @@ def parse(token: str) -> Optional[Pick]:
     kind, _, rest = token.partition('-')
     if kind == LAND:
         return Pick(LAND, None) if rest == 'all' else None
+    if kind == DEPTH:
+        return Pick(DEPTH, None, int(rest) / 100) if rest.isdigit() and 2 <= int(rest) <= 98 else None
     if kind not in KINDS or not rest:
         return None
     if rest == 'all':
@@ -394,6 +402,15 @@ def is_ready(source: Path, pick: Pick, gap: int = 0) -> bool:
 
 def prepare(facts: MediaFacts, pick: Pick, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], finder: list[str] | None = None, joined: bool = True, see_through: bool = True, gap: int = 0) -> None:
     """Finds them all, then joins the chosen ones' masks, then makes the see-through preview copy, each once."""
+    if pick.kind == DEPTH:
+        from app.services import depth_mask_service
+        with lock_for(f'{content_key(facts.path)}:{pick.token}'):
+            mask, cut = pick_paths(facts.path, pick, gap)
+            if not mask.is_file():
+                depth_mask_service.make_depth_mask(facts, pick.near, mask, on_progress, should_cancel)
+            if see_through and not cut.is_file():
+                cutout_service.make_see_through(facts, should_cancel, mask=mask, target=cut, gap=gap)
+        return
     if pick.kind == LAND:
         from app.services import sky_service
         with lock_for(f'{content_key(facts.path)}:{LAND}'):
@@ -477,7 +494,7 @@ def ensure_mask(facts: MediaFacts, pick: Optional[Pick], should_cancel: Callable
 def request(facts: MediaFacts, pick: Pick, label: str, joined: bool = True, gap: int = 0) -> dict:
     """Ready, or being made in the background. Without `joined`, only finds them, for choosing."""
     ready = is_ready(facts.path, pick, gap) if joined else summary_path(facts.path, pick.kind).is_file()
-    what = {'people': 'the people', 'objects': 'the objects', LAND: 'the sky'}[pick.kind]
+    what = {'people': 'the people', 'objects': 'the objects', LAND: 'the sky', DEPTH: 'how near everything is'}[pick.kind]
     return in_background(facts, f'{pick.token if joined else pick.kind}-gap{gap}', ready, f'Finding {what} in {label}',
                          lambda progress, should_cancel: prepare(facts, pick, progress, should_cancel, joined=joined, gap=gap))
 

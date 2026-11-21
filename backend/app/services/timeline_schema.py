@@ -118,8 +118,9 @@ class RampPoint(Strict):
 
 class CutoutPick(Strict):
     """Which of the people, or the objects, a cut-out keeps. Numbers are from the clip's list of them; None keeps them all."""
-    kind: Literal['people', 'objects', 'land']  # land: everything but the sky, always all of it.
+    kind: Literal['people', 'objects', 'land', 'depth']  # land: everything but the sky; depth: everything nearer than `near`.
     ids: Optional[List[int]] = Field(default=None, min_length=1, max_length=6)
+    near: Optional[float] = Field(default=None, ge=0.02, le=0.98, allow_inf_nan=False)  # depth: 0 far to 1 near.
 
     @field_validator('ids')
     @classmethod
@@ -130,8 +131,10 @@ class CutoutPick(Strict):
 
     @model_validator(mode='after')
     def whole_land(self):
-        if self.kind == 'land' and self.ids is not None:
-            raise ValueError('The land is kept whole: no numbers.')
+        if self.kind in ('land', 'depth') and self.ids is not None:
+            raise ValueError('The land, or everything nearer than a depth, is kept whole: no numbers.')
+        if (self.kind == 'depth') != (self.near is not None):
+            raise ValueError('A depth needs how near, and only a depth has one.')
         return self
 
 

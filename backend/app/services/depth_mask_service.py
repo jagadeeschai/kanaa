@@ -1,0 +1,171 @@
+"""Place in depth: how near each pixel of a clip is, every frame (Depth Anything V2 Small, on this Mac), so a title can
+sit at a depth with everything nearer than it in front: people, walls, trees, buildings, whatever they are.
+
+The clip's depth is worked out once, as a grey video (white is near), then any "nearer than" level is a quick threshold
+of it, so moving the slider doesn't redo the slow part. To keep the slow part quick enough for whole clips, the model
+reads a small copy of every third frame; the frames between blend their neighbours, and every frame's depth is
+sharpened against that frame's own picture (a guided filter), so edges hug the real outlines as things move.
+"""
+from __future__ import annotations
+
+import logging
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Callable
+
+import numpy as np
+
+from app.services import depth_motion_service
+from app.services.cutout_service import EDGE_SOFTNESS, colour, mask_size
+from app.services.job_service import JobCancelled
+from app.services.media_probe import MediaFacts
+
+logger = logging.getLogger(__name__)
+
+VERSION = 1
+WORK_WIDTH = 640  # Depth is sharpened at this width, then scaled to the mask size.
+MODEL_SHORT = 266  # The model reads this many pixels on the short side (multiple of its 14-pixel patches): about 0.2 s a frame.
+EVERY = 3  # The model reads every third frame at 30 fps (about ten a second at any rate); the ones between blend.
+READS_PER_SECOND = 10
+RANGE_EASE = 0.15  # How fast the near/far range follows the scene, a frame: steady, so levels don't flicker.
+GUIDE_RADIUS, GUIDE_EPS = 8, 1e-3
+SOFT = 0.04  # A depth level's edge: this much nearness from fully behind to fully in front.
+
+_session = None
+
+
+def available() -> bool:
+    return depth_motion_service.available()
+
+
+def map_path(source: Path) -> Path:
+    from app.services.asset_service import content_key, folder_for
+    return folder_for(content_key(source)) / f'depth-map-{VERSION}.mp4'
+
+
+def _raw(rgb: np.ndarray) -> np.ndarray:
+    """The model's own output for a picture: larger is nearer, on no fixed scale."""
+    global _session
+    import cv2
+    import onnxruntime
+    if _session is None:
+        if not depth_motion_service.MODEL.is_file():
+            raise RuntimeError('Place in depth needs the depth model, which is not on this Mac.')
+        # The plain CPU is quicker than CoreML for this model at this size.
+        _session = onnxruntime.InferenceSession(str(depth_motion_service.MODEL), providers=['CPUExecutionProvider'])
+    height, width = rgb.shape[:2]
+    scale = MODEL_SHORT / min(height, width)
+    w, h = max(14, round(width * scale / 14) * 14), max(14, round(height * scale / 14) * 14)
+    x = cv2.resize(rgb, (w, h), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
+    x = (x - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
+    return _session.run(None, {'pixel_values': x.transpose(2, 0, 1)[None]})[0][0].astype(np.float32)
+
+
+class DepthStream:
+    """Frames in (BGR at work size), nearness out (0 far to 1 near, same size): the model on every EVERY-th frame,
+    blended between, on a steady near/far range, sharpened against each frame."""
+
+    def __init__(self, model: Callable[[np.ndarray], np.ndarray] = _raw, every: int = EVERY):
+        import cv2
+        self.cv2, self.model, self.every = cv2, model, max(1, every)
+        self.waiting: list[np.ndarray] = []  # Frames since the last model reading.
+        self.last: np.ndarray | None = None
+        self.low = self.high = None
+
+    def _read(self, frame: np.ndarray) -> np.ndarray:
+        out = self.model(self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB))
+        low, high = float(np.percentile(out, 2)), float(np.percentile(out, 98))
+        self.low = low if self.low is None else self.low + (low - self.low) * min(1, RANGE_EASE * self.every)
+        self.high = high if self.high is None else self.high + (high - self.high) * min(1, RANGE_EASE * self.every)
+        near = np.clip((out - self.low) / max(1e-6, self.high - self.low), 0, 1)
+        return self.cv2.resize(near, (frame.shape[1], frame.shape[0]), interpolation=self.cv2.INTER_LINEAR)
+
+    def _sharp(self, frame: np.ndarray, near: np.ndarray) -> np.ndarray:
+        guide = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2GRAY).astype(np.float32) / 255
+        return np.clip(self.cv2.ximgproc.guidedFilter(guide, near.astype(np.float32), GUIDE_RADIUS, GUIDE_EPS), 0, 1)
+
+    def push(self, frame: np.ndarray) -> list[np.ndarray]:
+        if self.last is None:
+            self.last = self._read(frame)
+            return [self._sharp(frame, self.last)]
+        self.waiting.append(frame)
+        if len(self.waiting) < self.every:
+            return []
+        reading = self._read(frame)
+        out = [self._sharp(each, self.last + (reading - self.last) * (k + 1) / self.every) for k, each in enumerate(self.waiting)]
+        self.last, self.waiting = reading, []
+        return out
+
+    def finish(self) -> list[np.ndarray]:
+        out = [self._sharp(each, self.last) for each in self.waiting]
+        self.waiting = []
+        return out
+
+
+def make_depth_map(facts: MediaFacts, on_progress: Callable[[int], None], should_cancel: Callable[[], bool], model: Callable[[np.ndarray], np.ndarray] = _raw) -> Path:
+    """The clip's nearness as a grey video at the mask size, frame for frame. Made once."""
+    import cv2
+    target = map_path(facts.path)
+    if target.is_file():
+        return target
+    width, height = mask_size(facts)
+    work_h = max(2, round(height * WORK_WIDTH / width / 2) * 2)
+    fps = facts.fps or 30
+    total = max(1, round((facts.duration or 1) * fps))
+    ffmpeg = shutil.which('ffmpeg')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp.mp4')
+    decode = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={WORK_WIDTH}:{work_h}', '-fps_mode', 'passthrough',
+                               '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    encode = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'gray', '-s', f'{width}x{height}', '-r', f'{fps}', '-i', '-',
+                               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '10', '-pix_fmt', 'yuv420p', str(temporary)], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    stream = DepthStream(model, every=max(1, round(fps / READS_PER_SECOND)))
+
+    def send(maps):
+        for near in maps:
+            encode.stdin.write(cv2.resize((near * 255).astype(np.uint8), (width, height), interpolation=cv2.INTER_LINEAR).tobytes())
+    try:
+        done, size = 0, WORK_WIDTH * work_h * 3
+        assert decode.stdout is not None and encode.stdin is not None
+        while chunk := decode.stdout.read(size):
+            if should_cancel():
+                raise JobCancelled()
+            if len(chunk) < size:
+                break
+            send(stream.push(np.frombuffer(chunk, np.uint8).reshape(work_h, WORK_WIDTH, 3)))
+            done += 1
+            if done % 10 == 0:
+                on_progress(min(95, done * 95 // total))
+        send(stream.finish())
+        encode.stdin.close()
+        if encode.wait() or done == 0:
+            logger.error('Depth failed for %s: %s', facts.path, encode.stderr.read()[-800:] if encode.stderr else '')
+            raise RuntimeError('Could not work out the depth of this clip.')
+        temporary.replace(target)
+    finally:
+        for process in (decode, encode):
+            if process.poll() is None:
+                process.kill()
+        temporary.unlink(missing_ok=True)
+    return target
+
+
+def level_filter(near: float) -> str:
+    """The grey depth map to a mask: white where nearer than `near`, with a soft edge."""
+    low, high = max(0.0, near - SOFT / 2) * 255, min(1.0, near + SOFT / 2) * 255
+    return f"lut=y='clip((val-{low:.2f})*255/{max(1.0, high - low):.2f},0,255)',gblur=sigma={EDGE_SOFTNESS}"
+
+
+def make_depth_mask(facts: MediaFacts, near: float, target: Path, on_progress: Callable[[int], None], should_cancel: Callable[[], bool]) -> None:
+    """The mask of everything nearer than `near` (0 far to 1 near), from the clip's depth map."""
+    depth = make_depth_map(facts, lambda value: on_progress(value * 9 // 10), should_cancel)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp.mp4')
+    made = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(depth), '-vf', f'format=gray,{level_filter(near)}',
+                           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '12', '-pix_fmt', 'yuv420p', str(temporary)], capture_output=True, text=True)
+    if made.returncode:
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError('Could not make the depth mask.')
+    temporary.replace(target)
+    on_progress(100)
