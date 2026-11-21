@@ -23,13 +23,14 @@ from app.services.media_probe import MediaFacts
 
 logger = logging.getLogger(__name__)
 
-VERSION = 1
+VERSION = 2  # 2: levels spread by how much of the picture is at each distance.
 WORK_WIDTH = 640  # Depth is sharpened at this width, then scaled to the mask size.
 MODEL_SHORT = 266  # The model reads this many pixels on the short side (multiple of its 14-pixel patches): about 0.2 s a frame.
 EVERY = 3  # The model reads every third frame at 30 fps (about ten a second at any rate); the ones between blend.
 READS_PER_SECOND = 10
 RANGE_EASE = 0.15  # How fast the near/far range follows the scene, a frame: steady, so levels don't flicker.
 GUIDE_RADIUS, GUIDE_EPS = 8, 1e-3
+SHARES = np.linspace(0, 1, 65, dtype=np.float32)  # The share table's steps.
 SOFT = 0.04  # A depth level's edge: this much nearness from fully behind to fully in front.
 
 _session = None
@@ -64,21 +65,24 @@ def _raw(rgb: np.ndarray) -> np.ndarray:
 
 class DepthStream:
     """Frames in (BGR at work size), nearness out (0 far to 1 near, same size): the model on every EVERY-th frame,
-    blended between, on a steady near/far range, sharpened against each frame."""
+    blended between, spread by share of the picture, sharpened against each frame."""
 
     def __init__(self, model: Callable[[np.ndarray], np.ndarray] = _raw, every: int = EVERY):
         import cv2
         self.cv2, self.model, self.every = cv2, model, max(1, every)
         self.waiting: list[np.ndarray] = []  # Frames since the last model reading.
         self.last: np.ndarray | None = None
-        self.low = self.high = None
+        self.table = None
 
     def _read(self, frame: np.ndarray) -> np.ndarray:
         out = self.model(self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB))
-        low, high = float(np.percentile(out, 2)), float(np.percentile(out, 98))
-        self.low = low if self.low is None else self.low + (low - self.low) * min(1, RANGE_EASE * self.every)
-        self.high = high if self.high is None else self.high + (high - self.high) * min(1, RANGE_EASE * self.every)
-        near = np.clip((out - self.low) / max(1e-6, self.high - self.low), 0, 1)
+        # Spread by share of the picture: nearness 0.4 means 40% of the picture is further away. The raw scale gives
+        # most of its range to the ground at the camera, squeezing trees, hills and buildings together near "far".
+        # The share table follows the clip smoothly, so a level doesn't flicker as the camera moves.
+        table = np.percentile(out, SHARES * 100).astype(np.float32)
+        self.table = table if self.table is None else self.table + (table - self.table) * min(1, RANGE_EASE * self.every)
+        steady = np.maximum.accumulate(self.table)
+        near = np.interp(out.ravel(), steady + np.arange(steady.size) * 1e-6, SHARES).reshape(out.shape).astype(np.float32)
         return self.cv2.resize(near, (frame.shape[1], frame.shape[0]), interpolation=self.cv2.INTER_LINEAR)
 
     def _sharp(self, frame: np.ndarray, near: np.ndarray) -> np.ndarray:

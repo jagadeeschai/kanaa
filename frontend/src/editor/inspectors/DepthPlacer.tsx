@@ -13,8 +13,8 @@ import { newId } from '../editor-constants';
 import { asVideo } from '../photoToVideo';
 import { EditorContext } from '../state/EditorContext';
 
-const PRESETS = [{ id: 'people', near: 0.6, label: 'Behind people', tip: 'People and anything as near come in front' },
-  { id: 'scene', near: 0.15, label: 'Behind the scene', tip: 'Walls, trees and buildings come in front; the title sits against the far distance and the sky' }] as const;
+const PRESETS = [{ id: 'people', near: 0.55, label: 'Behind people', tip: 'People and anything as near come in front' },
+  { id: 'scene', near: 0.25, label: 'Behind the scene', tip: 'Walls, trees and buildings come in front; the title sits against the far distance and the sky' }] as const;
 
 export function DepthPlacer({ text }: { text: TextItem }) {
   const store = useContext(EditorContext);
