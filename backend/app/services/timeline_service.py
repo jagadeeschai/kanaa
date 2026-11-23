@@ -901,6 +901,26 @@ def scene_track_source(facts: MediaFacts) -> Path:
     return folder_for(key) / 'proxy.mp4' if manifest_for(key) else facts.path
 
 
+def pin_for(timeline: Timeline, media: Callable[[int], MediaFacts], fmt, text):
+    """For a title locked to the scene: timeline seconds to the matrix taking the pin moment's frame to that one.
+    The scene track is made here if the preview has not made it already (the same file either way). Both exports
+    (ffmpeg and the GPU engine) follow the camera with it."""
+    if not text.pin:
+        return None
+    found = title3d.pinned(timeline, text)
+    if found is None:
+        return None
+    clip, start, end, at = found
+    facts = media(clip.media_id)
+    if facts.media_type != 'video':
+        return None
+    from app.services import cutout_service, scene_track_service
+    person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
+    track = scene_track_service.ensure(scene_track_source(facts), (facts.width or 1920, facts.height or 1080), start, end, at,
+                                       person_mask=person_mask if person_mask.is_file() else None, **title3d.pin_track_options(timeline, text))
+    return lambda seconds: title3d.scene_matrix(track, clip, facts, fmt, seconds, text.pin.at)
+
+
 class Builder:
     def __init__(self, timeline: Timeline, media: Callable[[int], MediaFacts], audio_asset: Callable[[str], Path], folder: Path, prepared: Prepared | None = None, masks: Callable[[MediaFacts, Any], Path] | None = None, voices: Callable[[Path], Path] | None = None):
         timeline = playing_timeline(timeline)
@@ -1308,22 +1328,7 @@ class Builder:
         return output
 
     def pin_for(self, text):
-        """For a title locked to the scene: timeline seconds to the matrix taking the pin moment's frame to that one.
-        The scene track is made here if the preview has not made it already (the same file either way)."""
-        if not text.pin:
-            return None
-        found = title3d.pinned(self.timeline, text)
-        if found is None:
-            return None
-        clip, start, end, at = found
-        facts = self.media(clip.media_id)
-        if facts.media_type != 'video':
-            return None
-        from app.services import cutout_service, scene_track_service
-        person_mask = cutout_service.files(facts.path)[cutout_service.MASK]
-        track = scene_track_service.ensure(scene_track_source(facts), (facts.width or 1920, facts.height or 1080), start, end, at,
-                                           person_mask=person_mask if person_mask.is_file() else None, **title3d.pin_track_options(self.timeline, text))
-        return lambda seconds: title3d.scene_matrix(track, clip, facts, self.fmt, seconds, text.pin.at)
+        return pin_for(self.timeline, self.media, self.fmt, text)
 
     def add_text_layer(self, layer, position: int, base: str) -> str:
         fps = self.fmt.fps

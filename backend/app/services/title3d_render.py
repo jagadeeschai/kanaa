@@ -248,10 +248,10 @@ def render_title_frames(text, picture: Path, size: tuple[int, int], fps: int, fr
 
 
 def render_title_sequence(text, picture: Path, size: tuple[int, int], fps: int, frames: int, folder: Path, name: str,
-                          states: list[tuple[float, float, Path]] | None = None) -> tuple[list[str], list[int]]:
+                          states: list[tuple[float, float, Path]] | None = None, pin_at: PinAt | None = None) -> tuple[list[str], list[int]]:
     """The same frames as pictures, for the GPU engine: each different frame once as a PNG, and which one each frame
-    shows. (Pinned titles, which follow the camera, are not drawn here.)"""
-    draw = _drawer(text, picture, size, fps, frames, None, states)
+    shows. A pinned title follows the camera by `pin_at`, as the ffmpeg export draws it."""
+    draw = _drawer(text, picture, size, fps, frames, pin_at, states)
     paths: list[str] = []
     index: dict = {}
     shown: list[int] = []

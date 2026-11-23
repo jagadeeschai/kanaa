@@ -151,7 +151,7 @@ class Accepts(unittest.TestCase):
         data['layers'][3]['items'][0]['enter'] = {'preset': 'prism', 'duration': 0.5}
         self.assertEqual(gpu_render.unsupported(Timeline.model_validate(data), self.facts), [])
         data['layers'][3]['items'][0]['pin'] = {'clip_id': 'm0', 'at': 1.0}
-        self.assertIn('pinned titles', gpu_render.unsupported(Timeline.model_validate(data), self.facts))
+        self.assertEqual(gpu_render.unsupported(Timeline.model_validate(data), self.facts), [])
 
     def test_plan_matches_the_schema_maths(self):
         with mock.patch('app.services.timeline_service.render_text_image'):
@@ -291,6 +291,30 @@ class MatchesFfmpeg(unittest.TestCase):
         print(f'\nwheels PSNR average {sum(values) / len(values):.1f} dB, worst {min(values):.1f} dB')
         self.assertGreater(sum(values) / len(values), 35)
 
+
+    def test_a_title_placed_in_the_scene_follows_the_camera_as_ffmpeg_draws_it(self):
+        """Put it in the scene: a tilted title pinned to the scene, the camera moving under it, on the GPU as in ffmpeg."""
+        work = Timeline.model_validate({'format': {'width': 1280, 'height': 720, 'fps': FPS}, 'layers': [
+            {'id': 'main', 'kind': 'video', 'magnetic': True, 'items': [{'id': 'm0', 'media_id': 4, 'start': 0, 'in': 0, 'out': 3}]},
+            {'id': 'words', 'kind': 'text', 'items': [{'id': 'placed', 'start': 0, 'length': 3, 'text': 'KANAA', 'style': 'plain', 'position': 'center', 'color': '#ffd54a', 'size': 90,
+                                                      'transform': {'x': 0.5, 'y': 0.6, 'tilt_x': 38, 'rotation': -6}, 'pin': {'clip_id': 'm0', 'at': 1.0, 'region': [0.5, 0.6], 'surface': 'floor'}}]}]})
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        # The camera pans: the scene, and so the title, slides left 60 pixels a second from the pin moment.
+        moving = lambda *_: (lambda seconds: [[1, 0, -60 * (seconds - 1.0)], [0, 1, 0], [0, 0, 1]])
+        ffmpeg_out, gpu_out = self.root / 'pinned-ffmpeg.mp4', self.root / 'pinned-gpu.mp4'
+        with mock.patch('app.services.timeline_service.pin_for', side_effect=moving):
+            with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+                render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
+            gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(gpu_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        values = [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)]
+        self.assertTrue(values)
+        print(f'\npinned title PSNR average {sum(values) / len(values):.1f} dB, worst {min(values):.1f} dB')
+        self.assertGreater(min(values), 30)
+        # And it did move: the first and last frames' titles are in different places.
+        grab = lambda at: subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(at), '-i', str(gpu_out), '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], capture_output=True).stdout
+        self.assertNotEqual(grab(0.1), grab(2.8))
 
     def test_film_grain_and_grade_match_ffmpeg(self):
         """Old film stock on the GPU: the channel mix exactly, grain of the same strength (both random, so not equal)."""

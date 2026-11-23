@@ -51,9 +51,7 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
                     found.add('titles that move with people')
                 if title3d.is_3d(item):
                     # Drawn frame by frame by the export's own title renderer (title3d_render), then laid on as pictures;
-                    # a pinned title follows the camera through the clip, which only the ffmpeg path does.
-                    if item.pin:
-                        found.add('pinned titles')
+                    # a pinned title follows the camera there too (timeline_service.pin_for).
                     continue
                 if set(item.transform.keyframes) - {'x', 'y', 'scale', 'opacity'} or item.transform.rotation:
                     found.add('rotation and tilt')
@@ -187,7 +185,15 @@ def _frames(transform, enter, exit_, length: float, frames: int, fps: int, lead:
     return {'x': xs, 'y': ys, 'scale': sizes, 'opacity': seen, 'dx': dx, 'dy': dy, 'zoom': zoom, 'blur': blur}
 
 
-def _title(item, fmt, folder: Path, name: str) -> dict:
+def _pin(timeline, media, item):
+    """A pinned title's camera follow, as the ffmpeg export makes it (None when not pinned)."""
+    if not item.pin:
+        return None
+    from app.services.timeline_service import pin_for
+    return pin_for(timeline, media, timeline.format, item)
+
+
+def _title(item, fmt, folder: Path, name: str, pin_at=None) -> dict:
     """A title as the export draws it: one full-frame picture, or for karaoke one per word sung so far, shown in turn."""
     from app.services.timeline_service import karaoke_states, render_text_image
     from app.services import title3d
@@ -217,7 +223,7 @@ def _title(item, fmt, folder: Path, name: str) -> dict:
                 if lit is not None:
                     render_text_image(item, fmt, picture, lit=lit)
                 states.append((start, end, picture))
-        paths, shown = render_title_sequence(item, image, (fmt.width, fmt.height), fps, frames, folder, f'{name}-frame', states=states)
+        paths, shown = render_title_sequence(item, image, (fmt.width, fmt.height), fps, frames, folder, f'{name}-frame', states=states, pin_at=pin_at)
         return {'kind': 'image', 'path': paths[0], 'paths': paths, 'shown': shown, 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
                 'x': [0.5] * frames, 'y': [0.5] * frames, 'scale': [1.0] * frames, 'opacity': [1.0] * frames}
     found = {'kind': 'image', 'path': str(image), 'start': round(item.start * fps), 'frames': frames, 'source_in': 0, 'speed': 1,
@@ -313,7 +319,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
             continue
         if layer.kind == 'text':
             for number, item in enumerate(sorted(layer.items, key=lambda text: text.start)):
-                items.append(_title(item, timeline.format, folder or output.parent, f'title-{position}-{number}'))
+                items.append(_title(item, timeline.format, folder or output.parent, f'title-{position}-{number}', _pin(timeline, media, item)))
             continue
         clips = sorted((clip for clip in layer.items if clip.enabled), key=lambda clip: clip.start)
         halves = _halves(clips, fps)
