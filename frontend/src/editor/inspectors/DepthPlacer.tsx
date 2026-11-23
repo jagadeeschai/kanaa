@@ -7,14 +7,18 @@ import { useContext, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { getPhoto, requestJson, waitForJob } from '../../api/client';
 import { t } from '../../i18n';
-import { clearInFront, clipLength, depthOf, findText, mainLayer, placeInDepth, updateText, type TextItem } from '../../timeline/model';
+import { clearInFront, clipLength, depthOf, findText, mainLayer, placeInDepth, REST_TRANSFORM, updateText, type TextItem } from '../../timeline/model';
 import { onTheSkyline } from '../../timeline/skyline';
 import { ValueSlider } from '../controls';
 import { newId } from '../editor-constants';
 import { asVideo } from '../photoToVideo';
 import { EditorContext } from '../state/EditorContext';
 
-const SKYLINE_LEVEL = 0.25;  // As Behind the scene and depth_mask_service.SKY_LEVEL.
+const SKYLINE_LEVEL = 0.25;
+const BEHIND_ALL = 0.95;  // How far back the slider goes before the title is behind everything.
+const MAX_BACK = 4;  // 400%: past BEHIND_ALL the title goes deeper, smaller with distance.
+/** The slider's value for a title: its depth level, or past it, how small distance has made it. */
+const howFarBack = (level: number, scale: number) => (level <= 1 - BEHIND_ALL + 1e-6 && scale < 1 ? Math.min(MAX_BACK, BEHIND_ALL / scale) : 1 - level);  // As Behind the scene and depth_mask_service.SKY_LEVEL.
 const PRESETS = [{ id: 'people', near: 0.55, label: 'Behind people', tip: 'People and anything as near come in front' },
   { id: 'scene', near: 0.25, label: 'Behind the scene', tip: 'Walls, trees and buildings come in front; the title sits against the far distance and the sky' }] as const;
 
@@ -59,7 +63,19 @@ export function DepthPlacer({ text }: { text: TextItem }) {
       store.change(placeInDepth(placed, text.id, SKYLINE_LEVEL, [newId(), newId()]));
     } catch (problem) { setError((problem as Error).message); setBusy(null); }
   };
-  const place = async (near: number, group?: string) => {
+  /** Up to 95%: more of the scene comes in front. Past it the title is behind everything, so it goes deeper still:
+   *  smaller with distance (a quarter of its size at 400%). */
+  const goBack = async (back: number, group?: string) => {
+    if (back <= BEHIND_ALL + 1e-6) {
+      if ((text.transform?.scale ?? 1) !== 1 && level !== null && level <= 1 - BEHIND_ALL + 1e-6) store.change(updateText(store.timeline!, text.id, { transform: { ...(text.transform ?? REST_TRANSFORM), scale: 1 } }), group);
+      await place(1 - back, group);
+      return;
+    }
+    const transform = { ...(text.transform ?? REST_TRANSFORM), scale: Math.round((BEHIND_ALL / back) * 1000) / 1000 };
+    if (level === null || level > 1 - BEHIND_ALL + 1e-6) await place(1 - BEHIND_ALL, group, transform);  // One change, so neither undoes the other.
+    else store.change(updateText(store.timeline!, text.id, { transform }), group);
+  };
+  const place = async (near: number, group?: string, transform?: TextItem['transform']) => {
     setError(null);
     let base = store.timeline!;
     const clip = mainLayer(base).items.find((item) => item.id === under.id)!;
@@ -71,6 +87,7 @@ export function DepthPlacer({ text }: { text: TextItem }) {
       setBusy(null);
     }
     if (!findText(base, text.id)) return;
+    if (transform) base = updateText(base, text.id, { transform });
     const next = placeInDepth(base, text.id, near, [newId(), newId()]);
     if (next === base) { setError(t('Place in depth needs a free video layer: delete one you no longer use.')); return; }
     store.change(next, group);
@@ -83,9 +100,9 @@ export function DepthPlacer({ text }: { text: TextItem }) {
       <button className={preset === 'custom' ? 'on' : undefined} aria-pressed={preset === 'custom'} disabled={busy !== null} title={t('Choose how far back the title sits')} onClick={() => { void place(level ?? 0.35); }}>{t('Custom')}</button>
     </div>
     <button className="ed-button wide" disabled={busy !== null} title={t('Finds where the land meets the sky behind the title and rests it there, following it as the camera moves')} onClick={() => { void sit(); }}>{t('Sit on the skyline')}</button>
-    {level !== null && <ValueSlider label={t('How far back')} value={1 - level} min={0.05} max={0.95} step={0.05} defaultValue={0.65} unit="%" factor={100}
-      onChange={(back, group) => { void place(1 - back, group ?? `depth-${text.id}`); }}/>}
-    {level !== null && <p className="ed-tip">{t('Everything nearer than the title comes in front of it. The first time, Kanaa works out how near everything in the clip is (about a minute for 30 seconds); it then shows in the preview.')}</p>}
+    {level !== null && <ValueSlider label={t('How far back')} value={howFarBack(level, text.transform?.scale ?? 1)} min={0.05} max={MAX_BACK} step={0.05} defaultValue={0.65} unit="%" factor={100}
+      onChange={(back, group) => { void goBack(back, group ?? `depth-${text.id}`); }}/>}
+    {level !== null && <p className="ed-tip">{t('Everything nearer than the title comes in front of it; past 95% it goes deeper into the scene, smaller with distance. The first time, Kanaa works out how near everything in the clip is (about a minute for 30 seconds); it then shows in the preview.')}</p>}
     {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Preparing the picture…')} {busy ? `${Math.round(busy)}%` : ''}</p>}
     {error && <p className="ed-error" role="alert">{error}</p>}
   </>;

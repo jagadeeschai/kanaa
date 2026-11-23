@@ -868,7 +868,7 @@ export const TAMIL: Record<string, string> = {
   'Choose how far back the title sits': 'தலைப்பு எவ்வளவு பின்னால் இருக்க வேண்டும் எனத் தேர்ந்தெடுக்கவும்',
   'Preparing the picture…': 'படத்தைத் தயார் செய்கிறது…',
   'Place in depth needs a free video layer: delete one you no longer use.': 'ஆழத்தில் வைக்க ஒரு காலியான வீடியோ அடுக்கு தேவை: பயன்படுத்தாத ஒன்றை நீக்கவும்.',
-  'Everything nearer than the title comes in front of it. The first time, Kanaa works out how near everything in the clip is (about a minute for 30 seconds); it then shows in the preview.': 'தலைப்பை விட அருகிலுள்ள அனைத்தும் அதற்கு முன்னே வரும். முதல் முறை, கிளிப்பில் உள்ள அனைத்தும் எவ்வளவு அருகில் என கனா கணக்கிடும் (30 வினாடிக்கு ஏறத்தாழ ஒரு நிமிடம்); பிறகு முன்னோட்டத்தில் தெரியும்.',
+  'Everything nearer than the title comes in front of it; past 95% it goes deeper into the scene, smaller with distance. The first time, Kanaa works out how near everything in the clip is (about a minute for 30 seconds); it then shows in the preview.': 'தலைப்பை விட அருகிலுள்ள அனைத்தும் அதற்கு முன்னே வரும். முதல் முறை, கிளிப்பில் உள்ள அனைத்தும் எவ்வளவு அருகில் என கனா கணக்கிடும் (30 வினாடிக்கு ஏறத்தாழ ஒரு நிமிடம்); பிறகு முன்னோட்டத்தில் தெரியும்.',
   'Sit on the skyline': 'வானவிளிம்பில் அமர்த்து',
   'Finds where the land meets the sky behind the title and rests it there, following it as the camera moves': 'தலைப்புக்குப் பின்னால் நிலம் வானைத் தொடும் இடத்தைக் கண்டு, அங்கே அமர்த்தும்; கேமரா நகரும்போது அதைப் பின்தொடரும்',
   'No sky was found above the land behind this title.': 'இந்தத் தலைப்புக்குப் பின்னால் நிலத்துக்கு மேல் வானம் கண்டறியப்படவில்லை.',
