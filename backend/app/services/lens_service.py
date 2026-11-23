@@ -3,6 +3,9 @@ distance stays sharp, and the further anything is from it (nearer or farther), t
 cinema lens. The focus can move over the clip (a rack focus). The result is a new video of the clip's part, so it
 plays and exports like any clip (on the GPU too), and the original is kept to go back to.
 
+On this Mac's GPU (native/lens_render.swift, Core Image's masked variable blur) with hardware decoding and encoding
+when it can; otherwise on the CPU, as below, with the same look (tests/test_lens.py compares the two).
+
 Blur is drawn as a few ready-blurred copies of each frame, made and mixed small (soft light needs no detail): each
 pixel blends between the two nearest by how far out of focus it is. In focus, the original full-size pixels show.
 """
@@ -10,6 +13,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
+import tempfile
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,7 +29,9 @@ from app.services.depth_mask_service import make_depth_map
 from app.services.job_service import JobCancelled
 from app.services.media_probe import MediaFacts
 
+logger = logging.getLogger(__name__)
 VERSION = 1
+GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'lens_render.swift'
 LEVELS = (0.0, 0.004, 0.009, 0.016, 0.026)  # Blur of each ready-blurred copy, as a share of the frame height.
 SHARP = 0.06  # Nearness this close to the focus stays fully sharp.
 PRESETS = {'portrait': 1.0, 'dreamy': 1.6, 'rack': 1.0}  # How strong each preset blurs.
@@ -83,6 +91,15 @@ def make(facts: MediaFacts, start: float, end: float, focus: list[tuple[float, f
     if target.is_file():
         return target
     depth = make_depth_map(facts, lambda value: on_progress(value // 3), should_cancel)
+    if os.environ.get('KANAA_GPU_EFFECTS') != '0':
+        try:
+            if _make_gpu(facts, start, end, focus, amount, glow, depth, target, on_progress, should_cancel):
+                on_progress(100)
+                return target
+        except JobCancelled:
+            raise
+        except Exception:
+            logger.exception('GPU lens failed; making it on the CPU')
     width, height = facts.width or 1920, facts.height or 1080
     width, height = width - width % 2, height - height % 2
     fps = facts.fps or 30
@@ -125,6 +142,70 @@ def make(facts: MediaFacts, start: float, end: float, focus: list[tuple[float, f
         temporary.unlink(missing_ok=True)
     on_progress(100)
     return target
+
+
+def _encoder(ffmpeg: str, height: int) -> list[str]:
+    """Hardware H.264 at about twice the export's bitrate (this copy is edited again), else libx264 as the CPU path."""
+    from app.services.timeline_service import _hardware_h264
+    if _hardware_h264(ffmpeg):
+        return ['-c:v', 'h264_videotoolbox', '-b:v', f'{100 if height >= 2160 else 40 if height >= 1440 else 30 if height >= 1080 else 18}M']
+    return ['-c:v', 'libx264', '-preset', 'medium', '-crf', '16']
+
+
+def _make_gpu(facts: MediaFacts, start: float, end: float, focus: list[tuple[float, float]], amount: float, glow: bool, depth: Path,
+              target: Path, on_progress: Callable[[int], None], should_cancel: Callable[[], bool]) -> bool:
+    """The lens on the GPU: ffmpeg decodes (in hardware) into lens_render, which blurs on the GPU, into the hardware
+    encoder. False when this Mac can't (no Swift tools), so the CPU path makes it."""
+    from app.services.cutout_service import helper
+    try:
+        tool = helper(GPU_TOOL)
+    except RuntimeError:
+        return False
+    ffmpeg = shutil.which('ffmpeg')
+    width, height = facts.width or 1920, facts.height or 1080
+    width, height = width - width % 2, height - height % 2
+    fps = facts.fps or 30
+    total = max(1, round((end - start) * fps))
+    depth_w, depth_h = _size(depth)
+    span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp.mp4')
+    with tempfile.TemporaryDirectory() as folder:
+        focus_file, fifo = Path(folder) / 'focus.txt', Path(folder) / 'depth.raw'
+        focus_file.write_text('\n'.join(f'{focus_at(focus, k / fps):.4f}' for k in range(total + 2)))
+        os.mkfifo(fifo)
+        processes: list[subprocess.Popen] = []
+        try:
+            read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-hwaccel', 'videotoolbox', *span, '-i', str(facts.path), '-an',
+                                     '-vf', f'{colour(facts)},scale={width}:{height}', '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            processes.append(read)
+            processes.append(subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-y', *span, '-i', str(depth), '-vf', 'format=gray', '-fps_mode', 'passthrough',
+                                               '-f', 'rawvideo', '-pix_fmt', 'gray', str(fifo)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            lens = subprocess.Popen([str(tool), str(width), str(height), str(depth_w), str(depth_h), f'{amount}', '1' if glow else '0', str(focus_file), str(fifo)],
+                                    stdin=read.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
+            processes.append(lens)
+            assert read.stdout and lens.stdout and lens.stderr
+            read.stdout.close()  # lens_render owns it now.
+            write = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', f'{width}x{height}', '-r', f'{fps}', '-i', '-',
+                                      *span, '-i', str(facts.path), '-map', '0:v', '-map', '1:a?', *_encoder(ffmpeg, height), '-pix_fmt', 'yuv420p',
+                                      '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', str(temporary)], stdin=lens.stdout, stderr=subprocess.PIPE)
+            processes.append(write)
+            lens.stdout.close()
+            for line in lens.stderr:
+                if should_cancel():
+                    raise JobCancelled()
+                if line.startswith(b'frame '):
+                    on_progress(33 + min(65, int(line.split()[1]) * 65 // total))
+            if lens.wait() or write.wait() or not temporary.is_file():
+                raise RuntimeError(f'lens_render {lens.returncode}, ffmpeg {write.returncode}: {(write.stderr.read() if write.stderr else b"")[-500:]!r}')
+            temporary.replace(target)
+            return True
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+            temporary.unlink(missing_ok=True)
 
 
 def _size(path: Path) -> tuple[int, int]:
