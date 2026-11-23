@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,7 +21,9 @@ from app.services.cutout_service import colour
 from app.services.job_service import JobCancelled
 from app.services.media_probe import MediaFacts
 
+logger = logging.getLogger(__name__)
 VERSION = 1
+GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'slowmo_render.swift'
 FACTORS = (2, 4, 8)
 
 
@@ -68,6 +72,15 @@ def make(facts: MediaFacts, start: float, end: float, factor: int, on_progress: 
     target = target_path(facts.path, start, end, factor)
     if target.is_file():
         return target
+    if os.environ.get('KANAA_GPU_EFFECTS') != '0':
+        try:
+            if _make_gpu(facts, start, end, factor, target, on_progress, should_cancel):
+                on_progress(100)
+                return target
+        except JobCancelled:
+            raise
+        except Exception:
+            logger.exception('GPU slow motion failed; making it on the CPU')
     width, height = facts.width or 1920, facts.height or 1080
     width, height = width - width % 2, height - height % 2
     fps = facts.fps or 30
@@ -110,3 +123,66 @@ def make(facts: MediaFacts, start: float, end: float, factor: int, on_progress: 
         temporary.unlink(missing_ok=True)
     on_progress(100)
     return target
+
+
+def _make_gpu(facts: MediaFacts, start: float, end: float, factor: int, target: Path, on_progress: Callable[[int], None],
+              should_cancel: Callable[[], bool]) -> bool:
+    """Slow motion on the GPU: the motion measured here (DIS, as the CPU path), the new frames made by slowmo_render on
+    the GPU, straight into the hardware encoder. False when this Mac can't (no Swift tools), so the CPU path makes it."""
+    import cv2
+    from app.services.cutout_service import helper
+    from app.services.lens_service import hardware_encoder
+    try:
+        tool = helper(GPU_TOOL)
+    except RuntimeError:
+        return False
+    ffmpeg = shutil.which('ffmpeg')
+    width, height = facts.width or 1920, facts.height or 1080
+    width, height = width - width % 2, height - height % 2
+    fps = facts.fps or 30
+    total = max(1, round((end - start) * fps))
+    half = (max(16, width // 2), max(16, height // 2))
+    sent = (max(8, width // 4), max(8, height // 4))  # The motion is smooth: a quarter-size copy carries it.
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp.mp4')
+    flow = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_FAST)
+    processes: list[subprocess.Popen] = []
+    try:
+        read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-hwaccel', 'videotoolbox', '-ss', f'{start:.3f}', '-t', f'{end - start:.3f}', '-i', str(facts.path), '-an',
+                                 '-vf', f'{colour(facts)},scale={width}:{height}', '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        processes.append(read)
+        slow = subprocess.Popen([str(tool), str(width), str(height), str(sent[0]), str(sent[1]), str(factor)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        processes.append(slow)
+        write = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', f'{width}x{height}', '-r', f'{fps}', '-i', '-',
+                                  *hardware_encoder(ffmpeg, height), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(temporary)], stdin=slow.stdout, stderr=subprocess.PIPE)
+        processes.append(write)
+        assert read.stdout and slow.stdin and slow.stdout
+        slow.stdout.close()  # The encoder owns it now.
+
+        def moved(a: np.ndarray, b: np.ndarray) -> bytes:  # From a to b, in full-size pixels, quarter size.
+            return (cv2.resize(flow.calc(a, b, None), sent, interpolation=cv2.INTER_AREA) * (width / half[0])).astype(np.float32).tobytes()
+
+        size, done, last = width * height * 4, 0, None
+        while chunk := read.stdout.read(size):
+            if should_cancel():
+                raise JobCancelled()
+            if len(chunk) < size:
+                break
+            grey = cv2.cvtColor(cv2.resize(np.frombuffer(chunk, np.uint8).reshape(height, width, 4), half, interpolation=cv2.INTER_AREA), cv2.COLOR_BGRA2GRAY)
+            slow.stdin.write(chunk)
+            if last is not None:
+                slow.stdin.write(moved(last, grey))
+                slow.stdin.write(moved(grey, last))
+            last, done = grey, done + 1
+            if done % 5 == 0:
+                on_progress(min(98, done * 98 // total))
+        slow.stdin.close()
+        if slow.wait() or write.wait() or done == 0 or not temporary.is_file():
+            raise RuntimeError(f'slowmo_render {slow.returncode}, ffmpeg {write.returncode}: {(write.stderr.read() if write.stderr else b"")[-500:]!r}')
+        temporary.replace(target)
+        return True
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+        temporary.unlink(missing_ok=True)

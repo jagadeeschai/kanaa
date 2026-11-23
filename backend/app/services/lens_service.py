@@ -144,7 +144,7 @@ def make(facts: MediaFacts, start: float, end: float, focus: list[tuple[float, f
     return target
 
 
-def _encoder(ffmpeg: str, height: int) -> list[str]:
+def hardware_encoder(ffmpeg: str, height: int) -> list[str]:
     """Hardware H.264 at about twice the export's bitrate (this copy is edited again), else libx264 as the CPU path."""
     from app.services.timeline_service import _hardware_h264
     if _hardware_h264(ffmpeg):
@@ -188,7 +188,7 @@ def _make_gpu(facts: MediaFacts, start: float, end: float, focus: list[tuple[flo
             assert read.stdout and lens.stdout and lens.stderr
             read.stdout.close()  # lens_render owns it now.
             write = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', f'{width}x{height}', '-r', f'{fps}', '-i', '-',
-                                      *span, '-i', str(facts.path), '-map', '0:v', '-map', '1:a?', *_encoder(ffmpeg, height), '-pix_fmt', 'yuv420p',
+                                      *span, '-i', str(facts.path), '-map', '0:v', '-map', '1:a?', *hardware_encoder(ffmpeg, height), '-pix_fmt', 'yuv420p',
                                       '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', str(temporary)], stdin=lens.stdout, stderr=subprocess.PIPE)
             processes.append(write)
             lens.stdout.close()
