@@ -47,7 +47,7 @@ def animated_look(enter, exit_, local: float, length: float) -> dict[str, float]
 
 
 SMOOTH_STEP = 2.0  # Pixels between depth layers at most, so the side reads as one smooth face.
-MAX_SMOOTH_LAYERS = 48  # Enough for a deep 4K title; keeps moving titles quick to draw.
+MAX_SMOOTH_LAYERS = 160  # Enough for a 400% deep 4K title; keeps moving titles quick enough to draw.
 
 
 def layers(depth, height: int = 0) -> list[float]:

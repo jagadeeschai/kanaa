@@ -62,7 +62,7 @@ export const hexColour = (colour: string | null | undefined): [number, number, n
 
 /** Each layer's share of the full depth, front (0) to back. */
 export const SMOOTH_STEP = 2;  // Pixels between depth layers at most, so the side reads as one smooth face.
-export const MAX_SMOOTH_LAYERS = 48;
+export const MAX_SMOOTH_LAYERS = 160;
 
 /** Each layer's share of the full depth, front to back; with the frame's height, at most SMOOTH_STEP pixels apart. Matches title3d.layers. */
 export function layers(depth: TitleDepth | null | undefined, height = 0): number[] {

@@ -369,7 +369,7 @@ class Clip(Strict):
 
 class TitleDepth(Strict):
     """Extruded letters: copies stepping back into the scene, shaded darker towards the back."""
-    amount: float = Field(default=0.5, ge=0, le=1)
+    amount: float = Field(default=0.5, ge=0, le=4)  # Up to 400%: very deep letters.
     color: str = Field(default='#6b4a1f', pattern=r'^#[0-9a-fA-F]{6}$')  # The sides of the letters.
     light: float = Field(default=0.55, ge=0, le=1)  # How much the sides catch the light.
     material: Optional[Literal['gold', 'chrome', 'stone', 'neon', 'glass']] = None
