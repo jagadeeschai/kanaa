@@ -19,6 +19,7 @@ export function lensPart(clip: Clip) {
 
 export function cannotLens(clip: Clip): string | null {
   if (clip.reverse || clip.ramp || clip.freeze != null) return 'The cinematic lens works on a clip that plays normally (not reversed, ramped or frozen).';
+  if (clip.slowmo) return 'Set the clip back to normal speed first, then add the lens (and slow it down again after).';
   return null;
 }
 

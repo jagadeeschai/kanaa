@@ -588,6 +588,41 @@ def cinematic_lens(identifier: int, body: dict):
     return {'status': 'preparing', 'job_id': job_id}
 
 
+@router.post('/photos/{identifier}/slowmo')
+def smooth_slowmo(identifier: int, body: dict):
+    """Smooth slow motion: a copy of the clip's part with new frames made between its own (slowmo_service.py)."""
+    from app.db.database import get_connection
+    from app.services import slowmo_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end, factor = float(body['start']), float(body['end']), int(body['factor'])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Smooth slow motion needs a video clip.')
+    if factor not in slowmo_service.FACTORS or not 0 <= start < end:
+        raise HTTPException(400, 'Choose half, a quarter or an eighth speed.')
+    end = min(end, facts.duration or end)
+    target = slowmo_service.target_path(facts.path, start, end, factor)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = slowmo_service.make(facts, start, end, factor, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (slow motion {factor}x).mp4')['id']}
+    job_id = enqueue_render('slowmo', f'Smooth slow motion ({factor}x)', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout', 'knockout_wash')}

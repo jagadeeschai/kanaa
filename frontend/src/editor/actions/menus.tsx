@@ -6,6 +6,8 @@ import { openPopout, openRemovePerson } from "../RemovePersonDialog";
 import { openVideoPopout } from "../VideoPopoutDialog";
 import { openClone } from "../CloneDialog";
 import { openLens } from "../LensDialog";
+import { openSlowmo } from "../SlowmoDialog";
+import { removeSlow } from "../../timeline/slowmo";
 import { removeLens } from "../../timeline/lens";
 import { hasClones, removeClones } from "../../timeline/clone";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
@@ -248,6 +250,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }, { label: 'Focus drift on every picture', onSelect: () => { void getInput().focusAllPictures(); } }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
       else {
         if (onMain) items.push({ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) });
+        items.push({ label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => change(removeSlow(timeline, id)) }] : []));
         items.push({ label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => change(removeLens(timeline, id)) }] : []));
         if (onMain) items.push({ label: 'Clone the person…', onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : []));
         items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
