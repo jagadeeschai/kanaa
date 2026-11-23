@@ -125,7 +125,7 @@ export function createTitleSceneActions(getInput: () => Input) {
       const above = (() => { const found = findText(next, text.id); if (!found) return null; return next.layers[next.layers.indexOf(found.layer) + 1]; })();
       // Everything nearer than the spot comes in front (people, trees, the hill), from the clip's depth; people only if
       // the depth can't be worked out.
-      if (pose.kind !== 'sky' && !(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front', 'Depth'].includes(above.name ?? ''))) {
+      if (pose.kind !== 'sky' && !(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front'].includes(above.name ?? ''))) {  // A Depth layer is set again, for the new spot.
         const near = await nearnessAt(clip.media_id, clip.in + (at - clip.start) * clip.speed, region, setNote);
         next = near === null ? putBehindPerson(next, text.id, [newId(), newId()]) : placeInDepth(next, text.id, Math.min(0.95, near + SPOT_MARGIN), [newId(), newId()]);
       }
