@@ -4,6 +4,8 @@ import { openAiEdit } from "../AiEditDialog";
 import { openBringToLife } from "../BringToLifeDialog";
 import { openPopout, openRemovePerson } from "../RemovePersonDialog";
 import { openVideoPopout } from "../VideoPopoutDialog";
+import { openClone } from "../CloneDialog";
+import { hasClones, removeClones } from "../../timeline/clone";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
 import type { Transform } from '../../timeline/evaluate';
@@ -244,6 +246,7 @@ export function createEditorMenuActions(getInput: () => Input) {
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }, { label: 'Focus drift on every picture', onSelect: () => { void getInput().focusAllPictures(); } }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
       else {
         if (onMain) items.push({ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) });
+        if (onMain) items.push({ label: 'Clone the person…', onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : []));
         items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
           { label: 'Detach sound', disabled: clip.muted || !hasSound(clip.media_id), onSelect: () => detach(clip) },
           { label: 'Freeze frame here', disabled: !canFreeze, onSelect: () => freeze(t) },
