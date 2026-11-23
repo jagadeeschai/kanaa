@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { Users } from 'lucide-react';
 import { photoThumbUrl } from '../api/client';
 import { t } from '../i18n';
-import { cloneFollow, cloneTakes } from '../timeline/clone';
+import { cloneFollow, cloneMoments, cloneTakes } from '../timeline/clone';
 import { clipLength, mainLayer, type Clip } from '../timeline/model';
 import { newId } from './editor-constants';
 import { EditorContext } from './state/EditorContext';
@@ -32,7 +32,7 @@ export function CloneHost() {
 
 function CloneDialog({ clip, onClose }: { clip: Clip; onClose: () => void }) {
   const store = useContext(EditorContext)!;
-  const [mode, setMode] = useState<'follow' | 'takes'>('follow');
+  const [mode, setMode] = useState<'moments' | 'follow' | 'takes'>('moments');
   const [copies, setCopies] = useState(2), [gap, setGap] = useState(0.8);
   const [takes, setTakes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ function CloneDialog({ clip, onClose }: { clip: Clip; onClose: () => void }) {
     setError(null);
     try {
       const timeline = store.timeline!;
-      const next = mode === 'follow' ? cloneFollow(timeline, clip.id, copies, gap, newId) : cloneTakes(timeline, clip.id, others.filter((item) => takes.includes(item.id)), newId);
+      const next = mode === 'moments' ? cloneMoments(timeline, clip.id, copies, newId) : mode === 'follow' ? cloneFollow(timeline, clip.id, copies, gap, newId) : cloneTakes(timeline, clip.id, others.filter((item) => takes.includes(item.id)), newId);
       store.change(next);
       onClose();
     } catch (problem) { setError((problem as Error).message); }
@@ -53,10 +53,15 @@ function CloneDialog({ clip, onClose }: { clip: Clip; onClose: () => void }) {
     <div className="ed-card small" onClick={(event) => event.stopPropagation()} style={{ width: 'min(420px, calc(100vw - 24px))' }}>
       <h2><Users size={16}/> {t('Clone the person')}</h2>
       <div className="ed-chips" role="group" aria-label={t('How')}>
+        <button className={mode === 'moments' ? 'on' : ''} aria-pressed={mode === 'moments'} onClick={() => setMode('moments')}>{t('Many moments')}</button>
         <button className={mode === 'follow' ? 'on' : ''} aria-pressed={mode === 'follow'} onClick={() => setMode('follow')}>{t('Follow me')}</button>
         <button className={mode === 'takes' ? 'on' : ''} aria-pressed={mode === 'takes'} onClick={() => setMode('takes')}>{t('From my takes')}</button>
       </div>
-      {mode === 'follow' ? <>
+      {mode === 'moments' ? <>
+        <p className="ed-tip">{t('Film yourself doing different things in one spot, one after another. The clip is cut into parts and every part plays at once: you, many times, each doing something else.')}</p>
+        <h3 className="ed-sub">{t('Clones')}</h3>{chips('Clones', [[1, '2'], [2, '3'], [3, '4'], [4, '5']], copies, setCopies)}
+        <p className="ed-tip">{t('The shot becomes as long as one part. Remove clones brings the whole clip back.')}</p>
+      </> : mode === 'follow' ? <>
         <p className="ed-tip">{t('Copies of the person from a moment earlier follow behind them, each a little further back in time.')}</p>
         <h3 className="ed-sub">{t('Clones')}</h3>{chips('Clones', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], copies, setCopies)}
         <h3 className="ed-sub">{t('How far behind')}</h3>{chips('How far behind', [[0.4, t('Close')], [0.8, t('Spaced')], [1.5, t('Far apart')]], gap, setGap)}

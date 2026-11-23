@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneFollow, cloneTakes, hasClones, removeClones } from '../src/timeline/clone.ts';
+import { cloneFollow, cloneMoments, cloneTakes, hasClones, removeClones } from '../src/timeline/clone.ts';
 
 const REST = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
 const clip = (id, start, inn, out, extra = {}) => ({ id, media_id: 1, start, in: inn, out, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, transform: REST, adjust: {}, ...extra });
@@ -32,4 +32,17 @@ test('from my takes: each take cut out over the clip, starting with it, no longe
   const [b, c] = made.layers.slice(1, 3).map((layer) => layer.items[0]);
   assert.deepEqual([b.start, b.in, b.out, b.cutout], [0, 3, 9, 'remove']);
   assert.deepEqual([c.start, c.in, c.out], [0, 0, 4]);
+});
+
+test('many moments: the clip in parts, all playing at once over the first; remove brings the whole clip back', () => {
+  const made = cloneMoments(base([clip('a', 0, 0, 12)]), 'a', 2, ids);
+  const main = made.layers[0].items[0];
+  assert.deepEqual([main.in, main.out], [0, 4]);
+  const parts = made.layers.slice(1, 3).map((layer) => layer.items[0]);
+  assert.deepEqual(parts.map((each) => [each.in, each.out, each.start, each.cutout]), [[8, 12, 0, 'remove'], [4, 8, 0, 'remove']]);
+  const back = removeClones(made, 'a');
+  assert.deepEqual([back.layers.length, back.layers[0].items[0].out], [2, 12]);
+  assert.throws(() => cloneMoments(base([clip('a', 0, 0, 2)]), 'a', 4, ids), /too short/);
+  const again = cloneMoments(made, 'a', 1, ids);  // Again: from the whole clip, not the shortened one.
+  assert.deepEqual([again.layers[0].items[0].out, again.layers.length], [6, 3]);
 });
