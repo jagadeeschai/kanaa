@@ -49,7 +49,7 @@ export function TextInspector() {
           title={colour ? t(wash ? 'The clip shows around the words through a soft wash, and each letter gets a thin border.' : 'The picture under the title shows only through its letters.') : undefined} onClick={() => onChange({ knockout: colour, knockout_wash: wash, ...(colour ? { style: 'plain' as const } : {}) })}>{t(label)}</button>; })}
       </div>
     <ZoomThrough text={text} format={timeline.format} onChange={onChange}/>
-    <DepthPlacer text={text}/>
+    <DepthPlacer text={text} placing={placing} onPlace={onPlace}/>
     <Chips label="Position" options={[{ id: 'top', label: 'Top' }, { id: 'center', label: 'Middle' }, { id: 'bottom', label: 'Bottom' }]} value={text.position} onPick={(position) => onChange({ position })}/>
     <Chips label="Alignment" options={[{ id: 'left' as const, label: 'Left' }, { id: 'center' as const, label: 'Centre' }, { id: 'right' as const, label: 'Right' }]} value={text.align ?? 'center'} onPick={(align) => onChange({ align })}/>
     <ValueSlider label="Letter spacing" value={text.spacing ?? 0} min={0} max={30} step={1} defaultValue={0} onChange={(spacing, group) => onChange({ spacing: Math.round(spacing) }, group)}/>

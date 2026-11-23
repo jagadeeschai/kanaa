@@ -95,3 +95,17 @@ class Skyline(unittest.TestCase):
             found = depth.skyline(facts, [0.2, 0.6], 0.1, 0.9)
         for value in found:
             self.assertAlmostEqual(value, 0.4, delta=0.04)
+
+
+class NearnessAtSpot(unittest.TestCase):
+    def test_reads_the_middle_of_a_patch_of_the_depth_map(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'map.mp4'  # Left half far (dark), right half near (bright).
+            subprocess.run([shutil.which('ffmpeg'), '-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x202020:s=320x180:d=1', '-f', 'lavfi', '-i', 'color=c=0xe0e0e0:s=160x180:d=1',
+                            '-filter_complex', '[0][1]overlay=160:0', '-pix_fmt', 'yuv420p', str(source)], check=True)
+            facts = MediaFacts(path=Path(folder) / 'clip.mp4', media_type='video', width=320, height=180, duration=1, fps=30)
+            with mock.patch.object(depth, 'map_path', return_value=source):
+                self.assertLess(depth.nearness_at(facts, 0.2, 0.2, 0.5), 0.2)
+                self.assertGreater(depth.nearness_at(facts, 0.2, 0.8, 0.5), 0.8)
+                with self.assertRaises(ValueError):
+                    depth.nearness_at(facts, 30, 0.5, 0.5)

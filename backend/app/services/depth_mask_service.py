@@ -178,6 +178,19 @@ def make_depth_mask(facts: MediaFacts, near: float, target: Path, on_progress: C
 SKY_LEVEL = 0.25  # Behind the scene: what is nearer than this is land (hills, trees, buildings); the rest is sky.
 
 
+def nearness_at(facts: MediaFacts, at: float, x: float, y: float) -> float:
+    """How near the spot x, y (shares of the picture) is at `at` source seconds, 0 far to 1 near: the middle of a
+    small patch around it, so one stray pixel can't decide. The clip's depth map must be made already."""
+    depth = map_path(facts.path)
+    raw = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-ss', f'{max(0.0, at):.3f}', '-i', str(depth), '-frames:v', '1',
+                          '-vf', 'format=gray,scale=320:180', '-f', 'rawvideo', '-'], capture_output=True).stdout
+    if len(raw) < 320 * 180:
+        raise ValueError('That moment is past the end of the video.')
+    near = np.frombuffer(raw[:320 * 180], np.uint8).reshape(180, 320) / 255
+    cx, cy = min(319, max(0, round(x * 319))), min(179, max(0, round(y * 179)))
+    return float(np.median(near[max(0, cy - 3):cy + 4, max(0, cx - 3):cx + 4]))
+
+
 def skyline(facts: MediaFacts, times: list[float], x0: float, x1: float, level: float = SKY_LEVEL) -> list[float | None]:
     """Where the land meets the sky between x0 and x1 (shares of the picture), at each of `times` (source seconds), as
     a share of the picture's height; None where no sky is seen above the land. From the clip's depth map: in each

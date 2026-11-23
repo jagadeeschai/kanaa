@@ -1,8 +1,8 @@
-import { getJobStatus,getPhoto,getSurface,startBrandIntro,startPeopleGrid,startSceneTrack } from "../../api/client";
+import { getJobStatus,getPhoto,getSurface,requestJson,waitForJob,startBrandIntro,startPeopleGrid,startSceneTrack } from "../../api/client";
 import { valueAt } from "../../timeline/evaluate";
 import { keepClear,removeKeepClear,type PeopleGrid } from "../../timeline/keepClear";
 import type { KeepClear } from "../../timeline/model";
-import { clipLength,findText,insertClip,mainLayer,newClip,onSkyline,putBehindPerson,removeClip,REST_TRANSFORM,setGroundRiseGap,TITLE_SPACE,updateText,type Clip,type SurfaceKind,type TextItem,type Timeline,type TitlePin } from "../../timeline/model";
+import { clipLength,findText,insertClip,mainLayer,newClip,onSkyline,placeInDepth,putBehindPerson,removeClip,REST_TRANSFORM,setGroundRiseGap,TITLE_SPACE,updateText,type Clip,type SurfaceKind,type TextItem,type Timeline,type TitlePin } from "../../timeline/model";
 import { sourceAt } from "../../timeline/ramp";
 import { stayWith } from "../../timeline/stayWith";
 import { clipPlacement,invert,pinStretch,pinTrackOptions,sceneMatrix,type SceneTrack } from "../../timeline/title3d";
@@ -32,6 +32,18 @@ type Input = {
 };
 
 /** Existing editor actions; the input getter preserves render snapshots and forward references. */
+/** How much nearer than the clicked spot something must be to come in front: the ground just before it stays behind. */
+const SPOT_MARGIN = 0.06;
+/** How near a spot of a video is (0 far to 1 near), working out the clip's depth first if needed; null if it can't be. */
+async function nearnessAt(mediaId: number, t: number, region: [number, number], setNote: (note: string) => void): Promise<number | null> {
+  try {
+    const ask = () => requestJson<{ status: string; job_id?: string; near?: number }>(`/api/photos/${mediaId}/depth-at`, { method: 'POST', body: JSON.stringify({ t, x: region[0], y: region[1] }) });
+    let found = await ask();
+    if (found.status === 'preparing') { setNote('Finding how near everything is in this clip (once per clip)…'); await waitForJob(found.job_id!, () => undefined); found = await ask(); }
+    return typeof found.near === 'number' ? found.near : null;
+  } catch { return null; }
+}
+
 export function createTitleSceneActions(getInput: () => Input) {
   const pinTarget = (...args: Parameters<(current: Timeline, text: TextItem) => { clip: Clip; stretch: { horizon: boolean; region: [number, number] | null; upright: boolean; start: number; end: number; at: number; }; key: string; } | null>) => {
     const { sceneTrackKey } = getInput();
@@ -111,7 +123,12 @@ export function createTitleSceneActions(getInput: () => Input) {
       let next = updateText(timelineRef.current ?? current, text.id, { transform, keep_clear: null, stay_with: null, position: 'center', pin: null });
       // People walk in front of a title on a floor or a wall; on the sky the skyline already keeps the land in front.
       const above = (() => { const found = findText(next, text.id); if (!found) return null; return next.layers[next.layers.indexOf(found.layer) + 1]; })();
-      if (pose.kind !== 'sky' && !(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front'].includes(above.name ?? ''))) next = putBehindPerson(next, text.id, [newId(), newId()]);
+      // Everything nearer than the spot comes in front (people, trees, the hill), from the clip's depth; people only if
+      // the depth can't be worked out.
+      if (pose.kind !== 'sky' && !(above?.kind === 'video' && ['Person', 'Object', 'Land', 'In front', 'Depth'].includes(above.name ?? ''))) {
+        const near = await nearnessAt(clip.media_id, clip.in + (at - clip.start) * clip.speed, region, setNote);
+        next = near === null ? putBehindPerson(next, text.id, [newId(), newId()]) : placeInDepth(next, text.id, Math.min(0.95, near + SPOT_MARGIN), [newId(), newId()]);
+      }
       change(next, `place-${text.id}`);
       const placed = findText(next, text.id)?.text;
       if (placed) await pinTitle({ ...placed, pin: { clip_id: clip.id, at, region, surface: pose.kind } }, true, { clip_id: clip.id, at, region, surface: pose.kind });

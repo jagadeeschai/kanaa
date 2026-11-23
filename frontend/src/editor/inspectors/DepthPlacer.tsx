@@ -22,7 +22,7 @@ const howFarBack = (level: number, scale: number) => (level <= 1 - BEHIND_ALL + 
 const PRESETS = [{ id: 'people', near: 0.55, label: 'Behind people', tip: 'People and anything as near come in front' },
   { id: 'scene', near: 0.25, label: 'Behind the scene', tip: 'Walls, trees and buildings come in front; the title sits against the far distance and the sky' }] as const;
 
-export function DepthPlacer({ text }: { text: TextItem }) {
+export function DepthPlacer({ text, placing, onPlace }: { text: TextItem; placing: 'waiting' | 'busy' | null; onPlace: () => void }) {
   const store = useContext(EditorContext);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +99,8 @@ export function DepthPlacer({ text }: { text: TextItem }) {
       {PRESETS.map((each) => <button key={each.id} className={preset === each.id ? 'on' : undefined} aria-pressed={preset === each.id} disabled={busy !== null} title={t(each.tip)} onClick={() => { void place(each.near); }}>{t(each.label)}</button>)}
       <button className={preset === 'custom' ? 'on' : undefined} aria-pressed={preset === 'custom'} disabled={busy !== null} title={t('Choose how far back the title sits')} onClick={() => { void place(level ?? 0.35); }}>{t('Custom')}</button>
     </div>
+    <button className={`ed-button wide ${placing === 'waiting' ? 'on' : 'primary'}`} aria-pressed={placing === 'waiting'} disabled={busy !== null || placing === 'busy'} title={t('Click a spot in the video: the title lies on that ground or wall in perspective, goes behind everything nearer, and stays there as the camera moves')} onClick={onPlace}>
+      {placing === 'waiting' ? t('Click a spot in the video…') : placing === 'busy' ? t('Putting it in the scene…') : t('Put it in the scene')}</button>
     <button className="ed-button wide" disabled={busy !== null} title={t('Finds where the land meets the sky behind the title and rests it there, following it as the camera moves')} onClick={() => { void sit(); }}>{t('Sit on the skyline')}</button>
     {level !== null && <ValueSlider label={t('How far back')} value={howFarBack(level, text.transform?.scale ?? 1)} min={0.05} max={MAX_BACK} step={0.05} defaultValue={0.65} unit="%" factor={100}
       onChange={(back, group) => { void goBack(back, group ?? `depth-${text.id}`); }}/>}

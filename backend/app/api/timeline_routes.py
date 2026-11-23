@@ -551,6 +551,36 @@ def find_skyline(body: dict):
     return {'status': 'ready', 'box': box, 'skyline': depth_mask_service.skyline(facts, times, max(0.0, x0), min(1.0, x1))}
 
 
+@router.post('/photos/{identifier}/depth-at')
+def depth_at_spot(identifier: int, body: dict):
+    """How near a spot of a video is (x, y: 0..1 of the source picture, at `t` source seconds), 0 far to 1 near, so a
+    title placed there can go behind everything nearer. Works out the clip's depth first when it isn't yet (a job)."""
+    from app.services import depth_mask_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    try:
+        t, x, y = (float(body[key]) for key in ('t', 'x', 'y'))
+        if not (t >= 0 and 0 <= x <= 1 and 0 <= y <= 1):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, 'Choose a spot in the picture.') from exc
+    facts = media_facts(identifier)
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Put it in the scene works on videos.')
+    if not depth_mask_service.map_path(facts.path).is_file():
+        holder: dict = {}
+
+        def run(should_cancel):
+            depth_mask_service.make_depth_map(facts, lambda value: update_job(holder['id'], progress=value), should_cancel)
+            return {'progress': 100}
+        job_id = enqueue_render('depth_map', 'Finding how near everything is', run, reserve=lambda job: holder.update(id=job), total=100)
+        return {'status': 'preparing', 'job_id': job_id}
+    try:
+        return {'status': 'ready', 'near': depth_mask_service.nearness_at(facts, t, x, y)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post('/photos/{identifier}/lens')
 def cinematic_lens(identifier: int, body: dict):
     """Cinematic lens: a copy of the clip's part with real depth of field (lens_service.py), as a library video."""
