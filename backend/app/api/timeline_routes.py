@@ -551,6 +551,43 @@ def find_skyline(body: dict):
     return {'status': 'ready', 'box': box, 'skyline': depth_mask_service.skyline(facts, times, max(0.0, x0), min(1.0, x1))}
 
 
+@router.post('/photos/{identifier}/lens')
+def cinematic_lens(identifier: int, body: dict):
+    """Cinematic lens: a copy of the clip's part with real depth of field (lens_service.py), as a library video."""
+    from app.db.database import get_connection
+    from app.services import lens_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset, strength = str(body.get('preset', 'portrait')), str(body.get('strength', 'medium'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'The cinematic lens needs a video clip.')
+    if preset not in ('portrait', 'dreamy', 'rack-out', 'rack-in') or strength not in lens_service.STRENGTH or not 0 <= start < end:
+        raise HTTPException(400, 'Choose a lens and a part of the clip.')
+    end = min(end, facts.duration or end)
+    focus, amount, glow = lens_service.plan(preset, strength, end - start)
+    target = lens_service.target_path(facts.path, start, end, focus, amount, glow)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = lens_service.make(facts, start, end, focus, amount, glow, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (cinematic lens).mp4')['id']}
+    job_id = enqueue_render('lens', 'Cinematic lens', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 def text_cache(item: Text, fmt: Format) -> Path:
     """Where a title's picture (and its letter map) is kept: one name for each look and frame size."""
     look = {key: getattr(item, key) for key in ('text', 'style', 'position', 'color', 'size', 'subtitle', 'subtitle_size', 'subtitle_color', 'subtitle_above', 'subtitle_spacing', 'spacing', 'align', 'band_color', 'font', 'tamil_font', 'design', 'knockout', 'knockout_wash')}

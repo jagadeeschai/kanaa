@@ -2,6 +2,7 @@ import { AiEditHost } from '../AiEditDialog';
 import { YouTubeHost } from '../../publish/YouTubeDialog';
 import { VideoPopoutHost } from '../VideoPopoutDialog';
 import { CloneHost } from '../CloneDialog';
+import { LensHost } from '../LensDialog';
 import { SmartSliceHost } from '../SmartSliceDialog';
 import { ClipQuickBar } from './ClipQuickBar';
 import { BringToLifeHost } from '../BringToLifeDialog';
@@ -118,7 +119,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
     <RemovePersonHost/>
-    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/>
+    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [
