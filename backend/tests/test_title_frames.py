@@ -49,8 +49,8 @@ class GpuTakesThem(unittest.TestCase):
         self.assertEqual(gpu_render.unsupported(self.timeline(), self.facts), [])
         self.assertEqual(gpu_render.unsupported(self.timeline(depth={'amount': 0.5}), self.facts), [])
 
-    def test_pinned_titles_stay_with_ffmpeg(self):
-        self.assertEqual(gpu_render.unsupported(self.timeline(pin={'clip_id': 'c', 'at': 0.5}), self.facts), ['pinned titles'])
+    def test_pinned_titles_go_to_the_gpu_too(self):
+        self.assertEqual(gpu_render.unsupported(self.timeline(pin={'clip_id': 'c', 'at': 0.5}), self.facts), [])  # They follow the camera there too.
 
 
 if __name__ == '__main__':
