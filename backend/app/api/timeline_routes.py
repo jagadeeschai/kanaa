@@ -630,6 +630,42 @@ def cinematic_lens(identifier: int, body: dict):
     return {'status': 'preparing', 'job_id': job_id}
 
 
+@router.post('/photos/{identifier}/night')
+def day_for_night(identifier: int, body: dict):
+    """Day for night: a copy of the clip's part turned to night (night_service.py)."""
+    from app.db.database import get_connection
+    from app.services import night_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        mood = str(body.get('mood', 'moonlit'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Day for night needs a video clip.')
+    if mood not in night_service.MOODS or not 0 <= start < end:
+        raise HTTPException(400, 'Choose moonlit or deep night, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = night_service.target_path(facts.path, start, end, mood)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = night_service.make(facts, start, end, mood, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'night'))['id']}
+    job_id = enqueue_render('night', 'Day for night', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/sky')
 def sky_swap(identifier: int, body: dict):
     """Sky swap: a copy of the clip's part under a new sky, the land relit (sky_swap_service.py)."""

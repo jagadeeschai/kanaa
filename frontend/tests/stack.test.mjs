@@ -12,6 +12,7 @@ test('looks always stack sky, air, lens, slow motion, whatever order they are ad
   let looks = withLook([], slow);
   looks = withLook(looks, lens); looks = withLook(looks, sky); looks = withLook(looks, mist);
   assert.deepEqual(looks.map((look) => look.kind), ['new_sky', 'atmosphere', 'lens', 'slowmo']);
+  assert.deepEqual(withLook(looks, { kind: 'night', mood: 'moonlit' }).map((look) => look.kind), ['new_sky', 'night', 'atmosphere', 'lens', 'slowmo']);  // Night falls after the sky.
   assert.deepEqual(withLook(looks, { kind: 'lens', preset: 'dreamy', strength: 'strong' }).filter((look) => look.kind === 'lens')[0].preset, 'dreamy');  // Changed, not doubled.
   assert.deepEqual(withoutLook(looks, 'atmosphere').map((look) => look.kind), ['new_sky', 'lens', 'slowmo']);
 });

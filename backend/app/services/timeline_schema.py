@@ -189,6 +189,14 @@ class SkyLink(Strict):
     sky: Literal['sunset', 'night', 'storm', 'blue']
 
 
+class NightLink(Strict):
+    """A clip turned to night (Day for night): a made copy of its part; what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    mood: Literal['moonlit', 'dark'] = 'moonlit'
+
+
 class AtmosphereLink(Strict):
     """A clip with air laid in (Atmosphere from depth): a made copy of its part; what it was, so Remove puts it back."""
     original_media_id: int
@@ -389,6 +397,7 @@ class Clip(Strict):
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
     freeze3d: Optional[Freeze3DLink] = None  # A time freeze in 3D (a made video of the camera moving around it).
     atmosphere: Optional[AtmosphereLink] = None
+    night: Optional[NightLink] = None  # Day for night (a made copy).
     new_sky: Optional[SkyLink] = None  # A new sky laid in, the land relit (a made copy).  # Mist, haze or fog laid in by distance (a made copy).
     slowmo: Optional[SlowLink] = None  # Smooth slow motion (a made copy).
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.
