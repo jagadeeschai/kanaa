@@ -18,10 +18,15 @@ from app.services.timeline_schema import Clip
 class Air(unittest.TestCase):
     def test_far_fills_with_air_near_stays_clear(self):
         frame = np.zeros((180, 320, 3), np.uint8)
-        near = np.zeros((180, 320), np.float32); near[:, :160] = 1.0  # Left near, right far.
+        near = np.full((180, 320), 0.15, np.float32); near[:, :160] = 1.0  # Left near, right far land.
         out = atmos.air_frame(frame, near, atmos.settings_for('mist', 'heavy'))
         self.assertLess(out[:, :120].mean(), 3)  # Near: untouched.
-        self.assertGreater(out[:, 200:].mean(), 180)  # Far: mostly mist.
+        self.assertGreater(out[:, 200:].mean(), 180)  # Far land: mostly mist.
+
+    def test_haze_over_the_sky_tints_it_never_erases_it(self):
+        sky = np.zeros((90, 160, 3), np.uint8); sky[..., 2] = 220  # A red sky (BGR), nearness 0.
+        out = atmos.air_frame(sky, np.zeros((90, 160), np.float32), atmos.settings_for('mist', 'heavy'))
+        self.assertGreater(out[..., 2].mean() - out[..., 0].mean(), 60)  # Still clearly red under the mist.
 
     def test_low_fog_lies_on_the_far_land_not_the_sky(self):
         frame = np.zeros((180, 320, 3), np.uint8)

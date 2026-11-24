@@ -968,6 +968,8 @@ export const TAMIL: Record<string, string> = {
   'Remove the new sky first, add the lens, then the sky again.': 'முதலில் புதிய வானத்தை நீக்கி, லென்ஸ் சேர்த்து, பின் வானத்தை மீண்டும் சேருங்கள்.',
   'Remove the new sky first, slow the clip down, then add the sky again.': 'முதலில் புதிய வானத்தை நீக்கி, கிளிப்பை மெதுவாக்கி, பின் வானத்தை மீண்டும் சேருங்கள்.',
   'Remove the new sky first, add the atmosphere, then the sky again.': 'முதலில் புதிய வானத்தை நீக்கி, வளிமண்டலம் சேர்த்து, பின் வானத்தை மீண்டும் சேருங்கள்.',
+  'Updating the looks…': 'தோற்றங்களைப் புதுப்பிக்கிறது…',
+  'These looks work on a clip that plays normally (not reversed, ramped or frozen).': 'இந்தத் தோற்றங்கள் இயல்பாக ஓடும் கிளிப்பில் மட்டும் வேலை செய்யும் (பின்னோக்கி, வேகம் மாறும், உறைந்தது அல்ல).',
   'Many moments': 'பல தருணங்கள்',
   'Film yourself doing different things in one spot, one after another. The clip is cut into parts and every part plays at once: you, many times, each doing something else.': 'ஒரே இடத்தில் வெவ்வேறு செயல்களை ஒன்றன்பின் ஒன்றாகப் படம்பிடியுங்கள். கிளிப் பகுதிகளாகப் பிரிக்கப்பட்டு எல்லாப் பகுதிகளும் ஒரே நேரத்தில் ஓடும்: நீங்களே பலமுறை, ஒவ்வொருவரும் வேறு செயலில்.',
   'The shot becomes as long as one part. Remove clones brings the whole clip back.': 'காட்சி ஒரு பகுதியின் நீளமாகும். குளோன்களை நீக்கினால் முழு கிளிப் திரும்பும்.',

@@ -27,7 +27,7 @@ from app.services.job_service import JobCancelled
 from app.services.media_probe import MediaFacts
 
 logger = logging.getLogger(__name__)
-VERSION = 4  # 2: low fog by distance (not by height), sunset capped. 3: no glow along the skyline. 4: low fog kept off the sky at the skyline.
+VERSION = 5  # 5: haze over the sky tints it, never erases it. 2: low fog by distance (not by height), sunset capped. 3: no glow along the skyline. 4: low fog kept off the sky at the skyline.
 GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'atmosphere_render.swift'
 # Colour of the air (R, G, B), how thick it gets far away, how much it keeps off the sky (0 sky too, 1 land only), how
 # much colour it takes out of what it covers, and the most it ever covers (so the sun and the far scene show through).
@@ -39,6 +39,7 @@ PRESETS = {
 }
 STRENGTH = {'light': 0.6, 'medium': 1.0, 'heavy': 1.4}
 CURVE = 1.6  # Far away thickens faster than near: (1 − nearness) ** CURVE.
+SKY_KEEP = 0.45  # How much less haze lies over the sky than over the farthest land.
 SKY_FROM, SKY_TO = 0.03, 0.12  # Nearness: below the first is sky (no low fog), past the second is land (all of it).
 SHRINK = 1 / 40  # How far (share of the height) the land is pulled back from the sky for low fog.
 
@@ -65,6 +66,9 @@ def air_frame(frame: np.ndarray, near: np.ndarray, chosen: dict) -> np.ndarray:
     # 'very far' on its way to the sky, it would otherwise glow along the edge.
     far = 1 - np.clip(np.maximum(near, SKY_TO * chosen['land']), 0, 1)
     amount = np.clip(chosen['density'] * far ** CURVE, 0, chosen['most'])
+    # Haze over the sky tints it, never erases it: the sky (a new sunset, too) always shows through by half or more.
+    sky = 1 - np.clip((near - SKY_FROM) / (SKY_TO - SKY_FROM), 0, 1)
+    amount = amount * (1 - SKY_KEEP * sky)
     if chosen['land']:
         # The depth map is soft at the skyline: land bleeds up into the sky. Pulled back a little first, the fog starts
         # just below the skyline instead of glowing on the sky above it.

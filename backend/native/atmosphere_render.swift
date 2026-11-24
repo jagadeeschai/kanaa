@@ -19,6 +19,7 @@ guard arguments.count == 13, let width = Int(arguments[1]), let height = Int(arg
 let air = CIColorKernel(source: """
 kernel vec4 air(__sample picture, __sample depth, __sample shrunk, vec3 colour, float density, float land, float fade, float most) {
     float amount = clamp(density * pow(1.0 - clamp(max(depth.r, 0.12 * land), 0.0, 1.0), 1.6), 0.0, most);  // No glow at the skyline.
+    amount *= 1.0 - 0.45 * (1.0 - clamp((depth.r - 0.03) / (0.12 - 0.03), 0.0, 1.0));  // SKY_KEEP: the sky shows through.
     float isLand = clamp((shrunk.r - 0.03) / (0.12 - 0.03), 0.0, 1.0);  // Land pulled back from the sky (SHRINK).
     amount *= 1.0 - land + land * isLand;
     float grey = (picture.r + picture.g + picture.b) / 3.0;

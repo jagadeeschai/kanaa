@@ -87,3 +87,13 @@ class GpuParity(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MadeNames(unittest.TestCase):
+    def test_a_made_copy_is_named_after_the_clip_even_when_looks_are_stacked(self):
+        from app.api import timeline_routes as routes
+        for filename, look, expected in [('skyline-4s.mp4', 'sunset sky', 'skyline-4s (sunset sky).mp4'),
+                                         ('skyline-4s (sunset sky) (mist atmosphere).mp4', 'cinematic lens', 'skyline-4s (cinematic lens).mp4'),
+                                         ('Song (final) cut.mp4', 'time freeze', 'Song (final) cut (time freeze).mp4')]:
+            with mock.patch.object(routes, 'get_media', return_value={'filename': filename}):
+                self.assertEqual(routes.made_name(1, look), expected)

@@ -5,11 +5,12 @@
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Aperture, LoaderCircle } from 'lucide-react';
-import { getPhoto, requestJson, waitForJob } from '../api/client';
 import { t } from '../i18n';
-import { applyLens, cannotLens, LENS_PRESETS, lensPart, removeLens, type LensPreset, type LensStrength } from '../timeline/lens';
+import { LENS_PRESETS, type LensPreset, type LensStrength } from '../timeline/lens';
 import { findClip } from '../timeline/model';
+import { restyle } from './looks';
 import { EditorContext } from './state/EditorContext';
+import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
 
 const OPEN = 'kanaa:lens';
@@ -33,19 +34,22 @@ function LensDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
   const [preset, setPreset] = useState<LensPreset>(clip.lens?.preset ?? 'portrait');
   const [strength, setStrength] = useState<LensStrength>(clip.lens?.strength ?? 'medium');
   const [busy, setBusy] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(cannotLens(clip));
+  const [error, setError] = useState<string | null>(cannotLook(clip, 'lens'));
   useEscape(true, () => { if (busy === null) onClose(); });
   const apply = async () => {
     setError(null); setBusy(0);
     try {
-      const part = lensPart(clip);
-      const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${part.media}/lens`, { method: 'POST', body: JSON.stringify({ start: part.start, end: part.end, preset, strength }) });
-      const made = started.output_photo_id ?? (await waitForJob<{ output_photo_id: number }>(started.job_id!, (value) => setBusy(value))).output_photo_id;
-      store.addMedia(await getPhoto(made));
-      store.change(applyLens(store.timeline!, clipId, made, preset, strength));
+      // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'lens', preset, strength }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
+  const takeOff = async () => {
+    setError(null); setBusy(0);
+    try { await restyle(store, clipId, withoutLook(looksOf(clip), 'lens'), setBusy); onClose(); }
+    catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
+  };
+
   return <div className="ed-modal ed-ai-edit-modal" role="dialog" aria-modal="true" aria-label={t('Cinematic lens')} onClick={() => { if (busy === null) onClose(); }}>
     <div className="ed-card small" onClick={(event) => event.stopPropagation()} style={{ width: 'min(420px, calc(100vw - 24px))' }}>
       <h2><Aperture size={16}/> {t('Cinematic lens')}</h2>
@@ -57,8 +61,8 @@ function LensDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Making the lens copy…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">
-        {clip.lens && <button className="ed-button" disabled={busy !== null} onClick={() => { store.change(removeLens(store.timeline!, clipId)); onClose(); }}>{t('Remove lens')}</button>}
-        <button className="ed-button primary" disabled={busy !== null || Boolean(cannotLens(clip))} onClick={() => { void apply(); }}>{t('Apply lens')}</button>
+        {clip.lens && <button className="ed-button" disabled={busy !== null} onClick={() => { void takeOff(); }}>{t('Remove lens')}</button>}
+        <button className="ed-button primary" disabled={busy !== null || Boolean(cannotLook(clip, 'lens'))} onClick={() => { void apply(); }}>{t('Apply lens')}</button>
         <button className="ed-button" disabled={busy !== null} onClick={onClose}>{t('Close')}</button>
       </div>
     </div>

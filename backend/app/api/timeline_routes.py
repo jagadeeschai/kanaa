@@ -581,6 +581,18 @@ def depth_at_spot(identifier: int, body: dict):
         raise HTTPException(400, str(exc)) from exc
 
 
+def made_name(identifier: int, look: str) -> str:
+    """A made copy's name in the library: the clip's own name and the look, e.g. "skyline (cinematic lens).mp4", also
+    when it was made from another made copy (looks stacked), whose own " (…)" endings are dropped."""
+    import re
+    try:
+        stem = Path(get_media(identifier)['filename']).stem
+    except Exception:
+        stem = 'clip'
+    stem = re.sub(r'( \([^()]*\))+$', '', stem) or 'clip'
+    return f'{stem} ({look}).mp4'
+
+
 @router.post('/photos/{identifier}/lens')
 def cinematic_lens(identifier: int, body: dict):
     """Cinematic lens: a copy of the clip's part with real depth of field (lens_service.py), as a library video."""
@@ -613,7 +625,7 @@ def cinematic_lens(identifier: int, body: dict):
 
     def run(should_cancel):
         made = lens_service.make(facts, start, end, focus, amount, glow, lambda value: update_job(holder['id'], progress=value), should_cancel)
-        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (cinematic lens).mp4')['id']}
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'cinematic lens'))['id']}
     job_id = enqueue_render('lens', 'Cinematic lens', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
@@ -649,7 +661,7 @@ def sky_swap(identifier: int, body: dict):
 
     def run(should_cancel):
         made = sky_swap_service.make(facts, start, end, sky, lambda value: update_job(holder['id'], progress=value), should_cancel)
-        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} ({sky} sky).mp4')['id']}
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, f'{sky} sky'))['id']}
     job_id = enqueue_render('sky', 'Sky swap', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
@@ -685,7 +697,7 @@ def atmosphere(identifier: int, body: dict):
 
     def run(should_cancel):
         made = atmosphere_service.make(facts, start, end, preset, strength, lambda value: update_job(holder['id'], progress=value), should_cancel)
-        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} ({preset} atmosphere).mp4')['id']}
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, f'{preset} atmosphere'))['id']}
     job_id = enqueue_render('atmosphere', 'Atmosphere', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
@@ -773,7 +785,7 @@ def time_freeze_3d(identifier: int, body: dict):
 
     def run(should_cancel):
         made = time_freeze_service.make(facts, at, seconds, move, lambda value: update_job(holder['id'], progress=value), should_cancel)
-        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (time freeze).mp4')['id']}
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'time freeze'))['id']}
     job_id = enqueue_render('freeze3d', 'Time freeze in 3D', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
@@ -808,7 +820,7 @@ def smooth_slowmo(identifier: int, body: dict):
 
     def run(should_cancel):
         made = slowmo_service.make(facts, start, end, factor, lambda value: update_job(holder['id'], progress=value), should_cancel)
-        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (slow motion {factor}x).mp4')['id']}
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, f'slow motion {factor}x'))['id']}
     job_id = enqueue_render('slowmo', f'Smooth slow motion ({factor}x)', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 

@@ -11,12 +11,13 @@ import { openMatchCuts } from "../MatchCutDialog";
 import { openMulticam } from "../MulticamDialog";
 import { openFreeze3d } from "../Freeze3dDialog";
 import { openSky } from "../SkyDialog";
-import { removeSky } from "../../timeline/sky";
+import { removeLook } from "../looks";
+
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
-import { removeAtmosphere } from "../../timeline/atmosphere";
+
 import { openSlowmo } from "../SlowmoDialog";
-import { removeSlow } from "../../timeline/slowmo";
-import { removeLens } from "../../timeline/lens";
+
+
 import { hasClones, removeClones } from "../../timeline/clone";
 import type { Clipboard,CopiedStyle } from '../../timeline/clipboard';
 import { clipEffects,removeEffect,toggleAllEffects,toggleEffect } from "../../timeline/effects";
@@ -261,10 +262,10 @@ export function createEditorMenuActions(getInput: () => Input) {
         // freeze under Freeze, the tools that work across clips under Smart edit. One applied shows a tick; its Remove
         // sits right under it.
         const cinematic: MenuItem[] = [
-          { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => change(removeLens(timeline, id)) }] : []),
-          { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => change(removeAtmosphere(timeline, id)) }] : []),
-          { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => change(removeSky(timeline, id)) }] : []),
-          { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => change(removeSlow(timeline, id)) }] : []),
+          { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => removeLook(id, 'lens') }] : []),
+          { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => removeLook(id, 'atmosphere') }] : []),
+          { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => removeLook(id, 'new_sky') }] : []),
+          { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => removeLook(id, 'slowmo') }] : []),
           ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) },
             { label: 'Clone the person…', checked: hasClones(timeline, id), onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : [])] : []),
         ];

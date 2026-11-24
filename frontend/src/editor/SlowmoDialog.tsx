@@ -5,11 +5,12 @@
 import { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Gauge, LoaderCircle } from 'lucide-react';
-import { getPhoto, requestJson, waitForJob } from '../api/client';
 import { t } from '../i18n';
 import { findClip } from '../timeline/model';
-import { applySlow, cannotSlow, removeSlow, SLOW_FACTORS, slowPart, type SlowFactor } from '../timeline/slowmo';
+import { SLOW_FACTORS, slowPart, type SlowFactor } from '../timeline/slowmo';
+import { restyle } from './looks';
 import { EditorContext } from './state/EditorContext';
+import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
 
 const OPEN = 'kanaa:slowmo';
@@ -32,19 +33,23 @@ function SlowmoDialog({ clipId, onClose }: { clipId: string; onClose: () => void
   const clip = findClip(store.timeline!, clipId)!;
   const [factor, setFactor] = useState<SlowFactor>(clip.slowmo?.factor ?? 4);
   const [busy, setBusy] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(clip.slowmo ? null : cannotSlow(clip));
+  const [error, setError] = useState<string | null>(clip.slowmo ? null : cannotLook(clip, 'slowmo'));
   useEscape(true, () => { if (busy === null) onClose(); });
   const part = slowPart(clip);
   const apply = async () => {
     setError(null); setBusy(0);
     try {
-      const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${part.media}/slowmo`, { method: 'POST', body: JSON.stringify({ start: part.start, end: part.end, factor }) });
-      const made = started.output_photo_id ?? (await waitForJob<{ output_photo_id: number }>(started.job_id!, (value) => setBusy(value))).output_photo_id;
-      store.addMedia(await getPhoto(made));
-      store.change(applySlow(store.timeline!, clipId, made, factor));
+      // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'slowmo', factor }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
+  const takeOff = async () => {
+    setError(null); setBusy(0);
+    try { await restyle(store, clipId, withoutLook(looksOf(clip), 'slowmo'), setBusy); onClose(); }
+    catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
+  };
+
   return <div className="ed-modal ed-ai-edit-modal" role="dialog" aria-modal="true" aria-label={t('Smooth slow motion')} onClick={() => { if (busy === null) onClose(); }}>
     <div className="ed-card small" onClick={(event) => event.stopPropagation()} style={{ width: 'min(400px, calc(100vw - 24px))' }}>
       <h2><Gauge size={16}/> {t('Smooth slow motion')}</h2>
@@ -54,8 +59,8 @@ function SlowmoDialog({ clipId, onClose }: { clipId: string; onClose: () => void
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Making the slow motion…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">
-        {clip.slowmo && <button className="ed-button" disabled={busy !== null} onClick={() => { store.change(removeSlow(store.timeline!, clipId)); onClose(); }}>{t('Normal speed')}</button>}
-        <button className="ed-button primary" disabled={busy !== null || Boolean(!clip.slowmo && cannotSlow(clip))} onClick={() => { void apply(); }}>{t('Slow it down')}</button>
+        {clip.slowmo && <button className="ed-button" disabled={busy !== null} onClick={() => { void takeOff(); }}>{t('Normal speed')}</button>}
+        <button className="ed-button primary" disabled={busy !== null || Boolean(!clip.slowmo && cannotLook(clip, 'slowmo'))} onClick={() => { void apply(); }}>{t('Slow it down')}</button>
         <button className="ed-button" disabled={busy !== null} onClick={onClose}>{t('Close')}</button>
       </div>
     </div>
