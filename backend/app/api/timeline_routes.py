@@ -618,6 +618,42 @@ def cinematic_lens(identifier: int, body: dict):
     return {'status': 'preparing', 'job_id': job_id}
 
 
+@router.post('/photos/{identifier}/atmosphere')
+def atmosphere(identifier: int, body: dict):
+    """Atmosphere from depth: a copy of the clip's part with mist, haze or fog laid in by distance (atmosphere_service.py)."""
+    from app.db.database import get_connection
+    from app.services import atmosphere_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset, strength = str(body.get('preset', 'mist')), str(body.get('strength', 'medium'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Atmosphere needs a video clip.')
+    if preset not in atmosphere_service.PRESETS or strength not in atmosphere_service.STRENGTH or not 0 <= start < end:
+        raise HTTPException(400, 'Choose an atmosphere and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = atmosphere_service.target_path(facts.path, start, end, preset, strength)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = atmosphere_service.make(facts, start, end, preset, strength, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} ({preset} atmosphere).mp4')['id']}
+    job_id = enqueue_render('atmosphere', 'Atmosphere', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/slowmo')
 def smooth_slowmo(identifier: int, body: dict):
     """Smooth slow motion: a copy of the clip's part with new frames made between its own (slowmo_service.py)."""

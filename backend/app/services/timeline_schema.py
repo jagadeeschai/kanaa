@@ -174,6 +174,15 @@ class ShapeMask(Strict):
         return points
 
 
+class AtmosphereLink(Strict):
+    """A clip with air laid in (Atmosphere from depth): a made copy of its part; what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['mist', 'sunset', 'rain', 'low-fog']
+    strength: Literal['light', 'medium', 'heavy'] = 'medium'
+
+
 class LensLink(Strict):
     """A clip shown through the Cinematic lens: a made copy of its part; what it was, so Remove lens puts it back."""
     original_media_id: int
@@ -363,6 +372,7 @@ class Clip(Strict):
     stretch: float = Field(default=1, ge=0.1, le=10, allow_inf_nan=False)  # Width against height: 1 keeps the picture's shape, more is wider. Before it is fitted.
     popout: Optional[PopoutLink] = None  # Set by Pop-out (3D); Remove pop-out puts the original picture back.
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
+    atmosphere: Optional[AtmosphereLink] = None  # Mist, haze or fog laid in by distance (a made copy).
     slowmo: Optional[SlowLink] = None  # Smooth slow motion (a made copy).
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.
 
