@@ -19,6 +19,7 @@ export function atmospherePart(clip: Clip) {
 
 export function cannotAtmosphere(clip: Clip): string | null {
   if (clip.reverse || clip.ramp || clip.freeze != null) return 'Atmosphere works on a clip that plays normally (not reversed, ramped or frozen).';
+  if (clip.new_sky) return 'Remove the new sky first, add the atmosphere, then the sky again.';
   if (clip.lens) return 'Remove the cinematic lens first, add the atmosphere, then the lens again.';
   if (clip.slowmo) return 'Set the clip back to normal speed first, add the atmosphere, then slow it down again.';
   return null;

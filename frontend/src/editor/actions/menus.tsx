@@ -10,6 +10,8 @@ import { openAtmosphere } from "../AtmosphereDialog";
 import { openMatchCuts } from "../MatchCutDialog";
 import { openMulticam } from "../MulticamDialog";
 import { openFreeze3d } from "../Freeze3dDialog";
+import { openSky } from "../SkyDialog";
+import { removeSky } from "../../timeline/sky";
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
 import { removeAtmosphere } from "../../timeline/atmosphere";
 import { openSlowmo } from "../SlowmoDialog";
@@ -261,6 +263,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         const cinematic: MenuItem[] = [
           { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => change(removeLens(timeline, id)) }] : []),
           { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => change(removeAtmosphere(timeline, id)) }] : []),
+          { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => change(removeSky(timeline, id)) }] : []),
           { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => change(removeSlow(timeline, id)) }] : []),
           ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) },
             { label: 'Clone the person…', checked: hasClones(timeline, id), onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : [])] : []),

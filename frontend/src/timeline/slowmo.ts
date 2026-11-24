@@ -13,6 +13,7 @@ export function slowPart(clip: Clip) {
 
 export function cannotSlow(clip: Clip): string | null {
   if (clip.reverse || clip.ramp || clip.freeze != null) return 'Smooth slow motion works on a clip that plays normally (not reversed, ramped or frozen).';
+  if (clip.new_sky) return 'Remove the new sky first, slow the clip down, then add the sky again.';
   if (clip.atmosphere) return 'Remove the atmosphere first, slow the clip down, then add the atmosphere again.';
   if (clip.lens) return 'Remove the cinematic lens first, slow the clip down, then add the lens again.';
   if (clip.speed !== 1) return 'Set the clip to normal speed first; smooth slow motion makes its own.';
