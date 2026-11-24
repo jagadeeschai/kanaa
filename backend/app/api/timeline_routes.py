@@ -654,6 +654,36 @@ def atmosphere(identifier: int, body: dict):
     return {'status': 'preparing', 'job_id': job_id}
 
 
+@router.post('/match-cuts')
+def find_match_cuts(body: dict):
+    """Match-cut finder: the clips that cut together seamlessly, end of one into start of another (match_cut_service).
+    A background job; its result has the suggestions."""
+    from app.services import match_cut_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    from app.services.timeline_service import scene_track_source
+    try:
+        clips = [{'id': str(each['id']), 'media_id': int(each['media_id']), 'in': float(each['in']), 'out': float(each['out'])} for each in body['clips']][:40]
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'These clips are not valid.') from exc
+    if len(clips) < 2:
+        raise HTTPException(400, 'Add at least two clips to the main track to find match cuts.')
+
+    def path_of(media_id: int):
+        try:
+            facts = media_facts(media_id)
+        except HTTPException:
+            return None
+        return scene_track_source(facts) if facts.media_type == 'video' else None  # The proxy when there is one: quicker.
+    holder: dict = {}
+
+    def run(should_cancel):
+        found = match_cut_service.find(clips, path_of, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'suggestions': found}
+    job_id = enqueue_render('match_cuts', 'Finding match cuts', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/slowmo')
 def smooth_slowmo(identifier: int, body: dict):
     """Smooth slow motion: a copy of the clip's part with new frames made between its own (slowmo_service.py)."""
