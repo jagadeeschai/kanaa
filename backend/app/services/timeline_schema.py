@@ -174,6 +174,13 @@ class ShapeMask(Strict):
         return points
 
 
+class Freeze3DLink(Strict):
+    """A time freeze in 3D: a made video of the camera moving around one frozen moment; what it froze, to remake it."""
+    original_media_id: int
+    at: float = Field(ge=0)  # Source seconds of the frozen moment.
+    move: Literal['orbit-left', 'orbit-right', 'push-in', 'rise'] = 'orbit-right'
+
+
 class AtmosphereLink(Strict):
     """A clip with air laid in (Atmosphere from depth): a made copy of its part; what it was, so Remove puts it back."""
     original_media_id: int
@@ -372,6 +379,7 @@ class Clip(Strict):
     stretch: float = Field(default=1, ge=0.1, le=10, allow_inf_nan=False)  # Width against height: 1 keeps the picture's shape, more is wider. Before it is fitted.
     popout: Optional[PopoutLink] = None  # Set by Pop-out (3D); Remove pop-out puts the original picture back.
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
+    freeze3d: Optional[Freeze3DLink] = None  # A time freeze in 3D (a made video of the camera moving around it).
     atmosphere: Optional[AtmosphereLink] = None  # Mist, haze or fog laid in by distance (a made copy).
     slowmo: Optional[SlowLink] = None  # Smooth slow motion (a made copy).
     composite: Optional[Composite] = None  # Edge tightening, light wrap and colour match for a keyed or cut-out clip.

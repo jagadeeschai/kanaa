@@ -708,6 +708,40 @@ def multicam_sync(body: dict):
     return {'job_id': job_id}
 
 
+@router.post('/photos/{identifier}/freeze3d')
+def time_freeze_3d(identifier: int, body: dict):
+    """Time freeze in 3D: the camera moving around one frozen moment of a clip (time_freeze_service.py), as a video."""
+    from app.db.database import get_connection
+    from app.services import time_freeze_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        at, seconds, move = float(body['at']), float(body.get('seconds', 3)), str(body.get('move', 'orbit-right'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'The time freeze needs a video clip.')
+    if move not in time_freeze_service.MOVES or not 1 <= seconds <= 8 or not 0 <= at <= (facts.duration or at):
+        raise HTTPException(400, 'Choose a moment, a move and how long it lasts.')
+    target = time_freeze_service.target_path(facts.path, at, seconds, move)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = time_freeze_service.make(facts, at, seconds, move, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, f'{facts.path.stem} (time freeze).mp4')['id']}
+    job_id = enqueue_render('freeze3d', 'Time freeze in 3D', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/slowmo')
 def smooth_slowmo(identifier: int, body: dict):
     """Smooth slow motion: a copy of the clip's part with new frames made between its own (slowmo_service.py)."""

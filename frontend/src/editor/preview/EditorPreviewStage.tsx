@@ -6,6 +6,7 @@ import { LensHost } from '../LensDialog';
 import { AtmosphereHost } from '../AtmosphereDialog';
 import { MatchCutHost } from '../MatchCutDialog';
 import { MulticamHost } from '../MulticamDialog';
+import { Freeze3dHost } from '../Freeze3dDialog';
 import { SlowmoHost } from '../SlowmoDialog';
 import { SmartSliceHost } from '../SmartSliceDialog';
 import { ClipQuickBar } from './ClipQuickBar';
@@ -123,7 +124,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
     <RemovePersonHost/>
-    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/><SlowmoHost/><AtmosphereHost/><MatchCutHost/><MulticamHost/>
+    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/><SlowmoHost/><AtmosphereHost/><MatchCutHost/><MulticamHost/><Freeze3dHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [
