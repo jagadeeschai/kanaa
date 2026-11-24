@@ -684,6 +684,30 @@ def find_match_cuts(body: dict):
     return {'job_id': job_id}
 
 
+@router.post('/multicam-sync')
+def multicam_sync(body: dict):
+    """Multicam sync by sound: where each recording starts on the first one's clock (multicam_service). A job."""
+    from app.services import multicam_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    try:
+        ids = [int(each) for each in body['media_ids']][:6]
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'These recordings are not valid.') from exc
+    if len(ids) < 2:
+        raise HTTPException(400, 'Choose at least two recordings of the same moment.')
+    facts = [media_facts(each) for each in ids]
+    if any(each.media_type != 'video' for each in facts):
+        raise HTTPException(400, 'Multicam works on videos with sound.')
+    holder: dict = {}
+
+    def run(should_cancel):
+        found = multicam_service.sync([each.path for each in facts], lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, 'angles': [{'media_id': media_id, **each} for media_id, each in zip(ids, found)]}
+    job_id = enqueue_render('multicam', 'Syncing angles by sound', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/slowmo')
 def smooth_slowmo(identifier: int, body: dict):
     """Smooth slow motion: a copy of the clip's part with new frames made between its own (slowmo_service.py)."""
