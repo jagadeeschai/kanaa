@@ -9,6 +9,7 @@ import { openLens } from "../LensDialog";
 import { openAtmosphere } from "../AtmosphereDialog";
 import { openMatchCuts } from "../MatchCutDialog";
 import { openMulticam } from "../MulticamDialog";
+import { openFreeze3d } from "../Freeze3dDialog";
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
 import { removeAtmosphere } from "../../timeline/atmosphere";
 import { openSlowmo } from "../SlowmoDialog";
@@ -254,21 +255,29 @@ export function createEditorMenuActions(getInput: () => Input) {
       // Then what only its kind has: a picture's AI tools, or a video's sound and freeze tools. Nothing greyed for the other kind.
       if (picture) items.push({ label: 'Edit with AI…', onSelect: () => openAiEdit({ clipId: id, mediaId: clip.media_id }) }, { label: 'Remove person or object…', onSelect: () => openRemovePerson({ clipId: id, mediaId: clip.media_id }) }, ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openPopout({ clipId: id, mediaId: clip.media_id }) }, { label: 'Focus drift on every picture', onSelect: () => { void getInput().focusAllPictures(); } }] : []), { label: 'Bring to life…', onSelect: () => openBringToLife({ clipId: id, mediaId: clip.media_id }) });
       else {
-        if (onMain) items.push({ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) });
-        items.push({ label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => change(removeSlow(timeline, id)) }] : []));
-        items.push({ label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => change(removeLens(timeline, id)) }] : []));
-        if (onMain) items.push({ label: 'Find match cuts…', onSelect: () => openMatchCuts() });
-        if (onMain) items.push(angleLayers(timeline, id).length ? { label: 'End multicam', onSelect: () => change(removeMulticam(timeline, id)) } : { label: 'Multicam sync…', onSelect: () => openMulticam(id) });
-        items.push({ label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => change(removeAtmosphere(timeline, id)) }] : []));
-        if (onMain) items.push({ label: 'Clone the person…', onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : []));
-        items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
-          { label: 'Detach sound', disabled: clip.muted || !hasSound(clip.media_id), onSelect: () => detach(clip) },
+        // Grouped, so the menu stays short however many tools there are: the big looks under Cinematic, every kind of
+        // freeze under Freeze, the tools that work across clips under Smart edit. One applied shows a tick; its Remove
+        // sits right under it.
+        const cinematic: MenuItem[] = [
+          { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => change(removeLens(timeline, id)) }] : []),
+          { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => change(removeAtmosphere(timeline, id)) }] : []),
+          { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => change(removeSlow(timeline, id)) }] : []),
+          ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) },
+            { label: 'Clone the person…', checked: hasClones(timeline, id), onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : [])] : []),
+        ];
+        const freezes: MenuItem[] = [
           { label: 'Freeze frame here', disabled: !canFreeze, onSelect: () => freeze(t) },
-          { label: 'Snapshot freeze here', disabled: !canFreeze, onSelect: () => { void snapshot(t); } });
+          { label: 'Snapshot freeze here', disabled: !canFreeze, onSelect: () => { void snapshot(t); } },
+          ...(onMain && clipItem?.media_type === 'video' ? [clip.freeze3d ? { label: 'Time freeze (change move)…', onSelect: () => openFreeze3d(id) } : { label: 'Time freeze in 3D here…', disabled: !canFreeze, onSelect: () => openFreeze3d(null) }] : []),
+        ];
         const smart: MenuItem[] = [];
+        if (onMain) smart.push({ label: 'Find match cuts…', onSelect: () => openMatchCuts() }, angleLayers(timeline, id).length ? { label: 'End multicam', onSelect: () => change(removeMulticam(timeline, id)) } : { label: 'Multicam sync…', onSelect: () => openMulticam(id) });
         if (clip && clipItem?.width && clipItem.height && isVideo(clip.media_id) && !layer.locked && canReframe({ width: clipItem.width, height: clipItem.height }, clip.adjust.rotation, timeline.format)) smart.push({ label: reframeJob ? `Finding who to follow… ${reframeJob.progress}%` : 'Follow the person (reframe)', disabled: Boolean(reframeJob), onSelect: () => { void reframeClip(clip.id); } });
         if (clip && layer === mainLayer(timeline) && isVideo(clip.media_id) && !layer.locked) smart.push({ label: sceneJob ? `Finding scenes… ${sceneJob.progress}%` : 'Split at scene changes', disabled: Boolean(sceneJob), onSelect: () => { void splitScenes(clip.id); } });
-        if (smart.length) items.push({ label: 'Smart tools', submenu: smart });
+        items.push({ label: 'Cinematic', submenu: cinematic }, { label: 'Freeze', submenu: freezes });
+        if (smart.length) items.push({ label: 'Smart edit', submenu: smart });
+        items.push({ label: 'Sound on', checked: !clip.muted, disabled: !hasSound(clip.media_id), onSelect: () => change(updateClip(timeline, id, { muted: !clip.muted })) },
+          { label: 'Detach sound', disabled: clip.muted || !hasSound(clip.media_id), onSelect: () => detach(clip) });
       }
       if (clipEffects(clip).length) {
         // Built each time the menu draws, from the clip as it is now, so ticks stay true while switches are flipped.
