@@ -28,17 +28,17 @@ export function cannotFreeze3d(clip: Clip | null): string | null {
 }
 
 /** Holds the moment at `t` for `seconds`, playing the made video `made` there. */
-export function addFreeze3d(timeline: Timeline, t: number, made: number, move: FreezeMove, seconds: number, ids: [string, string]): Timeline {
+export function addFreeze3d(timeline: Timeline, t: number, made: number, move: FreezeMove, seconds: number, ids: [string, string], tune: Record<string, number> = {}): Timeline {
   const point = freezePoint(timeline, t);
   if (!point) return timeline;
   const held = freezeFrame(timeline, t, ids, seconds);
   if (held === timeline) return timeline;
-  return updateClip(held, ids[0], { media_id: made, freeze: null, in: 0, out: seconds, freeze3d: { original_media_id: point.clip.media_id, at: point.at, move } });
+  return updateClip(held, ids[0], { media_id: made, freeze: null, in: 0, out: seconds, freeze3d: { original_media_id: point.clip.media_id, at: point.at, move, ...(Object.keys(tune).length ? { tune } : {}) } });
 }
 
 /** A different move for a time freeze already made: its video swapped, its place and length kept. */
-export function changeFreeze3d(timeline: Timeline, clipId: string, made: number, move: FreezeMove): Timeline {
+export function changeFreeze3d(timeline: Timeline, clipId: string, made: number, move: FreezeMove, tune: Record<string, number> = {}): Timeline {
   const clip = findClip(timeline, clipId);
   if (!clip?.freeze3d) return timeline;
-  return updateClip(timeline, clipId, { media_id: made, freeze3d: { ...clip.freeze3d, move } });
+  return updateClip(timeline, clipId, { media_id: made, freeze3d: { ...clip.freeze3d, move, tune: Object.keys(tune).length ? tune : null } });
 }

@@ -593,6 +593,29 @@ def made_name(identifier: int, look: str) -> str:
     return f'{stem} ({look}).mp4'
 
 
+@router.get('/look-tuning')
+def look_tuning():
+    """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the
+    editor's sliders start exactly where the preset is."""
+    from app.services import atmosphere_service, lens_service, look_tune, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
+    pick = lambda values, look: {key: round(float(values[key]), 4) for key in look_tune.KNOBS[look] if key in values}
+    lens = {}
+    for preset in ('portrait', 'dreamy', 'rack-out', 'rack-in'):
+        for strength in lens_service.STRENGTH:
+            focus, amount, _ = lens_service.plan(preset, strength, 4.0)
+            lens[f'{preset}/{strength}'] = {'amount': round(amount, 4), 'focus': round(focus[0][1], 4)}
+    return {look: {'knobs': {key: list(span) for key, span in knobs.items()}} for look, knobs in look_tune.KNOBS.items()} | {
+        'defaults': {
+            'lens': lens,
+            'atmosphere': {f'{preset}/{strength}': pick(atmosphere_service.settings_for(preset, strength), 'atmosphere')
+                           for preset in atmosphere_service.PRESETS for strength in atmosphere_service.STRENGTH},
+            'sky': {sky: pick(values, 'sky') for sky, values in sky_swap_service.SKIES.items()},
+            'night': {mood: pick(values, 'night') for mood, values in night_service.MOODS.items()},
+            'rays': {preset: pick(values, 'rays') for preset, values in rays_service.PRESETS.items()},
+            'freeze3d': {move: {'swing': freeze.SWING, 'push': freeze.PUSH, 'parallax': freeze.PARALLAX} for move in freeze.MOVES},
+        }}
+
+
 @router.post('/photos/{identifier}/lens')
 def cinematic_lens(identifier: int, body: dict):
     """Cinematic lens: a copy of the clip's part with real depth of field (lens_service.py), as a library video."""
@@ -607,12 +630,17 @@ def cinematic_lens(identifier: int, body: dict):
         preset, strength = str(body.get('preset', 'portrait')), str(body.get('strength', 'medium'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'lens')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'The cinematic lens needs a video clip.')
     if preset not in ('portrait', 'dreamy', 'rack-out', 'rack-in') or strength not in lens_service.STRENGTH or not 0 <= start < end:
         raise HTTPException(400, 'Choose a lens and a part of the clip.')
     end = min(end, facts.duration or end)
     focus, amount, glow = lens_service.plan(preset, strength, end - start)
+    amount = tune.get('amount', amount)
+    if 'focus' in tune and not preset.startswith('rack'):  # A rack focus moves on its own; the others sit at one distance.
+        focus = [(0.0, tune['focus'])]
     target = lens_service.target_path(facts.path, start, end, focus, amount, glow)
 
     def known():
@@ -644,12 +672,14 @@ def god_rays(identifier: int, body: dict):
         preset = str(body.get('preset', 'soft'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'rays')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'God rays need a video clip.')
     if preset not in rays_service.PRESETS or not 0 <= start < end:
         raise HTTPException(400, 'Choose soft glow, strong beams or dusty light, and a part of the clip.')
     end = min(end, facts.duration or end)
-    target = rays_service.target_path(facts.path, start, end, preset)
+    target = rays_service.target_path(facts.path, start, end, preset, tune)
 
     def known():
         with get_connection() as conn:
@@ -660,7 +690,7 @@ def god_rays(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = rays_service.make(facts, start, end, preset, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        made = rays_service.make(facts, start, end, preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'god rays'))['id']}
     job_id = enqueue_render('rays', 'God rays', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
@@ -680,12 +710,14 @@ def day_for_night(identifier: int, body: dict):
         mood = str(body.get('mood', 'moonlit'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'night')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'Day for night needs a video clip.')
     if mood not in night_service.MOODS or not 0 <= start < end:
         raise HTTPException(400, 'Choose moonlit or deep night, and a part of the clip.')
     end = min(end, facts.duration or end)
-    target = night_service.target_path(facts.path, start, end, mood)
+    target = night_service.target_path(facts.path, start, end, mood, tune)
 
     def known():
         with get_connection() as conn:
@@ -696,7 +728,7 @@ def day_for_night(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = night_service.make(facts, start, end, mood, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        made = night_service.make(facts, start, end, mood, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'night'))['id']}
     job_id = enqueue_render('night', 'Day for night', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
@@ -716,12 +748,14 @@ def sky_swap(identifier: int, body: dict):
         sky = str(body.get('sky', 'sunset'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'sky')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'Sky swap needs a video clip.')
     if sky not in sky_swap_service.SKIES or not 0 <= start < end:
         raise HTTPException(400, 'Choose a sky and a part of the clip.')
     end = min(end, facts.duration or end)
-    target = sky_swap_service.target_path(facts.path, start, end, sky)
+    target = sky_swap_service.target_path(facts.path, start, end, sky, tune)
 
     def known():
         with get_connection() as conn:
@@ -732,7 +766,7 @@ def sky_swap(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = sky_swap_service.make(facts, start, end, sky, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        made = sky_swap_service.make(facts, start, end, sky, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, f'{sky} sky'))['id']}
     job_id = enqueue_render('sky', 'Sky swap', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
@@ -752,12 +786,14 @@ def atmosphere(identifier: int, body: dict):
         preset, strength = str(body.get('preset', 'mist')), str(body.get('strength', 'medium'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'atmosphere')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'Atmosphere needs a video clip.')
     if preset not in atmosphere_service.PRESETS or strength not in atmosphere_service.STRENGTH or not 0 <= start < end:
         raise HTTPException(400, 'Choose an atmosphere and a part of the clip.')
     end = min(end, facts.duration or end)
-    target = atmosphere_service.target_path(facts.path, start, end, preset, strength)
+    target = atmosphere_service.target_path(facts.path, start, end, preset, strength, tune)
 
     def known():
         with get_connection() as conn:
@@ -768,7 +804,7 @@ def atmosphere(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = atmosphere_service.make(facts, start, end, preset, strength, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        made = atmosphere_service.make(facts, start, end, preset, strength, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, f'{preset} atmosphere'))['id']}
     job_id = enqueue_render('atmosphere', 'Atmosphere', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
@@ -841,11 +877,13 @@ def time_freeze_3d(identifier: int, body: dict):
         at, seconds, move = float(body['at']), float(body.get('seconds', 3)), str(body.get('move', 'orbit-right'))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'freeze3d')  # Fine-tuning over the preset, kept within safe ranges.
     if facts.media_type != 'video':
         raise HTTPException(400, 'The time freeze needs a video clip.')
     if move not in time_freeze_service.MOVES or not 1 <= seconds <= 8 or not 0 <= at <= (facts.duration or at):
         raise HTTPException(400, 'Choose a moment, a move and how long it lasts.')
-    target = time_freeze_service.target_path(facts.path, at, seconds, move)
+    target = time_freeze_service.target_path(facts.path, at, seconds, move, tune)
 
     def known():
         with get_connection() as conn:
@@ -856,7 +894,7 @@ def time_freeze_3d(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = time_freeze_service.make(facts, at, seconds, move, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        made = time_freeze_service.make(facts, at, seconds, move, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'time freeze'))['id']}
     job_id = enqueue_render('freeze3d', 'Time freeze in 3D', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}

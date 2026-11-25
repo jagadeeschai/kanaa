@@ -47,3 +47,12 @@ test('looks need a clip that plays normally', () => {
   assert.match(cannotLook({ ...clip, reverse: true }, 'lens'), /normally/);
   assert.match(cannotLook({ ...clip, speed: 2 }, 'slowmo'), /normal speed/);
 });
+
+test('fine-tuning travels with a look: kept on the clip, read back, and only when something was moved', () => {
+  const tunedLens = { ...lens, tune: { amount: 1.6 } };
+  const styled = setLooks(timeline(), 'a', originalPart(clip), [sky, tunedLens], { media: 101, seconds: 3 });
+  const on = styled.layers[0].items[0];
+  assert.deepEqual(on.lens.tune, { amount: 1.6 });
+  assert.equal(on.new_sky.tune, null);
+  assert.deepEqual(looksOf(on), [sky, tunedLens]);  // Untuned looks carry no empty tuning.
+});

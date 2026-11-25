@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { ATMOSPHERE_PRESETS, type AtmospherePreset, type AtmosphereStrength } from '../timeline/atmosphere';
 import { findClip } from '../timeline/model';
 import { restyle } from './looks';
+import { TuneSection, type Tune } from './TuneSection';
 import { EditorContext } from './state/EditorContext';
 import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
@@ -33,6 +34,7 @@ function AtmosphereDialog({ clipId, onClose }: { clipId: string; onClose: () => 
   const clip = findClip(store.timeline!, clipId)!;
   const [preset, setPreset] = useState<AtmospherePreset>(clip.atmosphere?.preset ?? 'mist');
   const [strength, setStrength] = useState<AtmosphereStrength>(clip.atmosphere?.strength ?? 'medium');
+  const [tune, setTune] = useState<Tune>(clip.atmosphere?.tune ?? {});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(cannotLook(clip, 'atmosphere'));
   useEscape(true, () => { if (busy === null) onClose(); });
@@ -40,7 +42,7 @@ function AtmosphereDialog({ clipId, onClose }: { clipId: string; onClose: () => 
     setError(null); setBusy(0);
     try {
       // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
-      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'atmosphere', preset, strength }), setBusy);
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'atmosphere', preset, strength, ...(Object.keys(tune).length ? { tune } : {}) }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
@@ -58,6 +60,7 @@ function AtmosphereDialog({ clipId, onClose }: { clipId: string; onClose: () => 
       <p className="ed-tip">{t(ATMOSPHERE_PRESETS.find((each) => each.id === preset)!.about)}</p>
       <h3 className="ed-sub">{t('How thick')}</h3>
       <div className="ed-chips" role="group" aria-label={t('How thick')}>{(['light', 'medium', 'heavy'] as const).map((each) => <button key={each} className={strength === each ? 'on' : ''} aria-pressed={strength === each} disabled={busy !== null} onClick={() => setStrength(each)}>{t(each === 'light' ? 'Light' : each === 'medium' ? 'Medium' : 'Heavy')}</button>)}</div>
+      <TuneSection look="atmosphere" preset={`${preset}/${strength}`} tune={tune} onChange={setTune} disabled={busy !== null}/>
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Laying in the air…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">

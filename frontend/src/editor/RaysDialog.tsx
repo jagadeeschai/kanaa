@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { RAYS_PRESETS, type RaysPreset } from '../timeline/rays';
 import { findClip } from '../timeline/model';
 import { restyle } from './looks';
+import { TuneSection, type Tune } from './TuneSection';
 import { EditorContext } from './state/EditorContext';
 import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
@@ -32,6 +33,7 @@ function RaysDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
   const store = useContext(EditorContext)!;
   const clip = findClip(store.timeline!, clipId)!;
   const [preset, setPreset] = useState<RaysPreset>(clip.rays?.preset ?? 'soft');
+  const [tune, setTune] = useState<Tune>(clip.rays?.tune ?? {});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(cannotLook(clip, 'rays'));
   useEscape(true, () => { if (busy === null) onClose(); });
@@ -39,7 +41,7 @@ function RaysDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
     setError(null); setBusy(0);
     try {
       // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
-      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'rays', preset }), setBusy);
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'rays', preset, ...(Object.keys(tune).length ? { tune } : {}) }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
@@ -55,6 +57,7 @@ function RaysDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
       <p className="ed-tip">{t('Beams of light streaming from the sun across the scene, broken by trees and people where they stand in the way.')}</p>
       <div className="ed-chips" role="group" aria-label={t('God rays')}>{RAYS_PRESETS.map((each) => <button key={each.id} className={preset === each.id ? 'on' : ''} aria-pressed={preset === each.id} title={t(each.about)} disabled={busy !== null} onClick={() => setPreset(each.id)}>{t(each.label)}</button>)}</div>
       <p className="ed-tip">{t(RAYS_PRESETS.find((each) => each.id === preset)!.about)}</p>
+      <TuneSection look="rays" preset={preset} tune={tune} onChange={setTune} disabled={busy !== null}/>
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Casting the light…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">

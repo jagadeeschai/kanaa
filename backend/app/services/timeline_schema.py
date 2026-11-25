@@ -179,6 +179,7 @@ class Freeze3DLink(Strict):
     original_media_id: int
     at: float = Field(ge=0)  # Source seconds of the frozen moment.
     move: Literal['orbit-left', 'orbit-right', 'push-in', 'rise'] = 'orbit-right'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class SkyLink(Strict):
@@ -187,6 +188,7 @@ class SkyLink(Strict):
     original_in: float = Field(ge=0)
     original_out: float = Field(gt=0)
     sky: Literal['sunset', 'night', 'storm', 'blue']
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class RaysLink(Strict):
@@ -195,6 +197,7 @@ class RaysLink(Strict):
     original_in: float = Field(ge=0)
     original_out: float = Field(gt=0)
     preset: Literal['soft', 'strong', 'dusty'] = 'soft'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class NightLink(Strict):
@@ -203,6 +206,7 @@ class NightLink(Strict):
     original_in: float = Field(ge=0)
     original_out: float = Field(gt=0)
     mood: Literal['moonlit', 'dark'] = 'moonlit'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class AtmosphereLink(Strict):
@@ -212,6 +216,7 @@ class AtmosphereLink(Strict):
     original_out: float = Field(gt=0)
     preset: Literal['mist', 'sunset', 'rain', 'low-fog']
     strength: Literal['light', 'medium', 'heavy'] = 'medium'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class LensLink(Strict):
@@ -221,6 +226,7 @@ class LensLink(Strict):
     original_out: float = Field(gt=0)
     preset: Literal['portrait', 'dreamy', 'rack-out', 'rack-in']
     strength: Literal['soft', 'medium', 'strong'] = 'medium'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
 class SlowLink(Strict):

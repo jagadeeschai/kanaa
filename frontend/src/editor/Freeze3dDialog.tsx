@@ -11,6 +11,7 @@ import { addFreeze3d, cannotFreeze3d, changeFreeze3d, FREEZE_LENGTHS, FREEZE_MOV
 import { findClip } from '../timeline/model';
 import { newId } from './editor-constants';
 import { EditorContext } from './state/EditorContext';
+import { TuneSection, type Tune } from './TuneSection';
 import { useEscape } from './useEscape';
 
 const OPEN = 'kanaa:freeze3d';
@@ -36,6 +37,7 @@ function Freeze3dDialog({ clipId, onClose }: { clipId: string | null; onClose: (
   const point = frozen?.freeze3d ? null : freezePoint(store.timeline!, when);
   const [move, setMove] = useState<FreezeMove>(frozen?.freeze3d?.move ?? 'orbit-right');
   const [seconds, setSeconds] = useState<number>(frozen ? frozen.out - frozen.in : 3);
+  const [tune, setTune] = useState<Tune>(frozen?.freeze3d?.tune ?? {});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(frozen?.freeze3d ? null : cannotFreeze3d(point?.clip ?? null));
   useEscape(true, () => { if (busy === null) onClose(); });
@@ -45,10 +47,10 @@ function Freeze3dDialog({ clipId, onClose }: { clipId: string | null; onClose: (
       const source = frozen?.freeze3d ? { media: frozen.freeze3d.original_media_id, at: frozen.freeze3d.at } : point ? { media: point.clip.media_id, at: point.at } : null;
       if (!source) throw new Error(t('Move the playhead onto a video clip on the main track.'));
       const length = frozen ? frozen.out - frozen.in : seconds;
-      const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${source.media}/freeze3d`, { method: 'POST', body: JSON.stringify({ at: source.at, seconds: length, move }) });
+      const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${source.media}/freeze3d`, { method: 'POST', body: JSON.stringify({ at: source.at, seconds: length, move, tune }) });
       const made = started.output_photo_id ?? (await waitForJob<{ output_photo_id: number }>(started.job_id!, (value) => setBusy(value))).output_photo_id;
       store.addMedia(await getPhoto(made));
-      store.change(frozen?.freeze3d ? changeFreeze3d(store.timeline!, frozen.id, made, move) : addFreeze3d(store.timeline!, when, made, move, length, [newId(), newId()]));
+      store.change(frozen?.freeze3d ? changeFreeze3d(store.timeline!, frozen.id, made, move, tune) : addFreeze3d(store.timeline!, when, made, move, length, [newId(), newId()], tune));
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
@@ -63,6 +65,7 @@ function Freeze3dDialog({ clipId, onClose }: { clipId: string | null; onClose: (
         <h3 className="ed-sub">{t('How long')}</h3>
         <div className="ed-chips" role="group" aria-label={t('How long')}>{FREEZE_LENGTHS.map((each) => <button key={each} className={seconds === each ? 'on' : ''} aria-pressed={seconds === each} disabled={busy !== null} onClick={() => setSeconds(each)}>{each} s</button>)}</div>
       </>}
+      <TuneSection look="freeze3d" preset={move} tune={tune} onChange={setTune} disabled={busy !== null}/>
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Freezing the moment…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">

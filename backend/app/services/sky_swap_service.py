@@ -44,8 +44,9 @@ SKIES = {
 }
 
 
-def target_path(source: Path, start: float, end: float, sky: str) -> Path:
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), sky])
+def target_path(source: Path, start: float, end: float, sky: str, tune: dict | None = None) -> Path:
+    from app.services.look_tune import key
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), sky] + ([key(tune)] if tune else []))
     return settings.data_dir / 'media' / f'sky-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -158,25 +159,25 @@ def compose(frame: np.ndarray, sky_picture: np.ndarray, mask_small: np.ndarray, 
 
 
 def make(facts: MediaFacts, start: float, end: float, sky: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False) -> Path:
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None) -> Path:
     """The part start..end (source seconds) under a new sky, with its sound. Made once."""
     if sky not in SKIES:
         raise ValueError('Choose a sunset, a starry night, storm clouds or a clear blue sky.')
-    target = target_path(facts.path, start, end, sky)
+    target = target_path(facts.path, start, end, sky, tune)
     if target.is_file():
         return target
     depth = make_depth_map(facts, lambda value: on_progress(value // 3), should_cancel)
     gpu = os.environ.get('KANAA_GPU_EFFECTS') != '0'
     if gpu:
         try:
-            if _make(facts, start, end, sky, depth, target, on_progress, should_cancel, gpu=True):
+            if _make(facts, start, end, sky, depth, target, on_progress, should_cancel, gpu=True, tune=tune):
                 on_progress(100)
                 return target
         except JobCancelled:
             raise
         except Exception:
             logger.exception('GPU sky swap failed; making it on the CPU')
-    _make(facts, start, end, sky, depth, target, on_progress, should_cancel, gpu=False)
+    _make(facts, start, end, sky, depth, target, on_progress, should_cancel, gpu=False, tune=tune)
     on_progress(100)
     return target
 
@@ -194,7 +195,7 @@ def _first(facts: MediaFacts, depth: Path, at: float, small: tuple[int, int]):
             np.frombuffer(near[:small[0] * small[1]], np.uint8).reshape(small[1], small[0]).astype(np.float32) / 255)
 
 
-def _make(facts: MediaFacts, start: float, end: float, sky: str, depth: Path, target: Path, on_progress, should_cancel, gpu: bool) -> bool:
+def _make(facts: MediaFacts, start: float, end: float, sky: str, depth: Path, target: Path, on_progress, should_cancel, gpu: bool, tune: dict | None = None) -> bool:
     """Reads the clip and its depth in step; finds the sky and follows the camera here; composites on the GPU
     (sky_render) or here. False when the GPU tool can't be built, so the CPU path makes it."""
     import cv2
@@ -214,7 +215,7 @@ def _make(facts: MediaFacts, start: float, end: float, sky: str, depth: Path, ta
     small = (SMALL, max(2, round(height * SMALL / width)))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
     depth_w, depth_h = _size(depth)
-    light = SKIES[sky]
+    light = {**SKIES[sky], **(tune or {})}  # The sky's light, then any fine-tuning (look_tune).
     first = _first(facts, depth, start, small)
     seen = horizon_of(sky_mask(*first)) if first else None
     # The new sky's horizon goes where the clip's is (in the larger picture: MARGIN above the frame's top).

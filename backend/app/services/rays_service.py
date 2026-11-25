@@ -48,8 +48,9 @@ PRESETS = {
 }
 
 
-def target_path(source: Path, start: float, end: float, preset: str) -> Path:
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), preset])
+def target_path(source: Path, start: float, end: float, preset: str, tune: dict | None = None) -> Path:
+    from app.services.look_tune import key
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), preset] + ([key(tune)] if tune else []))
     return settings.data_dir / 'media' / f'rays-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -134,30 +135,30 @@ def compose(frame: np.ndarray, rays_small: np.ndarray, chosen: dict) -> np.ndarr
 
 
 def make(facts: MediaFacts, start: float, end: float, preset: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False) -> Path:
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None) -> Path:
     """The part start..end (source seconds) with god rays, with its sound. Made once."""
     if preset not in PRESETS:
         raise ValueError('Choose soft glow, strong beams or dusty light.')
-    target = target_path(facts.path, start, end, preset)
+    target = target_path(facts.path, start, end, preset, tune)
     if target.is_file():
         return target
     depth = make_depth_map(facts, lambda value: on_progress(value // 3), should_cancel)
     gpu = os.environ.get('KANAA_GPU_EFFECTS') != '0'
     if gpu:
         try:
-            if _make(facts, start, end, preset, depth, target, on_progress, should_cancel, gpu=True):
+            if _make(facts, start, end, preset, depth, target, on_progress, should_cancel, gpu=True, tune=tune):
                 on_progress(100)
                 return target
         except JobCancelled:
             raise
         except Exception:
             logger.exception('GPU god rays failed; making them on the CPU')
-    _make(facts, start, end, preset, depth, target, on_progress, should_cancel, gpu=False)
+    _make(facts, start, end, preset, depth, target, on_progress, should_cancel, gpu=False, tune=tune)
     on_progress(100)
     return target
 
 
-def _make(facts: MediaFacts, start: float, end: float, preset: str, depth: Path, target: Path, on_progress, should_cancel, gpu: bool) -> bool:
+def _make(facts: MediaFacts, start: float, end: float, preset: str, depth: Path, target: Path, on_progress, should_cancel, gpu: bool, tune: dict | None = None) -> bool:
     """Reads the clip and its depth in step, finds and follows the light here, and draws the beams on the GPU
     (rays_render) or here. False when the GPU tool can't be built, so the CPU path makes it."""
     import cv2
@@ -177,7 +178,7 @@ def _make(facts: MediaFacts, start: float, end: float, preset: str, depth: Path,
     small = (SMALL, max(2, round(height * SMALL / width)))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
     depth_w, depth_h = _size(depth)
-    chosen = PRESETS[preset]
+    chosen = {**PRESETS[preset], **(tune or {})}  # The preset, then any fine-tuning (look_tune).
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp.mp4')
     read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', *span, '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={width}:{height}',

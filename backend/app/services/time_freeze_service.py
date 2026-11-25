@@ -40,12 +40,13 @@ PARALLAX = 2.2  # How much more the near swings past than the far.
 FILL = 0.016  # How far around the people (share of the width) the scene is filled in: what the camera's move uncovers.
 
 
-def target_path(source: Path, at: float, seconds: float, move: str) -> Path:
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(at, 3), round(seconds, 2), move])
+def target_path(source: Path, at: float, seconds: float, move: str, tune: dict | None = None) -> Path:
+    from app.services.look_tune import key
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(at, 3), round(seconds, 2), move] + ([key(tune)] if tune else []))
     return settings.data_dir / 'media' / f'freeze3d-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
-def path(move: str, frames: int) -> list[tuple[float, float, float]]:
+def path(move: str, frames: int, swing: float = SWING, push: float = PUSH) -> list[tuple[float, float, float]]:
     """The camera at each frame: (across, up) as shares of the width, and how far it has pushed in (0..PUSH)."""
     out = []
     for k in range(frames):
@@ -53,11 +54,11 @@ def path(move: str, frames: int) -> list[tuple[float, float, float]]:
         eased = 0.5 - 0.5 * math.cos(math.pi * u)  # Starts and stops gently, like a crane.
         if move in ('orbit-left', 'orbit-right'):
             sign = 1 if move == 'orbit-right' else -1
-            out.append((sign * SWING * (eased - 0.5), 0.0, 0.25 * PUSH * math.sin(math.pi * u)))
+            out.append((sign * swing * (eased - 0.5), 0.0, 0.25 * push * math.sin(math.pi * u)))
         elif move == 'rise':
-            out.append((0.0, SWING * (eased - 0.5), 0.2 * PUSH * eased))
+            out.append((0.0, swing * (eased - 0.5), 0.2 * push * eased))
         else:  # push-in
-            out.append((0.0, 0.0, PUSH * eased))
+            out.append((0.0, 0.0, push * eased))
     return out
 
 
@@ -66,7 +67,7 @@ def size_at(push: float, near: np.ndarray | float):
     return BASE * (1 + push * (0.3 + 1.4 * near))
 
 
-def view(plate: np.ndarray, frame: np.ndarray, person: np.ndarray, near: np.ndarray, subject: float, camera: tuple[float, float, float]) -> np.ndarray:
+def view(plate: np.ndarray, frame: np.ndarray, person: np.ndarray, near: np.ndarray, subject: float, camera: tuple[float, float, float], parallax: float = PARALLAX) -> np.ndarray:
     """One frame of the move (CPU): the filled-in scene shifted by distance, the people over it as one layer.
     plate, frame: H×W×3 uint8; person: H×W 0..1; near: H×W 0..1."""
     import cv2
@@ -75,7 +76,7 @@ def view(plate: np.ndarray, frame: np.ndarray, person: np.ndarray, near: np.ndar
     cx, cy = (width - 1) / 2, (height - 1) / 2
     xs, ys = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
     scale = size_at(push, near).astype(np.float32)
-    shift_x, shift_y = across * width * PARALLAX * (near - subject), -up * width * PARALLAX * (near - subject)
+    shift_x, shift_y = across * width * parallax * (near - subject), -up * width * parallax * (near - subject)
     scene = cv2.remap(plate, ((xs - cx - shift_x) / scale + cx).astype(np.float32), ((ys - cy - shift_y) / scale + cy).astype(np.float32),
                       cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     if not person.any():
@@ -157,11 +158,12 @@ def find_people(frame: np.ndarray) -> np.ndarray:
 
 
 def make(facts: MediaFacts, at: float, seconds: float, move: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False) -> Path:
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None) -> Path:
     """`seconds` of the camera moving `move` around the moment `at` (source seconds), as a silent video. Made once."""
     if move not in MOVES:
         raise ValueError('Choose orbit left, orbit right, push in or rise.')
-    target = target_path(facts.path, at, seconds, move)
+    tune = tune or {}
+    target = target_path(facts.path, at, seconds, move, tune)
     if target.is_file():
         return target
     depth = make_depth_map(facts, lambda value: on_progress(value // 2), should_cancel)
@@ -176,18 +178,19 @@ def make(facts: MediaFacts, at: float, seconds: float, move: str, on_progress: C
     # picture when there are none.
     centre = near[height // 3:2 * height // 3, width // 3:2 * width // 3]
     subject = float(np.median(near[person > 0.5])) if (person > 0.5).sum() > 200 else float(np.median(centre))
-    cameras = path(move, max(2, round(seconds * fps)))
+    cameras = path(move, max(2, round(seconds * fps)), tune.get('swing', SWING), tune.get('push', PUSH))
+    parallax = tune.get('parallax', PARALLAX)
     on_progress(55)
     if os.environ.get('KANAA_GPU_EFFECTS') != '0':
         try:
-            if _make_gpu(plate, frame, person, near, subject, cameras, fps, target, on_progress, should_cancel):
+            if _make_gpu(plate, frame, person, near, subject, cameras, fps, target, on_progress, should_cancel, parallax):
                 on_progress(100)
                 return target
         except JobCancelled:
             raise
         except Exception:
             logger.exception('GPU time freeze failed; making it on the CPU')
-    _make_cpu(plate, frame, person, near, subject, cameras, fps, target, on_progress, should_cancel)
+    _make_cpu(plate, frame, person, near, subject, cameras, fps, target, on_progress, should_cancel, parallax)
     on_progress(100)
     return target
 
@@ -202,7 +205,7 @@ def _writer(ffmpeg: str, size: tuple[int, int], fps: float, pix: str, temporary:
                              *encoder, '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(temporary)], stdin=stdin, stderr=subprocess.PIPE)
 
 
-def _make_gpu(plate, frame, person, near, subject, cameras, fps, target: Path, on_progress, should_cancel) -> bool:
+def _make_gpu(plate, frame, person, near, subject, cameras, fps, target: Path, on_progress, should_cancel, parallax: float = PARALLAX) -> bool:
     import cv2
     from app.services.cutout_service import helper
     try:
@@ -220,7 +223,7 @@ def _make_gpu(plate, frame, person, near, subject, cameras, fps, target: Path, o
         (root / 'person.raw').write_bytes((np.clip(person, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
         (root / 'near.raw').write_bytes((np.clip(near, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
         (root / 'cameras.txt').write_text('\n'.join(f'{a:.6f} {u:.6f} {p:.6f}' for a, u, p in cameras))
-        draw = subprocess.Popen([str(tool), str(width), str(height), f'{subject}', f'{BASE}', f'{PARALLAX}', '1' if person.any() else '0', str(root)],
+        draw = subprocess.Popen([str(tool), str(width), str(height), f'{subject}', f'{BASE}', f'{parallax}', '1' if person.any() else '0', str(root)],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         processes = [draw]
         try:
@@ -244,7 +247,7 @@ def _make_gpu(plate, frame, person, near, subject, cameras, fps, target: Path, o
             temporary.unlink(missing_ok=True)
 
 
-def _make_cpu(plate, frame, person, near, subject, cameras, fps, target: Path, on_progress, should_cancel) -> None:
+def _make_cpu(plate, frame, person, near, subject, cameras, fps, target: Path, on_progress, should_cancel, parallax: float = PARALLAX) -> None:
     ffmpeg = shutil.which('ffmpeg')
     height, width = frame.shape[:2]
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -255,7 +258,7 @@ def _make_cpu(plate, frame, person, near, subject, cameras, fps, target: Path, o
         for k, camera in enumerate(cameras):
             if should_cancel():
                 raise JobCancelled()
-            write.stdin.write(view(plate, frame, person, near, subject, camera).tobytes())
+            write.stdin.write(view(plate, frame, person, near, subject, camera, parallax).tobytes())
             if k % 10 == 0:
                 on_progress(55 + min(43, k * 43 // len(cameras)))
         write.stdin.close()

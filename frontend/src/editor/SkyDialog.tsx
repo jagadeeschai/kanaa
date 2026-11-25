@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { SKY_CHOICES, type SkyChoice } from '../timeline/sky';
 import { findClip } from '../timeline/model';
 import { restyle } from './looks';
+import { TuneSection, type Tune } from './TuneSection';
 import { EditorContext } from './state/EditorContext';
 import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
@@ -32,6 +33,7 @@ function SkyDialog({ clipId, onClose }: { clipId: string; onClose: () => void })
   const store = useContext(EditorContext)!;
   const clip = findClip(store.timeline!, clipId)!;
   const [preset, setPreset] = useState<SkyChoice>(clip.new_sky?.sky ?? 'sunset');
+  const [tune, setTune] = useState<Tune>(clip.new_sky?.tune ?? {});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(cannotLook(clip, 'new_sky'));
   useEscape(true, () => { if (busy === null) onClose(); });
@@ -39,7 +41,7 @@ function SkyDialog({ clipId, onClose }: { clipId: string; onClose: () => void })
     setError(null); setBusy(0);
     try {
       // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
-      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'new_sky', sky: preset }), setBusy);
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'new_sky', sky: preset, ...(Object.keys(tune).length ? { tune } : {}) }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
@@ -55,6 +57,7 @@ function SkyDialog({ clipId, onClose }: { clipId: string; onClose: () => void })
       <p className="ed-tip">{t('A new sky where the old one was, the land relit to match it, staying put as the camera moves.')}</p>
       <div className="ed-chips" role="group" aria-label={t('New sky')}>{SKY_CHOICES.map((each) => <button key={each.id} className={preset === each.id ? 'on' : ''} aria-pressed={preset === each.id} title={t(each.about)} disabled={busy !== null} onClick={() => setPreset(each.id)}>{t(each.label)}</button>)}</div>
       <p className="ed-tip">{t(SKY_CHOICES.find((each) => each.id === preset)!.about)}</p>
+      <TuneSection look="sky" preset={preset} tune={tune} onChange={setTune} disabled={busy !== null}/>
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Painting the new sky…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">

@@ -42,8 +42,9 @@ FAR = 0.45  # How much darker the farthest land is than the nearest.
 SKY_FROM, SKY_TO = 0.03, 0.12  # Nearness: below the first is sky, past the second is land.
 
 
-def target_path(source: Path, start: float, end: float, mood: str) -> Path:
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), mood])
+def target_path(source: Path, start: float, end: float, mood: str, tune: dict | None = None) -> Path:
+    from app.services.look_tune import key
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), mood] + ([key(tune)] if tune else []))
     return settings.data_dir / 'media' / f'night-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -69,10 +70,10 @@ def night_frame(frame: np.ndarray, near: np.ndarray, chosen: dict) -> np.ndarray
 
 
 def make(facts: MediaFacts, start: float, end: float, mood: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False) -> Path:
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None) -> Path:
     """The part start..end (source seconds) by night, with its sound. Made once."""
-    chosen = settings_for(mood)
-    target = target_path(facts.path, start, end, mood)
+    chosen = {**settings_for(mood), **(tune or {})}  # The mood, then any fine-tuning (look_tune).
+    target = target_path(facts.path, start, end, mood, tune)
     if target.is_file():
         return target
     depth = make_depth_map(facts, lambda value: on_progress(value // 3), should_cancel)

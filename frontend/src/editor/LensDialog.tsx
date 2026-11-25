@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { LENS_PRESETS, type LensPreset, type LensStrength } from '../timeline/lens';
 import { findClip } from '../timeline/model';
 import { restyle } from './looks';
+import { TuneSection, type Tune } from './TuneSection';
 import { EditorContext } from './state/EditorContext';
 import { cannotLook, looksOf, withLook, withoutLook } from '../timeline/stack';
 import { useEscape } from './useEscape';
@@ -33,6 +34,7 @@ function LensDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
   const clip = findClip(store.timeline!, clipId)!;
   const [preset, setPreset] = useState<LensPreset>(clip.lens?.preset ?? 'portrait');
   const [strength, setStrength] = useState<LensStrength>(clip.lens?.strength ?? 'medium');
+  const [tune, setTune] = useState<Tune>(clip.lens?.tune ?? {});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(cannotLook(clip, 'lens'));
   useEscape(true, () => { if (busy === null) onClose(); });
@@ -40,7 +42,7 @@ function LensDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
     setError(null); setBusy(0);
     try {
       // Added on top of the clip's other looks (or changing this one), all in their order (timeline/stack.ts).
-      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'lens', preset, strength }), setBusy);
+      await restyle(store, clipId, withLook(looksOf(clip), { kind: 'lens', preset, strength, ...(Object.keys(tune).length ? { tune } : {}) }), setBusy);
       onClose();
     } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
@@ -58,6 +60,7 @@ function LensDialog({ clipId, onClose }: { clipId: string; onClose: () => void }
       <p className="ed-tip">{t(LENS_PRESETS.find((each) => each.id === preset)!.about)}</p>
       <h3 className="ed-sub">{t('Blur')}</h3>
       <div className="ed-chips" role="group" aria-label={t('Blur')}>{(['soft', 'medium', 'strong'] as const).map((each) => <button key={each} className={strength === each ? 'on' : ''} aria-pressed={strength === each} disabled={busy !== null} onClick={() => setStrength(each)}>{t(each === 'soft' ? 'Soft' : each === 'medium' ? 'Medium' : 'Strong')}</button>)}</div>
+      <TuneSection look="lens" preset={`${preset}/${strength}`} tune={tune} onChange={setTune} disabled={busy !== null}/>
       {busy !== null && <p className="ed-tip" role="status"><LoaderCircle className="spin" size={13}/> {t('Making the lens copy…')} {busy ? `${Math.round(busy)}%` : ''} · {t('You can keep editing; it continues in Jobs.')}</p>}
       {error && <p className="ed-error" role="alert">{error}</p>}
       <div className="ed-ai-edit-actions">
