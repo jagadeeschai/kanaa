@@ -640,7 +640,7 @@ def look_preview(body: dict):
     try:
         facts = media_facts(int(body['media']))
         start, end, at = float(body['start']), float(body['end']), float(body.get('at', 0))
-        looks = [look for look in body.get('looks') or [] if isinstance(look, dict)][:8]
+        looks = [look for look in body.get('looks') or [] if isinstance(look, dict)][:16]
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(400, 'This clip is not valid.') from exc
     if facts.media_type != 'video' or not 0 <= start < end:

@@ -86,6 +86,8 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
   const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo'), smear = has('blur'), glow = has('halation'), wobble = has('shake');
   const links: Partial<Clip> = {
+    // Steady would smooth the added shake back out, so a shaken clip is not steadied.
+    ...(wobble && clip.stabilise ? { stabilise: false } : {}),
     colour_match: match?.kind === 'match' ? { ...original, reference_media_id: match.reference.media, reference_in: match.reference.start, reference_out: match.reference.end, tune: match.tune ?? null } : null,
     new_sky: sky?.kind === 'new_sky' ? { ...original, sky: sky.sky, tune: sky.tune ?? null } : null,
     night: dark?.kind === 'night' ? { ...original, mood: dark.mood, tune: dark.tune ?? null } : null,

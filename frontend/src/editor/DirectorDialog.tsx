@@ -54,7 +54,7 @@ function DirectorDialog({ clipId, onClose }: { clipId: string; onClose: () => vo
   const apply = async () => {
     if (!plan) return;
     setError(null); setBusy({ what: 'Making the looks…', progress: 0 });
-    try { await restyle(store, clipId, looksToMake(plan), (progress) => setBusy({ what: 'Making the looks…', progress })); setApplied(true); setPlan({ ...plan, verdict: undefined }); }
+    try { await restyle(store, clipId, looksToMake(plan, looksOf(findClip(store.timeline!, clipId)!)), (progress) => setBusy({ what: 'Making the looks…', progress })); setApplied(true); setPlan({ ...plan, verdict: undefined }); }
     catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
   const good = plan?.verdict === 'good';

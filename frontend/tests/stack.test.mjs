@@ -79,3 +79,10 @@ test('halation and handheld shake sit after the lens, before slow motion and mot
   const styled = setLooks(timeline(), 'a', originalPart(clip), [glow, wobble], { media: 130, seconds: 3 });
   assert.deepEqual(looksOf(styled.layers[0].items[0]), [glow, wobble]);
 });
+
+test('a shaken clip is not steadied, which would smooth the shake back out', () => {
+  const part = { media: 4, start: 2, end: 5 };
+  const steady = timeline({ ...clip, stabilise: true });
+  assert.equal(setLooks(steady, 'a', part, [{ kind: 'shake', preset: 'docu' }], { media: 110, seconds: 3 }).layers[0].items[0].stabilise, false);
+  assert.equal(setLooks(steady, 'a', part, [lens], { media: 111, seconds: 3 }).layers[0].items[0].stabilise, true);
+});

@@ -4,7 +4,7 @@
   base). The brightest parts of each frame are picked out, spread into a soft glow, tinted warm and laid back over
   the picture as light (screen, so it brightens and never clips).
 - Handheld shake: a believable human camera wobble, from a smooth organic motion (sines at a few unrelated speeds, the
-  same every time for the same clip), never random jitter. The picture is zoomed in just enough that the moving edges
+  same every time for the same length of clip, whatever other looks it has), never random jitter. The picture is zoomed in just enough that the moving edges
   never show.
 
 Both are new videos of the clip's part (with its sound); the original is kept to go back to. Drawn on this Mac's GPU
@@ -143,7 +143,7 @@ def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, 
     fps = facts.fps or 30
     total = max(1, round((end - start) * fps))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
-    cameras = shake_path(chosen, total + 2, fps, seed=int(hashlib.sha256(str(facts.path).encode()).hexdigest()[:8], 16), aspect=height / width) if kind == 'shake' else None
+    cameras = shake_path(chosen, total + 2, fps, seed=round((end - start) * 1000), aspect=height / width) if kind == 'shake' else None
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp.mp4')
     read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', *span, '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={width}:{height}',
