@@ -191,6 +191,24 @@ class SkyLink(Strict):
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
+class HalationLink(Strict):
+    """A clip with film halation (a made copy of its part); what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['subtle', 'classic', 'dreamy'] = 'classic'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
+
+
+class ShakeLink(Strict):
+    """A clip with handheld camera shake (a made copy of its part); what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['docu', 'float', 'impact'] = 'docu'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
+
+
 class BlurLink(Strict):
     """A clip with real motion blur (a made copy of its part); what it was, so Remove puts it back."""
     original_media_id: int
@@ -432,6 +450,8 @@ class Clip(Strict):
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
     freeze3d: Optional[Freeze3DLink] = None  # A time freeze in 3D (a made video of the camera moving around it).
     atmosphere: Optional[AtmosphereLink] = None
+    halation: Optional[HalationLink] = None  # Film halation (a made copy).
+    shake: Optional[ShakeLink] = None  # Handheld camera shake (a made copy).
     motion_blur: Optional[BlurLink] = None  # Real motion blur (a made copy).
     colour_match: Optional[MatchLink] = None  # In the colour of another shot (a made copy).
     rays: Optional[RaysLink] = None  # God rays (a made copy).

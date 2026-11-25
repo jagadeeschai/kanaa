@@ -658,7 +658,7 @@ def look_preview(body: dict):
 def look_tuning():
     """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the
     editor's sliders start exactly where the preset is."""
-    from app.services import atmosphere_service, blur_service, lens_service, look_tune, match_service, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
+    from app.services import atmosphere_service, blur_service, film_service, lens_service, look_tune, match_service, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
     pick = lambda values, look: {key: round(float(values[key]), 4) for key in look_tune.KNOBS[look] if key in values}
     lens = {}
     for preset in ('portrait', 'dreamy', 'rack-out', 'rack-in'):
@@ -675,6 +675,8 @@ def look_tuning():
             'rays': {preset: pick(values, 'rays') for preset, values in rays_service.PRESETS.items()},
             'match': {'default': dict(match_service.DEFAULTS)},
             'blur': {preset: dict(values) for preset, values in blur_service.PRESETS.items()},
+            'halation': {preset: dict(values) for preset, values in film_service.HALATION.items()},
+            'shake': {preset: {'amount': values['amount'], 'speed': values['speed']} for preset, values in film_service.SHAKE.items()},
             'freeze3d': {move: {'swing': freeze.SWING, 'push': freeze.PUSH, 'parallax': freeze.PARALLAX} for move in freeze.MOVES},
         }}
 
@@ -718,6 +720,82 @@ def cinematic_lens(identifier: int, body: dict):
         made = lens_service.make(facts, start, end, focus, amount, glow, lambda value: update_job(holder['id'], progress=value), should_cancel)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'cinematic lens'))['id']}
     job_id = enqueue_render('lens', 'Cinematic lens', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/halation')
+def film_halation(identifier: int, body: dict):
+    """Film halation: a copy of the clip's part (film_service.py)."""
+    from app.db.database import get_connection
+    from app.services import film_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset = str(body.get('preset', 'classic'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'halation')  # Fine-tuning over the preset, kept within safe ranges.
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Film halation needs a video clip.')
+    if preset not in film_service.HALATION or not 0 <= start < end:
+        raise HTTPException(400, 'Choose subtle, classic or dreamy halation, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = film_service.target_path(facts.path, start, end, 'halation', preset, tune)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = film_service.make(facts, start, end, 'halation', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'film halation'))['id']}
+    job_id = enqueue_render('halation', 'Film halation', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/shake')
+def handheld_shake(identifier: int, body: dict):
+    """Handheld shake: a copy of the clip's part (film_service.py)."""
+    from app.db.database import get_connection
+    from app.services import film_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset = str(body.get('preset', 'docu'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'shake')  # Fine-tuning over the preset, kept within safe ranges.
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Handheld shake needs a video clip.')
+    if preset not in film_service.SHAKE or not 0 <= start < end:
+        raise HTTPException(400, 'Choose documentary, steadicam or impact shake, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = film_service.target_path(facts.path, start, end, 'shake', preset, tune)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = film_service.make(facts, start, end, 'shake', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'handheld shake'))['id']}
+    job_id = enqueue_render('shake', 'Handheld shake', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
 

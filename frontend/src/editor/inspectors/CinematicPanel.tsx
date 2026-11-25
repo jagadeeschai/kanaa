@@ -16,6 +16,7 @@ import { NIGHT_MOODS } from '../../timeline/night';
 import { RAYS_PRESETS } from '../../timeline/rays';
 import { SKY_CHOICES } from '../../timeline/sky';
 import { SLOW_FACTORS } from '../../timeline/slowmo';
+import { HALATION_PRESETS, SHAKE_PRESETS } from '../../timeline/film';
 import { cannotLook, LOOK_ORDER, looksOf, originalPart, withLook, withoutLook, type Look, type LookKind, type Tune } from '../../timeline/stack';
 import { openDirector } from '../DirectorDialog';
 import { openMatch } from '../MatchDialog';
@@ -31,10 +32,12 @@ const CARDS: Record<LookKind, { title: string; about: string; tune?: TuneLook }>
   rays: { title: 'God rays', about: 'Beams of light from the sun.', tune: 'rays' },
   atmosphere: { title: 'Atmosphere', about: 'Mist, haze or fog by distance.', tune: 'atmosphere' },
   lens: { title: 'Cinematic lens', about: 'Real depth of field.', tune: 'lens' },
+  halation: { title: 'Film halation', about: 'The warm glow film gives bright highlights.', tune: 'halation' },
+  shake: { title: 'Handheld shake', about: 'A believable human camera wobble.', tune: 'shake' },
   slowmo: { title: 'Smooth slow motion', about: 'New frames made between the clip’s own.' },
   blur: { title: 'Motion blur', about: 'The smear of a film camera on what moves.', tune: 'blur' },
 };
-const MOVING: LookKind[] = ['slowmo', 'blur'];
+const MOVING: LookKind[] = ['slowmo', 'blur', 'shake'];
 
 /** A look of `kind` with its first preset, to switch it on. */
 function startLook(kind: LookKind, hero: Clip | undefined): Look | null {
@@ -45,6 +48,8 @@ function startLook(kind: LookKind, hero: Clip | undefined): Look | null {
     case 'rays': return { kind, preset: 'soft' };
     case 'atmosphere': return { kind, preset: 'mist', strength: 'medium' };
     case 'lens': return { kind, preset: 'portrait', strength: 'medium' };
+    case 'halation': return { kind, preset: 'classic' };
+    case 'shake': return { kind, preset: 'docu' };
     case 'slowmo': return { kind, factor: 2 };
     case 'blur': return { kind, preset: 'natural' };
   }
@@ -61,6 +66,8 @@ function choices(look: Look): { label: string; options: Option[]; value: string 
       { label: 'How thick', options: strengths(['light', 'medium', 'heavy']), value: look.strength, set: (value) => ({ ...look, strength: value as typeof look.strength }) }];
     case 'lens': return [{ label: 'Lens', options: LENS_PRESETS, value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) },
       { label: 'Blur', options: strengths(['soft', 'medium', 'strong']), value: look.strength, set: (value) => ({ ...look, strength: value as typeof look.strength }) }];
+    case 'halation': return [{ label: 'Glow', options: [...HALATION_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
+    case 'shake': return [{ label: 'Camera', options: [...SHAKE_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
     case 'slowmo': return [{ label: 'Speed', options: SLOW_FACTORS, value: look.factor, set: (value) => ({ ...look, factor: value as typeof look.factor }) }];
     case 'blur': return [{ label: 'Shutter', options: BLUR_PRESETS, value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
     default: return [];
@@ -73,7 +80,7 @@ function tunePreset(look: Look): string {
     case 'lens': case 'atmosphere': return `${look.preset}/${look.strength}`;
     case 'new_sky': return look.sky;
     case 'night': return look.mood;
-    case 'rays': case 'blur': return look.preset;
+    case 'rays': case 'blur': case 'halation': case 'shake': return look.preset;
     case 'match': return 'default';
     default: return '';
   }
@@ -143,7 +150,7 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
       {preview ? <img src={original ? preview.before : preview.after} alt={t(original ? 'The original' : 'Preview of the looks')}/> : <div className="ed-cinematic-empty">{t('Preview at the playhead')}</div>}
       <span className="ed-cinematic-badge">{previewing ? <><LoaderCircle className="spin" size={11}/> {t('Updating…')}</> : original ? t('Original') : <><Eye size={11}/> {t('Hold to compare')}</>}</span>
     </div>
-    {preview && preview.not_shown.length > 0 && <p className="ed-tip"><small>{t('Movement looks (slow motion, motion blur) show in the clip once applied, not in this still.')}</small></p>}
+    {preview && preview.not_shown.length > 0 && <p className="ed-tip"><small>{t('Movement looks (handheld shake, slow motion, motion blur) show in the clip once applied, not in this still.')}</small></p>}
     <button className="ed-button wide" onClick={() => openDirector(clip.id)}><Sparkles size={13}/> {t('✨ Make it cinematic (AI)')}</button>
     {LOOK_ORDER.map((kind) => {
       const look = draft.find((each) => each.kind === kind);

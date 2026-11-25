@@ -72,3 +72,10 @@ test('motion blur goes last, after slow motion, on the final movement', () => {
   const styled = setLooks(timeline(), 'a', originalPart(clip), [sky, smear], { media: 120, seconds: 3 });
   assert.deepEqual(looksOf(styled.layers[0].items[0]), [sky, smear]);
 });
+
+test('halation and handheld shake sit after the lens, before slow motion and motion blur', () => {
+  const glow = { kind: 'halation', preset: 'classic' }, wobble = { kind: 'shake', preset: 'docu' }, smear = { kind: 'blur', preset: 'natural' };
+  assert.deepEqual(withLook(withLook(withLook([smear, slow], wobble), glow), lens).map((look) => look.kind), ['lens', 'halation', 'shake', 'slowmo', 'blur']);
+  const styled = setLooks(timeline(), 'a', originalPart(clip), [glow, wobble], { media: 130, seconds: 3 });
+  assert.deepEqual(looksOf(styled.layers[0].items[0]), [glow, wobble]);
+});

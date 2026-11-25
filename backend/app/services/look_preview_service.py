@@ -18,10 +18,10 @@ from app.services.depth_mask_service import make_depth_map
 from app.services.media_probe import MediaFacts
 
 WIDTH = 960  # Width of the preview.
-ORDER = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens']
-MOVING = {'slowmo', 'blur'}  # Looks a still can't show.
+ORDER = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation']
+MOVING = {'slowmo', 'blur', 'shake'}  # Looks a still can't show.
 NEEDS_DEPTH = {'new_sky', 'night', 'rays', 'atmosphere', 'lens'}
-TUNE_LOOK = {'match': 'match', 'new_sky': 'sky', 'night': 'night', 'rays': 'rays', 'atmosphere': 'atmosphere', 'lens': 'lens'}
+TUNE_LOOK = {'halation': 'halation', 'match': 'match', 'new_sky': 'sky', 'night': 'night', 'rays': 'rays', 'atmosphere': 'atmosphere', 'lens': 'lens'}
 
 
 def _grab(path, at: float, size: tuple[int, int], extra: str, pix: str, channels: int) -> np.ndarray | None:
@@ -41,7 +41,7 @@ def render(facts: MediaFacts, start: float, end: float, at: float, looks: list[d
            on_progress: Callable[[int], None] = lambda _: None, should_cancel: Callable[[], bool] = lambda: False) -> dict[str, Any]:
     """The frame `at` seconds into the part start..end, before and after `looks` (each {kind, its choices, tune?})."""
     import cv2
-    from app.services import atmosphere_service, lens_service, match_service, night_service, rays_service, sky_swap_service
+    from app.services import atmosphere_service, film_service, lens_service, match_service, night_service, rays_service, sky_swap_service
     width = WIDTH
     height = max(2, round((facts.height or 1080) * width / (facts.width or 1920) / 2) * 2)
     when = start + min(max(0.0, at), max(0.0, end - start - 0.01))
@@ -86,5 +86,7 @@ def render(facts: MediaFacts, start: float, end: float, at: float, looks: list[d
             if 'focus' in tune and not str(look.get('preset', '')).startswith('rack'):
                 focus = [(0.0, tune['focus'])]
             frame = lens_service.lens_frame(frame, near, lens_service.focus_at(focus, when - start), amount, glow)
+        elif kind == 'halation':
+            frame = film_service.halation_frame(frame, {**film_service.HALATION[look.get('preset', 'classic')], **tune})
     on_progress(100)
     return {'before': jpeg(original), 'after': jpeg(frame), 'not_shown': sorted({look.get('kind') for look in looks} & MOVING)}
