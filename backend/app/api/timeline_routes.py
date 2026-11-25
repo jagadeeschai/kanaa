@@ -634,7 +634,7 @@ def ai_director(body: dict):
 def look_tuning():
     """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the
     editor's sliders start exactly where the preset is."""
-    from app.services import atmosphere_service, lens_service, look_tune, match_service, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
+    from app.services import atmosphere_service, blur_service, lens_service, look_tune, match_service, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
     pick = lambda values, look: {key: round(float(values[key]), 4) for key in look_tune.KNOBS[look] if key in values}
     lens = {}
     for preset in ('portrait', 'dreamy', 'rack-out', 'rack-in'):
@@ -650,6 +650,7 @@ def look_tuning():
             'night': {mood: pick(values, 'night') for mood, values in night_service.MOODS.items()},
             'rays': {preset: pick(values, 'rays') for preset, values in rays_service.PRESETS.items()},
             'match': {'default': dict(match_service.DEFAULTS)},
+            'blur': {preset: dict(values) for preset, values in blur_service.PRESETS.items()},
             'freeze3d': {move: {'swing': freeze.SWING, 'push': freeze.PUSH, 'parallax': freeze.PARALLAX} for move in freeze.MOVES},
         }}
 
@@ -693,6 +694,44 @@ def cinematic_lens(identifier: int, body: dict):
         made = lens_service.make(facts, start, end, focus, amount, glow, lambda value: update_job(holder['id'], progress=value), should_cancel)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'cinematic lens'))['id']}
     job_id = enqueue_render('lens', 'Cinematic lens', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/blur')
+def motion_blur(identifier: int, body: dict):
+    """Real motion blur: a copy of the clip's part with film-camera smear on what moves (blur_service.py)."""
+    from app.db.database import get_connection
+    from app.services import blur_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset = str(body.get('preset', 'natural'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    from app.services import look_tune
+    tune = look_tune.parse(body.get('tune'), 'blur')  # Fine-tuning over the preset, kept within safe ranges.
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Motion blur needs a video clip.')
+    if preset not in blur_service.PRESETS or not 0 <= start < end:
+        raise HTTPException(400, 'Choose natural film, dreamy smear or crisp action, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = blur_service.target_path(facts.path, start, end, preset, tune)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = blur_service.make(facts, start, end, preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'motion blur'))['id']}
+    job_id = enqueue_render('blur', 'Motion blur', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
 

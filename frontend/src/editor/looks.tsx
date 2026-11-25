@@ -11,7 +11,7 @@ import { findClip } from '../timeline/model';
 import { looksOf, makeLooks, originalPart, setLooks, withoutLook, type Look, type LookKind, type Part } from '../timeline/stack';
 import { EditorContext, type EditorStore } from './state/EditorContext';
 
-const ROUTE: Record<LookKind, string> = { match: 'match', new_sky: 'sky', night: 'night', rays: 'rays', atmosphere: 'atmosphere', lens: 'lens', slowmo: 'slowmo' };
+const ROUTE: Record<LookKind, string> = { match: 'match', new_sky: 'sky', night: 'night', rays: 'rays', atmosphere: 'atmosphere', lens: 'lens', slowmo: 'slowmo', blur: 'blur' };
 
 /** Makes one look of one source part; its media id. */
 async function makeLook(look: Look, source: Part, onProgress: (value: number) => void): Promise<number> {

@@ -12,6 +12,7 @@ KNOBS: dict[str, dict[str, tuple[float, float]]] = {
     'sky': {'amount': (0.0, 1.0)},
     'night': {'land': (0.1, 0.9), 'sky': (0.03, 0.6), 'colour': (0.0, 1.0)},
     'rays': {'reach': (0.2, 0.95), 'decay': (0.93, 0.995), 'strength': (0.1, 2.5)},
+    'blur': {'shutter': (0.05, 1.5)},
     'match': {'amount': (0.0, 1.0), 'skin': (0.0, 1.0)},
     'freeze3d': {'swing': (0.0, 0.12), 'push': (0.0, 0.3), 'parallax': (0.5, 4.0)},
 }

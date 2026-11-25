@@ -1,7 +1,7 @@
 /**
  * Stacking looks: a colour match, a new sky, day for night, atmosphere, the cinematic lens and smooth slow motion together on one clip. Each is a
  * made copy (made on the GPU by its service); stacked, each is made from the one before, always in one order, the one
- * that looks right: the colour matched first, then the sky, then night falls on the land, the sun's rays, the air in front, the lens over both, slow motion last. Every look on a clip
+ * that looks right: the colour matched first, then the sky, then night falls on the land, the sun's rays, the air in front, the lens over both, slow motion, then motion blur on the final movement. Every look on a clip
  * remembers the same original part, so taking any one off rebuilds the rest from it (copies already made come back from
  * the cache at once), and taking the last one off gives the original back exactly.
  */
@@ -15,12 +15,13 @@ export type Look =
   | { kind: 'rays'; preset: 'soft' | 'strong' | 'dusty'; tune?: Tune }
   | { kind: 'atmosphere'; preset: 'mist' | 'sunset' | 'rain' | 'low-fog'; strength: 'light' | 'medium' | 'heavy'; tune?: Tune }
   | { kind: 'lens'; preset: 'portrait' | 'dreamy' | 'rack-out' | 'rack-in'; strength: 'soft' | 'medium' | 'strong'; tune?: Tune }
-  | { kind: 'slowmo'; factor: 2 | 4 | 8 };
+  | { kind: 'slowmo'; factor: 2 | 4 | 8 }
+  | { kind: 'blur'; preset: 'natural' | 'dreamy' | 'action'; tune?: Tune };
 export type LookKind = Look['kind'];
 /** Fine-tuning over a look's preset (look_tune.py): only the settings moved. */
 export type Tune = Record<string, number>;
 const tuned = (tune?: Tune | null) => (tune && Object.keys(tune).length ? { tune } : {});
-export const LOOK_ORDER: LookKind[] = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'slowmo'];
+export const LOOK_ORDER: LookKind[] = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'slowmo', 'blur'];
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /** The looks on a clip, in order. */
@@ -33,12 +34,13 @@ export function looksOf(clip: Clip): Look[] {
   if (clip.atmosphere) found.push({ kind: 'atmosphere', preset: clip.atmosphere.preset, strength: clip.atmosphere.strength ?? 'medium', ...tuned(clip.atmosphere.tune) });
   if (clip.lens) found.push({ kind: 'lens', preset: clip.lens.preset, strength: clip.lens.strength ?? 'medium', ...tuned(clip.lens.tune) });
   if (clip.slowmo) found.push({ kind: 'slowmo', factor: clip.slowmo.factor });
+  if (clip.motion_blur) found.push({ kind: 'blur', preset: clip.motion_blur.preset ?? 'natural', ...tuned(clip.motion_blur.tune) });
   return found;
 }
 
 /** The original part every look on the clip is made from (the clip itself when it has none). */
 export function originalPart(clip: Clip): Part {
-  const link = clip.colour_match ?? clip.new_sky ?? clip.night ?? clip.rays ?? clip.atmosphere ?? clip.lens ?? clip.slowmo;
+  const link = clip.colour_match ?? clip.new_sky ?? clip.night ?? clip.rays ?? clip.atmosphere ?? clip.lens ?? clip.slowmo ?? clip.motion_blur;
   return link ? { media: link.original_media_id, start: link.original_in, end: link.original_out } : { media: clip.media_id, start: clip.in, end: clip.out };
 }
 
@@ -78,7 +80,7 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   if (!clip) return timeline;
   const original = { original_media_id: part.media, original_in: part.start, original_out: part.end };
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
-  const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo');
+  const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo'), smear = has('blur');
   const links: Partial<Clip> = {
     colour_match: match?.kind === 'match' ? { ...original, reference_media_id: match.reference.media, reference_in: match.reference.start, reference_out: match.reference.end, tune: match.tune ?? null } : null,
     new_sky: sky?.kind === 'new_sky' ? { ...original, sky: sky.sky, tune: sky.tune ?? null } : null,
@@ -87,6 +89,7 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
     atmosphere: air?.kind === 'atmosphere' ? { ...original, preset: air.preset, strength: air.strength, tune: air.tune ?? null } : null,
     lens: lens?.kind === 'lens' ? { ...original, preset: lens.preset, strength: lens.strength, tune: lens.tune ?? null } : null,
     slowmo: slow?.kind === 'slowmo' ? { ...original, factor: slow.factor } : null,
+    motion_blur: smear?.kind === 'blur' ? { ...original, preset: smear.preset, tune: smear.tune ?? null } : null,
   };
   if (!made) return updateClip(timeline, clipId, { media_id: part.media, in: part.start, out: part.end, ...links, ...(clip.slowmo ? { muted: false } : {}) });
   // Slow motion's copy has no sound.

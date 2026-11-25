@@ -191,6 +191,15 @@ class SkyLink(Strict):
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
+class BlurLink(Strict):
+    """A clip with real motion blur (a made copy of its part); what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['natural', 'dreamy', 'action'] = 'natural'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning (look_tune).
+
+
 class MatchLink(Strict):
     """A clip in the colour of another (shot-to-shot colour match): a made copy of its part; the shot it was matched to;
     and what it was, so Remove puts it back."""
@@ -423,6 +432,7 @@ class Clip(Strict):
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
     freeze3d: Optional[Freeze3DLink] = None  # A time freeze in 3D (a made video of the camera moving around it).
     atmosphere: Optional[AtmosphereLink] = None
+    motion_blur: Optional[BlurLink] = None  # Real motion blur (a made copy).
     colour_match: Optional[MatchLink] = None  # In the colour of another shot (a made copy).
     rays: Optional[RaysLink] = None  # God rays (a made copy).
     night: Optional[NightLink] = None  # Day for night (a made copy).

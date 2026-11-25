@@ -65,3 +65,10 @@ test('colour match goes first, under every other look, and remembers the shot it
   assert.deepEqual([on.colour_match.reference_media_id, on.colour_match.reference_in, on.colour_match.reference_out, on.colour_match.original_media_id], [9, 1, 4, 4]);
   assert.deepEqual(looksOf(on), [matchLook, sky]);
 });
+
+test('motion blur goes last, after slow motion, on the final movement', () => {
+  const smear = { kind: 'blur', preset: 'natural' };
+  assert.deepEqual(withLook([slow, sky], smear).map((look) => look.kind), ['new_sky', 'slowmo', 'blur']);
+  const styled = setLooks(timeline(), 'a', originalPart(clip), [sky, smear], { media: 120, seconds: 3 });
+  assert.deepEqual(looksOf(styled.layers[0].items[0]), [sky, smear]);
+});

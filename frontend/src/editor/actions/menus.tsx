@@ -15,6 +15,7 @@ import { openNight } from "../NightDialog";
 import { openRays } from "../RaysDialog";
 import { openDirector } from "../DirectorDialog";
 import { openMatch } from "../MatchDialog";
+import { openBlur } from "../BlurDialog";
 import { removeLook } from "../looks";
 
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
@@ -274,6 +275,7 @@ export function createEditorMenuActions(getInput: () => Input) {
           { label: clip.rays ? 'God rays (change)…' : 'God rays…', checked: Boolean(clip.rays), onSelect: () => openRays(id) }, ...(clip.rays ? [{ label: 'Remove god rays', onSelect: () => removeLook(id, 'rays') }] : []),
           { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => removeLook(id, 'atmosphere') }] : []),
           { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => removeLook(id, 'new_sky') }] : []),
+          { label: clip.motion_blur ? 'Motion blur (change)…' : 'Motion blur…', checked: Boolean(clip.motion_blur), onSelect: () => openBlur(id) }, ...(clip.motion_blur ? [{ label: 'Remove motion blur', onSelect: () => removeLook(id, 'blur') }] : []),
           { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => removeLook(id, 'slowmo') }] : []),
           ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) },
             { label: 'Clone the person…', checked: hasClones(timeline, id), onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : [])] : []),

@@ -7,7 +7,7 @@ import { requestJson } from '../api/client';
 import { t } from '../i18n';
 import { ValueSlider } from './controls';
 
-export type TuneLook = 'lens' | 'atmosphere' | 'sky' | 'night' | 'rays' | 'freeze3d' | 'match';
+export type TuneLook = 'lens' | 'atmosphere' | 'sky' | 'night' | 'rays' | 'freeze3d' | 'match' | 'blur';
 export type Tune = Record<string, number>;
 type Tuning = Record<TuneLook, { knobs: Record<string, [number, number]> }> & { defaults: Record<TuneLook, Record<string, Tune>> };
 
@@ -18,6 +18,7 @@ const LABELS: Record<TuneLook, Record<string, { label: string; percent?: boolean
   sky: { amount: { label: 'How much the land takes the sky’s light', percent: true } },
   night: { land: { label: 'Land brightness', percent: true }, sky: { label: 'Sky brightness', percent: true }, colour: { label: 'Colour kept', percent: true } },
   rays: { reach: { label: 'Reach', percent: true }, decay: { label: 'Fade (higher reaches further)', decimals: 3 }, strength: { label: 'Brightness', percent: true } },
+  blur: { shutter: { label: 'Shutter (50% is film’s 180°)', percent: true } },
   match: { amount: { label: 'How strongly', percent: true }, skin: { label: 'Protect skin tones', percent: true } },
   freeze3d: { swing: { label: 'Camera travel', percent: true, decimals: 1 }, push: { label: 'Push in', percent: true }, parallax: { label: 'Depth strength', decimals: 1 } },
 };
