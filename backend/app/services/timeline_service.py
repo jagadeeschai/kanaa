@@ -1483,7 +1483,14 @@ class Builder:
                 path = facts.path
             else:
                 path = self.audio_asset(sound.asset_id)
-            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, sound_steps(sound, layer.volume), sound.duck)
+            steps = sound_steps(sound, layer.volume)
+            if sound.duck and sound.duck_regions:
+                from app.services.auto_ducking import ffmpeg_duck_filter, resolve_duck_params
+                _, depth_db, fade_s = resolve_duck_params(sound.duck_preset, sound.duck_threshold, sound.duck_depth, sound.duck_fade)
+                regions = [(float(r[0]), float(r[1])) for r in sound.duck_regions if len(r) >= 2]
+                if regions:
+                    steps.append(ffmpeg_duck_filter(regions, depth_db=depth_db, fade_s=fade_s))
+            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, steps, sound.duck and not sound.duck_regions)
 
     def bus(self, labels: list[str], total: float) -> str:
         # normalize=0 keeps each track's level.

@@ -1167,4 +1167,9 @@ export const TAMIL: Record<string, string> = {
   'Smooth slow motion works on a clip that plays normally (not reversed, ramped or frozen).': 'மென்மையான மெதுவான இயக்கம் இயல்பாக ஓடும் கிளிப்பில் மட்டும் வேலை செய்யும் (பின்னோக்கி, வேக மாற்றம் அல்லது உறைந்தது அல்ல).',
   'Remove the cinematic lens first, slow the clip down, then add the lens again.': 'முதலில் சினிமா லென்ஸை நீக்கி, கிளிப்பை மெதுவாக்கி, பின் லென்ஸை மீண்டும் சேர்க்கவும்.',
   'Set the clip to normal speed first; smooth slow motion makes its own.': 'முதலில் கிளிப்பை இயல்பு வேகத்துக்கு அமைக்கவும்; மென்மையான மெதுவான இயக்கம் தனது வேகத்தை உருவாக்கும்.',
+  'Auto-duck': 'தானியங்கி ஒலி குறைப்பு',
+  'Lowers this music while speech or vocals play on any track.': 'எந்தத் தடத்திலும் பேச்சு அல்லது குரல் ஒலிக்கும்போது இந்த இசையைக் குறைக்கும்.',
+  'Duck threshold': 'குறைப்பு வரம்பு',
+  'Duck depth': 'குறைப்பு அளவு',
+  'Duck fade': 'மென் மாற்ற நேரம்',
 };

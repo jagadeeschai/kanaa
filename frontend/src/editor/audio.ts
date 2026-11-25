@@ -49,6 +49,25 @@ function wire(context: AudioContext, chain: Chain, presets: readonly AudioPreset
   chain.key = key;
 }
 
+export const DUCK_PRESETS = {
+  light: { threshold: -26, depth: 6, fade: 0.4 },
+  medium: { threshold: -30, depth: 12, fade: 0.3 },
+  strong: { threshold: -34, depth: 18, fade: 0.2 },
+} as const;
+
+export function duckEnvelopeGain(regions: [number, number][] | undefined, t: number, depthDb = 12, fadeS = 0.3): number {
+  if (!regions?.length || depthDb <= 0) return 1;
+  const minGain = 10 ** (-depthDb / 20);
+  const fade = Math.max(0.01, fadeS);
+  let duckAmount = 0;
+  for (const [start, end] of regions) {
+    if (t < start - fade || t > end + fade) continue;
+    const amount = t < start ? (t - (start - fade)) / fade : t <= end ? 1 : 1 - (t - end) / fade;
+    if (amount > duckAmount) duckAmount = amount;
+  }
+  return 1 - duckAmount * (1 - minGain);
+}
+
 /** Mixes preview sound with Web Audio. Video elements feed it too, so ducking hears their sound. */
 export class AudioMixer {
   private context: AudioContext | null = null;
@@ -128,7 +147,11 @@ export class AudioMixer {
         else if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * rate * sound.speed) player.element.currentTime = at;
         else if (Math.abs(drift) > DRIFT_NUDGE_SECONDS) nudge = -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift));
         player.element.playbackRate = sound.speed * rate * (1 + nudge);
-        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * (layer.volume ?? 1) * fadeGain(sound, t - sound.start, length) : 0, context.currentTime, 0.008);
+        const preset = DUCK_PRESETS[sound.duck_preset ?? 'medium'];
+        const envGain = sound.duck && sound.duck_regions?.length
+          ? duckEnvelopeGain(sound.duck_regions, t - sound.start, sound.duck_depth ?? preset.depth, sound.duck_fade ?? preset.fade)
+          : 1;
+        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * (layer.volume ?? 1) * fadeGain(sound, t - sound.start, length) * envGain : 0, context.currentTime, 0.008);
         if (playing && active && player.element.paused) void player.element.play().catch(() => {});
         if ((!playing || !active) && !player.element.paused) player.element.pause();
       }
