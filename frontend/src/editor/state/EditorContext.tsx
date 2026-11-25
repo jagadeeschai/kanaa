@@ -17,6 +17,7 @@ export type EditorShared = {
   projectId: number;
   openOutput: (id: number) => void;
   pause: () => void;
+  previewLook?: (clipId: string, look: string | null) => void;
   /** Opens the guide, at an article when one is given. */
   openGuide: (article?: string) => void;
   /** The playhead, in timeline seconds, and moving it. */

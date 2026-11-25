@@ -46,6 +46,7 @@ type Input = {
   setWordSelection: React.Dispatch<React.SetStateAction<Set<string>>>;
   setSelectedId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedText: TextItem | null;
+  setComparing: (value: boolean) => void;
 };
 
 export function useEditorShortcuts(getInput: () => Input, dependencies: DependencyList) {
@@ -107,6 +108,7 @@ export function useEditorShortcuts(getInput: () => Input, dependencies: Dependen
         case 's': split(); break;
         case 'n': setSnapping((value) => !value); break;
         case 'f': toggleFullScreen(); break;
+        case '\\': if (!event.repeat && !event.defaultPrevented) getInput().setComparing(true); break;  // The Cinematic tab's own compare goes first.
         case 'i': case 'o': { const item = clip(); if (item && !mainLayer(timeline).locked) change(trimAtPlayhead(timeline, item, event.key === 'i' ? 'in' : 'out', playhead.current - item.start, newId, facts(item.media_id))); break; }
         case 'Delete': case 'Backspace': event.preventDefault(); if (wordSelection.size) cutWords(wordSelection); else removeSelected(); break;
         case 'Escape': setWordSelection(new Set()); setSelectedId(null); break;
@@ -119,8 +121,18 @@ export function useEditorShortcuts(getInput: () => Input, dependencies: Dependen
         default: break;
       }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === '\\') getInput().setComparing(false);
+    };
+    const onBlur = () => getInput().setComparing(false);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
   };
     return invoke();
   }, dependencies);

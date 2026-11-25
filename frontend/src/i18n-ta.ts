@@ -1086,6 +1086,8 @@ export const TAMIL: Record<string, string> = {
   'A believable human camera wobble.': 'நம்பத்தகுந்த மனிதக் கேமரா அசைவு.',
   'Camera': 'கேமரா',
   'Classic film': 'பாரம்பரிய திரைப்படம்',
+  'Hold to compare original': 'அசலுடன் ஒப்பிட அழுத்திப் பிடிக்கவும்',
+  'Original (comparing)': 'அசல் (ஒப்பீடு)',
   'Steady shaky video': 'அசையும் வீடியோவை நிலைப்படுத்து',
   'Off while the clip has Handheld shake (it would smooth it out).': 'கையடக்கக் கேமரா அசைவு இருக்கும்போது அணைந்திருக்கும் (அது அசைவை நீக்கிவிடும்).',
   'This clip is no longer in the timeline.': 'இந்தக் கிளிப் இப்போது காலவரிசையில் இல்லை.',

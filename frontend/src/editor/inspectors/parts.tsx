@@ -56,8 +56,8 @@ export function useFoundInClip(clip: Clip | null, kind: 'people' | 'objects') {
   return { found, key, steady, backwards, tracks: found.key === key ? found.tracks : null };
 }
 
-export function Chips<T extends string>({ label, options, value, onPick }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void }) {
-  return <div className="ed-chips" role="group" aria-label={t(label)}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)}>{t(option.label)}</button>)}</div>;
+export function Chips<T extends string>({ label, options, value, onPick, onHover }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void; onHover?: (id: T | null) => void }) {
+  return <div className="ed-chips" role="group" aria-label={t(label)} onMouseLeave={() => onHover?.(null)}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)} onMouseEnter={() => onHover?.(option.id)}>{t(option.label)}</button>)}</div>;
 }
 
 export function AnimationPicker({ label, value, onChange, onShow, presets = PRESETS }: { label: string; value?: Animation | null; onChange: (value: Animation | null, group?: string) => void; onShow: () => void; presets?: { id: Preset; label: string }[] }) {

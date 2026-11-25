@@ -16,7 +16,7 @@ import { RemovePersonHost } from '../RemovePersonDialog';
 import { useCallback } from 'react';
 import { useSkimListener } from '../skim';
 import { useEditorPanel } from '../state/EditorContext';
-import { Check,CircleHelp,Crosshair,Expand,Pause,Play,Shrink,X } from "lucide-react";
+import { Check,CircleHelp,Crosshair,Expand,Eye,Pause,Play,Shrink,X } from "lucide-react";
 import { cancelRenderJob } from "../../api/client";
 import { t } from "../../i18n";
 import type { Transform } from '../../timeline/evaluate';
@@ -108,6 +108,8 @@ export type EditorPreviewStageBindings = {
   titleAt: (fx: number, fy: number) => TextItem | null;
   titleRect: (text: TextItem) => { left: number; top: number; right: number; bottom: number; } | null;
   toggleFullScreen: () => void;
+  comparing: boolean;
+  setComparing: (value: boolean) => void;
   togglePlay: () => void;
   total: number;
   updateSelected: (changes: Partial<Clip>, group?: string | undefined) => void;
@@ -116,7 +118,7 @@ export type EditorPreviewStageBindings = {
 };
 
 export function EditorPreviewStage() {
-  const { fullScreen, stageRef, saved, projectName, timeline, firstRunClosed, total, setLeftTab, setPanelOpen, exportedOnce, engineRef, setExporting, setFirstRunClosed, openGuide, ratio, canvasRef, openPreviewMenu, previewDown, previewMove, dragPreview, titleAt, setPickedInPreview, setSelectedId, setEditingTitle, placing, pickingKey, selected, selectedLayer, shaping, drawing, now, sourceFor, local, updateSelected, seek, selectedText, updateSelectedText, pickedInPreview, titleRect, editingTitle, selectedBlur, updateSelectedBlur, followTarget, followJob, ownBox, followHere, renderJob, reframeJob, sceneJob, faceJob, faceNote, followNote, setRenderJob, setHeavy, setReframeJob, setSceneJob, setFaceJob, setFollowJob, setFaceNote, setFollowNote, setShaping, finishShape, frameAt, drawStart, setDrawing, finishDrawing, drawnBox, safeArea, isEmpty, choosingFormat, clockRef, togglePlay, playing, toggleFullScreen } = useEditorPanel<EditorPreviewStageBindings>('preview');
+  const { fullScreen, stageRef, saved, projectName, timeline, firstRunClosed, total, setLeftTab, setPanelOpen, exportedOnce, engineRef, setExporting, setFirstRunClosed, openGuide, ratio, canvasRef, openPreviewMenu, previewDown, previewMove, dragPreview, titleAt, setPickedInPreview, setSelectedId, setEditingTitle, placing, pickingKey, selected, selectedLayer, shaping, drawing, now, sourceFor, local, updateSelected, seek, selectedText, updateSelectedText, pickedInPreview, titleRect, editingTitle, selectedBlur, updateSelectedBlur, followTarget, followJob, ownBox, followHere, renderJob, reframeJob, sceneJob, faceJob, faceNote, followNote, setRenderJob, setHeavy, setReframeJob, setSceneJob, setFaceJob, setFollowJob, setFaceNote, setFollowNote, setShaping, finishShape, frameAt, drawStart, setDrawing, finishDrawing, drawnBox, safeArea, isEmpty, choosingFormat, clockRef, togglePlay, playing, toggleFullScreen, comparing, setComparing } = useEditorPanel<EditorPreviewStageBindings>('preview');
   const skim = useCallback((t: number | null) => engineRef.current?.skim(t), [engineRef]);
   useSkimListener(skim);
   return (<main className={`ed-stage ${fullScreen ? 'full' : ''}`} ref={stageRef}>
@@ -184,6 +186,7 @@ export function EditorPreviewStage() {
             {(() => { const box = drawnBox(drawing); return box && <i style={{ left: `${(box[0] - box[2] / 2) * 100}%`, top: `${(box[1] - box[3] / 2) * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }}/>; })()}
           </div>}
           {safeArea && <div className="ed-safe" aria-hidden="true"><span>Keep titles and faces inside this box</span></div>}
+          {comparing && <div className="ed-pick-note" role="status">{t('Original (comparing)')}</div>}
           {isEmpty && !choosingFormat && <div className="ed-empty"><strong>Add a clip to start</strong><span>Pick videos or photos in the Media panel</span></div>}
         </div>
         <div className="ed-transport">
@@ -191,6 +194,16 @@ export function EditorPreviewStage() {
           <button className="ed-play" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18}/> : <Play size={18}/>}</button>
           <span className="ed-transport-end">
             {!fullScreen && <ClipQuickBar sourceFor={sourceFor} playRange={(start, end) => engineRef.current?.playRange(start, end)}/>}
+            <button
+              className={`ed-icon ed-safe-toggle ${comparing ? 'on' : ''}`}
+              aria-pressed={comparing}
+              aria-label={t('Hold to compare original')}
+              data-tip={`${t('Hold to compare original')} · \\`}
+              onPointerDown={() => setComparing(true)}
+              onPointerUp={() => setComparing(false)}
+              onPointerLeave={() => setComparing(false)}
+              onPointerCancel={() => setComparing(false)}
+            ><Eye size={15}/></button>
             {/* An icon with its tip, like the clip actions beside it; in full screen it says Exit, so leaving is obvious. */}
             <button className={`ed-icon ed-safe-toggle ed-fullscreen ${fullScreen ? 'exit' : ''}`} aria-pressed={fullScreen} onClick={toggleFullScreen} aria-label={t(fullScreen ? 'Leave full screen' : 'Full screen preview')}
               data-tip={fullScreen ? `${t('Leave full screen')} · F / Esc` : `${t('Full screen preview')} · F`}>{fullScreen ? <Shrink size={15}/> : <Expand size={15}/>}{fullScreen && t('Exit')}</button>

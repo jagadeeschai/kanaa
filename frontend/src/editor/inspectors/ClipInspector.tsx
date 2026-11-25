@@ -30,6 +30,7 @@ import { Group, More, Panel } from '../layout';
 import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
 import { AudioLines, Clapperboard, Crop, Expand, FlipHorizontal, FlipVertical, Layers3, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
+import { useEffect } from 'react';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
@@ -41,7 +42,8 @@ export type InspectorBindings = { onReframe: (() => void) | null; reframing: boo
 export function Inspector() {
   const { onReframe, reframing, onMove, backgrounds, onBackground, logos, clipBrandMarks, onClipBrand, onRemoveClipBrand, clip, source, onChange, canDetach, onDetach, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, closesWithTransition, onShowEnter, onShowExit } = useEditorPanel<InspectorBindings>('clip');
   const { local, seekLocal: onSeekLocal } = useItemTime(clip.start, (clip.out - clip.in) / clip.speed);
-  const { pause: onPause, timeline: { format } } = useEditor();
+  const { pause: onPause, previewLook, timeline: { format } } = useEditor();
+  useEffect(() => () => previewLook?.(clip.id, null), [clip.id, previewLook]);  // A hover preview ends with the panel.
 
   const transition: Transition | null = clip.transition_in ?? null;
   const adjust = (changes: Partial<Adjust>, group?: string) => onChange({ adjust: { ...clip.adjust, ...changes } }, group);
@@ -101,7 +103,7 @@ export function Inspector() {
     </Group>
     {clip.freeze != null && <Group title="Frozen frame" tab="frame" startOpen keywords="still hold pause freeze"><p className="ed-tip">This holds one frame. Change how long with Duration in Timing. It has no sound.</p></Group>}
     <Group title="Colour" tab="look" startOpen changed={(clip.look ?? 'none') !== 'none' || clip.adjust.brightness !== 1 || clip.adjust.contrast !== 1 || clip.adjust.saturation !== 1 || clip.adjust.gamma !== 1 || clip.adjust.temperature !== 1 || clip.adjust.tint !== 1 || clip.adjust.fade !== 0} keywords="filter colour color brighter dark black and white warm vintage look fade gamma temperature tint" tip="Pick a look, then fine-tune brightness and, under More options, gamma, white balance and a film fade." help="colour-and-looks">
-    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })}/>
+    <Chips label="Look" options={LOOK_NAMES} value={clip.look ?? 'none'} onPick={(look) => onChange({ look })} onHover={(look) => previewLook?.(clip.id, look)}/>
     <ValueSlider label="Brightness" value={clip.adjust.brightness} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(brightness, group) => adjust({ brightness }, group)}/>
     <More>
     <ValueSlider label="Contrast" value={clip.adjust.contrast} min={0.25} max={2} step={0.01} defaultValue={1} unit="%" factor={100} onChange={(contrast, group) => adjust({ contrast }, group)}/>
