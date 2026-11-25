@@ -86,3 +86,14 @@ test('a shaken clip is not steadied, which would smooth the shake back out', () 
   assert.equal(setLooks(steady, 'a', part, [{ kind: 'shake', preset: 'docu' }], { media: 110, seconds: 3 }).layers[0].items[0].stabilise, false);
   assert.equal(setLooks(steady, 'a', part, [lens], { media: 111, seconds: 3 }).layers[0].items[0].stabilise, true);
 });
+
+test('Steady comes back when the shake is taken off, and no switched-off Steady is left behind', () => {
+  const part = { media: 4, start: 2, end: 5 };
+  const shaken = setLooks(timeline({ ...clip, stabilise: true, bypass: ['steady'] }), 'a', part, [{ kind: 'shake', preset: 'docu' }], { media: 110, seconds: 3 });
+  const item = shaken.layers[0].items[0];
+  assert.equal(item.bypass, null);
+  assert.equal(item.shake.steadied, true);
+  const retuned = setLooks(shaken, 'a', part, [{ kind: 'shake', preset: 'impact' }], { media: 112, seconds: 3 });
+  assert.equal(retuned.layers[0].items[0].shake.steadied, true);  // Still remembered after changing the shake.
+  assert.equal(setLooks(retuned, 'a', part, [], null).layers[0].items[0].stabilise, true);
+});

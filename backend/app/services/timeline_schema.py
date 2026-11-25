@@ -206,6 +206,7 @@ class ShakeLink(Strict):
     original_in: float = Field(ge=0)
     original_out: float = Field(gt=0)
     preset: Literal['docu', 'float', 'impact'] = 'docu'
+    steadied: bool = False  # The clip had Steady on before the shake; turned back on when the shake is taken off.
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
 
 

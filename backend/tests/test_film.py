@@ -80,3 +80,11 @@ class GpuParity(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ShakeSeed(unittest.TestCase):
+    def test_each_part_wobbles_its_own_way_and_the_same_part_the_same(self):
+        from app.services.film_service import seed_of
+        self.assertEqual(seed_of(4, 2.0, 4.0), seed_of(4, 2.0, 4.0))
+        self.assertNotEqual(seed_of(4, 2.0, 4.0), seed_of(4, 6.0, 8.0))  # Same length, another cut.
+        self.assertNotEqual(seed_of(4, 2.0, 4.0), seed_of(5, 2.0, 4.0))

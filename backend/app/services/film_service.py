@@ -4,7 +4,7 @@
   base). The brightest parts of each frame are picked out, spread into a soft glow, tinted warm and laid back over
   the picture as light (screen, so it brightens and never clips).
 - Handheld shake: a believable human camera wobble, from a smooth organic motion (sines at a few unrelated speeds, the
-  same every time for the same length of clip, whatever other looks it has), never random jitter. The picture is zoomed in just enough that the moving edges
+  same every time for the same part of the same footage, whatever other looks it has), never random jitter. The picture is zoomed in just enough that the moving edges
   never show.
 
 Both are new videos of the clip's part (with its sound); the original is kept to go back to. Drawn on this Mac's GPU
@@ -32,7 +32,7 @@ from app.services.job_service import JobCancelled
 from app.services.media_probe import MediaFacts
 
 logger = logging.getLogger(__name__)
-VERSION = 2  # 2: shake zooms by the frame's shape, so no edge ever shows.
+VERSION = 3  # 2: shake zooms by the frame's shape, so no edge ever shows. 3: shake seeded by the original part.
 GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'film_render.swift'
 TINT = (1.0, 0.42, 0.18)  # Halation's colour (R, G, B): the warm red-orange of film.
 HALATION = {
@@ -49,9 +49,9 @@ SHAKE = {
 }
 
 
-def target_path(source: Path, start: float, end: float, kind: str, preset: str, tune: dict | None = None) -> Path:
+def target_path(source: Path, start: float, end: float, kind: str, preset: str, tune: dict | None = None, seed: int | None = None) -> Path:
     from app.services.look_tune import key
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), kind, preset] + ([key(tune)] if tune else []))
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), kind, preset] + ([key(tune)] if tune else []) + ([seed] if seed is not None else []))
     return settings.data_dir / 'media' / f'{kind}-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -103,31 +103,38 @@ def shake_frame(frame: np.ndarray, camera: tuple[float, float, float, float]) ->
     return cv2.warpAffine(frame, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
 
 
+def seed_of(*part) -> int:
+    """A shake seed from what a part is (the original footage and its in and out): each cut wobbles its own way."""
+    return int(hashlib.sha256(json.dumps([str(each) if not isinstance(each, float) else round(each, 3) for each in part]).encode()).hexdigest()[:8], 16)
+
+
 def make(facts: MediaFacts, start: float, end: float, kind: str, preset: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None) -> Path:
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None, seed: int | None = None) -> Path:
+    """`seed` picks the shake's motion: from the original part (see seed_of), so other looks before it never change it."""
     """The part start..end (source seconds) with halation (`kind` 'halation') or handheld shake ('shake'). Made once."""
     table = HALATION if kind == 'halation' else SHAKE if kind == 'shake' else None
     if table is None or preset not in table:
         raise ValueError('Choose a halation or handheld preset.')
-    target = target_path(facts.path, start, end, kind, preset, tune)
+    target = target_path(facts.path, start, end, kind, preset, tune, seed)
+    seed = seed if seed is not None else seed_of(str(facts.path), start, end)
     if target.is_file():
         return target
     chosen = {**table[preset], **(tune or {})}
     if os.environ.get('KANAA_GPU_EFFECTS') != '0':
         try:
-            if _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=True):
+            if _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=True, seed=seed):
                 on_progress(100)
                 return target
         except JobCancelled:
             raise
         except Exception:
             logger.exception('GPU film look failed; making it on the CPU')
-    _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=False)
+    _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=False, seed=seed)
     on_progress(100)
     return target
 
 
-def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, target: Path, on_progress, should_cancel, gpu: bool) -> bool:
+def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, target: Path, on_progress, should_cancel, gpu: bool, seed: int = 0) -> bool:
     import cv2
     from app.services.lens_service import hardware_encoder
     tool = None
@@ -143,7 +150,7 @@ def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, 
     fps = facts.fps or 30
     total = max(1, round((end - start) * fps))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
-    cameras = shake_path(chosen, total + 2, fps, seed=round((end - start) * 1000), aspect=height / width) if kind == 'shake' else None
+    cameras = shake_path(chosen, total + 2, fps, seed=seed, aspect=height / width) if kind == 'shake' else None
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp.mp4')
     read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', *span, '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={width}:{height}',

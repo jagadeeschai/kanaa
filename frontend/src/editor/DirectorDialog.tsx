@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { LoaderCircle, Sparkles } from 'lucide-react';
 import { requestJson, waitForJob } from '../api/client';
 import { t } from '../i18n';
-import { describeLook, looksToMake, type Plan } from '../timeline/director';
+import { DIRECTED, describeLook, looksToMake, type Plan } from '../timeline/director';
 import { findClip } from '../timeline/model';
 import { cannotLook, looksOf, originalPart } from '../timeline/stack';
 import { restyle } from './looks';
@@ -43,8 +43,10 @@ function DirectorDialog({ clipId, onClose }: { clipId: string; onClose: () => vo
   const ask = async (review: boolean) => {
     setError(null); setBusy({ what: review ? 'Checking the result…' : 'Looking the clip over…', progress: 0 });
     try {
-      const now = findClip(store.timeline!, clipId)!;
-      const body = { media_id: part.media, start: part.start, end: part.end, wish, ...(review ? { review: { result_media_id: now.media_id, looks: looksOf(now) } } : {}) };
+      const now = findClip(store.timeline!, clipId);
+      if (!now) throw new Error(t('This clip is no longer in the timeline.'));
+      // Only the looks the director plans: the others (halation, shake…) are kept as they are and are not its to judge.
+      const body = { media_id: part.media, start: part.start, end: part.end, wish, ...(review ? { review: { result_media_id: now.media_id, looks: looksOf(now).filter((look) => DIRECTED.has(look.kind)) } } : {}) };
       const started = await requestJson<{ job_id: string }>('/api/director', { method: 'POST', body: JSON.stringify(body) });
       const answer = await waitForJob<Plan>(started.job_id, (progress) => setBusy((was) => (was ? { ...was, progress } : was)));
       setPlan({ looks: answer.looks ?? [], summary: answer.summary ?? '', verdict: answer.verdict });
@@ -54,7 +56,9 @@ function DirectorDialog({ clipId, onClose }: { clipId: string; onClose: () => vo
   const apply = async () => {
     if (!plan) return;
     setError(null); setBusy({ what: 'Making the looks…', progress: 0 });
-    try { await restyle(store, clipId, looksToMake(plan, looksOf(findClip(store.timeline!, clipId)!)), (progress) => setBusy({ what: 'Making the looks…', progress })); setApplied(true); setPlan({ ...plan, verdict: undefined }); }
+    const now = findClip(store.timeline!, clipId);
+    if (!now) { setError(t('This clip is no longer in the timeline.')); setBusy(null); return; }
+    try { await restyle(store, clipId, looksToMake(plan, looksOf(now)), (progress) => setBusy({ what: 'Making the looks…', progress })); setApplied(true); setPlan({ ...plan, verdict: undefined }); }
     catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
   const good = plan?.verdict === 'good';

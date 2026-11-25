@@ -88,7 +88,7 @@ export function Inspector() {
       <button className={`ed-icon ${clip.adjust.flip_vertical ? 'on' : ''}`} disabled={clip.frame_locked} aria-label="Flip vertically" onClick={() => adjust({ flip_vertical: !clip.adjust.flip_vertical })}><FlipVertical size={16}/></button>
     </div>
     <More>
-    {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>Steady shaky video<small>{clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
+    {source?.kind === 'video' && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.stabilise)} disabled={Boolean(clip.shake)} onChange={(event) => onChange({ stabilise: event.target.checked })}/><span>{t('Steady shaky video')}<small>{clip.shake ? t('Off while the clip has Handheld shake (it would smooth it out).') : clip.stabilise && !copyReady ? 'Making a steady copy… The preview shows the original until it is ready.' : 'Removes hand shake and zooms in a little to hide the moving edges.'}</small></span></label>}
     {overlay && source && <>
       <h3 className="ed-sub">Corner</h3>
       <Chips label="Corner" options={CORNERS} value={null} onPick={(corner) => { const spot = cornerPlacement(source, clip.adjust.rotation, format, size, corner); onChange({ transform: writeValue(writeValue(clip.transform, 'x', local, spot.x), 'y', local, spot.y) }); }}/>

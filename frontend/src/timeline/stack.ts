@@ -86,8 +86,9 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
   const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo'), smear = has('blur'), glow = has('halation'), wobble = has('shake');
   const links: Partial<Clip> = {
-    // Steady would smooth the added shake back out, so a shaken clip is not steadied.
-    ...(wobble && clip.stabilise ? { stabilise: false } : {}),
+    // Steady would smooth the added shake back out, so a shaken clip is not steadied; it comes back with the shake off.
+    ...(wobble && clip.stabilise ? { stabilise: false, bypass: clip.bypass?.some((each) => each !== 'steady') ? clip.bypass.filter((each) => each !== 'steady') : null } : {}),
+    ...(!wobble && clip.shake?.steadied ? { stabilise: true } : {}),
     colour_match: match?.kind === 'match' ? { ...original, reference_media_id: match.reference.media, reference_in: match.reference.start, reference_out: match.reference.end, tune: match.tune ?? null } : null,
     new_sky: sky?.kind === 'new_sky' ? { ...original, sky: sky.sky, tune: sky.tune ?? null } : null,
     night: dark?.kind === 'night' ? { ...original, mood: dark.mood, tune: dark.tune ?? null } : null,
@@ -96,7 +97,7 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
     lens: lens?.kind === 'lens' ? { ...original, preset: lens.preset, strength: lens.strength, tune: lens.tune ?? null } : null,
     slowmo: slow?.kind === 'slowmo' ? { ...original, factor: slow.factor } : null,
     halation: glow?.kind === 'halation' ? { ...original, preset: glow.preset, tune: glow.tune ?? null } : null,
-    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, tune: wobble.tune ?? null } : null,
+    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, tune: wobble.tune ?? null, ...(clip.stabilise || clip.shake?.steadied ? { steadied: true } : {}) } : null,
     motion_blur: smear?.kind === 'blur' ? { ...original, preset: smear.preset, tune: smear.tune ?? null } : null,
   };
   if (!made) return updateClip(timeline, clipId, { media_id: part.media, in: part.start, out: part.end, ...links, ...(clip.slowmo ? { muted: false } : {}) });

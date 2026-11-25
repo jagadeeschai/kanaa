@@ -14,10 +14,12 @@ import { EditorContext, type EditorStore } from './state/EditorContext';
 const ROUTE: Record<LookKind, string> = { match: 'match', new_sky: 'sky', night: 'night', rays: 'rays', atmosphere: 'atmosphere', lens: 'lens', slowmo: 'slowmo', blur: 'blur', halation: 'halation', shake: 'shake' };
 
 /** Makes one look of one source part; its media id. */
-async function makeLook(look: Look, source: Part, onProgress: (value: number) => void): Promise<number> {
+async function makeLook(look: Look, source: Part, part: Part, onProgress: (value: number) => void): Promise<number> {
   const { kind, ...settings } = look;
+  // Shake moves the same way for the same original part, whatever looks come before it.
+  const original = kind === 'shake' ? { original_media_id: part.media, original_in: part.start, original_out: part.end } : {};
   const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${source.media}/${ROUTE[kind]}`,
-    { method: 'POST', body: JSON.stringify({ start: source.start, end: source.end, ...settings }) });
+    { method: 'POST', body: JSON.stringify({ start: source.start, end: source.end, ...settings, ...original }) });
   return started.output_photo_id ?? (await waitForJob<{ output_photo_id: number }>(started.job_id!, onProgress)).output_photo_id;
 }
 
@@ -26,7 +28,7 @@ export async function restyle(store: EditorStore, clipId: string, looks: Look[],
   const clip = findClip(store.timeline!, clipId);
   if (!clip) return;
   const part = originalPart(clip);
-  const made = await makeLooks(part, looks, (look, source, step) => makeLook(look, source, (value) => onProgress(((step + value / 100) / looks.length) * 100)));
+  const made = await makeLooks(part, looks, (look, source, step) => makeLook(look, source, part, (value) => onProgress(((step + value / 100) / looks.length) * 100)));
   if (made) store.addMedia(await getPhoto(made.media));
   store.change(setLooks(store.timeline!, clipId, part, looks, made));
 }

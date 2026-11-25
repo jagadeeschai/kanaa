@@ -782,7 +782,11 @@ def handheld_shake(identifier: int, body: dict):
     if preset not in film_service.SHAKE or not 0 <= start < end:
         raise HTTPException(400, 'Choose documentary, steadicam or impact shake, and a part of the clip.')
     end = min(end, facts.duration or end)
-    target = film_service.target_path(facts.path, start, end, 'shake', preset, tune)
+    try:  # The original part the clip's looks are made from, so other looks before the shake never change its motion.
+        seed = film_service.seed_of(int(body['original_media_id']), float(body['original_in']), float(body['original_out'])) if 'original_media_id' in body else None
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    target = film_service.target_path(facts.path, start, end, 'shake', preset, tune, seed)
 
     def known():
         with get_connection() as conn:
@@ -793,7 +797,7 @@ def handheld_shake(identifier: int, body: dict):
     holder: dict = {}
 
     def run(should_cancel):
-        made = film_service.make(facts, start, end, 'shake', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        made = film_service.make(facts, start, end, 'shake', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune, seed)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'handheld shake'))['id']}
     job_id = enqueue_render('shake', 'Handheld shake', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
