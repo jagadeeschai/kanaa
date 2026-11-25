@@ -12,6 +12,7 @@ import { openMulticam } from "../MulticamDialog";
 import { openFreeze3d } from "../Freeze3dDialog";
 import { openSky } from "../SkyDialog";
 import { openNight } from "../NightDialog";
+import { openRays } from "../RaysDialog";
 import { removeLook } from "../looks";
 
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
@@ -265,6 +266,7 @@ export function createEditorMenuActions(getInput: () => Input) {
         const cinematic: MenuItem[] = [
           { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => removeLook(id, 'lens') }] : []),
           { label: clip.night ? 'Day for night (change)…' : 'Day for night…', checked: Boolean(clip.night), onSelect: () => openNight(id) }, ...(clip.night ? [{ label: 'Back to day', onSelect: () => removeLook(id, 'night') }] : []),
+          { label: clip.rays ? 'God rays (change)…' : 'God rays…', checked: Boolean(clip.rays), onSelect: () => openRays(id) }, ...(clip.rays ? [{ label: 'Remove god rays', onSelect: () => removeLook(id, 'rays') }] : []),
           { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => removeLook(id, 'atmosphere') }] : []),
           { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => removeLook(id, 'new_sky') }] : []),
           { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => removeLook(id, 'slowmo') }] : []),

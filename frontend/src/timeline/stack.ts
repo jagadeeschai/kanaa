@@ -1,7 +1,7 @@
 /**
  * Stacking looks: a new sky, day for night, atmosphere, the cinematic lens and smooth slow motion together on one clip. Each is a
  * made copy (made on the GPU by its service); stacked, each is made from the one before, always in one order, the one
- * that looks right: the sky first, then night falls on the land, the air in front, the lens over both, slow motion last. Every look on a clip
+ * that looks right: the sky first, then night falls on the land, the sun's rays, the air in front, the lens over both, slow motion last. Every look on a clip
  * remembers the same original part, so taking any one off rebuilds the rest from it (copies already made come back from
  * the cache at once), and taking the last one off gives the original back exactly.
  */
@@ -10,11 +10,12 @@ import { findClip, updateClip, type Clip, type Timeline } from './model.ts';
 export type Look =
   | { kind: 'new_sky'; sky: 'sunset' | 'night' | 'storm' | 'blue' }
   | { kind: 'night'; mood: 'moonlit' | 'dark' }
+  | { kind: 'rays'; preset: 'soft' | 'strong' | 'dusty' }
   | { kind: 'atmosphere'; preset: 'mist' | 'sunset' | 'rain' | 'low-fog'; strength: 'light' | 'medium' | 'heavy' }
   | { kind: 'lens'; preset: 'portrait' | 'dreamy' | 'rack-out' | 'rack-in'; strength: 'soft' | 'medium' | 'strong' }
   | { kind: 'slowmo'; factor: 2 | 4 | 8 };
 export type LookKind = Look['kind'];
-export const LOOK_ORDER: LookKind[] = ['new_sky', 'night', 'atmosphere', 'lens', 'slowmo'];
+export const LOOK_ORDER: LookKind[] = ['new_sky', 'night', 'rays', 'atmosphere', 'lens', 'slowmo'];
 export type Part = { media: number; start: number; end: number };
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
@@ -23,6 +24,7 @@ export function looksOf(clip: Clip): Look[] {
   const found: Look[] = [];
   if (clip.new_sky) found.push({ kind: 'new_sky', sky: clip.new_sky.sky });
   if (clip.night) found.push({ kind: 'night', mood: clip.night.mood ?? 'moonlit' });
+  if (clip.rays) found.push({ kind: 'rays', preset: clip.rays.preset ?? 'soft' });
   if (clip.atmosphere) found.push({ kind: 'atmosphere', preset: clip.atmosphere.preset, strength: clip.atmosphere.strength ?? 'medium' });
   if (clip.lens) found.push({ kind: 'lens', preset: clip.lens.preset, strength: clip.lens.strength ?? 'medium' });
   if (clip.slowmo) found.push({ kind: 'slowmo', factor: clip.slowmo.factor });
@@ -31,7 +33,7 @@ export function looksOf(clip: Clip): Look[] {
 
 /** The original part every look on the clip is made from (the clip itself when it has none). */
 export function originalPart(clip: Clip): Part {
-  const link = clip.new_sky ?? clip.night ?? clip.atmosphere ?? clip.lens ?? clip.slowmo;
+  const link = clip.new_sky ?? clip.night ?? clip.rays ?? clip.atmosphere ?? clip.lens ?? clip.slowmo;
   return link ? { media: link.original_media_id, start: link.original_in, end: link.original_out } : { media: clip.media_id, start: clip.in, end: clip.out };
 }
 
@@ -71,10 +73,11 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   if (!clip) return timeline;
   const original = { original_media_id: part.media, original_in: part.start, original_out: part.end };
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
-  const sky = has('new_sky'), dark = has('night'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo');
+  const sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo');
   const links: Partial<Clip> = {
     new_sky: sky?.kind === 'new_sky' ? { ...original, sky: sky.sky } : null,
     night: dark?.kind === 'night' ? { ...original, mood: dark.mood } : null,
+    rays: beams?.kind === 'rays' ? { ...original, preset: beams.preset } : null,
     atmosphere: air?.kind === 'atmosphere' ? { ...original, preset: air.preset, strength: air.strength } : null,
     lens: lens?.kind === 'lens' ? { ...original, preset: lens.preset, strength: lens.strength } : null,
     slowmo: slow?.kind === 'slowmo' ? { ...original, factor: slow.factor } : null,
