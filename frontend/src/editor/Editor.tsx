@@ -1051,6 +1051,8 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     get renderPreview(): typeof renderPreview { return renderPreview; },
     get setShowingHelp(): typeof setShowingHelp { return setShowingHelp; },
     get resetLayout(): typeof resetLayout { return resetLayout; },
+    get layout(): typeof layout { return layout; },
+    get updateLayout(): typeof updateLayout { return updateLayout; },
     get playing(): typeof playing { return playing; },
     get togglePlay(): typeof togglePlay { return togglePlay; },
     get addBlurBox(): typeof addBlurBox { return addBlurBox; },
@@ -1098,7 +1100,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const inVideo = shownMedia.filter((item) => usedIds.has(item.id));
   const otherMedia = shownMedia.filter((item) => !usedIds.has(item.id));
   const inspectorOpen = layout.inspectorOpen;
-  const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? `${layout.inspector}px` : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
+  const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? (layout.wideInspector ? 'min(480px, 42vw)' : `${layout.inspector}px`) : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && timeline.layers.every((layer) => !layer.items.length);  // A title, song or caption alone is a video too (on black).
   // ---- Ask AI ----
