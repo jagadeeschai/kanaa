@@ -4,6 +4,7 @@ import { TRANSITION_ICONS, transitionLabel } from './transition-catalog';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { t } from '../i18n';
 import { isFollowed, keyTimes } from '../timeline/keyframes';
+import { collectInlineKeyframes, deleteInlineKeyframe, drawInlineKeyframes, hitTestInlineKeyframe, moveInlineKeyframe, type InlineKeyframeDot } from './InlineKeyframes';
 import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, type DragPayload, type DropTarget } from '../timeline/drop';
 import { addAdjust, newAdjust } from '../timeline/adjust';
 import { rollCut, slipClip } from '../timeline/trims';
@@ -46,7 +47,7 @@ type Props = {
 /** A held item: a picture of it follows the pointer, and where it would land. */
 type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
   target: { kind: 'main'; index: number } | { kind: 'layer'; layerId: string; start: number } | null };
-type Drag = { kind: 'box'; x0: number; y0: number; x1: number; y1: number } | { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string } | { kind: 'slip'; id: string; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'roll'; left: Clip; right: Clip; startX: number; base: Timeline; group: string };
+type Drag = { kind: 'box'; x0: number; y0: number; x1: number; y1: number } | { kind: 'keyframe'; dot: InlineKeyframeDot; clipStart: number; group: string } | { kind: 'soundMove'; id: string; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'soundTrim'; id: string; edge: 'in' | 'out'; startX: number; origin: TrackItem; base: Timeline; group: string } | { kind: 'seek' } | { kind: 'trim'; id: string; edge: 'in' | 'out'; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'move'; id: string; startX: number; moved: boolean; base: Timeline; group: string } | { kind: 'slip'; id: string; startX: number; origin: Clip; base: Timeline; group: string } | { kind: 'roll'; left: Clip; right: Clip; startX: number; base: Timeline; group: string };
 
 /** 0.6 → "0.6", 1.25 → "1.25", 1 → "1". */
 const seconds = (value: number) => String(Number(value.toFixed(2)));
@@ -76,6 +77,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   /** While slipping or rolling: the new in and out frames, shown over the timeline (a ghost of the edit). */
   const [trimNote, setTrimNote] = useState<{ x: number; y: number; text: string } | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const selectedKeyRef = useRef<InlineKeyframeDot | null>(null);
   /** Where the mouse is skimming, in seconds, shown as a thin line; null when not over the timeline. */
   const skimAt = useRef<number | null>(null);
   const liftRef = useRef<Lift | null>(null);
@@ -254,7 +256,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       if (text.transform) drawKeys(text.id, text.transform, text.length, x, y + h);
     };
-    const drawKeys = (id: string, transform: Clip['transform'], length: number, x: number, bottom: number) => {
+    const drawKeys = (id: string, transform: Clip['transform'], length: number, x: number, bottom: number, ramp?: Clip['ramp']) => {
       if (id !== props.current.selectedId) return;
       context.fillStyle = colors.current.head;
       if (isFollowed(transform)) {
@@ -263,11 +265,8 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.globalAlpha = 0.7; context.fillRect(x + times[0] * props.current.zoom, bottom - 8, Math.max(2, (times[times.length - 1] - times[0]) * props.current.zoom), 2); context.globalAlpha = 1;
         return;
       }
-      for (const t of keyTimes(transform)) {
-        if (t > length) continue;
-        const middle = x + t * props.current.zoom;
-        context.beginPath(); context.moveTo(middle, bottom - 11); context.lineTo(middle + 4, bottom - 7); context.lineTo(middle, bottom - 3); context.lineTo(middle - 4, bottom - 7); context.fill();
-      }
+      const dots = collectInlineKeyframes(id, length, transform, ramp);
+      drawInlineKeyframes(context, dots, selectedKeyRef.current, x, bottom, props.current.zoom, colors.current);
     };
     const drawOverlay = (clip: Clip, row: number) => {
       const { selectedId: selected, zoom: scale, visuals: look } = props.current;
@@ -291,7 +290,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.fillStyle = colors.current.selected;
         for (const left of [x, x + width - 6]) { context.beginPath(); context.roundRect(left, y + 2, 6, h - 4, 3); context.fill(); }
       }
-      drawKeys(clip.id, clip.transform, clipLength(clip), x, y + h);
+      drawKeys(clip.id, clip.transform, clipLength(clip), x, y + h, clip.ramp);
     };
     const draw = () => {
       frame = requestAnimationFrame(draw);
@@ -316,7 +315,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         context.fillStyle = colors.current.tick; context.fillRect(xOf(t), RULER - 8, 1, 8);
         context.fillStyle = colors.current.ruler; context.fillText(timecode(t).replace(/\.\d+$/, ''), xOf(t) + 4, 11);
       }
-      for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip.id, clip.transform, clipLength(clip), xOf(clip.start), TRACK_TOP + TRACK_HEIGHT); }
+      for (const clip of clips) { drawClip(clip, xOf(clip.start), clipLength(clip) * scale); drawKeys(clip.id, clip.transform, clipLength(clip), xOf(clip.start), TRACK_TOP + TRACK_HEIGHT, clip.ramp); }
       // Each transition's span, centred on its cut: a soft band over the clips' lower edge, as long as it lasts.
       clips.forEach((clip, index) => {
         if (!index || !clip.transition_in) return;
@@ -468,6 +467,27 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     }
     return null;
   };
+  const hitKey = (pointerX: number, pointerY: number): { dot: InlineKeyframeDot; clipStart: number } | null => {
+    const sel = props.current.selectedId;
+    if (!sel) return null;
+    const layers = trackLayers(props.current.timeline);
+    for (let row = 0; row < layers.length; row++) {
+      const layer = layers[row];
+      if (layer.kind === 'audio' || layer.locked) continue;
+      const bottom = topOf(row) + rowHeight(layer, collapsedLayers);
+      for (const item of layer.items as TrackItem[]) {
+        if (item.id !== sel) continue;
+        const length = 'length' in item ? item.length : clipLength(item as Clip);
+        const transform = 'transform' in item ? item.transform : undefined;
+        const ramp = 'ramp' in item ? (item as Clip).ramp : undefined;
+        const dots = collectInlineKeyframes(item.id, length, transform, ramp);
+        const dot = hitTestInlineKeyframe(dots, pointerX, pointerY, xOf(item.start), bottom, props.current.zoom);
+        if (dot) return { dot, clipStart: item.start };
+      }
+    }
+    return null;
+  };
+
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (pinch(event, 'down')) return;
     // Right-click, and Control-click on a Mac, open the menu. They must never drag or trim.
@@ -477,8 +497,16 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     onScrubStart();
     skimAt.current = null;
     if (y < rulerTop() + RULER) { dragRef.current = { kind: 'seek' }; onSeek(timeOf(x)); return; }
-    const found = hit(x, y);
     const group = `drag-${groupCount.current += 1}`;
+    const hitKf = hitKey(x, y);
+    if (hitKf) {
+      selectedKeyRef.current = hitKf.dot;
+      dragRef.current = { kind: 'keyframe', dot: hitKf.dot, clipStart: hitKf.clipStart, group };
+      event.currentTarget.focus();
+      return;
+    }
+    selectedKeyRef.current = null;
+    const found = hit(x, y);
     const foundSound = hitSound(x, y);
     const how = event.shiftKey ? 'range' as const : event.metaKey ? 'add' as const : undefined;
     if (foundSound) {
@@ -553,6 +581,14 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
       }
       lift.target = null;
     }
+    if (drag.kind === 'keyframe') {
+      const newLocalTime = timeOf(x) - drag.clipStart;
+      const { timeline: next, nextDot } = moveInlineKeyframe(props.current.timeline, drag.dot, newLocalTime);
+      drag.dot = nextDot;
+      selectedKeyRef.current = nextDot;
+      onChange(next, drag.group);
+      return;
+    }
     if (drag.kind === 'box') { drag.x1 = x; drag.y1 = y; return; }
     if (drag.kind === 'seek') onSeek(snapTo(timeOf(x), snapPoints(props.current.timeline, -1), reach));
     else if (drag.kind === 'soundMove') {
@@ -614,6 +650,15 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     const item = hitSound(x, y)?.sound.id ?? hit(x, y)?.clip.id ?? null;
     if (item) onSelect(item);
     onItemMenu(item, timeOf(x), event.clientX, event.clientY);
+  };
+  const onCanvasKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedKeyRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = deleteInlineKeyframe(props.current.timeline, selectedKeyRef.current);
+      selectedKeyRef.current = null;
+      onChange(next, `kf-del-${groupCount.current += 1}`);
+    }
   };
   const onPointerUp = () => {
     snapLine.current = null;
@@ -771,7 +816,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
       <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
-        <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (skimAt.current !== null) { skimAt.current = null; skimTo(null); } if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
+        <canvas ref={canvasRef} tabIndex={0} onKeyDown={onCanvasKeyDown} style={{ outline: 'none' }} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (skimAt.current !== null) { skimAt.current = null; skimTo(null); } if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         {trimNote && <div className="tl-trim-note" role="status" style={{ left: Math.max(4, trimNote.x), top: trimNote.y - 22 }}>{trimNote.text}</div>}
         <div className="tl-clip-layer">{(() => {
