@@ -19,7 +19,7 @@ from app.services.media_probe import MediaFacts
 
 WIDTH = 960  # Width of the preview.
 ORDER = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation']
-MOVING = {'slowmo', 'blur', 'shake'}  # Looks a still can't show.
+MOVING = {'slowmo', 'blur', 'shake', 'weave', 'breathing'}  # Looks a still can't show.
 NEEDS_DEPTH = {'new_sky', 'night', 'rays', 'atmosphere', 'lens'}
 TUNE_LOOK = {'halation': 'halation', 'match': 'match', 'new_sky': 'sky', 'night': 'night', 'rays': 'rays', 'atmosphere': 'atmosphere', 'lens': 'lens'}
 

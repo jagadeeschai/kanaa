@@ -16,7 +16,7 @@ import { NIGHT_MOODS } from '../../timeline/night';
 import { RAYS_PRESETS } from '../../timeline/rays';
 import { SKY_CHOICES } from '../../timeline/sky';
 import { SLOW_FACTORS } from '../../timeline/slowmo';
-import { HALATION_PRESETS, SHAKE_PRESETS } from '../../timeline/film';
+import { HALATION_PRESETS, SHAKE_PRESETS, WEAVE_PRESETS, BREATHING_PRESETS } from '../../timeline/film';
 import { cannotLook, LOOK_ORDER, looksOf, originalPart, withLook, withoutLook, type Look, type LookKind, type Tune } from '../../timeline/stack';
 import { openDirector } from '../DirectorDialog';
 import { openMatch } from '../MatchDialog';
@@ -34,10 +34,12 @@ const CARDS: Record<LookKind, { title: string; about: string; tune?: TuneLook }>
   lens: { title: 'Cinematic lens', about: 'Real depth of field.', tune: 'lens' },
   halation: { title: 'Film halation', about: 'The warm glow film gives bright highlights.', tune: 'halation' },
   shake: { title: 'Handheld shake', about: 'A believable human camera wobble.', tune: 'shake' },
+  weave: { title: 'Gate weave', about: 'A slow, small film-gate drift.', tune: 'weave' },
+  breathing: { title: 'Lens breathing', about: 'A slight zoom that breathes slowly.', tune: 'breathing' },
   slowmo: { title: 'Smooth slow motion', about: 'New frames made between the clip’s own.' },
   blur: { title: 'Motion blur', about: 'The smear of a film camera on what moves.', tune: 'blur' },
 };
-const MOVING: LookKind[] = ['slowmo', 'blur', 'shake'];
+const MOVING: LookKind[] = ['slowmo', 'blur', 'shake', 'weave', 'breathing'];
 
 /** A look of `kind` with its first preset, to switch it on. */
 function startLook(kind: LookKind, hero: Clip | undefined): Look | null {
@@ -50,6 +52,8 @@ function startLook(kind: LookKind, hero: Clip | undefined): Look | null {
     case 'lens': return { kind, preset: 'portrait', strength: 'medium' };
     case 'halation': return { kind, preset: 'classic' };
     case 'shake': return { kind, preset: 'docu' };
+    case 'weave': return { kind, preset: 'classic' };
+    case 'breathing': return { kind, preset: 'classic' };
     case 'slowmo': return { kind, factor: 2 };
     case 'blur': return { kind, preset: 'natural' };
   }
@@ -68,6 +72,8 @@ function choices(look: Look): { label: string; options: Option[]; value: string 
       { label: 'Blur', options: strengths(['soft', 'medium', 'strong']), value: look.strength, set: (value) => ({ ...look, strength: value as typeof look.strength }) }];
     case 'halation': return [{ label: 'Glow', options: [...HALATION_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
     case 'shake': return [{ label: 'Camera', options: [...SHAKE_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
+    case 'weave': return [{ label: 'Weave', options: [...WEAVE_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
+    case 'breathing': return [{ label: 'Breathing', options: [...BREATHING_PRESETS], value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
     case 'slowmo': return [{ label: 'Speed', options: SLOW_FACTORS, value: look.factor, set: (value) => ({ ...look, factor: value as typeof look.factor }) }];
     case 'blur': return [{ label: 'Shutter', options: BLUR_PRESETS, value: look.preset, set: (value) => ({ ...look, preset: value as typeof look.preset }) }];
     default: return [];
@@ -80,7 +86,7 @@ function tunePreset(look: Look): string {
     case 'lens': case 'atmosphere': return `${look.preset}/${look.strength}`;
     case 'new_sky': return look.sky;
     case 'night': return look.mood;
-    case 'rays': case 'blur': case 'halation': case 'shake': return look.preset;
+    case 'rays': case 'blur': case 'halation': case 'shake': case 'weave': case 'breathing': return look.preset;
     case 'match': return 'default';
     default: return '';
   }

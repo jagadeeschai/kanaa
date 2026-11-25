@@ -8,7 +8,7 @@ import { useCallback, useState } from 'react';
 import { DEFAULT_ADJUST, type Clip, type Timeline } from '../../timeline/model.ts';
 import { originalPart } from '../../timeline/stack.ts';
 
-const MADE = ['colour_match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation', 'shake', 'slowmo', 'motion_blur'] as const;
+const MADE = ['colour_match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation', 'shake', 'weave', 'breathing', 'slowmo', 'motion_blur'] as const;
 const EFFECTS = ['wheels', 'tone_grade', 'dreamy_glow', 'colour_splash', 'old_film', 'signal_damage', 'lens_surface', 'tilt_shift', 'mirror', 'zoom_blur', 'echo', 'chroma'] as const;
 
 /** The clip as shot: the same moment of the original footage, lasting just as long. */

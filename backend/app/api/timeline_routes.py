@@ -677,6 +677,8 @@ def look_tuning():
             'blur': {preset: dict(values) for preset, values in blur_service.PRESETS.items()},
             'halation': {preset: dict(values) for preset, values in film_service.HALATION.items()},
             'shake': {preset: {'amount': values['amount'], 'speed': values['speed']} for preset, values in film_service.SHAKE.items()},
+            'weave': {preset: {'amount': values['amount'], 'speed': values['speed']} for preset, values in film_service.WEAVE.items()},
+            'breathing': {preset: {'amount': values['amount'], 'speed': values['speed']} for preset, values in film_service.BREATHING.items()},
             'freeze3d': {move: {'swing': freeze.SWING, 'push': freeze.PUSH, 'parallax': freeze.PARALLAX} for move in freeze.MOVES},
         }}
 
@@ -800,6 +802,84 @@ def handheld_shake(identifier: int, body: dict):
         made = film_service.make(facts, start, end, 'shake', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune, seed)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'handheld shake'))['id']}
     job_id = enqueue_render('shake', 'Handheld shake', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/weave')
+def gate_weave(identifier: int, body: dict):
+    """Gate weave: a copy of the clip's part (film_service.py)."""
+    from app.db.database import get_connection
+    from app.services import film_service, look_tune
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset = str(body.get('preset', 'classic'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    tune = look_tune.parse(body.get('tune'), 'weave')
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Gate weave needs a video clip.')
+    if preset not in film_service.WEAVE or not 0 <= start < end:
+        raise HTTPException(400, 'Choose subtle, classic or worn gate weave, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    try:
+        seed = film_service.seed_of(int(body['original_media_id']), float(body['original_in']), float(body['original_out'])) if 'original_media_id' in body else None
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    target = film_service.target_path(facts.path, start, end, 'weave', preset, tune, seed)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = film_service.make(facts, start, end, 'weave', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune, seed)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'gate weave'))['id']}
+    job_id = enqueue_render('weave', 'Gate weave', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/breathing')
+def lens_breathing(identifier: int, body: dict):
+    """Lens breathing: a copy of the clip's part (film_service.py)."""
+    from app.db.database import get_connection
+    from app.services import film_service, look_tune
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        preset = str(body.get('preset', 'classic'))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    tune = look_tune.parse(body.get('tune'), 'breathing')
+    if facts.media_type != 'video':
+        raise HTTPException(400, 'Lens breathing needs a video clip.')
+    if preset not in film_service.BREATHING or not 0 <= start < end:
+        raise HTTPException(400, 'Choose subtle, classic or deep lens breathing, and a part of the clip.')
+    end = min(end, facts.duration or end)
+    target = film_service.target_path(facts.path, start, end, 'breathing', preset, tune)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = film_service.make(facts, start, end, 'breathing', preset, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'lens breathing'))['id']}
+    job_id = enqueue_render('breathing', 'Lens breathing', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
 

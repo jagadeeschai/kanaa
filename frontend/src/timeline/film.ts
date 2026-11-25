@@ -9,3 +9,13 @@ export const SHAKE_PRESETS = [
   { id: 'float', label: 'Steadicam float', about: 'A slow, drifting sway' },
   { id: 'impact', label: 'Impact', about: 'A jolt at the start that settles, for a hit or a drop' },
 ] as const;
+export const WEAVE_PRESETS = [
+  { id: 'subtle', label: 'Subtle', about: 'A faint sideways and vertical projector drift' },
+  { id: 'classic', label: 'Classic film', about: 'The gentle gate weave of a 35mm film projector' },
+  { id: 'worn', label: 'Worn projector', about: 'A wider, looser film-gate drift' },
+] as const;
+export const BREATHING_PRESETS = [
+  { id: 'subtle', label: 'Subtle', about: 'A barely-there focus-pull zoom' },
+  { id: 'classic', label: 'Classic', about: 'A slow, gentle lens breathing zoom' },
+  { id: 'deep', label: 'Deep', about: 'A stronger, dreamy focus-breathing pulse' },
+] as const;

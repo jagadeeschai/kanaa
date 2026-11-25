@@ -11,13 +11,13 @@ import { findClip } from '../timeline/model';
 import { looksOf, makeLooks, originalPart, setLooks, withoutLook, type Look, type LookKind, type Part } from '../timeline/stack';
 import { EditorContext, type EditorStore } from './state/EditorContext';
 
-const ROUTE: Record<LookKind, string> = { match: 'match', new_sky: 'sky', night: 'night', rays: 'rays', atmosphere: 'atmosphere', lens: 'lens', slowmo: 'slowmo', blur: 'blur', halation: 'halation', shake: 'shake' };
+const ROUTE: Record<LookKind, string> = { match: 'match', new_sky: 'sky', night: 'night', rays: 'rays', atmosphere: 'atmosphere', lens: 'lens', slowmo: 'slowmo', blur: 'blur', halation: 'halation', shake: 'shake', weave: 'weave', breathing: 'breathing' };
 
 /** Makes one look of one source part; its media id. */
 async function makeLook(look: Look, source: Part, part: Part, onProgress: (value: number) => void): Promise<number> {
   const { kind, ...settings } = look;
-  // Shake moves the same way for the same original part, whatever looks come before it.
-  const original = kind === 'shake' ? { original_media_id: part.media, original_in: part.start, original_out: part.end } : {};
+  // Shake and weave move the same way for the same original part, whatever looks come before it.
+  const original = kind === 'shake' || kind === 'weave' ? { original_media_id: part.media, original_in: part.start, original_out: part.end } : {};
   const started = await requestJson<{ status: string; output_photo_id?: number; job_id?: string }>(`/api/photos/${source.media}/${ROUTE[kind]}`,
     { method: 'POST', body: JSON.stringify({ start: source.start, end: source.end, ...settings, ...original }) });
   return started.output_photo_id ?? (await waitForJob<{ output_photo_id: number }>(started.job_id!, onProgress)).output_photo_id;

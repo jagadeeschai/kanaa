@@ -47,6 +47,16 @@ SHAKE = {
     'float': {'amount': 1.0, 'speed': 1.0, 'reach': 0.012, 'turn': 0.45, 'speeds': (0.13, 0.27, 0.41), 'settle': 0.0},
     'impact': {'amount': 1.0, 'speed': 1.0, 'reach': 0.025, 'turn': 0.8, 'speeds': (6.0, 9.0, 13.0), 'settle': 0.35},
 }
+WEAVE = {
+    'subtle': {'amount': 1.0, 'speed': 1.0, 'reach': 0.002, 'turn': 0.05, 'speeds': (0.18, 0.37, 0.61), 'settle': 0.0},
+    'classic': {'amount': 1.0, 'speed': 1.0, 'reach': 0.004, 'turn': 0.1, 'speeds': (0.22, 0.43, 0.71), 'settle': 0.0},
+    'worn': {'amount': 1.0, 'speed': 1.0, 'reach': 0.008, 'turn': 0.2, 'speeds': (0.25, 0.52, 0.89), 'settle': 0.0},
+}
+BREATHING = {
+    'subtle': {'amount': 0.015, 'speed': 0.25},
+    'classic': {'amount': 0.03, 'speed': 0.35},
+    'deep': {'amount': 0.06, 'speed': 0.45},
+}
 
 
 def target_path(source: Path, start: float, end: float, kind: str, preset: str, tune: dict | None = None, seed: int | None = None) -> Path:
@@ -92,6 +102,11 @@ def shake_path(chosen: dict, frames: int, fps: float, seed: int, aspect: float =
     return [(a, b, c, zoom) for a, b, c in out]
 
 
+def breathing_path(chosen: dict, frames: int, fps: float) -> list[tuple[float, float, float, float]]:
+    """Slight zoom that follows a slow sine, always >= 1.0 so edges never show."""
+    return [(0.0, 0.0, 0.0, 1.0 + chosen['amount'] * 0.5 * (1.0 - math.cos(2 * math.pi * chosen['speed'] * (k / fps)))) for k in range(frames)]
+
+
 def shake_frame(frame: np.ndarray, camera: tuple[float, float, float, float]) -> np.ndarray:
     """One frame moved by the camera (CPU): shifted, turned and zoomed about the middle."""
     import cv2
@@ -112,9 +127,9 @@ def make(facts: MediaFacts, start: float, end: float, kind: str, preset: str, on
          should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None, seed: int | None = None) -> Path:
     """`seed` picks the shake's motion: from the original part (see seed_of), so other looks before it never change it."""
     """The part start..end (source seconds) with halation (`kind` 'halation') or handheld shake ('shake'). Made once."""
-    table = HALATION if kind == 'halation' else SHAKE if kind == 'shake' else None
+    table = HALATION if kind == 'halation' else SHAKE if kind == 'shake' else WEAVE if kind == 'weave' else BREATHING if kind == 'breathing' else None
     if table is None or preset not in table:
-        raise ValueError('Choose a halation or handheld preset.')
+        raise ValueError('Choose a film look preset.')
     target = target_path(facts.path, start, end, kind, preset, tune, seed)
     seed = seed if seed is not None else seed_of(str(facts.path), start, end)
     if target.is_file():
@@ -150,7 +165,7 @@ def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, 
     fps = facts.fps or 30
     total = max(1, round((end - start) * fps))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
-    cameras = shake_path(chosen, total + 2, fps, seed=seed, aspect=height / width) if kind == 'shake' else None
+    cameras = shake_path(chosen, total + 2, fps, seed=seed, aspect=height / width) if kind in ('shake', 'weave') else breathing_path(chosen, total + 2, fps) if kind == 'breathing' else None
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp.mp4')
     read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', *span, '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={width}:{height}',

@@ -61,7 +61,7 @@ class GpuParity(unittest.TestCase):
             clip = root / 'clip.mp4'
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:d=1:r=30', '-pix_fmt', 'yuv420p', str(clip)], check=True)
             facts = MediaFacts(path=clip, media_type='video', width=640, height=360, duration=1, fps=30)
-            for kind, preset in (('halation', 'dreamy'), ('shake', 'impact')):
+            for kind, preset in (('halation', 'dreamy'), ('shake', 'impact'), ('weave', 'classic'), ('breathing', 'classic')):
                 made, used = {}, []
                 with mock.patch.object(film.settings, 'data_dir', root):
                     for mode in ('1', '0'):
@@ -75,7 +75,7 @@ class GpuParity(unittest.TestCase):
                 psnr = 10 * np.log10(255 ** 2 / ((gpu - cpu) ** 2).mean())
                 # 28 dB for shake on this razor-sharp test pattern: moving a picture by fractions of a pixel samples hard
                 # edges a little differently in the two engines (as the time freeze).
-                self.assertGreater(psnr, 28 if kind == 'shake' else 30, (kind, psnr))
+                self.assertGreater(psnr, 28 if kind in ('shake', 'weave', 'breathing') else 30, (kind, psnr))
 
 
 if __name__ == '__main__':

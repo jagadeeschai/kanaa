@@ -210,6 +210,25 @@ class ShakeLink(Strict):
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
 
 
+class WeaveLink(Strict):
+    """A clip with film gate weave (a made copy of its part); what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['subtle', 'classic', 'worn'] = 'classic'
+    steadied: bool = False  # The clip had Steady on before the weave; turned back on when the weave is taken off.
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
+
+
+class BreathingLink(Strict):
+    """A clip with lens breathing (a made copy of its part); what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    preset: Literal['subtle', 'classic', 'deep'] = 'classic'
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
+
+
 class BlurLink(Strict):
     """A clip with real motion blur (a made copy of its part); what it was, so Remove puts it back."""
     original_media_id: int
@@ -453,6 +472,8 @@ class Clip(Strict):
     atmosphere: Optional[AtmosphereLink] = None
     halation: Optional[HalationLink] = None  # Film halation (a made copy).
     shake: Optional[ShakeLink] = None  # Handheld camera shake (a made copy).
+    weave: Optional[WeaveLink] = None  # Film gate weave (a made copy).
+    breathing: Optional[BreathingLink] = None  # Lens breathing (a made copy).
     motion_blur: Optional[BlurLink] = None  # Real motion blur (a made copy).
     colour_match: Optional[MatchLink] = None  # In the colour of another shot (a made copy).
     rays: Optional[RaysLink] = None  # God rays (a made copy).

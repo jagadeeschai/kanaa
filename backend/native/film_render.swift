@@ -9,10 +9,10 @@ import CoreImage
 import Foundation
 
 let arguments = CommandLine.arguments
-guard arguments.count == 10, ["halation", "shake"].contains(arguments[1]), let width = Int(arguments[2]), let height = Int(arguments[3]),
+guard arguments.count == 10, ["halation", "shake", "weave", "breathing"].contains(arguments[1]), let width = Int(arguments[2]), let height = Int(arguments[3]),
       let strength = Double(arguments[4]), let threshold = Double(arguments[5]), let spread = Double(arguments[6]),
       let tintR = Double(arguments[7]), let tintG = Double(arguments[8]), let tintB = Double(arguments[9]) else {
-    FileHandle.standardError.write("usage: film_render halation|shake WIDTH HEIGHT STRENGTH THRESHOLD SPREAD TINT_R TINT_G TINT_B\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: film_render halation|shake|weave|breathing WIDTH HEIGHT STRENGTH THRESHOLD SPREAD TINT_R TINT_G TINT_B\n".data(using: .utf8)!)
     exit(2)
 }
 let halation = arguments[1] == "halation"
