@@ -3,6 +3,7 @@
  * one sentence. Names (YouTube, VHS, LUT, font names) stay as they are. A label missing here simply shows in English.
  */
 export const TAMIL: Record<string, string> = {
+  'Wider inspector':'அகலமான ஆய்வாளர்', 'Narrower inspector':'குறுகிய ஆய்வாளர்',
   'Split transition':'பிளவு மாற்றம்', 'Split transition…':'பிளவு மாற்றம்…', 'Apart sideways':'பக்கவாட்டில் பிரி', 'Apart up and down':'மேலும் கீழும் பிரி', 'Diagonal':'சாய்வாக', 'With a gap':'சிறு இடைவெளியுடன்', 'Soft edge shadow':'மென்மையான ஓர நிழல்', 'Looping transition preview':'தொடர் மாற்ற முன்னோட்டம்',
   'Inline keyframes':'உள்ளமைந்த முக்கியச் சட்டங்கள்', 'Speed ramp point':'வேக மாற்றப் புள்ளி', 'Delete keyframe':'முக்கியச் சட்டத்தை நீக்கு',
   'Source':'ஆதாரம்', 'Sources':'ஆதாரங்கள்', 'Source footnote':'ஆதார அடிக்குறிப்பு', 'Publisher, date and link':'வெளியீட்டாளர், தேதி மற்றும் இணைப்பு', 'Automatic end Sources roll':'இறுதியில் தானியங்கி ஆதாரப் பட்டியல்', 'unique sources':'தனித்த ஆதாரங்கள்', 'numbers or quotes need a source':'எண்கள் அல்லது மேற்கோள்களுக்கு ஆதாரம் தேவை', 'Add Source footnotes before sharing this documentary.':'ஆவணப்படத்தைப் பகிர்வதற்கு முன் ஆதார அடிக்குறிப்புகளைச் சேருங்கள்.', 'Select a graphic or title to attach its source. Footnotes use one warm-amber style.':'ஆதாரத்தை இணைக்க விளக்கப்படம் அல்லது தலைப்பைத் தேர்ந்தெடுங்கள். அடிக்குறிப்புகள் ஒரே பொன்னிறப் பாணியில் காட்டப்படும்.',
