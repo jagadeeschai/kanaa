@@ -1,7 +1,8 @@
 import { useEditorPanel } from '../state/EditorContext';
 import { SoundControls } from "./clip-parts";
 import { Mic, LoaderCircle, Music, Volume2, VolumeX } from "lucide-react";
-import { soundLength, type AudioLayer, type Sound } from "../../timeline/model";
+import { soundLength, type AudioLayer, type DuckPresetId, type Sound } from "../../timeline/model";
+import { DUCK_PRESETS } from "../audio";
 import { ValueSlider, type TimeFieldProps } from "../controls";
 import { Timing, timingSummary } from "../Timing";
 import { Group, More, Panel } from "../layout";
@@ -29,8 +30,19 @@ export function SoundInspector() {
     </div>
     <SoundControls item={sound} length={soundLength(sound)} onChange={onChange}/>
     <AudioPresets value={sound.audio_presets} onChange={(audio_presets) => onChange({ audio_presets })}/>
-    <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked })}/><span>Dip under speech<small>Lowers this sound while your clips or other sounds play.</small></span></label>
+    <label className="ed-check"><input type="checkbox" checked={sound.duck} onChange={(event) => onChange({ duck: event.target.checked, ...(event.target.checked && !sound.duck_preset ? { duck_preset: 'medium', duck_threshold: DUCK_PRESETS.medium.threshold, duck_depth: DUCK_PRESETS.medium.depth, duck_fade: DUCK_PRESETS.medium.fade } : {}) })}/><span>Auto-duck<small>Lowers this music while speech or vocals play on any track.</small></span></label>
+    <div className="ed-pair">
+      {(['light', 'medium', 'strong'] as DuckPresetId[]).map((preset) => {
+        const active = sound.duck && (sound.duck_preset ?? 'medium') === preset;
+        const label = preset === 'light' ? 'Light' : preset === 'medium' ? 'Medium' : 'Strong';
+        const cfg = DUCK_PRESETS[preset];
+        return <button key={preset} className={`ed-button ${active ? 'on' : ''}`} aria-pressed={active} onClick={() => active ? onChange({ duck: false }) : onChange({ duck: true, duck_preset: preset, duck_threshold: cfg.threshold, duck_depth: cfg.depth, duck_fade: cfg.fade })}>{label}</button>;
+      })}
+    </div>
       <More>
+    <ValueSlider label="Duck threshold" value={sound.duck_threshold ?? DUCK_PRESETS[sound.duck_preset ?? 'medium'].threshold} min={-45} max={-10} step={1} defaultValue={-30} unit=" dB" decimals={0} onChange={(duck_threshold, group) => onChange({ duck_threshold }, group)}/>
+    <ValueSlider label="Duck depth" value={sound.duck_depth ?? DUCK_PRESETS[sound.duck_preset ?? 'medium'].depth} min={3} max={24} step={1} defaultValue={12} unit=" dB" decimals={0} onChange={(duck_depth, group) => onChange({ duck_depth }, group)}/>
+    <ValueSlider label="Duck fade" value={sound.duck_fade ?? DUCK_PRESETS[sound.duck_preset ?? 'medium'].fade} min={0.05} max={1.5} step={0.05} defaultValue={0.3} unit=" s" decimals={2} onChange={(duck_fade, group) => onChange({ duck_fade }, group)}/>
     <ValueSlider label="Speed" value={sound.speed} min={0.25} max={4} step={0.05} defaultValue={1} unit="×" decimals={2} onChange={(speed, group) => onChange({ speed }, group)}/>
       <div className="ed-pair"><button className={`ed-button ${layer.muted ? 'on' : ''}`} aria-pressed={Boolean(layer.muted)} onClick={() => onLayer({ muted: !layer.muted })}>Mute track</button></div>
       </More>
