@@ -630,6 +630,30 @@ def ai_director(body: dict):
     return {'job_id': job_id}
 
 
+@router.post('/look-preview')
+def look_preview(body: dict):
+    """A still preview of cinematic looks on one frame of a clip, small, before and after (look_preview_service). A
+    job: quick, except the first time a clip's depth is worked out."""
+    from app.services import look_preview_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(int(body['media']))
+        start, end, at = float(body['start']), float(body['end']), float(body.get('at', 0))
+        looks = [look for look in body.get('looks') or [] if isinstance(look, dict)][:8]
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video' or not 0 <= start < end:
+        raise HTTPException(400, 'The preview needs a video clip.')
+    holder: dict = {}
+
+    def run(should_cancel):
+        found = look_preview_service.render(facts, start, end, at, looks, media_facts, lambda value: update_job(holder['id'], progress=value), should_cancel)
+        return {'progress': 100, **found}
+    job_id = enqueue_render('look_preview', 'Look preview', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'job_id': job_id}
+
+
 @router.get('/look-tuning')
 def look_tuning():
     """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the

@@ -5,22 +5,16 @@ import { openBringToLife } from "../BringToLifeDialog";
 import { openPopout, openRemovePerson } from "../RemovePersonDialog";
 import { openVideoPopout } from "../VideoPopoutDialog";
 import { openClone } from "../CloneDialog";
-import { openLens } from "../LensDialog";
-import { openAtmosphere } from "../AtmosphereDialog";
 import { openMatchCuts } from "../MatchCutDialog";
 import { openMulticam } from "../MulticamDialog";
 import { openFreeze3d } from "../Freeze3dDialog";
-import { openSky } from "../SkyDialog";
-import { openNight } from "../NightDialog";
-import { openRays } from "../RaysDialog";
 import { openDirector } from "../DirectorDialog";
 import { openMatch } from "../MatchDialog";
-import { openBlur } from "../BlurDialog";
 import { removeLook } from "../looks";
+import { looksOf } from "../../timeline/stack";
 
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
 
-import { openSlowmo } from "../SlowmoDialog";
 
 
 import { hasClones, removeClones } from "../../timeline/clone";
@@ -270,13 +264,8 @@ export function createEditorMenuActions(getInput: () => Input) {
           { label: '✨ Make it cinematic…', onSelect: () => openDirector(id) }, 'divider',
           { label: clip.colour_match ? 'Match colour (change)…' : 'Match colour to…', checked: Boolean(clip.colour_match), onSelect: () => openMatch(id) }, ...(clip.colour_match ? [{ label: 'Remove colour match', onSelect: () => removeLook(id, 'match') }] : []),
           ...(onMain ? [{ label: 'Match the other clips to this one…', onSelect: () => openMatch(id, true) }] : []),
-          { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => removeLook(id, 'lens') }] : []),
-          { label: clip.night ? 'Day for night (change)…' : 'Day for night…', checked: Boolean(clip.night), onSelect: () => openNight(id) }, ...(clip.night ? [{ label: 'Back to day', onSelect: () => removeLook(id, 'night') }] : []),
-          { label: clip.rays ? 'God rays (change)…' : 'God rays…', checked: Boolean(clip.rays), onSelect: () => openRays(id) }, ...(clip.rays ? [{ label: 'Remove god rays', onSelect: () => removeLook(id, 'rays') }] : []),
-          { label: clip.atmosphere ? 'Atmosphere (change)…' : 'Atmosphere…', checked: Boolean(clip.atmosphere), onSelect: () => openAtmosphere(id) }, ...(clip.atmosphere ? [{ label: 'Remove atmosphere', onSelect: () => removeLook(id, 'atmosphere') }] : []),
-          { label: clip.new_sky ? 'New sky (change)…' : 'New sky…', checked: Boolean(clip.new_sky), onSelect: () => openSky(id) }, ...(clip.new_sky ? [{ label: 'Remove new sky', onSelect: () => removeLook(id, 'new_sky') }] : []),
-          { label: clip.motion_blur ? 'Motion blur (change)…' : 'Motion blur…', checked: Boolean(clip.motion_blur), onSelect: () => openBlur(id) }, ...(clip.motion_blur ? [{ label: 'Remove motion blur', onSelect: () => removeLook(id, 'blur') }] : []),
-          { label: clip.slowmo ? 'Smooth slow motion (change)…' : 'Smooth slow motion…', checked: Boolean(clip.slowmo), onSelect: () => openSlowmo(id) }, ...(clip.slowmo ? [{ label: 'Normal speed', onSelect: () => removeLook(id, 'slowmo') }] : []),
+          // Every look is in the clip's Cinematic tab: one place, the preview never covered.
+          { label: looksOf(clip).length ? `Cinematic looks (${looksOf(clip).length})…` : 'Cinematic looks…', onSelect: () => { setSelectedId(id); openPanelTab('clip', 'cinematic'); } },
           ...(onMain ? [{ label: 'Pop-out (3D)…', onSelect: () => openVideoPopout({ clipId: id, mediaId: clip.media_id }) },
             { label: 'Clone the person…', checked: hasClones(timeline, id), onSelect: () => openClone(id) }, ...(hasClones(timeline, id) ? [{ label: 'Remove clones', onSelect: () => change(removeClones(timeline, id)) }] : [])] : []),
         ];

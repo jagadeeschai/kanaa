@@ -2,19 +2,12 @@ import { AiEditHost } from '../AiEditDialog';
 import { YouTubeHost } from '../../publish/YouTubeDialog';
 import { VideoPopoutHost } from '../VideoPopoutDialog';
 import { CloneHost } from '../CloneDialog';
-import { LensHost } from '../LensDialog';
-import { AtmosphereHost } from '../AtmosphereDialog';
 import { MatchCutHost } from '../MatchCutDialog';
 import { MulticamHost } from '../MulticamDialog';
 import { Freeze3dHost } from '../Freeze3dDialog';
-import { SkyHost } from '../SkyDialog';
-import { NightHost } from '../NightDialog';
-import { RaysHost } from '../RaysDialog';
 import { DirectorHost } from '../DirectorDialog';
 import { MatchHost } from '../MatchDialog';
-import { BlurHost } from '../BlurDialog';
 import { LooksHost } from '../looks';
-import { SlowmoHost } from '../SlowmoDialog';
 import { SmartSliceHost } from '../SmartSliceDialog';
 import { ClipQuickBar } from './ClipQuickBar';
 import { BringToLifeHost } from '../BringToLifeDialog';
@@ -131,7 +124,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
     <RemovePersonHost/>
-    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/><SlowmoHost/><AtmosphereHost/><MatchCutHost/><MulticamHost/><Freeze3dHost/><SkyHost/><NightHost/><RaysHost/><DirectorHost/><MatchHost/><BlurHost/><LooksHost/>
+    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><MatchCutHost/><MulticamHost/><Freeze3dHost/><DirectorHost/><MatchHost/><LooksHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [

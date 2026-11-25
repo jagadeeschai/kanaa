@@ -1,5 +1,7 @@
 import { SplitOptions } from '../SplitOptions';
 import { useEditorPanel } from '../state/EditorContext';
+import { looksOf } from '../../timeline/stack';
+import { CinematicPanel } from './CinematicPanel';
 import { BlendEdgesGroup } from './BlendEdgesGroup';
 import { EffectLookGroup } from './EffectLookGroup';
 import { PictureLightsGroup } from './PictureLightsGroup';
@@ -27,7 +29,7 @@ import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, More, Panel } from '../layout';
 import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
-import { Layers3, AudioLines, Crop, Expand, FlipHorizontal, FlipVertical, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
+import { AudioLines, Clapperboard, Crop, Expand, FlipHorizontal, FlipVertical, Layers3, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
@@ -54,7 +56,7 @@ export function Inspector() {
   const effectFadeMax = Math.min(2, clipLength(clip) / 2);
   return <>
     <Panel id="clip" header={<>{clip.id === 'signature-paper' && <SignatureCardGroup/>}<ActiveEffects clip={clip} onChange={onChange}/></>} tabs={[{ id: 'frame', label: 'Frame', Icon: Crop }, { id: 'look', label: 'Colour', Icon: SlidersHorizontal, changed: (clip.look ?? 'none') !== 'none' }, { id: 'effects', label: 'Effects', Icon: WandSparkles, changed: clipEffects(clip).length > 0 }, { id: 'background', label: 'Backdrop', Icon: Wallpaper, changed: Boolean(clip.cutout || clip.chroma) },
-      { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
+      { id: 'motion', label: 'Motion', Icon: Move, changed: Boolean(clip.enter || clip.exit || clip.transition_in || Object.keys(clip.transform.keyframes ?? {}).length) }, ...(isMain && source?.kind === 'video' && clip.freeze == null && !clip.freeze3d ? [{ id: 'cinematic', label: 'Cinematic', Icon: Clapperboard, changed: looksOf(clip).length > 0 }] : []), ...(source?.kind === 'video' && clip.freeze == null ? [{ id: 'sound', label: 'Sound', Icon: Volume2, changed: clip.speed !== 1 || clip.muted || Boolean(clip.ramp) }] : [])]}>
     <Group title="Timing" summary={timingSummary(timing)} keywords="trim cut shorten length start end from to" help="timing-and-trimming"><Timing fields={timing}/></Group>
     {isEffect && <EffectLookGroup clip={clip} onChange={onChange} onPause={onPause}/>}
     {isEffect && <Group pro title="Effect controls" tab="frame" startOpen changed={clip.transform.opacity !== 1 || clip.speed !== 1 || Boolean(clip.enter || clip.exit) || overlay?.blend !== 'screen'} keywords="effect intensity opacity strength speed fade blend" tip="Fine-tune this effect without changing your original video." help="special-effects">
@@ -269,6 +271,10 @@ export function Inspector() {
     </>}
     </Group>
     <BlendEdgesGroup clip={clip} onChange={onChange}/>
+    {isMain && source?.kind === 'video' && clip.freeze == null && !clip.freeze3d && <Group title="Cinematic looks" tab="cinematic" startOpen changed={looksOf(clip).length > 0}
+      keywords="cinematic look lens depth of field bokeh sky sunset night day for night god rays sun beams mist fog haze atmosphere slow motion motion blur colour match grade film"
+      tip="Every cinematic look in one place: switch looks on, pick presets, fine-tune, see a still preview, then Apply looks.">
+      <CinematicPanel clip={clip}/></Group>}
     <Group title="Animation" tab="motion" startOpen changed={Boolean(clip.enter || clip.exit)} keywords="animation entrance exit enter fade slide" tip="How the clip appears and leaves." help="animations-and-moves">
     {transition?.kind==='split' && <SplitOptions value={transition} onChange={(transition_in)=>onChange({transition_in})}/>}
     {transition && <p className="ed-tip">This clip opens with a {transition.kind} transition — set in the Transitions tab.</p>}
