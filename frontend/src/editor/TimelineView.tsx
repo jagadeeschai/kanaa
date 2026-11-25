@@ -8,6 +8,7 @@ import { clipAt, dropHint, activeDrag, decodePayload, setActiveDrag, DRAG_TYPE, 
 import { addAdjust, newAdjust } from '../timeline/adjust';
 import { rollCut, slipClip } from '../timeline/trims';
 import { clipGuidesOn } from './clipGuides';
+import PacingStrip from './PacingStrip';
 import { skimOn, skimTo } from './skim';
 import { addLayer, clipLength, isClip, itemLength, MAX_PHOTO_SECONDS, mainLayer, moveItem, removeLayer, clipToLayer, clipToMain, updateClip, snap, snapPoints, soundLength, timecode, overlayLayers, reorderLayer, trackLayers, updateLayer, trimClip, trimSound, trimText, moveClip, captionText, type AddableLayerKind, type Clip, type AdjustItem, type BlurBox, type Caption, type Sound, type TrackLayer, type VideoLayer, type SourceFacts, type TextItem, type Timeline, type TrackItem } from '../timeline/model';
 
@@ -42,6 +43,7 @@ type Props = {
   /** The clip being renamed on the timeline, from the item menu; done with its new name (null for the file's). */
   renaming?: string | null;
   onRenamed?: (id: string, name: string | null) => void;
+  pacingStrip?: boolean;
 };
 /** A held item: a picture of it follows the pointer, and where it would land. */
 type Lift = { id: string; x: number; y: number; sx: number; sy: number; dx: number; dy: number; w: number; h: number; picture: HTMLCanvasElement | null;
@@ -63,7 +65,7 @@ const COLLAPSED_HEIGHT = 24;
 const rowHeight = (layer: TrackLayer, collapsed?: Set<string>) => collapsed?.has(layer.id) ? COLLAPSED_HEIGHT : layer.kind === 'video' ? TRACK_HEIGHT : SOUND_HEIGHT;
 const rowTop = (layers: TrackLayer[], row: number, collapsed?: Set<string>) => TRACK_TOP + TRACK_HEIGHT + SOUND_GAP + layers.slice(0, row).reduce((sum, layer) => sum + rowHeight(layer, collapsed) + SOUND_GAP, 0);
 
-export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true, onSelectMany }: Props) {
+export default function TimelineView({ timeline, selectedId, zoom, theme, visuals, soundPeaks, source, playhead, onSelect, onSeek, onChange, onScrubStart, onItemMenu, onDropPayload, onCut, openCut, onZoom, fileName, renaming, onRenamed, onLayerSettings, layerSettingsId, selectedIds, snapping = true, onSelectMany, pacingStrip = false }: Props) {
   // Where the item being dragged has just snapped to, drawn as a line so the snap is visible.
   const snapLine = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -82,6 +84,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   /** Time under the pointer when a zoom gesture began, kept there as the zoom changes. */
   const lastHead = useRef(Number.NaN);
   const barRef = useRef<HTMLDivElement>(null);
+  const pacingScrollRef = useRef<HTMLDivElement>(null);
   const barInnerRef = useRef<HTMLDivElement>(null);
   const zoomAnchor = useRef<{ time: number; offset: number } | null>(null);
   const colors = useRef(TOKENS);
@@ -760,6 +763,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
     onFixSync={onLayerSettings && layer.kind === 'text' && layer.items.length > 1 ? () => onLayerSettings(layer.id, 'sync') : undefined} onMenu={setLayerMenu}/>;
   return <div className="tl-host">
     {layerMenu && <ContextMenu menu={layerMenu} onClose={() => setLayerMenu(null)}/>}
+    {pacingStrip && <PacingStrip timeline={timeline} selectedId={selectedId} zoom={zoom} theme={theme} soundPeaks={soundPeaks} onSelect={(id) => onSelect(id)} onSeek={onSeek} scrollRef={pacingScrollRef} onScroll={(left) => { if (hostRef.current && Math.abs(hostRef.current.scrollLeft - left) > 0.5) hostRef.current.scrollLeft = left; }} fileName={fileName}/>}
     <div className="tl-rows" style={{ height: BASE_HEIGHT + tracks.reduce((sum, layer) => sum + rowHeight(layer, collapsedLayers) + SOUND_GAP, 0) }}>
       <div className="tl-heads">
         <button className="tl-add-layer" aria-label="Add a layer" title="Add a layer" aria-expanded={addingLayer} onClick={() => setAddingLayer((open) => !open)}>{addingLayer ? <X size={14}/> : <Plus size={14}/>}<span>Layer</span></button>
@@ -770,7 +774,7 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
           <button role="menuitem" title="Changes the look of everything below it" onClick={addAdjustment}><SlidersHorizontal size={14}/>Adjustment</button>
         </div>}
         {head(main, TRACK_TOP, TRACK_HEIGHT)}{tracks.map((layer, row) => head(layer, rowTop(tracks, row, collapsedLayers), rowHeight(layer, collapsedLayers)))}</div>
-      <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - event.currentTarget.scrollLeft) > 0.5) bar.scrollLeft = event.currentTarget.scrollLeft; }}>
+      <div className="tl-scroll" ref={hostRef} onScroll={(event) => { const left = event.currentTarget.scrollLeft; const bar = barRef.current; if (bar && Math.abs(bar.scrollLeft - left) > 0.5) bar.scrollLeft = left; const p = pacingScrollRef.current; if (p && Math.abs(p.scrollLeft - left) > 0.5) p.scrollLeft = left; }}>
         <canvas ref={canvasRef} aria-label="Timeline. Drop media, looks, transitions, titles or music here. Drag clip edges to trim, drag a clip to reorder, click to move the playhead. Option-drag a clip to slip it, or a cut to roll it." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={(event) => { if (pinch(event, 'up')) return; if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onPointerCancel={(event) => { pinch(event, 'up'); if (!pinchRef.current.pointers.size) pinchRef.current.distance = 0; onPointerUp(); }} onContextMenu={onContextMenu} onPointerLeave={(event) => { if (skimAt.current !== null) { skimAt.current = null; skimTo(null); } if (!(event.relatedTarget as Element | null)?.closest?.('.tl-clip-ui')) setHover(null); }}
           onDragOver={onDragOver} onDragLeave={() => { dropRef.current = null; }} onDrop={onDrop}/>
         {trimNote && <div className="tl-trim-note" role="status" style={{ left: Math.max(4, trimNote.x), top: trimNote.y - 22 }}>{trimNote.text}</div>}

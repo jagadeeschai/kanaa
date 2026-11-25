@@ -693,3 +693,8 @@ html[lang="ta"] .ed-top-menu { min-width: max-content; }
 html[lang="ta"] :where(.ed-chips) { flex-wrap: wrap; }
 html[lang="ta"] :where(.ed-chips) > button { white-space: normal; text-align: center; }
 .tl-layer-title > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-pacing { display: flex; align-items: stretch; height: 34px; border-bottom: 1px solid var(--hairline); background: var(--ruler-bg, transparent); }
+.tl-pacing-head { width: 120px; flex: 0 0 120px; display: flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 600; color: var(--ruler-text); border-right: 1px solid var(--hairline); }
+.tl-pacing-scroll { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tl-pacing-scroll::-webkit-scrollbar { display: none; }
+.tl-pacing-canvas { display: block; cursor: pointer; }

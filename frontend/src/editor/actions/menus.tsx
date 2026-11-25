@@ -75,6 +75,8 @@ type Input = {
   renderPreview: () => Promise<void>;
   resetLayout: () => void;
   safeArea: boolean;
+  pacingStrip?: boolean;
+  togglePacingStrip?: () => void;
   sceneJob: { jobId: string; clipId: string; progress: number; } | null;
   seek: (t: number) => void | undefined;
   selectedBlur: BlurBox | null;
@@ -116,12 +118,13 @@ export function createEditorMenuActions(getInput: () => Input) {
   };
 
   const openViewMenu = (...args: Parameters<(event: React.MouseEvent) => void>) => {
-    const { setMenu, safeArea, setSafeArea, total, renderJob, isRendered, renderPreview, setShowingHelp, resetLayout } = getInput();
+    const { setMenu, safeArea, setSafeArea, pacingStrip, togglePacingStrip, total, renderJob, isRendered, renderPreview, setShowingHelp, resetLayout } = getInput();
     const invoke = (event: React.MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     setMenu({ x: rect.right, y: rect.bottom + 4, items: [
       { label: safeArea ? 'Hide safe area' : 'Show safe area', onSelect: () => setSafeArea((value) => !value) },
+      ...(togglePacingStrip ? [{ label: pacingStrip ? 'Hide pacing strip' : 'Show pacing strip', onSelect: togglePacingStrip }] : []),
       { label: 'Render smooth preview', disabled: !total || Boolean(renderJob) || isRendered, onSelect: () => { void renderPreview(); } },
       'divider',
       { label: 'Guide and shortcuts', hint: '?', onSelect: () => setShowingHelp(true) },

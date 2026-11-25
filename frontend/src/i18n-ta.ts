@@ -1172,4 +1172,8 @@ export const TAMIL: Record<string, string> = {
   'Duck threshold': 'குறைப்பு வரம்பு',
   'Duck depth': 'குறைப்பு அளவு',
   'Duck fade': 'மென் மாற்ற நேரம்',
+  'Show pacing strip': 'வேகப் பட்டையைக் காட்டு',
+  'Hide pacing strip': 'வேகப் பட்டையை மறை',
+  'Pacing': 'வேகம்',
+  'Slow clip': 'மெதுவான கிளிப்',
 };
