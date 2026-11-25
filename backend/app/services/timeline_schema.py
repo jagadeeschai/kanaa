@@ -191,6 +191,18 @@ class SkyLink(Strict):
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning over the preset (look_tune).
 
 
+class MatchLink(Strict):
+    """A clip in the colour of another (shot-to-shot colour match): a made copy of its part; the shot it was matched to;
+    and what it was, so Remove puts it back."""
+    original_media_id: int
+    original_in: float = Field(ge=0)
+    original_out: float = Field(gt=0)
+    reference_media_id: int
+    reference_in: float = Field(ge=0)
+    reference_out: float = Field(gt=0)
+    tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)  # Fine-tuning (look_tune).
+
+
 class RaysLink(Strict):
     """A clip with god rays (a made copy of its part); what it was, so Remove puts it back."""
     original_media_id: int
@@ -411,6 +423,7 @@ class Clip(Strict):
     lens: Optional[LensLink] = None  # Shown through the Cinematic lens (a made copy).
     freeze3d: Optional[Freeze3DLink] = None  # A time freeze in 3D (a made video of the camera moving around it).
     atmosphere: Optional[AtmosphereLink] = None
+    colour_match: Optional[MatchLink] = None  # In the colour of another shot (a made copy).
     rays: Optional[RaysLink] = None  # God rays (a made copy).
     night: Optional[NightLink] = None  # Day for night (a made copy).
     new_sky: Optional[SkyLink] = None  # A new sky laid in, the land relit (a made copy).  # Mist, haze or fog laid in by distance (a made copy).

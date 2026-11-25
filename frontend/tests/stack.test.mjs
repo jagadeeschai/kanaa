@@ -56,3 +56,12 @@ test('fine-tuning travels with a look: kept on the clip, read back, and only whe
   assert.equal(on.new_sky.tune, null);
   assert.deepEqual(looksOf(on), [sky, tunedLens]);  // Untuned looks carry no empty tuning.
 });
+
+test('colour match goes first, under every other look, and remembers the shot it was matched to', () => {
+  const matchLook = { kind: 'match', reference: { media: 9, start: 1, end: 4 } };
+  assert.deepEqual(withLook([sky, lens], matchLook).map((look) => look.kind), ['match', 'new_sky', 'lens']);
+  const styled = setLooks(timeline(), 'a', originalPart(clip), [matchLook, sky], { media: 101, seconds: 3 });
+  const on = styled.layers[0].items[0];
+  assert.deepEqual([on.colour_match.reference_media_id, on.colour_match.reference_in, on.colour_match.reference_out, on.colour_match.original_media_id], [9, 1, 4, 4]);
+  assert.deepEqual(looksOf(on), [matchLook, sky]);
+});

@@ -634,7 +634,7 @@ def ai_director(body: dict):
 def look_tuning():
     """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the
     editor's sliders start exactly where the preset is."""
-    from app.services import atmosphere_service, lens_service, look_tune, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
+    from app.services import atmosphere_service, lens_service, look_tune, match_service, night_service, rays_service, sky_swap_service, time_freeze_service as freeze
     pick = lambda values, look: {key: round(float(values[key]), 4) for key in look_tune.KNOBS[look] if key in values}
     lens = {}
     for preset in ('portrait', 'dreamy', 'rack-out', 'rack-in'):
@@ -649,6 +649,7 @@ def look_tuning():
             'sky': {sky: pick(values, 'sky') for sky, values in sky_swap_service.SKIES.items()},
             'night': {mood: pick(values, 'night') for mood, values in night_service.MOODS.items()},
             'rays': {preset: pick(values, 'rays') for preset, values in rays_service.PRESETS.items()},
+            'match': {'default': dict(match_service.DEFAULTS)},
             'freeze3d': {move: {'swing': freeze.SWING, 'push': freeze.PUSH, 'parallax': freeze.PARALLAX} for move in freeze.MOVES},
         }}
 
@@ -768,6 +769,42 @@ def day_for_night(identifier: int, body: dict):
         made = night_service.make(facts, start, end, mood, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
         return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'night'))['id']}
     job_id = enqueue_render('night', 'Day for night', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
+@router.post('/photos/{identifier}/match')
+def colour_match(identifier: int, body: dict):
+    """Shot-to-shot colour match: a copy of the clip's part in the colour of another shot (match_service.py)."""
+    from app.db.database import get_connection
+    from app.services import look_tune, match_service
+    from app.services.job_service import update_job
+    from app.services.media_service import index_media
+    from app.services.render_queue_service import enqueue_render
+    try:
+        facts = media_facts(identifier)
+        start, end = float(body['start']), float(body['end'])
+        reference = body['reference']
+        ref_facts = media_facts(int(reference['media']))
+        ref_start, ref_end = float(reference['start']), float(reference['end'])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'Choose a clip and the shot to match it to.') from exc
+    if facts.media_type != 'video' or ref_facts.media_type not in ('video', 'image') or not 0 <= start < end or not 0 <= ref_start < ref_end:
+        raise HTTPException(400, 'Colour match needs a video clip and a shot to match it to.')
+    tune = look_tune.parse(body.get('tune'), 'match')
+    target = match_service.target_path(facts.path, start, end, ref_facts.path, ref_start, ref_end, tune)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known()}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = match_service.make(facts, start, end, ref_facts, ref_start, ref_end, lambda value: update_job(holder['id'], progress=value), should_cancel, tune)
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, made_name(identifier, 'colour matched'))['id']}
+    job_id = enqueue_render('match', 'Colour match', run, reserve=lambda job: holder.update(id=job), total=100)
     return {'status': 'preparing', 'job_id': job_id}
 
 

@@ -14,6 +14,7 @@ import { openSky } from "../SkyDialog";
 import { openNight } from "../NightDialog";
 import { openRays } from "../RaysDialog";
 import { openDirector } from "../DirectorDialog";
+import { openMatch } from "../MatchDialog";
 import { removeLook } from "../looks";
 
 import { angleLayers, removeMulticam } from "../../timeline/multicam";
@@ -266,6 +267,8 @@ export function createEditorMenuActions(getInput: () => Input) {
         // sits right under it.
         const cinematic: MenuItem[] = [
           { label: '✨ Make it cinematic…', onSelect: () => openDirector(id) }, 'divider',
+          { label: clip.colour_match ? 'Match colour (change)…' : 'Match colour to…', checked: Boolean(clip.colour_match), onSelect: () => openMatch(id) }, ...(clip.colour_match ? [{ label: 'Remove colour match', onSelect: () => removeLook(id, 'match') }] : []),
+          ...(onMain ? [{ label: 'Match the other clips to this one…', onSelect: () => openMatch(id, true) }] : []),
           { label: clip.lens ? 'Cinematic lens (change)…' : 'Cinematic lens…', checked: Boolean(clip.lens), onSelect: () => openLens(id) }, ...(clip.lens ? [{ label: 'Remove lens', onSelect: () => removeLook(id, 'lens') }] : []),
           { label: clip.night ? 'Day for night (change)…' : 'Day for night…', checked: Boolean(clip.night), onSelect: () => openNight(id) }, ...(clip.night ? [{ label: 'Back to day', onSelect: () => removeLook(id, 'night') }] : []),
           { label: clip.rays ? 'God rays (change)…' : 'God rays…', checked: Boolean(clip.rays), onSelect: () => openRays(id) }, ...(clip.rays ? [{ label: 'Remove god rays', onSelect: () => removeLook(id, 'rays') }] : []),

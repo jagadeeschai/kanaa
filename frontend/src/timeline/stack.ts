@@ -1,13 +1,15 @@
 /**
- * Stacking looks: a new sky, day for night, atmosphere, the cinematic lens and smooth slow motion together on one clip. Each is a
+ * Stacking looks: a colour match, a new sky, day for night, atmosphere, the cinematic lens and smooth slow motion together on one clip. Each is a
  * made copy (made on the GPU by its service); stacked, each is made from the one before, always in one order, the one
- * that looks right: the sky first, then night falls on the land, the sun's rays, the air in front, the lens over both, slow motion last. Every look on a clip
+ * that looks right: the colour matched first, then the sky, then night falls on the land, the sun's rays, the air in front, the lens over both, slow motion last. Every look on a clip
  * remembers the same original part, so taking any one off rebuilds the rest from it (copies already made come back from
  * the cache at once), and taking the last one off gives the original back exactly.
  */
 import { findClip, updateClip, type Clip, type Timeline } from './model.ts';
 
+export type Part = { media: number; start: number; end: number };
 export type Look =
+  | { kind: 'match'; reference: Part; tune?: Tune }
   | { kind: 'new_sky'; sky: 'sunset' | 'night' | 'storm' | 'blue'; tune?: Tune }
   | { kind: 'night'; mood: 'moonlit' | 'dark'; tune?: Tune }
   | { kind: 'rays'; preset: 'soft' | 'strong' | 'dusty'; tune?: Tune }
@@ -18,13 +20,13 @@ export type LookKind = Look['kind'];
 /** Fine-tuning over a look's preset (look_tune.py): only the settings moved. */
 export type Tune = Record<string, number>;
 const tuned = (tune?: Tune | null) => (tune && Object.keys(tune).length ? { tune } : {});
-export const LOOK_ORDER: LookKind[] = ['new_sky', 'night', 'rays', 'atmosphere', 'lens', 'slowmo'];
-export type Part = { media: number; start: number; end: number };
+export const LOOK_ORDER: LookKind[] = ['match', 'new_sky', 'night', 'rays', 'atmosphere', 'lens', 'slowmo'];
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /** The looks on a clip, in order. */
 export function looksOf(clip: Clip): Look[] {
   const found: Look[] = [];
+  if (clip.colour_match) found.push({ kind: 'match', reference: { media: clip.colour_match.reference_media_id, start: clip.colour_match.reference_in, end: clip.colour_match.reference_out }, ...tuned(clip.colour_match.tune) });
   if (clip.new_sky) found.push({ kind: 'new_sky', sky: clip.new_sky.sky, ...tuned(clip.new_sky.tune) });
   if (clip.night) found.push({ kind: 'night', mood: clip.night.mood ?? 'moonlit', ...tuned(clip.night.tune) });
   if (clip.rays) found.push({ kind: 'rays', preset: clip.rays.preset ?? 'soft', ...tuned(clip.rays.tune) });
@@ -36,7 +38,7 @@ export function looksOf(clip: Clip): Look[] {
 
 /** The original part every look on the clip is made from (the clip itself when it has none). */
 export function originalPart(clip: Clip): Part {
-  const link = clip.new_sky ?? clip.night ?? clip.rays ?? clip.atmosphere ?? clip.lens ?? clip.slowmo;
+  const link = clip.colour_match ?? clip.new_sky ?? clip.night ?? clip.rays ?? clip.atmosphere ?? clip.lens ?? clip.slowmo;
   return link ? { media: link.original_media_id, start: link.original_in, end: link.original_out } : { media: clip.media_id, start: clip.in, end: clip.out };
 }
 
@@ -76,8 +78,9 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   if (!clip) return timeline;
   const original = { original_media_id: part.media, original_in: part.start, original_out: part.end };
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
-  const sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo');
+  const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo');
   const links: Partial<Clip> = {
+    colour_match: match?.kind === 'match' ? { ...original, reference_media_id: match.reference.media, reference_in: match.reference.start, reference_out: match.reference.end, tune: match.tune ?? null } : null,
     new_sky: sky?.kind === 'new_sky' ? { ...original, sky: sky.sky, tune: sky.tune ?? null } : null,
     night: dark?.kind === 'night' ? { ...original, mood: dark.mood, tune: dark.tune ?? null } : null,
     rays: beams?.kind === 'rays' ? { ...original, preset: beams.preset, tune: beams.tune ?? null } : null,
