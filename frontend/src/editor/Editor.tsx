@@ -1043,7 +1043,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
     get history(): typeof history { return history; },
     get dispatch(): typeof dispatch { return dispatch; },
     get setMenu(): typeof setMenu { return setMenu; },
-    get safeArea(): typeof safeArea { return safeArea; },
+    get safeArea(): typeof safeArea { return safeArea; }, pacingStrip: Boolean(layout.pacingStrip), togglePacingStrip: () => updateLayout({ pacingStrip: !layout.pacingStrip }),
     get setSafeArea(): typeof setSafeArea { return setSafeArea; },
     get total(): typeof total { return total; },
     get renderJob(): typeof renderJob { return renderJob; },
@@ -1149,7 +1149,7 @@ const followPanel = followTarget && <InspectorBindingsProvider name="follow" bin
     </div>
     <Splitter label="Resize timeline" axis="y" value={Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))} min={LIMITS.timeline[0]} max={Math.round(window.innerHeight * 0.55)} sign={-1} onChange={(height) => updateLayout({ timeline: height })} onReset={() => updateLayout({ timeline: DEFAULT_LAYOUT.timeline })}/>
     <div className="ed-lower"><EditorTimelineToolbar/>
-    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} snapping={snapping} onSelectMany={(ids) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); if (!ids.length) { setSelectedId(null); return; } setSelectedId(ids[0]); setMoreIds(new Set(ids.slice(1))); }} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
+    {timeline && <TimelineView timeline={timeline} selectedId={layerSettings ? null : selectedId} zoom={zoom} theme={theme} onItemMenu={openItemMenu} playhead={playhead} source={facts} visuals={(id) => visuals.current.get(id) ?? {}} soundPeaks={soundPeaks} snapping={snapping} pacingStrip={Boolean(layout.pacingStrip)} onSelectMany={(ids) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); if (!ids.length) { setSelectedId(null); return; } setSelectedId(ids[0]); setMoreIds(new Set(ids.slice(1))); }} onSelect={(id, how) => { setLayerSettings(null); setPickedInPreview(null); setEditingTitle(null); pick(id, how); }} selectedIds={moreIds} onLayerSettings={openLayerSettings} layerSettingsId={layerSettings} onSeek={seek} onChange={change} onScrubStart={() => engineRef.current?.pause()} onDropPayload={onDropPayload}
       fileName={(clip) => mediaById.get(clip.media_id)?.filename ?? `Media ${clip.media_id}`} renaming={renamingClip}
       onRenamed={(id, name) => { setRenamingClip(null); const clip = timeline && findClip(timeline, id); if (clip && (clip.name ?? null) !== name) change(updateClip(timeline!, id, { name })); }}
       onZoom={(factor) => setZoom((value) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value * factor)))}

@@ -1154,4 +1154,8 @@ export const TAMIL: Record<string, string> = {
   'Smooth slow motion works on a clip that plays normally (not reversed, ramped or frozen).': 'மென்மையான மெதுவான இயக்கம் இயல்பாக ஓடும் கிளிப்பில் மட்டும் வேலை செய்யும் (பின்னோக்கி, வேக மாற்றம் அல்லது உறைந்தது அல்ல).',
   'Remove the cinematic lens first, slow the clip down, then add the lens again.': 'முதலில் சினிமா லென்ஸை நீக்கி, கிளிப்பை மெதுவாக்கி, பின் லென்ஸை மீண்டும் சேர்க்கவும்.',
   'Set the clip to normal speed first; smooth slow motion makes its own.': 'முதலில் கிளிப்பை இயல்பு வேகத்துக்கு அமைக்கவும்; மென்மையான மெதுவான இயக்கம் தனது வேகத்தை உருவாக்கும்.',
+  'Show pacing strip': 'வேகப் பட்டையைக் காட்டு',
+  'Hide pacing strip': 'வேகப் பட்டையை மறை',
+  'Pacing': 'வேகம்',
+  'Slow clip': 'மெதுவான கிளிப்',
 };
