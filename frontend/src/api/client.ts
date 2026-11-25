@@ -38,9 +38,9 @@ export const renameProject = (id: number, name: string) => requestJson(`/api/pro
 export const duplicateProject = (id: number) => requestJson<Project>(`/api/projects/${id}/duplicate`, { method: 'POST' });
 export const deleteProject = (id: number) => requestJson(`/api/projects/${id}`, { method: 'DELETE' });
 
-export type AISettings = { configured: boolean; base_url: string; model: string; text_model: string; text_configured: boolean; local: boolean; key_source: 'environment' | 'local' | null };
+export type AISettings = { configured: boolean; base_url: string; model: string; text_model: string; text_configured: boolean; vision_model?: string; vision_configured?: boolean; local: boolean; key_source: 'environment' | 'local' | null };
 export const getAISettings = () => requestJson<AISettings>('/api/ai-settings');
-export const saveAISettings = (data: { api_key?: string; base_url: string; model: string; text_model?: string; clear_key?: boolean }) => requestJson<AISettings>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(data) });
+export const saveAISettings = (data: { api_key?: string; base_url: string; model: string; text_model?: string; vision_model?: string; clear_key?: boolean }) => requestJson<AISettings>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(data) });
 export type ImageScene = { id: number; position: number; lyric: string; prompt: string; start: number | null; end: number | null; status: 'draft' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled'; media_id: number | null; error: string | null };
 export type ImageBatch = { id: string; project_id: number; lyrics: string; style: string; brief: string; canvas: 'portrait' | 'square' | 'landscape'; job_id: string | null; active: boolean; scenes: ImageScene[] };
 export const getImageScenes = (id: number) => requestJson<{ batch: ImageBatch | null }>(`/api/projects/${id}/image-scenes`);

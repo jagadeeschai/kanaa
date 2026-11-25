@@ -593,6 +593,43 @@ def made_name(identifier: int, look: str) -> str:
     return f'{stem} ({look}).mp4'
 
 
+@router.post('/director')
+def ai_director(body: dict):
+    """The AI director: looks a clip over (locally, then with the vision model in AI settings) and suggests cinematic
+    looks with their tuning; with `review`, judges the looks' result (`result_media_id`) against the plan. A job."""
+    from app.services import director_service
+    from app.services.job_service import update_job
+    from app.services.render_queue_service import enqueue_render
+    from app.services.text_ai_service import NotConfigured
+    from app.services import ai_settings_service
+    try:
+        facts = media_facts(int(body['media_id']))
+        start, end = float(body['start']), float(body['end'])
+        wish = str(body.get('wish') or '')[:300]
+        review = body.get('review')
+        result = media_facts(int(review['result_media_id'])) if isinstance(review, dict) else None
+        current = review.get('looks') if isinstance(review, dict) and isinstance(review.get('looks'), list) else []
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, 'This clip is not valid.') from exc
+    if facts.media_type != 'video' or not 0 <= start < end:
+        raise HTTPException(400, 'The AI director needs a video clip.')
+    if not ai_settings_service.public_settings().get('vision_configured'):
+        raise HTTPException(400, 'Set a vision model (or a text model that can see pictures) and an API key in AI settings first.')
+    holder: dict = {}
+
+    def run(should_cancel):
+        progress = lambda value: update_job(holder['id'], progress=value)
+        found, frames = director_service.study(facts, start, end, progress, should_cancel)
+        after = director_service._frames(result, 0, (result.duration or end - start)) if result else None
+        try:
+            answer = director_service.ask(found, frames, wish, current, after)
+        except NotConfigured as exc:
+            raise ValueError(str(exc)) from exc
+        return {'progress': 100, 'facts': found, **answer}
+    job_id = enqueue_render('director', 'AI director', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'job_id': job_id}
+
+
 @router.get('/look-tuning')
 def look_tuning():
     """What each cinematic look can be fine-tuned by: each setting's range, and its value in every preset, so the

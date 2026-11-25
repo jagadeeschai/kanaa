@@ -12,6 +12,7 @@ class AISettingsUpdate(BaseModel):
     base_url: str = Field(default='https://api.openai.com/v1', max_length=500)
     model: str = Field(default='gpt-image-2.5-flare', min_length=1, max_length=100)
     text_model: str | None = Field(default=None, max_length=120)  # For Ask AI; None keeps the saved one.
+    vision_model: str | None = Field(default=None, max_length=120)  # For the AI director (sees pictures); empty: the text model.
     clear_key: bool = False
 
 
@@ -23,7 +24,7 @@ def get_settings():
 @router.put('/ai-settings')
 def update_settings(data: AISettingsUpdate):
     try:
-        return save_settings(data.api_key, data.base_url, data.model, data.clear_key, data.text_model)
+        return save_settings(data.api_key, data.base_url, data.model, data.clear_key, data.text_model, data.vision_model)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 

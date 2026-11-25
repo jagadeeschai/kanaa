@@ -10,6 +10,7 @@ import { Freeze3dHost } from '../Freeze3dDialog';
 import { SkyHost } from '../SkyDialog';
 import { NightHost } from '../NightDialog';
 import { RaysHost } from '../RaysDialog';
+import { DirectorHost } from '../DirectorDialog';
 import { LooksHost } from '../looks';
 import { SlowmoHost } from '../SlowmoDialog';
 import { SmartSliceHost } from '../SmartSliceDialog';
@@ -128,7 +129,7 @@ export function EditorPreviewStage() {
     <BringToLifeHost/>
     <TextToVideoHost/>
     <RemovePersonHost/>
-    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/><SlowmoHost/><AtmosphereHost/><MatchCutHost/><MulticamHost/><Freeze3dHost/><SkyHost/><NightHost/><RaysHost/><LooksHost/>
+    <SmartSliceHost/><YouTubeHost/><VideoPopoutHost/><CloneHost/><LensHost/><SlowmoHost/><AtmosphereHost/><MatchCutHost/><MulticamHost/><Freeze3dHost/><SkyHost/><NightHost/><RaysHost/><DirectorHost/><LooksHost/>
       {!fullScreen && <div className={`ed-stage-title ${saved}`} role="status" title={projectName}><b>{projectName}</b><span>{t(saved === 'saving' ? 'Saving…' : saved === 'failed' ? 'Could not save' : 'Saved')}</span></div>}
     {timeline && !firstRunClosed && !exportedOnce && !fullScreen && (() => {
       const steps = [

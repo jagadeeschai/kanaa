@@ -45,15 +45,31 @@ def first_json(text: str) -> Any:
     raise ValueError('The AI did not answer in the expected form. Try again, or try another model.')
 
 
-def client() -> tuple[openai.OpenAI, str]:
-    """An OpenAI client for the configured provider, and the text model to ask."""
+def client(require_text: bool = True) -> tuple[openai.OpenAI, str]:
+    """An OpenAI client for the configured provider, and the text model to ask. `require_text=False`: the caller asks
+    another model (the AI director's vision model) and has checked its own setting."""
     config = ai_settings_service.read_settings()
-    if not ai_settings_service.public_settings()['text_configured']:
+    if require_text and not ai_settings_service.public_settings()['text_configured']:
         raise NotConfigured('Set a text model (and an API key for a cloud provider) in AI settings first.')
     # A provider on this Mac takes no key, but the library needs one to send; any word will do.
     key = config['api_key'] or 'local'
     http = httpx.Client(timeout=TIMEOUT, transport=transport, follow_redirects=False)
     return openai.OpenAI(api_key=key, base_url=config['base_url'], http_client=http, max_retries=1), config['text_model']
+
+
+def explain(exc: Exception, model: str) -> str:
+    """What went wrong with the AI provider, in words a person can act on."""
+    if isinstance(exc, openai.AuthenticationError):
+        return 'The AI provider refused the API key. Check it in AI settings.'
+    if isinstance(exc, openai.NotFoundError):
+        return f'The AI provider has no model called "{model}". Check the model in AI settings.'
+    if isinstance(exc, openai.RateLimitError):
+        return 'The AI provider says too many requests, or no credits left. Try again later.'
+    if isinstance(exc, openai.APIStatusError):
+        return f'The AI provider answered {exc.status_code}: {str(exc.message)[:200]}'
+    if isinstance(exc, openai.APIConnectionError):
+        return 'Could not reach the AI provider. Check the address in AI settings, or that it is running.'
+    return f'The AI provider could not answer: {str(exc)[:200]}'
 
 
 def ask_json(system: str, user: str) -> Any:
