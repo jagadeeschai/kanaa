@@ -45,6 +45,22 @@ class Asking(unittest.TestCase):
         for item in [patch.object(settings, 'data_dir', Path(self.folder.name)), patch.object(text_ai_service, 'transport', httpx.MockTransport(provider))]:
             item.start(); self.addCleanup(item.stop)
 
+    def test_it_can_plan_the_film_and_camera_looks_too(self):
+        found = director.checked({'looks': [{'kind': 'blur', 'preset': 'action', 'why': 'fast'}, {'kind': 'halation', 'preset': 'nope'},
+                                            {'kind': 'weave', 'preset': 'worn', 'tune': {'amount': 99}}, {'kind': 'shake', 'preset': 'float'}]})
+        self.assertEqual([look['kind'] for look in found['looks']], ['halation', 'shake', 'weave', 'blur'])  # In stacking order.
+        self.assertEqual(found['looks'][0]['preset'], 'subtle')  # An unknown preset falls back to the first.
+        self.assertLessEqual(found['looks'][2]['tune']['amount'], 3.0)
+
+    def test_it_plans_the_same_looks_the_editor_lets_it_replace(self):
+        import re
+        source = (Path(__file__).resolve().parents[2] / 'frontend' / 'src' / 'timeline' / 'director.ts').read_text()
+        directed = re.search(r"DIRECTED[^=]*= new Set\(\[([^\]]*)\]", source).group(1)
+        self.assertEqual(set(re.findall(r"'(\w+)'", directed)), set(director.CATALOGUE))
+        stack = (Path(__file__).resolve().parents[2] / 'frontend' / 'src' / 'timeline' / 'stack.ts').read_text()
+        order = re.findall(r"'(\w+)'", re.search(r"LOOK_ORDER[^=]*= \[([^\]]*)\]", stack).group(1))
+        self.assertEqual([kind for kind in order if kind in director.CATALOGUE], director.ORDER)
+
     def test_it_needs_a_model_first(self):
         with self.assertRaises(text_ai_service.NotConfigured):
             director.vision_client()

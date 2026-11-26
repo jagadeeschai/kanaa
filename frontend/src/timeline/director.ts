@@ -5,11 +5,11 @@ import { LOOK_ORDER, type Look } from './stack.ts';
 export type PlannedLook = Look & { why?: string };
 export type Plan = { looks: PlannedLook[]; summary: string; verdict?: 'good' | 'adjust' };
 
-const NAMES: Record<string, string> = { new_sky: 'New sky', night: 'Day for night', rays: 'God rays', atmosphere: 'Atmosphere', lens: 'Cinematic lens', slowmo: 'Slow motion' };
+const NAMES: Record<string, string> = { new_sky: 'New sky', night: 'Day for night', rays: 'God rays', atmosphere: 'Atmosphere', lens: 'Cinematic lens', slowmo: 'Slow motion', halation: 'Film halation', shake: 'Handheld shake', weave: 'Gate weave', breathing: 'Lens breathing', blur: 'Motion blur' };
 
 /** The looks to make: the plan without its reasons. */
 /** The kinds of look the AI director plans; any other look already on the clip is kept as it is. */
-export const DIRECTED: ReadonlySet<string> = new Set(['new_sky', 'night', 'rays', 'atmosphere', 'lens']);
+export const DIRECTED: ReadonlySet<string> = new Set(['new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation', 'shake', 'weave', 'breathing', 'blur']);  // director_service.CATALOGUE.
 export const looksToMake = (plan: Plan, kept: Look[] = []): Look[] =>
   [...kept.filter((look) => !DIRECTED.has(look.kind)), ...plan.looks.map(({ why: _why, ...look }) => look as Look)]
     .sort((a, b) => LOOK_ORDER.indexOf(a.kind) - LOOK_ORDER.indexOf(b.kind));

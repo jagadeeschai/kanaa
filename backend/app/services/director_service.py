@@ -36,8 +36,19 @@ CATALOGUE = {
                    'choices': {'preset': ['mist', 'sunset', 'rain', 'low-fog'], 'strength': ['light', 'medium', 'heavy']}, 'tune': 'atmosphere'},
     'lens': {'about': 'Cinematic lens: real depth of field. portrait keeps people sharp; dreamy glows; rack-out / rack-in move the focus.',
              'choices': {'preset': ['portrait', 'dreamy', 'rack-out', 'rack-in'], 'strength': ['soft', 'medium', 'strong']}, 'tune': 'lens'},
+    'halation': {'about': 'Film halation: the warm red-orange glow film gives bright highlights (sun, lamps, sky). Needs bright parts to show.',
+                 'choices': {'preset': ['subtle', 'classic', 'dreamy']}, 'tune': 'halation'},
+    'shake': {'about': 'Handheld camera: docu is a shoulder-held wobble, float a slow steadicam sway, impact a jolt that settles (for a hit or a drop).',
+              'choices': {'preset': ['docu', 'float', 'impact']}, 'tune': 'shake'},
+    'weave': {'about': 'Film gate weave: the slow, small drift of film in a projector; reads as old or nostalgic film.',
+              'choices': {'preset': ['subtle', 'classic', 'worn']}, 'tune': 'weave'},
+    'breathing': {'about': 'Lens breathing: a slight, slow zoom like a lens pulling focus; adds life to a still shot.',
+                  'choices': {'preset': ['subtle', 'classic', 'deep']}, 'tune': 'breathing'},
+    'blur': {'about': 'Motion blur: the smear of a film camera on what moves. Only worth it when things move (movement above about 0.02).',
+             'choices': {'preset': ['natural', 'dreamy', 'action']}, 'tune': 'blur'},
 }
-ORDER = ['new_sky', 'night', 'rays', 'atmosphere', 'lens']
+# The order they stack in (timeline/stack.ts LOOK_ORDER, without colour match and slow motion, which it does not plan).
+ORDER = ['new_sky', 'night', 'rays', 'atmosphere', 'lens', 'halation', 'shake', 'weave', 'breathing', 'blur']
 
 SYSTEM = """You are the cinematographer and colourist inside Kanaa, a video editor. You choose cinematic looks for one
 clip, from a fixed catalogue, and tune them, the way a film's director of photography would: with taste and restraint.
@@ -47,7 +58,8 @@ Rules:
   fine answer when the clip already looks right.
 - Looks are applied in this order whatever order you list them: {order}.
 - Respect the facts: no god rays without a sun or bright sky; no new sky when there is hardly any sky; keep people's
-  faces readable (no heavy haze or night on a close-up of a face); a portrait lens needs people.
+  faces readable (no heavy haze or night on a close-up of a face); a portrait lens needs people; halation needs bright
+  highlights; motion blur needs movement; shake and gate weave never both, and not on a shot that already moves a lot.
 - Tune only when the preset needs it, within each setting's range. Leave out settings you would not change.
 - If the person wrote what they want, follow it, within these rules.
 - Give each look a short reason a non-expert understands (one sentence), and one sentence summing up the whole look.
