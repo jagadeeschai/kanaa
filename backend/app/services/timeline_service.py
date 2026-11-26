@@ -929,7 +929,7 @@ class Builder:
         self.args: list[str] = []
         self.graph: list[str] = []
         self.audio: list[str] = []
-        self.ducked: list[str] = []
+        self.ducked: dict[tuple | None, list[str]] = {}  # Ducked sounds by how they dip: auto-duck settings, or None (the gentle dip).
         self.audio_args: list[str] = []
         self.audio_graph: list[str] = []
         self.audio_inputs = 0
@@ -942,11 +942,11 @@ class Builder:
         self.inputs += 1
         return self.inputs - 1
 
-    def add_audio_track(self, path: Path, source_start: float, seconds: float, steps: list[str], duck: bool = False) -> None:
+    def add_audio_track(self, path: Path, source_start: float, seconds: float, steps: list[str], duck: tuple | bool | None = None) -> None:
         self.audio_args += ['-ss', f'{source_start:.6f}', '-t', f'{seconds:.6f}', '-i', str(path)]
         label = f'a{self.audio_inputs}'
         self.audio_graph.append(f"[{self.audio_inputs}:a]{','.join(steps)}[{label}]")
-        (self.ducked if duck else self.audio).append(label)
+        (self.audio if duck is None or duck is False else self.ducked.setdefault(None if duck is True else duck, [])).append(label)
         self.audio_inputs += 1
 
     def frames(self, seconds: float) -> int:
@@ -1484,13 +1484,11 @@ class Builder:
             else:
                 path = self.audio_asset(sound.asset_id)
             steps = sound_steps(sound, layer.volume)
-            if sound.duck and sound.duck_regions:
-                from app.services.auto_ducking import ffmpeg_duck_filter, resolve_duck_params
-                _, depth_db, fade_s = resolve_duck_params(sound.duck_preset, sound.duck_threshold, sound.duck_depth, sound.duck_fade)
-                regions = [(float(r[0]), float(r[1])) for r in sound.duck_regions if len(r) >= 2]
-                if regions:
-                    steps.append(ffmpeg_duck_filter(regions, depth_db=depth_db, fade_s=fade_s))
-            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, steps, sound.duck and not sound.duck_regions)
+            duck = None
+            if sound.duck:  # Auto-duck presets set how it dips; without one, the original gentle dip.
+                from app.services.auto_ducking import resolve_duck_params
+                duck = resolve_duck_params(sound.duck_preset, sound.duck_threshold, sound.duck_depth, sound.duck_fade) if sound.duck_preset else True
+            self.add_audio_track(self.voice(path) if sound.clean_voice else path, sound.in_, sound.out - sound.in_, steps, duck)
 
     def bus(self, labels: list[str], total: float) -> str:
         # normalize=0 keeps each track's level.
@@ -1498,10 +1496,21 @@ class Builder:
 
     def mix_tracks(self, total: float) -> None:
         if self.audio and self.ducked:
-            self.audio_graph += [f'{self.bus(self.audio, total)},asplit=2[key][main]', f'{self.bus(self.ducked, total)}[under]',
-                                 f'[under][key]{DUCK_FILTER}[dipped]', '[main][dipped]amix=inputs=2:duration=longest:normalize=0[mix]']
+            # Each way of dipping hears the same other sound (the key) and dips its own sounds.
+            groups = list(self.ducked.items())
+            keys = ''.join(f'[key{n}]' for n in range(len(groups)))
+            self.audio_graph.append(f'{self.bus(self.audio, total)},asplit={len(groups) + 1}[main]{keys}')
+            for n, (dip, labels) in enumerate(groups):
+                self.audio_graph.append(f'{self.bus(labels, total)}[under{n}]')
+                if dip is None:
+                    self.audio_graph.append(f'[under{n}][key{n}]{DUCK_FILTER}[dipped{n}]')
+                else:
+                    from app.services.auto_ducking import duck_graph
+                    self.audio_graph += duck_graph(f'under{n}', f'key{n}', f'dipped{n}', *dip, name=f'duck{n}')
+            dipped = ''.join(f'[dipped{n}]' for n in range(len(groups)))
+            self.audio_graph.append(f'[main]{dipped}amix=inputs={len(groups) + 1}:duration=longest:normalize=0[mix]')
         elif self.audio or self.ducked:
-            self.audio_graph.append(f'{self.bus(self.audio or self.ducked, total)}[mix]')
+            self.audio_graph.append(f'{self.bus(self.audio or [label for labels in self.ducked.values() for label in labels], total)}[mix]')
 
     def add_finish(self, current: str) -> str:
         """The cinematic finish over everything so far: captions come after it, above the bars."""

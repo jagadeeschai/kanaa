@@ -820,7 +820,6 @@ class Sound(Strict):
     duck_threshold: Optional[float] = Field(default=None, ge=-60, le=0)
     duck_depth: Optional[float] = Field(default=None, ge=0, le=30)
     duck_fade: Optional[float] = Field(default=None, ge=0.01, le=3)
-    duck_regions: Optional[List[List[float]]] = None  # [[start, end], ...] speech regions
     name: str = Field(default='', max_length=120)
     source_length: Optional[float] = Field(default=None, gt=0)  # Limits trimming in the editor.
     clean_voice: bool = False  # Plays from the cleaned copy.

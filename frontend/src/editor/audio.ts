@@ -13,7 +13,7 @@ const DUCK_RELEASE = 0.4;
 
 /** A source wired through its preset nodes (EQ, compressor) into its gain; rewired when the presets change. */
 type Chain = { source: MediaElementAudioSourceNode; gain: GainNode; nodes: AudioNode[]; key: string };
-type Player = Chain & { element: HTMLAudioElement; url: string };
+type Player = Chain & { element: HTMLAudioElement; url: string; /** The auto-duck dip, after the volume. */ dip: GainNode };
 
 const COMPRESSOR_MAKEUP_DB = 4.55;
 
@@ -49,30 +49,16 @@ function wire(context: AudioContext, chain: Chain, presets: readonly AudioPreset
   chain.key = key;
 }
 
-export const DUCK_PRESETS = {
-  light: { threshold: -26, depth: 6, fade: 0.4 },
-  medium: { threshold: -30, depth: 12, fade: 0.3 },
-  strong: { threshold: -34, depth: 18, fade: 0.2 },
-} as const;
-
-export function duckEnvelopeGain(regions: [number, number][] | undefined, t: number, depthDb = 12, fadeS = 0.3): number {
-  if (!regions?.length || depthDb <= 0) return 1;
-  const minGain = 10 ** (-depthDb / 20);
-  const fade = Math.max(0.01, fadeS);
-  let duckAmount = 0;
-  for (const [start, end] of regions) {
-    if (t < start - fade || t > end + fade) continue;
-    const amount = t < start ? (t - (start - fade)) / fade : t <= end ? 1 : 1 - (t - end) / fade;
-    if (amount > duckAmount) duckAmount = amount;
-  }
-  return 1 - duckAmount * (1 - minGain);
-}
+export { DUCK_PRESETS, duckGain, duckSettings } from '../timeline/ducking';
+import { duckGain, duckSettings } from '../timeline/ducking';
 
 /** Mixes preview sound with Web Audio. Video elements feed it too, so ducking hears their sound. */
 export class AudioMixer {
   private context: AudioContext | null = null;
   private main!: GainNode;
   private under!: GainNode;
+  /** Sounds that dip by an auto-duck preset (each on its own), kept out of the meter like `under`. */
+  private apart!: GainNode;
   private meter!: AnalyserNode;
   private samples = new Float32Array(1024);
   private players = new Map<string, Player>();
@@ -84,11 +70,13 @@ export class AudioMixer {
     const context = new AudioContext();
     this.main = context.createGain();
     this.under = context.createGain();
+    this.apart = context.createGain();
     this.meter = context.createAnalyser();
     this.meter.fftSize = this.samples.length;
     this.main.connect(context.destination);
     this.main.connect(this.meter);
     this.under.connect(context.destination);
+    this.apart.connect(context.destination);
     this.context = context;
     return context;
   }
@@ -118,12 +106,14 @@ export class AudioMixer {
     if (!player) {
       const element = new Audio();
       element.preload = 'auto';
-      player = { element, source: context.createMediaElementSource(element), gain: context.createGain(), nodes: [], key: '-', url: '' };
+      player = { element, source: context.createMediaElementSource(element), gain: context.createGain(), dip: context.createGain(), nodes: [], key: '-', url: '' };
+      player.gain.connect(player.dip);
       this.players.set(sound.id, player);
     }
     wire(context, player, sound.audio_presets);
-    player.gain.disconnect();
-    player.gain.connect(sound.duck ? this.under : this.main);
+    // Ducked sounds go to `under`, so the meter (on `main`) hears only the other sound; a preset dips each on its own.
+    player.dip.disconnect();
+    player.dip.connect(!sound.duck ? this.main : sound.duck_preset ? this.apart : this.under);
     if (player.url !== url) { player.url = url; player.element.src = url; }
     return player;
   }
@@ -132,6 +122,7 @@ export class AudioMixer {
     if (!this.context && !playing) return;
     const context = this.ensure();
     const wanted = new Set<string>();
+    const peak = this.peak();
     for (const layer of audioLayers(timeline)) {
       for (const sound of layer.items) {
         const length = soundLength(sound);
@@ -147,11 +138,12 @@ export class AudioMixer {
         else if (Math.abs(drift) > DRIFT_RESEEK_SECONDS * rate * sound.speed) player.element.currentTime = at;
         else if (Math.abs(drift) > DRIFT_NUDGE_SECONDS) nudge = -Math.sign(drift) * Math.min(MAX_NUDGE, Math.abs(drift));
         player.element.playbackRate = sound.speed * rate * (1 + nudge);
-        const preset = DUCK_PRESETS[sound.duck_preset ?? 'medium'];
-        const envGain = sound.duck && sound.duck_regions?.length
-          ? duckEnvelopeGain(sound.duck_regions, t - sound.start, sound.duck_depth ?? preset.depth, sound.duck_fade ?? preset.fade)
-          : 1;
-        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * (layer.volume ?? 1) * fadeGain(sound, t - sound.start, length) * envGain : 0, context.currentTime, 0.008);
+        const dip = duckSettings(sound);
+        const dipTo = dip && playing ? duckGain(peak, dip.threshold, dip.depth) : 1;
+        // Down over the fade, back up over twice it: attack and release, as the export's compressor.
+        if (dip) player.dip.gain.setTargetAtTime(dipTo, context.currentTime, Math.max(0.01, dipTo < player.dip.gain.value ? dip.fade : dip.fade * 2) / 3);
+        else player.dip.gain.setTargetAtTime(1, context.currentTime, 0.008);
+        player.gain.gain.setTargetAtTime(active && !sound.muted && !layer.muted ? sound.volume * (layer.volume ?? 1) * fadeGain(sound, t - sound.start, length) : 0, context.currentTime, 0.008);
         if (playing && active && player.element.paused) void player.element.play().catch(() => {});
         if ((!playing || !active) && !player.element.paused) player.element.pause();
       }
@@ -159,18 +151,21 @@ export class AudioMixer {
     for (const [id, player] of this.players) {
       if (wanted.has(id)) continue;
       player.element.pause();
-      player.gain.disconnect();
+      player.dip.disconnect();
       player.element.removeAttribute('src');
       player.element.load();
       this.players.delete(id);
     }
-    if (playing) this.duck(context);
+    if (playing) this.duck(context, peak);  // The original gentle dip, for ducked sounds without a preset.
     else this.under.gain.setTargetAtTime(1, context.currentTime, DUCK_RELEASE);
   }
 
-  private duck(context: AudioContext) {
+  private peak() {
     this.meter.getFloatTimeDomainData(this.samples);
-    const peak = this.samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0);
+    return this.samples.reduce((largest, value) => Math.max(largest, Math.abs(value)), 0);
+  }
+
+  private duck(context: AudioContext, peak: number) {
     const over = peak > DUCK_THRESHOLD ? 20 * Math.log10(peak / DUCK_THRESHOLD) : 0;
     const target = 10 ** (-(over * (1 - 1 / DUCK_RATIO)) / 20);
     this.under.gain.setTargetAtTime(target, context.currentTime, target < this.under.gain.value ? DUCK_ATTACK : DUCK_RELEASE);
