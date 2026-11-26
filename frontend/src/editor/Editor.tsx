@@ -428,7 +428,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   }, [playhead]);
 
   useEffect(() => { if (!timeline) return;
-    const flat = rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
+    const flat = !comparing && !hoverLook && rendered && rendered.key === JSON.stringify(timeline) ? rendered : null;
     if (engineRef.current) engineRef.current.letterMap = (item) => {
       const found = textLetterMaps.current.get(textKey(item, timeline.format));
       return found && found !== 'loading' ? found : null;
@@ -439,7 +439,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
       const source = target && mediaById.get(target.clip.media_id);
       return target && track && source ? sceneMatrix(track, target.clip, { width: source.width || timeline.format.width, height: source.height || timeline.format.height }, timeline.format, time, item.pin!.at) : null;
     };
-    if (!flat) { engineRef.current?.setTimeline(comparedTimeline(playingTimeline(coverBrand(timeline)), comparing, hoverLook), sourceFor, soundUrl, textUrl, captionUrl); return; }
+    if (!flat) { engineRef.current?.setTimeline(comparedTimeline(playingTimeline(coverBrand(timeline)), comparing, hoverLook, (id) => mediaById.has(id)), sourceFor, soundUrl, textUrl, captionUrl); return; }
     // The rendered copy plays as one clip, so nothing else has to keep up.
     const length = duration(timeline);
     const base = newClip({ media_id: RENDERED_ID, media_type: 'video', duration: length, ...timeline.format }, 'rendered');

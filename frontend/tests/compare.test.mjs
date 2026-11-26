@@ -1,34 +1,26 @@
-import test from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asShot, comparedTimeline } from '../src/editor/hooks/usePreviewCompare.ts';
+import { execFileSync } from 'node:child_process';
+import { compareStates, dividerFor, splitAt } from '../src/timeline/compare.ts';
+import { graphicState } from '../src/timeline/graphics.ts';
 
-const REST = { x: 0.5, y: 0.5, scale: 1, opacity: 1, rotation: 0 };
-const adjust = { rotation: 90, flip_horizontal: true, flip_vertical: false, brightness: 1.4, contrast: 1.2, saturation: 0.5, gamma: 1.1, temperature: 1.3, tint: 0.9, fade: 0.2 };
-const clip = { id: 'a', media_id: 9, start: 0, in: 1, out: 3, speed: 1, volume: 1, muted: false, fade_in: 0, fade_out: 0, transform: REST, adjust, look: 'warm', old_film: { amount: 1 } };
+const item = { id: 'split', start: 2, length: 4, text: 'Before / after', style: 'plain', position: 'center', color: '#ffffff', size: 44,
+  graphic: { kind: 'compare-divider', style: 'clean', from: [.5, .5], to: [.5, .5], width: 1, height: 1, line_width: .004, compare_clip: 'after', split_from: .9, split_to: .35, split_delay: .4, split_move: 4.5 } };
 
-test('comparing shows the clip as shot: neutral colour (temperature 1, not 0), rotation and flips kept', () => {
-  const plain = asShot(clip);
-  assert.equal(plain.adjust.temperature, 1);
-  assert.equal(plain.adjust.brightness, 1);
-  assert.equal(plain.adjust.fade, 0);
-  assert.equal(plain.adjust.rotation, 90);
-  assert.equal(plain.adjust.flip_horizontal, true);
-  assert.equal(plain.look, undefined);
-  assert.equal(plain.old_film, null);
+test('the preview steps and places the divider exactly as the export', () => {
+  for (const fps of [24, 30]) {
+    const samples = Array.from({ length: 160 }, (_, n) => n / 31);
+    const backend = JSON.parse(execFileSync('../backend/.venv/bin/python', ['-c', 'import json,sys; from app.services.timeline_schema import Text; from app.services.explainer_graphics import state_at; from app.services.compare_graphics import compare_states, split_at; d=json.load(sys.stdin); i=Text.model_validate(d["item"]); f=d["fps"]; print(json.dumps({"times":compare_states(i,f),"states":[state_at(i,t,f) for t in d["samples"]],"split":[split_at(i.graphic,t,f) for t in d["samples"]]}))'],
+      { cwd: process.cwd(), env: { ...process.env, PYTHONPATH: '../backend' }, input: JSON.stringify({ item, samples, fps }), encoding: 'utf8' }));
+    assert.deepEqual(compareStates(item, fps), backend.times);
+    assert.deepEqual(samples.map((at) => graphicState(item, at, fps)), backend.states);
+    samples.forEach((at, n) => assert.ok(Math.abs(splitAt(item.graphic, at, fps) - backend.split[n]) < 1e-9, `${fps} fps at ${at}`));
+  }
 });
 
-test('comparing goes back to the original footage under made cinematic copies, lasting just as long', () => {
-  const made = { ...clip, media_id: 50, in: 0, out: 4, halation: { original_media_id: 7, original_in: 10, original_out: 12, preset: 'classic' }, slowmo: { original_media_id: 7, original_in: 10, original_out: 12, factor: 2 } };
-  const plain = asShot(made);
-  assert.equal(plain.media_id, 7);
-  assert.deepEqual([plain.in, plain.out, plain.speed], [10, 12, 0.5]);
-  assert.equal((plain.out - plain.in) / plain.speed, (made.out - made.in) / made.speed);
-  assert.equal(plain.halation, null);
-});
-
-test('a hovered look shows only on its clip', () => {
-  const timeline = { version: 2, format: { width: 1920, height: 1080, fps: 30 }, layers: [{ id: 'main', kind: 'video', magnetic: true, items: [clip, { ...clip, id: 'b' }] }] };
-  const items = comparedTimeline(timeline, false, { clipId: 'b', look: 'mono' }).layers[0].items;
-  assert.deepEqual(items.map((each) => each.look), ['warm', 'mono']);
-  assert.equal(comparedTimeline(timeline, false, null), timeline);
+test('a clip finds the divider that reveals it', () => {
+  const timeline = { format: { width: 1280, height: 720, fps: 30 }, layers: [{ id: 'main', kind: 'video', items: [] }, { id: 'g', kind: 'text', items: [item] }] };
+  assert.equal(dividerFor(timeline, 'after')?.id, 'split');
+  assert.equal(dividerFor(timeline, 'other'), undefined);
+  assert.equal(dividerFor({ ...timeline, layers: [{ ...timeline.layers[1], hidden: true }] }, 'after'), undefined);
 });

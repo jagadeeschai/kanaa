@@ -8,7 +8,7 @@ import { type FontChoice, TAMIL_FONTS } from '../../timeline/templates';
 import { ValueSlider } from '../controls';
 import { More } from '../layout';
 import { Expand, Mountain, PenTool } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const ASSET_POLL_MS = 2000;
 
@@ -57,6 +57,8 @@ export function useFoundInClip(clip: Clip | null, kind: 'people' | 'objects') {
 }
 
 export function Chips<T extends string>({ label, options, value, onPick, onHover }: { label: string; options: { id: T; label: string }[]; value: T | null; onPick: (id: T) => void; onHover?: (id: T | null) => void }) {
+  const hover = useRef(onHover); hover.current = onHover;
+  useEffect(() => () => hover.current?.(null), []);  // A hover preview ends when the chips go, even without the pointer leaving.
   return <div className="ed-chips" role="group" aria-label={t(label)} onMouseLeave={() => onHover?.(null)}>{options.map((option) => <button key={option.id} className={value === option.id ? 'on' : ''} aria-pressed={value === option.id} onClick={() => onPick(option.id)} onMouseEnter={() => onHover?.(option.id)}>{t(option.label)}</button>)}</div>;
 }
 

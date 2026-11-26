@@ -203,6 +203,9 @@ export function EditorPreviewStage() {
               onPointerUp={() => setComparing(false)}
               onPointerLeave={() => setComparing(false)}
               onPointerCancel={() => setComparing(false)}
+              onKeyDown={(event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); setComparing(true); } }}
+              onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') setComparing(false); }}
+              onBlur={() => setComparing(false)}
             ><Eye size={15}/></button>
             {/* An icon with its tip, like the clip actions beside it; in full screen it says Exit, so leaving is obvious. */}
             <button className={`ed-icon ed-safe-toggle ed-fullscreen ${fullScreen ? 'exit' : ''}`} aria-pressed={fullScreen} onClick={toggleFullScreen} aria-label={t(fullScreen ? 'Leave full screen' : 'Full screen preview')}

@@ -135,8 +135,9 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
     const down = (event: KeyboardEvent) => { if (event.key === '\\' && !(event.target as HTMLElement)?.closest?.('input, textarea')) { event.preventDefault(); setOriginal(true); } };
     const up = (event: KeyboardEvent) => { if (event.key === '\\') setOriginal(false); };
     // Capture, so it runs before (and in place of) the editor's own hold-to-compare.
-    window.addEventListener('keydown', down, true); window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up); };
+    const away = () => setOriginal(false);  // Leaving the window ends it too (the key-up never comes).
+    window.addEventListener('keydown', down, true); window.addEventListener('keyup', up); window.addEventListener('blur', away);
+    return () => { window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up); window.removeEventListener('blur', away); };
   }, []);
 
   const toggle = (kind: LookKind, on: boolean) => {
