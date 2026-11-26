@@ -33,6 +33,7 @@ import { AudioLines, Clapperboard, Crop, Expand, FlipHorizontal, FlipVertical, L
 import { useEffect } from 'react';
 import { pulseFor } from '../../timeline/beatsync';
 import { useSongBeats } from '../hooks/useSongBeats';
+import { VelocityRow } from './VelocityRow';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
@@ -302,6 +303,7 @@ export function Inspector() {
       <More>
       <h3 className="ed-sub">Speed effect</h3>
       <Chips label="Speed ramp" options={RAMP_CHOICES} value={rampName(clip.ramp)} onPick={(id) => onChange({ ramp: id === 'off' ? null : RAMPS[id] })}/>
+      {isMain && !clip.reverse && <VelocityRow clip={clip} onChange={onChange}/>}
       {clip.ramp && <><RampCurve ramp={clip.ramp} at={local / ((clip.out - clip.in) / clip.speed)}/><p className="ed-tip">A ramp has no sound. Slow parts smoothen best from 60 or 120 fps footage.</p></>}
       {isMain && <label className="ed-check"><input type="checkbox" checked={Boolean(clip.reverse)} onChange={(event) => onChange({ reverse: event.target.checked })}/><span>Play backwards<small>{clip.reverse && !copyReady ? 'Making a reversed copy… The preview plays forwards until it is ready.' : 'Sound is off while a clip plays backwards.'}</small></span></label>}
       <label className="ed-check"><input type="checkbox" checked={Boolean(clip.clean_voice)} onChange={(event) => onChange({ clean_voice: event.target.checked })}/><span>Clean voice<small>Removes steady background noise like fans, AC and hiss. Made once, in the background.</small></span></label>

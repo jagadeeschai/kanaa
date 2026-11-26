@@ -59,7 +59,9 @@ export const withoutLook = (looks: Look[], kind: LookKind): Look[] => looks.filt
 
 /** What stops looks from being added to a clip at all. */
 export function cannotLook(clip: Clip, kind: LookKind): string | null {
-  if (clip.reverse || clip.ramp || clip.freeze != null || clip.freeze3d) return 'These looks work on a clip that plays normally (not reversed, ramped or frozen).';
+  // A speed ramp (a velocity edit) plays the made copy at its own speeds, so looks work under it; not slow motion.
+  if (clip.reverse || clip.freeze != null || clip.freeze3d) return 'These looks work on a clip that plays forwards (not reversed or frozen).';
+  if (kind === 'slowmo' && !clip.slowmo && clip.ramp) return 'Take off the speed ramp first; smooth slow motion makes its own.';
   if (kind === 'slowmo' && !clip.slowmo && clip.speed !== 1) return 'Set the clip to normal speed first; smooth slow motion makes its own.';
   return null;
 }

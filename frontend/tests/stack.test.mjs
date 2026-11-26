@@ -42,9 +42,12 @@ test('the clip plays the last copy, every look remembers the original, and the l
   assert.deepEqual([back.media_id, back.in, back.out, back.muted, back.lens, back.new_sky, back.slowmo], [4, 2, 5, false, null, null, null]);
 });
 
-test('looks need a clip that plays normally', () => {
+test('looks need a clip that plays forwards; a speed ramp is fine, except for slow motion', () => {
   assert.equal(cannotLook(clip, 'lens'), null);
-  assert.match(cannotLook({ ...clip, reverse: true }, 'lens'), /normally/);
+  assert.match(cannotLook({ ...clip, reverse: true }, 'lens'), /forwards/);
+  const ramped = { ...clip, ramp: [{ t: 0, v: 2 }, { t: 0.5, v: 0.3 }, { t: 1, v: 2 }] };
+  assert.equal(cannotLook(ramped, 'halation'), null);
+  assert.match(cannotLook(ramped, 'slowmo'), /speed ramp/);
   assert.match(cannotLook({ ...clip, speed: 2 }, 'slowmo'), /normal speed/);
 });
 

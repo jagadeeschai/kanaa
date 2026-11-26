@@ -3,6 +3,7 @@
  * - Handheld shake "On the beat": a jolt on each beat inside the clip (hitsFor gives them, as seconds into its part).
  * - Beat pulse "Match the song": the pulse's tempo and first beat taken from the song (pulseFor).
  */
+import { sourceAt } from './ramp.ts';
 import { originalPart } from './stack.ts';
 import type { BeatPulse, Clip } from './model.ts';
 
@@ -15,8 +16,8 @@ export function hitsFor(clip: Clip, beats: number[]): number[] {
   const made = part.media !== clip.media_id;  // Playing a made copy: its time runs 1:1 with the part, but slow motion stretches it.
   const slower = clip.slowmo?.factor ?? 1;
   return beats.filter((beat) => beat >= clip.start && beat < clip.start + length(clip)).map((beat) => {
-    const local = (beat - clip.start) * clip.speed;
-    return round(made ? (clip.in + local) / slower : clip.in - part.start + local);
+    const at = sourceAt(clip, beat - clip.start);  // Where in its media the clip is on the beat (a speed ramp included).
+    return round(made ? at / slower : at - part.start);
   }).filter((hit) => hit >= 0 && hit <= part.end - part.start);
 }
 
