@@ -31,6 +31,8 @@ import { type PlaybackSource } from '../playback';
 import { AnimationPicker, Chips } from './parts';
 import { AudioLines, Clapperboard, Crop, Expand, FlipHorizontal, FlipVertical, Layers3, Lock, Maximize, Minimize, Move, Pipette, Play, Plus, RotateCcw, RotateCw, ScanFace, SlidersHorizontal, Unlock, Volume2, VolumeX, Wallpaper, WandSparkles } from 'lucide-react';
 import { useEffect } from 'react';
+import { pulseFor } from '../../timeline/beatsync';
+import { useSongBeats } from '../hooks/useSongBeats';
 import { ActiveEffects, BLENDS, BLUR_AMOUNTS, CORNERS, EFFECT_INTENSITIES, EFFECT_INTENSITY_VALUE, LOOK_NAMES, MOVES, RAMP_CHOICES, RampCurve, SoundControls, WhoStays, rampName } from './clip-parts';
 import { ColourWheelsGroup } from './ColourWheelsGroup';
 import { AudioPresets } from './AudioPresetsGroup';
@@ -42,7 +44,8 @@ export type InspectorBindings = { onReframe: (() => void) | null; reframing: boo
 export function Inspector() {
   const { onReframe, reframing, onMove, backgrounds, onBackground, logos, clipBrandMarks, onClipBrand, onRemoveClipBrand, clip, source, onChange, canDetach, onDetach, follow, isMain, copyReady, onLayout, picking, onPick, timing, overlay, onLayer, closesWithTransition, onShowEnter, onShowExit } = useEditorPanel<InspectorBindings>('clip');
   const { local, seekLocal: onSeekLocal } = useItemTime(clip.start, (clip.out - clip.in) / clip.speed);
-  const { pause: onPause, previewLook, timeline: { format } } = useEditor();
+  const { pause: onPause, previewLook, timeline: { format }, timeline: whole } = useEditor();
+  const { song, beats } = useSongBeats(whole);  // Beat pulse can take its tempo from the song.
   useEffect(() => () => previewLook?.(clip.id, null), [clip.id, previewLook]);  // A hover preview ends with the panel.
 
   const transition: Transition | null = clip.transition_in ?? null;
@@ -201,8 +204,9 @@ export function Inspector() {
         <ValueSlider label="Pulse size" value={clip.beat_pulse.size} min={0.005} max={0.15} step={0.005} defaultValue={DEFAULT_BEAT_PULSE.size} unit="%" factor={100} decimals={1} onChange={(size, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, size } }, group)}/>
         <ValueSlider label="First beat" value={clip.beat_pulse.offset} min={0} max={Math.min(60, clipLength(clip))} step={0.01} defaultValue={0} unit="s" decimals={2} onChange={(offset, group) => onChange({ beat_pulse: { ...clip.beat_pulse!, offset } }, group)}/>
       </More>
+      <button className="ed-button wide" disabled={!beats?.length} title={t(song ? 'Tempo and first beat from the song' : 'Add a song first')} onClick={() => { const pulse = pulseFor(clip, beats ?? [], clip.beat_pulse!); if (pulse) onChange({ beat_pulse: pulse }); }}>{t('Match the song')}</button>
       <button className="ed-button wide" onClick={() => onChange({ beat_pulse: null })}>Turn off</button>
-    </> : <button className="ed-button wide" onClick={() => onChange({ beat_pulse: { ...DEFAULT_BEAT_PULSE } })}><Plus size={14}/>{t('Add')}</button>}
+    </> : <button className="ed-button wide" onClick={() => onChange({ beat_pulse: pulseFor(clip, beats ?? [], DEFAULT_BEAT_PULSE) ?? { ...DEFAULT_BEAT_PULSE } })}><Plus size={14}/>{t('Add')}</button>}
     </Group>
     <Group title="Old film" tab="effects" onlyWhen={Boolean(clip.old_film)} startOpen={Boolean(clip.old_film)} changed={Boolean(clip.old_film)} keywords="old film vintage grain scratches dust gate weave projector" tip="Distress the picture like aged film stock. Preview and export use the same clip settings.">
     {clip.old_film ? <>

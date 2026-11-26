@@ -88,3 +88,28 @@ class ShakeSeed(unittest.TestCase):
         self.assertEqual(seed_of(4, 2.0, 4.0), seed_of(4, 2.0, 4.0))
         self.assertNotEqual(seed_of(4, 2.0, 4.0), seed_of(4, 6.0, 8.0))  # Same length, another cut.
         self.assertNotEqual(seed_of(4, 2.0, 4.0), seed_of(5, 2.0, 4.0))
+
+
+class ShakeOnTheBeat(unittest.TestCase):
+    def test_it_jolts_on_each_hit_and_settles_between(self):
+        from app.services.film_service import SHAKE, jolt, shake_path
+        settle = SHAKE['beat']['settle']
+        self.assertEqual(jolt(0.2, settle, [0.5, 1.0]), 0.0)  # Still before the first beat.
+        self.assertAlmostEqual(jolt(0.5, settle, [0.5, 1.0]), 1.0)
+        self.assertLess(jolt(0.95, settle, [0.5, 1.0]), 0.1)  # Settled just before the next.
+        self.assertAlmostEqual(jolt(1.0, settle, [0.5, 1.0]), 1.0)
+        fps = 30
+        path = shake_path(SHAKE['beat'], 60, fps, seed=3, aspect=9 / 16, hits=[0.5, 1.0, 1.5])
+        size = [abs(a) + abs(b) + abs(c) / 50 for a, b, c, _ in path]
+        self.assertEqual(max(size[:14]), 0.0)  # Nothing before the first beat.
+        self.assertGreater(max(size[15:20]), 4 * max(size[25:30]))  # Strongest just after a beat, calm before the next.
+        self.assertEqual(len({zoom for *_, zoom in path}), 1)  # One zoom for the whole part, edges hidden throughout.
+
+    def test_different_beats_make_a_different_copy(self):
+        from pathlib import Path as P
+        import tempfile
+        from app.services.film_service import target_path
+        with tempfile.NamedTemporaryFile(suffix='.mp4') as source:
+            one = target_path(P(source.name), 0, 3, 'shake', 'beat', None, 7, [0.5, 1.0])
+            two = target_path(P(source.name), 0, 3, 'shake', 'beat', None, 7, [0.5, 1.1])
+        self.assertNotEqual(one, two)

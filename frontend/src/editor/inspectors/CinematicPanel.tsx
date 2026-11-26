@@ -7,6 +7,8 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, LoaderCircle, Sparkles } from 'lucide-react';
 import { photoThumbUrl, requestJson, waitForJob } from '../../api/client';
+import { useSongBeats } from '../hooks/useSongBeats';
+import { hitsFor } from '../../timeline/beatsync';
 import { t } from '../../i18n';
 import { ATMOSPHERE_PRESETS } from '../../timeline/atmosphere';
 import { LENS_PRESETS } from '../../timeline/lens';
@@ -146,7 +148,18 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
     const look = startLook(kind, others[0]);
     if (look) setDraft(withLook(draft, look));
   };
-  const change = (look: Look) => setDraft(withLook(draft, look));
+  // Shake on the beat: the song's beats inside this clip (none: there is no song to follow yet).
+  const { song, beats } = useSongBeats(store.timeline!);
+  const change = (look: Look) => {
+    if (look.kind === 'shake' && look.preset === 'beat') {
+      const hits = hitsFor(clip, beats ?? []);
+      if (!hits.length) { setError(t(song ? 'No beats of the song fall in this clip.' : 'Add a song first: On the beat follows its beats.')); return; }
+      setError(null);
+      setDraft(withLook(draft, { ...look, hits }));
+      return;
+    }
+    setDraft(withLook(draft, look.kind === 'shake' ? { ...look, hits: undefined } : look));
+  };
   const apply = async () => {
     setError(null); setBusy(0);
     try { await restyle(live.current, clip.id, draft, setBusy); } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }

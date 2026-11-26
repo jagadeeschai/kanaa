@@ -16,7 +16,7 @@ export type Look =
   | { kind: 'atmosphere'; preset: 'mist' | 'sunset' | 'rain' | 'low-fog'; strength: 'light' | 'medium' | 'heavy'; tune?: Tune }
   | { kind: 'lens'; preset: 'portrait' | 'dreamy' | 'rack-out' | 'rack-in'; strength: 'soft' | 'medium' | 'strong'; tune?: Tune }
   | { kind: 'halation'; preset: 'subtle' | 'classic' | 'dreamy'; tune?: Tune }
-  | { kind: 'shake'; preset: 'docu' | 'float' | 'impact'; tune?: Tune }
+  | { kind: 'shake'; preset: 'docu' | 'float' | 'impact' | 'beat'; /** On the beat: the beats, seconds into the part. */ hits?: number[]; tune?: Tune }
   | { kind: 'weave'; preset: 'subtle' | 'classic' | 'worn'; tune?: Tune }
   | { kind: 'breathing'; preset: 'subtle' | 'classic' | 'deep'; tune?: Tune }
   | { kind: 'slowmo'; factor: 2 | 4 | 8 }
@@ -38,7 +38,7 @@ export function looksOf(clip: Clip): Look[] {
   if (clip.atmosphere) found.push({ kind: 'atmosphere', preset: clip.atmosphere.preset, strength: clip.atmosphere.strength ?? 'medium', ...tuned(clip.atmosphere.tune) });
   if (clip.lens) found.push({ kind: 'lens', preset: clip.lens.preset, strength: clip.lens.strength ?? 'medium', ...tuned(clip.lens.tune) });
   if (clip.halation) found.push({ kind: 'halation', preset: clip.halation.preset ?? 'classic', ...tuned(clip.halation.tune) });
-  if (clip.shake) found.push({ kind: 'shake', preset: clip.shake.preset ?? 'docu', ...tuned(clip.shake.tune) });
+  if (clip.shake) found.push({ kind: 'shake', preset: clip.shake.preset ?? 'docu', ...(clip.shake.hits ? { hits: clip.shake.hits } : {}), ...tuned(clip.shake.tune) });
   if (clip.weave) found.push({ kind: 'weave', preset: clip.weave.preset ?? 'classic', ...tuned(clip.weave.tune) });
   if (clip.breathing) found.push({ kind: 'breathing', preset: clip.breathing.preset ?? 'classic', ...tuned(clip.breathing.tune) });
   if (clip.slowmo) found.push({ kind: 'slowmo', factor: clip.slowmo.factor });
@@ -103,7 +103,7 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
     lens: lens?.kind === 'lens' ? { ...original, preset: lens.preset, strength: lens.strength, tune: lens.tune ?? null } : null,
     slowmo: slow?.kind === 'slowmo' ? { ...original, factor: slow.factor } : null,
     halation: glow?.kind === 'halation' ? { ...original, preset: glow.preset, tune: glow.tune ?? null } : null,
-    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, tune: wobble.tune ?? null, ...(wasSteady ? { steadied: true } : {}) } : null,
+    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, ...(wobble.hits ? { hits: wobble.hits } : {}), tune: wobble.tune ?? null, ...(wasSteady ? { steadied: true } : {}) } : null,
     weave: weave?.kind === 'weave' ? { ...original, preset: weave.preset, tune: weave.tune ?? null, ...(wasSteady ? { steadied: true } : {}) } : null,
     breathing: breath?.kind === 'breathing' ? { ...original, preset: breath.preset, tune: breath.tune ?? null } : null,
     motion_blur: smear?.kind === 'blur' ? { ...original, preset: smear.preset, tune: smear.tune ?? null } : null,

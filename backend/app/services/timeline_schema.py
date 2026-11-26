@@ -205,7 +205,8 @@ class ShakeLink(Strict):
     original_media_id: int
     original_in: float = Field(ge=0)
     original_out: float = Field(gt=0)
-    preset: Literal['docu', 'float', 'impact'] = 'docu'
+    preset: Literal['docu', 'float', 'impact', 'beat'] = 'docu'
+    hits: Optional[List[float]] = Field(default=None, max_length=600)  # On the beat: the beats, seconds into the part.
     steadied: bool = False  # The clip had Steady on before the shake; turned back on when the shake is taken off.
     tune: Optional[Dict[str, float]] = Field(default=None, max_length=8)
 

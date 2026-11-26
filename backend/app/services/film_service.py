@@ -32,7 +32,7 @@ from app.services.job_service import JobCancelled
 from app.services.media_probe import MediaFacts
 
 logger = logging.getLogger(__name__)
-VERSION = 3  # 2: shake zooms by the frame's shape, so no edge ever shows. 3: shake seeded by the original part.
+VERSION = 4  # 2: shake zooms by the frame's shape, so no edge ever shows. 3: shake seeded by the original part. 4: on-the-beat shake.
 GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'film_render.swift'
 TINT = (1.0, 0.42, 0.18)  # Halation's colour (R, G, B): the warm red-orange of film.
 HALATION = {
@@ -46,6 +46,8 @@ SHAKE = {
     'docu': {'amount': 1.0, 'speed': 1.0, 'reach': 0.006, 'turn': 0.25, 'speeds': (0.7, 1.3, 2.9), 'settle': 0.0},
     'float': {'amount': 1.0, 'speed': 1.0, 'reach': 0.012, 'turn': 0.45, 'speeds': (0.13, 0.27, 0.41), 'settle': 0.0},
     'impact': {'amount': 1.0, 'speed': 1.0, 'reach': 0.025, 'turn': 0.8, 'speeds': (6.0, 9.0, 13.0), 'settle': 0.35},
+    # On the beat: a short jolt on each of the song's beats (`hits`), settling between them.
+    'beat': {'amount': 1.0, 'speed': 1.0, 'reach': 0.018, 'turn': 0.6, 'speeds': (7.0, 11.0, 15.0), 'settle': 0.18},
 }
 WEAVE = {
     'subtle': {'amount': 1.0, 'speed': 1.0, 'reach': 0.002, 'turn': 0.05, 'speeds': (0.18, 0.37, 0.61), 'settle': 0.0},
@@ -59,9 +61,10 @@ BREATHING = {
 }
 
 
-def target_path(source: Path, start: float, end: float, kind: str, preset: str, tune: dict | None = None, seed: int | None = None) -> Path:
+def target_path(source: Path, start: float, end: float, kind: str, preset: str, tune: dict | None = None, seed: int | None = None,
+                hits: list[float] | None = None) -> Path:
     from app.services.look_tune import key
-    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), kind, preset] + ([key(tune)] if tune else []) + ([seed] if seed is not None else []))
+    ident = json.dumps([VERSION, str(source), source.stat().st_size, round(start, 3), round(end, 3), kind, preset] + ([key(tune)] if tune else []) + ([seed] if seed is not None else []) + ([[round(hit, 3) for hit in hits]] if hits is not None else []))
     return settings.data_dir / 'media' / f'{kind}-{hashlib.sha256(ident.encode()).hexdigest()[:16]}.mp4'
 
 
@@ -81,18 +84,43 @@ def halation_frame(frame: np.ndarray, chosen: dict) -> np.ndarray:
     return (np.clip(1 - (1 - picture) * (1 - np.clip(light, 0, 1)), 0, 1) * 255 + 0.5).astype(np.uint8)
 
 
-def shake_path(chosen: dict, frames: int, fps: float, seed: int, aspect: float = 9 / 16) -> list[tuple[float, float, float, float]]:
+def jolt(t: float, settle: float, hits: list[float] | None) -> float:
+    """How much of the shake is left at `t`: one jolt from the start, or (with `hits`) a fresh one at each hit, each
+    settling over `settle` seconds; 1 throughout when it never settles."""
+    if not settle:
+        return 1.0
+    if hits is None:
+        return math.exp(-t / settle)
+    last = max((hit for hit in hits if hit <= t), default=None)
+    return 0.0 if last is None else math.exp(-(t - last) / settle)
+
+
+def shake_path(chosen: dict, frames: int, fps: float, seed: int, aspect: float = 9 / 16, hits: list[float] | None = None) -> list[tuple[float, float, float, float]]:
     """The camera at each frame: (across, down) as shares of the width, a turn in degrees, and the zoom that keeps the
     edges hidden (the same for the whole clip). `aspect` is the frame's height over its width: a wide frame has less room
-    up and down, so the same shift needs more zoom there."""
+    up and down, so the same shift needs more zoom there. `hits` (seconds into the part): a jolt at each."""
     rng = np.random.default_rng(seed)
     phases = rng.uniform(0, 2 * math.pi, (3, len(chosen['speeds'])))
     weights = np.array([1.0, 0.55, 0.3][:len(chosen['speeds'])])
     reach, turn = chosen['reach'] * chosen['amount'], chosen['turn'] * chosen['amount']
     out = []
-    for k in range(frames):
+    if hits is not None:  # On the beat: each beat throws the camera to full reach, a new way each time, and it rings out.
+        ordered = sorted(hits)
+        ways = rng.uniform(0, 2 * math.pi, len(ordered))
+        turns = rng.choice([-1.0, 1.0], len(ordered))
+        ring = chosen['speeds'][0] * chosen['speed']
+        for k in range(frames):
+            t = k / fps
+            n = next((i for i in range(len(ordered) - 1, -1, -1) if ordered[i] <= t), None)
+            if n is None:
+                out.append((0.0, 0.0, 0.0))
+                continue
+            since = t - ordered[n]
+            swing = math.exp(-since / chosen['settle']) * math.cos(2 * math.pi * ring * since)
+            out.append((reach * math.cos(ways[n]) * swing, reach * 0.8 * math.sin(ways[n]) * swing, turn * turns[n] * swing))
+    for k in range(frames if hits is None else 0):
         t = k / fps
-        settle = math.exp(-t / chosen['settle']) if chosen['settle'] else 1.0
+        settle = jolt(t, chosen['settle'], hits)
         wave = [float(np.dot(weights, np.sin(2 * math.pi * np.array(chosen['speeds']) * chosen['speed'] * t + phases[axis])) / weights.sum()) for axis in range(3)]
         out.append((reach * wave[0] * settle, reach * 0.8 * wave[1] * settle, turn * wave[2] * settle))
     # Zoomed in just enough to cover the furthest it goes (and a turn's corners), so the edges never show.
@@ -124,32 +152,35 @@ def seed_of(*part) -> int:
 
 
 def make(facts: MediaFacts, start: float, end: float, kind: str, preset: str, on_progress: Callable[[int], None] = lambda _: None,
-         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None, seed: int | None = None) -> Path:
-    """`seed` picks the shake's motion: from the original part (see seed_of), so other looks before it never change it."""
-    """The part start..end (source seconds) with halation (`kind` 'halation') or handheld shake ('shake'). Made once."""
+         should_cancel: Callable[[], bool] = lambda: False, tune: dict | None = None, seed: int | None = None,
+         hits: list[float] | None = None) -> Path:
+    """The part start..end (source seconds) with a film look (`kind`: halation, shake, weave or breathing). Made once.
+    `seed` picks the shake's motion: from the original part (see seed_of), so other looks before it never change it.
+    `hits`: for shake on the beat, the beats' times in seconds into the part."""
     table = HALATION if kind == 'halation' else SHAKE if kind == 'shake' else WEAVE if kind == 'weave' else BREATHING if kind == 'breathing' else None
     if table is None or preset not in table:
         raise ValueError('Choose a film look preset.')
-    target = target_path(facts.path, start, end, kind, preset, tune, seed)
+    hits = sorted(hits) if hits is not None and kind == 'shake' else None
+    target = target_path(facts.path, start, end, kind, preset, tune, seed, hits)
     seed = seed if seed is not None else seed_of(str(facts.path), start, end)
     if target.is_file():
         return target
     chosen = {**table[preset], **(tune or {})}
     if os.environ.get('KANAA_GPU_EFFECTS') != '0':
         try:
-            if _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=True, seed=seed):
+            if _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=True, seed=seed, hits=hits):
                 on_progress(100)
                 return target
         except JobCancelled:
             raise
         except Exception:
             logger.exception('GPU film look failed; making it on the CPU')
-    _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=False, seed=seed)
+    _make(facts, start, end, kind, chosen, target, on_progress, should_cancel, gpu=False, seed=seed, hits=hits)
     on_progress(100)
     return target
 
 
-def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, target: Path, on_progress, should_cancel, gpu: bool, seed: int = 0) -> bool:
+def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, target: Path, on_progress, should_cancel, gpu: bool, seed: int = 0, hits: list[float] | None = None) -> bool:
     import cv2
     from app.services.lens_service import hardware_encoder
     tool = None
@@ -165,7 +196,7 @@ def _make(facts: MediaFacts, start: float, end: float, kind: str, chosen: dict, 
     fps = facts.fps or 30
     total = max(1, round((end - start) * fps))
     span = ['-ss', f'{start:.3f}', '-t', f'{end - start:.3f}']
-    cameras = shake_path(chosen, total + 2, fps, seed=seed, aspect=height / width) if kind in ('shake', 'weave') else breathing_path(chosen, total + 2, fps) if kind == 'breathing' else None
+    cameras = shake_path(chosen, total + 2, fps, seed=seed, aspect=height / width, hits=hits) if kind in ('shake', 'weave') else breathing_path(chosen, total + 2, fps) if kind == 'breathing' else None
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix('.tmp.mp4')
     read = subprocess.Popen([ffmpeg, '-nostdin', '-v', 'error', *span, '-i', str(facts.path), '-an', '-vf', f'{colour(facts)},scale={width}:{height}',

@@ -8,6 +8,7 @@ export const SHAKE_PRESETS = [
   { id: 'docu', label: 'Documentary', about: 'A small, steady handheld wobble, like a camera on the shoulder' },
   { id: 'float', label: 'Steadicam float', about: 'A slow, drifting sway' },
   { id: 'impact', label: 'Impact', about: 'A jolt at the start that settles, for a hit or a drop' },
+  { id: 'beat', label: 'On the beat', about: 'A jolt on each beat of the song' },
 ] as const;
 export const WEAVE_PRESETS = [
   { id: 'subtle', label: 'Subtle', about: 'A faint sideways and vertical projector drift' },
