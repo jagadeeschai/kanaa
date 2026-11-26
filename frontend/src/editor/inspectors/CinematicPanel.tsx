@@ -16,6 +16,7 @@ import { NIGHT_MOODS } from '../../timeline/night';
 import { RAYS_PRESETS } from '../../timeline/rays';
 import { SKY_CHOICES } from '../../timeline/sky';
 import { SLOW_FACTORS } from '../../timeline/slowmo';
+import { FILM_STOCKS, stockOf, withStock } from '../../timeline/filmstock';
 import { HALATION_PRESETS, SHAKE_PRESETS, WEAVE_PRESETS, BREATHING_PRESETS } from '../../timeline/film';
 import { cannotLook, LOOK_ORDER, looksOf, originalPart, withLook, withoutLook, type Look, type LookKind, type Tune } from '../../timeline/stack';
 import { openDirector } from '../DirectorDialog';
@@ -160,6 +161,12 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
     </div>
     {preview && preview.not_shown.length > 0 && <p className="ed-tip"><small>{t('Movement looks (handheld shake, slow motion, motion blur) show in the clip once applied, not in this still.')}</small></p>}
     <button className="ed-button wide" onClick={() => openDirector(clip.id)}><Sparkles size={13}/> {t('✨ Make it cinematic (AI)')}</button>
+    {/* Film stocks: the camera and film looks in one click; None takes them off. Each stays editable in its card. */}
+    <div className="ed-chips" role="group" aria-label={t('Film stock')}>
+      <button className={stockOf(draft) === '' ? 'on' : ''} aria-pressed={stockOf(draft) === ''} disabled={busy !== null} title={t('No camera or film looks')} onClick={() => setDraft(withStock(draft, null))}>{t('None')}</button>
+      {FILM_STOCKS.map((stock) => { const on = stockOf(draft) === stock.id; return <button key={stock.id} className={on ? 'on' : ''} aria-pressed={on} disabled={busy !== null} title={t(stock.about)}
+        onClick={() => setDraft(withStock(draft, stock.id))}>{t(stock.label)}</button>; })}
+    </div>
     {LOOK_ORDER.map((kind) => {
       const look = draft.find((each) => each.kind === kind);
       const card = CARDS[kind];
