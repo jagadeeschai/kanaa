@@ -89,6 +89,8 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
   const original = { original_media_id: part.media, original_in: part.start, original_out: part.end };
   const has = (kind: LookKind) => looks.find((each) => each.kind === kind);
   const match = has('match'), sky = has('new_sky'), dark = has('night'), beams = has('rays'), air = has('atmosphere'), lens = has('lens'), slow = has('slowmo'), smear = has('blur'), glow = has('halation'), wobble = has('shake'), weave = has('weave'), breath = has('breathing');
+  // Steady was on before any shake or weave: remembered on each, so taking them off in any order brings it back.
+  const wasSteady = Boolean(clip.stabilise || clip.shake?.steadied || clip.weave?.steadied);
   const links: Partial<Clip> = {
     // Steady would smooth the added shake or weave back out, so a shaken/woven clip is not steadied; it comes back when taken off.
     ...((wobble || weave) && clip.stabilise ? { stabilise: false, bypass: clip.bypass?.some((each) => each !== 'steady') ? clip.bypass.filter((each) => each !== 'steady') : null } : {}),
@@ -101,8 +103,8 @@ export function setLooks(timeline: Timeline, clipId: string, part: Part, looks: 
     lens: lens?.kind === 'lens' ? { ...original, preset: lens.preset, strength: lens.strength, tune: lens.tune ?? null } : null,
     slowmo: slow?.kind === 'slowmo' ? { ...original, factor: slow.factor } : null,
     halation: glow?.kind === 'halation' ? { ...original, preset: glow.preset, tune: glow.tune ?? null } : null,
-    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, tune: wobble.tune ?? null, ...(clip.stabilise || clip.shake?.steadied ? { steadied: true } : {}) } : null,
-    weave: weave?.kind === 'weave' ? { ...original, preset: weave.preset, tune: weave.tune ?? null, ...(clip.stabilise || clip.weave?.steadied ? { steadied: true } : {}) } : null,
+    shake: wobble?.kind === 'shake' ? { ...original, preset: wobble.preset, tune: wobble.tune ?? null, ...(wasSteady ? { steadied: true } : {}) } : null,
+    weave: weave?.kind === 'weave' ? { ...original, preset: weave.preset, tune: weave.tune ?? null, ...(wasSteady ? { steadied: true } : {}) } : null,
     breathing: breath?.kind === 'breathing' ? { ...original, preset: breath.preset, tune: breath.tune ?? null } : null,
     motion_blur: smear?.kind === 'blur' ? { ...original, preset: smear.preset, tune: smear.tune ?? null } : null,
   };

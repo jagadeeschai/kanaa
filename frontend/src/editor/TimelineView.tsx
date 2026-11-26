@@ -473,18 +473,22 @@ export default function TimelineView({ timeline, selectedId, zoom, theme, visual
   const hitKey = (pointerX: number, pointerY: number): { dot: InlineKeyframeDot; clipStart: number } | null => {
     const sel = props.current.selectedId;
     if (!sel) return null;
-    const layers = trackLayers(props.current.timeline);
-    for (let row = 0; row < layers.length; row++) {
-      const layer = layers[row];
-      if (layer.kind === 'audio' || layer.locked) continue;
-      const bottom = topOf(row) + rowHeight(layer, collapsedLayers);
-      for (const item of layer.items as TrackItem[]) {
+    const layers = trackLayers(props.current.timeline), main = mainLayer(props.current.timeline);
+    // The main track's clips too (drawn on its row), then each track's.
+    const rows: { items: TrackItem[]; bottom: number; locked?: boolean }[] = [{ items: main.items as TrackItem[], bottom: TRACK_TOP + TRACK_HEIGHT, locked: main.locked },
+      ...layers.flatMap((layer, row) => (layer.kind === 'audio' ? [] : [{ items: layer.items as TrackItem[], bottom: topOf(row) + rowHeight(layer, collapsedLayers), locked: layer.locked }]))];
+    for (const { items, bottom, locked } of rows) {
+      if (locked) continue;
+      for (const item of items) {
         if (item.id !== sel) continue;
         const length = 'length' in item ? item.length : clipLength(item as Clip);
         const transform = 'transform' in item ? item.transform : undefined;
         const ramp = 'ramp' in item ? (item as Clip).ramp : undefined;
         const dots = collectInlineKeyframes(item.id, length, transform, ramp);
-        const dot = hitTestInlineKeyframe(dots, pointerX, pointerY, xOf(item.start), bottom, props.current.zoom);
+        // The trim handles at the clip's ends win over a key sitting on them.
+        const left = xOf(item.start), right = left + length * props.current.zoom, reach = Math.min(HANDLE, (right - left) / 3);
+        if (pointerX - left <= reach || right - pointerX <= reach) continue;
+        const dot = hitTestInlineKeyframe(dots, pointerX, pointerY, left, bottom, props.current.zoom);
         if (dot) return { dot, clipStart: item.start };
       }
     }

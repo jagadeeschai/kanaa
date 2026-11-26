@@ -88,7 +88,7 @@
 .ed-workspace,.ed-body,.ed-lower{display:contents}.ed-split,.ed-rail{display:none}.ed-value-edit input,.ed-time input{font-size:16px}.ed-panel-closed{visibility:visible;padding:10px;overflow:visible}
 .ed-stage{order:1;position:sticky;top:0;z-index:2;height:46dvh;flex-shrink:0;border-radius:0}
 .ed-tools{order:2;position:sticky;top:46dvh;z-index:2;background:var(--panel)}
-.tl-host{order:3;position:sticky;top:calc(46dvh + 44px);z-index:2;height:auto;max-height:30dvh}.tl-rows{min-height:128px}.tl-heads{width:106px}.tl-head button{width:20px}
+.tl-host{order:3;position:sticky;top:calc(46dvh + 44px);z-index:2;height:auto;max-height:30dvh}.tl-rows{min-height:128px}.tl-heads{width:106px}.tl-pacing-head{width:106px;flex-basis:106px}.tl-head button{width:20px}
 .ed-media{order:5;overflow:visible;flex-shrink:0;border-radius:0}.ed-inspector{order:4;overflow:visible;flex-shrink:0;border-radius:0}}
 @media(prefers-reduced-motion:reduce){.ed *{transition:none!important}}
 .ed-who{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:10px;border-radius:10px;background:var(--well)}.ed-who .ed-tip{margin:0}.ed-who-title{font-size:12px;color:var(--text-2)}.ed-who-picture{width:100%;border-radius:6px;display:block}.ed-who-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
@@ -342,7 +342,7 @@
 .tl-head-compact>.tl-layer-volume{flex:0 0 100%;width:100%;min-width:0;height:8px;margin:0;padding:0 2px;box-sizing:border-box}
 .ed .tl-head-compact>.tl-layer-volume::-webkit-slider-thumb{width:9px;height:9px;margin-top:-3px}
 .ed .tl-head-compact>.tl-layer-volume::-moz-range-thumb{width:9px;height:9px}
-@media(min-width:901px){.tl-heads{width:140px}}
+@media(min-width:901px){.tl-heads{width:140px}.tl-pacing-head{width:140px;flex-basis:140px}}
 
 /* On the clips in the timeline: an on/off button, a hover card and the rename box. */
 .tl-clip-layer{position:absolute;left:0;top:0;height:0;pointer-events:none;z-index:2}

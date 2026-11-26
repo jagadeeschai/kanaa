@@ -112,6 +112,21 @@ function updateTransformTime(transform: Transform, oldT: number, newT: number): 
   return { ...transform, keyframes };
 }
 
+/** `wanted`, kept between the dragged key's neighbours (in every property it has a key in), so it never lands on one
+ *  and merges with it. */
+export function betweenNeighbours(transform: Transform, from: number, wanted: number): number {
+  let low = -Infinity, high = Infinity;
+  for (const keys of Object.values(transform.keyframes ?? {}) as (Keyframe[] | undefined)[]) {
+    if (!keys?.some((key) => Math.abs(key.t - from) <= SAME_KEY_SECONDS)) continue;
+    for (const key of keys) {
+      if (Math.abs(key.t - from) <= SAME_KEY_SECONDS) continue;
+      if (key.t < from) low = Math.max(low, key.t); else high = Math.min(high, key.t);
+    }
+  }
+  const gap = 2 * SAME_KEY_SECONDS;
+  return round(Math.min(high - gap, Math.max(low + gap, wanted)));
+}
+
 function removeTransformAt(transform: Transform, targetT: number): Transform {
   let next: Transform = { ...transform, keyframes: { ...transform.keyframes } };
   for (const [prop, keys] of Object.entries(next.keyframes ?? {}) as [AnimatedProperty, Keyframe[] | undefined][]) {
@@ -146,8 +161,9 @@ export function moveInlineKeyframe(
           const length = 'length' in item ? item.length : clipLength(item as Clip);
           const clamped = round(Math.max(0, Math.min(length, newLocalTime)));
           if (dot.kind === 'transform' && 'transform' in item && item.transform) {
-            nextDot = { ...dot, t: clamped };
-            return { ...item, transform: updateTransformTime(item.transform, dot.t, clamped) };
+            const t = betweenNeighbours(item.transform, dot.t, clamped);
+            nextDot = { ...dot, t };
+            return { ...item, transform: updateTransformTime(item.transform, dot.t, t) };
           }
           if (dot.kind === 'ramp' && 'ramp' in item && item.ramp?.length) {
             const clip = item as Clip;

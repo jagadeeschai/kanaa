@@ -1098,7 +1098,7 @@ export default function Editor({ projectId, projectName, photo, onClose, onOpenO
   const inVideo = shownMedia.filter((item) => usedIds.has(item.id));
   const otherMedia = shownMedia.filter((item) => !usedIds.has(item.id));
   const inspectorOpen = layout.inspectorOpen;
-  const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? (layout.wideInspector ? 'min(480px, 42vw)' : `${layout.inspector}px`) : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
+  const shellStyle = { '--media-col': panelOpen ? `${layout.media}px` : '44px', '--media-gap': '6px', '--inspector-col': inspectorOpen ? (layout.wideInspector ? `max(${layout.inspector}px, min(480px, 42vw))` : `${layout.inspector}px`) : '44px', '--inspector-gap': '6px', '--timeline-h': `${Math.min(layout.timeline, Math.round(window.innerHeight * 0.55))}px` } as React.CSSProperties;
   const ratio = timeline ? timeline.format.width / timeline.format.height : 16 / 9;
   const isEmpty = timeline && timeline.layers.every((layer) => !layer.items.length);  // A title, song or caption alone is a video too (on black).
   // ---- Ask AI ----
@@ -1134,7 +1134,7 @@ const followPanel = followTarget && <InspectorBindingsProvider name="follow" bin
       <EditorLeftRail/>
       {panelOpen ? <Splitter label="Resize media panel" axis="x" value={layout.media} min={LIMITS.media[0]} max={LIMITS.media[1]} sign={1} onChange={(media) => updateLayout({ media })} onReset={() => updateLayout({ media: DEFAULT_LAYOUT.media })}/> : <div className="ed-rail"/>}
       <EditorPreviewStage/>
-      {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
+      {inspectorOpen ? <Splitter label="Resize settings panel" axis="x" value={layout.inspector} min={LIMITS.inspector[0]} max={LIMITS.inspector[1]} sign={-1} onChange={(inspector) => updateLayout({ inspector, wideInspector: false })} onReset={() => updateLayout({ inspector: DEFAULT_LAYOUT.inspector })}/> : <div className="ed-rail"/>}
       <HelpContext.Provider value={openGuide}>
       <RailContext.Provider value={{ folded: !inspectorOpen, setOpen: (open) => updateLayout({ inspectorOpen: open }), tools: <div className="ed-rail-tools" role="group" aria-label="Edit and export">
             <JobTray/>

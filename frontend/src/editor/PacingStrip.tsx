@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSongBeats } from '../api/client';
 import { t } from '../i18n';
 import { beatSound, timelineBeats } from '../timeline/beats';
-import { clipLength, mainLayer, soundLength, type Clip, type Sound, type Timeline } from '../timeline/model';
+import { clipLength, itemLength, mainLayer, soundLength, trackLayers, type Clip, type Sound, type Timeline, type TrackItem } from '../timeline/model';
 import type { ClipVisuals } from './TimelineView';
 
 const PAD = 16;
@@ -58,8 +58,10 @@ export default function PacingStrip({ timeline, selectedId, zoom, theme, soundPe
   }, [song?.asset_id]);
 
   const beatTimes = useMemo(() => (song ? timelineBeats(song, beats) : []), [song, beats]);
-  const total = useMemo(() => mainClips.reduce((m, c) => Math.max(m, c.start + clipLength(c)), 0), [mainClips]);
-  const contentWidth = Math.max(320, Math.ceil(PAD * 2 + total * zoom));
+  // As wide as the timeline's canvas below (TimelineView: every track's end, plus room after), so both scroll as one.
+  const end = useMemo(() => Math.max(mainClips.reduce((m, c) => Math.max(m, c.start + clipLength(c)), 0),
+    ...trackLayers(timeline).flatMap((layer) => (layer.items as TrackItem[]).map((item) => item.start + itemLength(item)))), [timeline, mainClips]);
+  const contentWidth = Math.max(scroller.current?.clientWidth ?? 0, Math.ceil(PAD + end * zoom + 240));
 
   useEffect(() => {
     const canvas = canvasRef.current;

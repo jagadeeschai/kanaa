@@ -97,3 +97,12 @@ test('Steady comes back when the shake is taken off, and no switched-off Steady 
   assert.equal(retuned.layers[0].items[0].shake.steadied, true);  // Still remembered after changing the shake.
   assert.equal(setLooks(retuned, 'a', part, [], null).layers[0].items[0].stabilise, true);
 });
+
+test('Steady comes back after both shake and gate weave are taken off, in any order', () => {
+  const part = { media: 4, start: 2, end: 5 };
+  let now = setLooks(timeline({ ...clip, stabilise: true }), 'a', part, [{ kind: 'shake', preset: 'docu' }], { media: 120, seconds: 3 });
+  now = setLooks(now, 'a', part, [{ kind: 'shake', preset: 'docu' }, { kind: 'weave', preset: 'subtle' }], { media: 121, seconds: 3 });
+  now = setLooks(now, 'a', part, [{ kind: 'weave', preset: 'subtle' }], { media: 122, seconds: 3 });
+  assert.equal(now.layers[0].items[0].stabilise, false);
+  assert.equal(setLooks(now, 'a', part, [], null).layers[0].items[0].stabilise, true);
+});
