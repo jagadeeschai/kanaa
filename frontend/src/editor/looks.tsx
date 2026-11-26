@@ -24,13 +24,19 @@ async function makeLook(look: Look, source: Part, part: Part, onProgress: (value
 }
 
 /** Gives the clip exactly these looks (in their order), made one after another; progress 0..100 over them all. */
-export async function restyle(store: EditorStore, clipId: string, looks: Look[], onProgress: (value: number) => void): Promise<void> {
+export async function restyle(store: EditorStore, clipId: string, looks: Look[], onProgress: (value: number) => void, group?: string): Promise<void> {
   const clip = findClip(store.timeline!, clipId);
   if (!clip) return;
   const part = originalPart(clip);
   const made = await makeLooks(part, looks, (look, source, step) => makeLook(look, source, part, (value) => onProgress(((step + value / 100) / looks.length) * 100)));
   if (made) store.addMedia(await getPhoto(made.media));
-  store.change(setLooks(store.timeline!, clipId, part, looks, made));
+  store.change(setLooks(store.timeline!, clipId, part, looks, made), group);
+}
+
+/** Gives several clips their looks, one after another, as one change to undo; progress 0..100 over them all. */
+export async function restyleEach(store: EditorStore, plan: { clipId: string; looks: Look[] }[], onProgress: (value: number) => void): Promise<void> {
+  const group = `looks-every-${Date.now()}`;
+  for (const [n, { clipId, looks }] of plan.entries()) await restyle(store, clipId, looks, (value) => onProgress(((n + value / 100) / plan.length) * 100), group);
 }
 
 const OPEN = 'kanaa:remove-look';

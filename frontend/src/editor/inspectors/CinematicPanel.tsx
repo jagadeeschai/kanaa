@@ -23,7 +23,8 @@ import { HALATION_PRESETS, SHAKE_PRESETS, WEAVE_PRESETS, BREATHING_PRESETS } fro
 import { cannotLook, LOOK_ORDER, looksOf, originalPart, withLook, withoutLook, type Look, type LookKind, type Tune } from '../../timeline/stack';
 import { openDirector } from '../DirectorDialog';
 import { openMatch } from '../MatchDialog';
-import { restyle } from '../looks';
+import { restyle, restyleEach } from '../looks';
+import { looksForEvery } from '../../timeline/lookall';
 import { EditorContext } from '../state/EditorContext';
 import { TuneSection, type TuneLook } from '../TuneSection';
 
@@ -164,6 +165,13 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
     setError(null); setBusy(0);
     try { await restyle(live.current, clip.id, draft, setBusy); } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
   };
+  // Every clip on the main track: these looks, made one clip after another (an Undo takes them all back).
+  const applyEvery = async () => {
+    const plan = looksForEvery(live.current.timeline!, draft, beats ?? []);
+    if (!plan.length) { setError(t('Every clip already has these looks.')); return; }
+    setError(null); setBusy(0);
+    try { await restyleEach(live.current, plan, setBusy); } catch (problem) { setError((problem as Error).message); } finally { setBusy(null); }
+  };
   const dirty = !same(draft, applied);
   if (blocked) return <p className="ed-tip">{t(blocked)}</p>;
   return <div className="ed-cinematic">
@@ -208,5 +216,7 @@ export function CinematicPanel({ clip }: { clip: Clip }) {
       <button className="ed-button" disabled={!dirty || busy !== null} onClick={() => setDraft(applied)}>{t('Undo changes')}</button>
     </div>
     {others.length > 0 && <button className="ed-button wide" disabled={busy !== null} onClick={() => openMatch(clip.id, true)}>{t('Match the other clips to this one…')}</button>}
+    {others.length > 0 && <button className="ed-button wide" disabled={busy !== null} title={t('Every clip on the main track gets these looks (each keeps its own colour match). One Undo takes it back.')}
+      onClick={() => { void applyEvery(); }}>{t('Use these looks on every clip')}</button>}
   </div>;
 }
