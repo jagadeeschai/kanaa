@@ -404,3 +404,22 @@ class WhipZoomAndFinish(MatchesFfmpeg):
         self.assertGreater(gpu, cpu * .7); self.assertLess(gpu, cpu * 1.4)
 
     test_same_picture_and_faster = None  # Not again here.
+
+
+class AStretch(MatchesFfmpeg):
+    """A look at one moment on the GPU starts at its own first frame (when the timeline cannot be cut to it), and shows
+    exactly what the whole render shows there."""
+    test_same_picture_and_faster = None
+
+    def test_a_stretch_matches_the_whole_render_there(self):
+        import numpy as np
+        work = timeline(12)
+        whole, stretch = self.root / 'whole.mp4', self.root / 'stretch.mp4'
+        gpu_render.render(work, self.facts.__getitem__, whole, tool=self.tool, masks=lambda *_: self.mask)
+        gpu_render.render(work, self.facts.__getitem__, stretch, tool=self.tool, masks=lambda *_: self.mask, since=6.0, until=9.0)
+        def frames(path):
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-vf', 'scale=320:180', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+            return np.frombuffer(raw, np.uint8).reshape(-1, 180, 320, 3).astype(float)
+        a, b = frames(whole)[180:270], frames(stretch)
+        self.assertEqual(len(b), 90)
+        self.assertLess(float(np.abs(a - b).mean()), 1.5)

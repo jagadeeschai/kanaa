@@ -12,7 +12,7 @@ from app.services.job_service import JobCancelled
 logger = logging.getLogger(__name__)
 
 
-def try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg, until: float | None = None):
+def try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg, until: float | None = None, since: float = 0.0):
     """`until`: a look at one moment (the timeline already cut to it): silent, and only that long."""
     from app.services import gpu_render, timeline_service as reference
     from app.services.gpu_audio import compile_audio
@@ -46,12 +46,12 @@ def try_render(timeline, media, audio_asset, target, on_progress, should_cancel,
             short = min(timeline.format.width, timeline.format.height)
             bitrate = {720: 9, 1080: 16, 1440: 28}.get(short, 50 if short >= 2160 else round(short * .015)) * 1_000_000
             gpu_render.render(timeline, media, silent, lambda p: on_progress(min(97, 3 + int(p * .94))), bitrate=bitrate,
-                              should_cancel=should_cancel, masks=masks, until=until)
+                              should_cancel=should_cancel, masks=masks, until=until, since=since)
             output = folder / 'output.mp4'
             audio_input = ['-i', str(sound)] if sound else []
             audio = ['-map', '1:a', '-c:a', 'aac', '-b:a', '192k'] if sound else ['-an']
             result = reference.run_cancellable([ffmpeg, '-nostdin', '-v', 'error', '-i', str(silent), *audio_input,
-                '-map', '0:v', *audio, '-c:v', 'copy', '-t', f'{min(timeline.duration, until if until is not None else timeline.duration):.6f}', *reference.BT709_OUTPUT_ARGS,
+                '-map', '0:v', *audio, '-c:v', 'copy', '-t', f'{min(timeline.duration, until if until is not None else timeline.duration) - since:.6f}', *reference.BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-n', str(output)], should_cancel)
             if should_cancel():
                 raise JobCancelled()

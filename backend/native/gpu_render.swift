@@ -206,6 +206,7 @@ struct Finish: Decodable {
 }
 
 struct Plan: Decodable {
+    let first: Int?  // The first frame drawn (a look at one moment); it is the clip's frame 0.
     let finish: Finish?
     let finishAt: Int?
     let width: Int
@@ -503,7 +504,7 @@ kernel vec4 panelShadow(__sample image, vec4 rect, float height, float radius, f
 }
 """)!
 
-for f in 0..<plan.frames {
+for f in (plan.first ?? 0)..<max(plan.first ?? 0, plan.frames) {
     var frame = black
     for (index, item) in plan.items.enumerated() {
         if let fin = plan.finish, index == (plan.finishAt ?? plan.items.count) { frame = finished(frame, fin, f) }
@@ -590,7 +591,7 @@ for f in 0..<plan.frames {
         fail("Ran out of frame memory.")
     }
     context.render(frame.cropped(to: frameRect), to: pixels, bounds: frameRect, colorSpace: nil)
-    guard adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: CMTimeScale(plan.fps))) else {
+    guard adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(f - (plan.first ?? 0)), timescale: CMTimeScale(plan.fps))) else {
         fail("The encoder stopped: \(String(describing: writer.error))")
     }
     if f % 30 == 0 { print("frame \(f)"); fflush(stdout) }

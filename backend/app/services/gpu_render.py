@@ -306,9 +306,9 @@ def _transition(transition, frames: int, height: int, width: int = 1920) -> dict
     return {'slide': slide, 'zoom': zoom, 'screen': screen, 'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
-def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None, until: float | None = None) -> dict:
-    """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`. `until`: stop
-    there (seconds), for a look at one moment."""
+def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None, until: float | None = None, since: float = 0.0) -> dict:
+    """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`. `since` and
+    `until`: only that stretch (seconds), for a look at one moment; frames before `since` are not drawn."""
     from app.services.timeline_service import playing_timeline
     from app.services import gpu_documentary
     timeline=playing_timeline(timeline)
@@ -391,7 +391,7 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
     finish_at = len(items) if finish_at is None else finish_at
     items[finish_at:finish_at] = brand_items  # Right after the finish.
     return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(min(timeline.duration, until if until is not None else timeline.duration) * fps),
-            'bitrate': bitrate, 'output': str(output), 'items': items,
+            'first': round(since * fps), 'bitrate': bitrate, 'output': str(output), 'items': items,
             'finish': finish_plan(timeline.finish, timeline.format.width, timeline.format.height), 'finish_at': finish_at}
 
 
@@ -418,7 +418,7 @@ def finish_plan(finish, width: int, height: int) -> dict | None:
 
 
 def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, on_progress: Callable[[int], None] = lambda _: None,
-           bitrate: int = 16_000_000, tool: Path | None = None, masks=None, should_cancel=lambda: False, until: float | None = None) -> None:
+           bitrate: int = 16_000_000, tool: Path | None = None, masks=None, should_cancel=lambda: False, until: float | None = None, since: float = 0.0) -> None:
     """A silent video of `timeline` drawn on the GPU. Raises ValueError naming what it cannot draw yet."""
     missing = unsupported(timeline, media)
     if missing:
@@ -428,7 +428,7 @@ def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path,
         tool = helper(SOURCE)
     import tempfile
     pictures = tempfile.TemporaryDirectory(prefix='.gpu-titles-', dir=output.parent)
-    work = plan(timeline, media, output, bitrate, Path(pictures.name), masks, until)
+    work = plan(timeline, media, output, bitrate, Path(pictures.name), masks, until, since)
     plan_file = output.with_suffix('.plan.json')
     plan_file.write_text(json.dumps(work), encoding='utf-8')
     process = None
