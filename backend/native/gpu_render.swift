@@ -136,9 +136,50 @@ kernel vec4 wheels(__sample s, vec3 lift, vec3 gamma, vec3 gain) {
 }
 """)!
 
+// A Gaussian blur across only (the whip's, as ffmpeg's gblur with sigmaV 0), sigma in pixels.
+let sidewaysKernel = CIKernel(source: """
+kernel vec4 sideways(sampler src, float sigma) {
+    vec2 d = destCoord();
+    float step = max(1.0, sigma / 6.0);
+    vec4 sum = vec4(0.0); float total = 0.0;
+    for (float x = -3.0 * sigma; x <= 3.0 * sigma; x += step) {
+        float w = exp(-(x * x) / (2.0 * sigma * sigma));
+        sum += sample(src, samplerTransform(src, d + vec2(x, 0.0))) * w; total += w;
+    }
+    return sum / total;
+}
+""")!
+// The finish's glow: only what is brighter than half, stretched (lutrgb clip((val-128)*2)).
+let thresholdKernel = CIColorKernel(source: """
+kernel vec4 bright(__sample s) { return vec4(clamp((s.rgb - 0.5) * 2.0, 0.0, 1.0), 1.0); }
+""")!
+// blend screen with all_opacity: the screened picture mixed back by the glow's amount.
+let screenKernel = CIColorKernel(source: """
+kernel vec4 screenBy(__sample base, __sample light, float amount) {
+    vec3 screened = 1.0 - (1.0 - base.rgb) * (1.0 - light.rgb);
+    return vec4(mix(base.rgb, screened, amount), base.a);
+}
+""")!
+// The vignette (finish_service.vignette_mask, multiplied) and the grain (uniform noise on the brightness, new each frame).
+let vignetteKernel = CIColorKernel(source: """
+float finishHash(vec2 p, float n) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + n * 37.719) * 43758.5453); }
+kernel vec4 vignette(__sample s, vec2 size, float amount, float from, float to, float grain, float frame) {
+    vec2 p = destCoord();
+    float aspect = size.x / size.y;
+    vec2 d = vec2((p.x / size.x - 0.5) * aspect, p.y / size.y - 0.5);
+    float reach = length(d) / length(vec2(aspect * 0.5, 0.5));
+    float t = clamp((reach - from) / (to - from), 0.0, 1.0);
+    vec3 c = s.rgb * (1.0 - amount * t * t * (3.0 - 2.0 * t));
+    c += (finishHash(p, frame) * 2.0 - 1.0) * grain / 255.0;
+    return vec4(clamp(c, 0.0, 1.0), s.a);
+}
+""")!
+
 struct SplitPanel: Decodable { let rect: [Double]; let move: [Double] }
 struct ScreenParts: Decodable { let a: [Double]; let b: [Double] }  // Window [x, y, w, h] and move [dx, dy], top-left pixels (split_screen.py).
 struct Transition: Decodable {
+    let slide: [Double]?  // Whip: xfade's progress each frame (1 shows the clip before); the old clip pushed out left.
+    let zoom: [[Double]]?  // Cross zoom: each frame the old clip's size, the new one's, and the streaks (moving_transitions).
     let screen: [ScreenParts]?
     let split: [[SplitPanel]]?
     let split_shadow: Double?
@@ -149,7 +190,24 @@ struct Transition: Decodable {
     let fill: [Double]  // RGB, 0...1.
 }
 
+/// The cinematic finish (finish_service.py), over everything before the first caption.
+struct Finish: Decodable {
+    let cube: [Float]?
+    let cubeSize: Int
+    let glow: Double
+    let glowSmall: [Int]
+    let glowSigma: Double
+    let vignette: Double
+    let vignetteFrom: Double
+    let vignetteTo: Double
+    let grain: Double  // 8-bit levels, ± (ffmpeg noise c0s / 2 on the luma).
+    let bars: [Int]  // Side, top: pixels.
+    let barColour: [Double]
+}
+
 struct Plan: Decodable {
+    let finish: Finish?
+    let finishAt: Int?
     let width: Int
     let height: Int
     let fps: Int
@@ -265,6 +323,56 @@ func sourceTime(_ item: Item, _ k: Int) -> Double {
 
 func weighted(_ image: CIImage, _ amount: Double) -> CIImage {
     amount >= 0.999 ? image : image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(amount))])
+}
+
+/// A frame scaled about its middle, cut to the frame (ffmpeg's scale then centred crop).
+func zoomed(_ image: CIImage, _ size: Double) -> CIImage {
+    let cx = Double(W) / 2, cy = Double(H) / 2
+    return image.transformed(by: CGAffineTransform(translationX: cx, y: cy).scaledBy(x: size, y: size).translatedBy(x: -cx, y: -cy)).cropped(to: frameRect)
+}
+
+/// The cross zoom's streaks: the average of five sizes along lines from the middle (moving_transitions.cross_zoom).
+func streaked(_ image: CIImage, _ size: Double, _ streaks: Double) -> CIImage {
+    var sum = CIImage.empty().cropped(to: frameRect)
+    for t in 0..<5 {
+        let tap = weighted(zoomed(image, size * (1 + streaks * Double(t) / 4)), 0.2)
+        sum = tap.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: sum])
+    }
+    return sum.cropped(to: frameRect)
+}
+
+/// The cinematic finish at frame `f` (finish_service.finish_filters, in the same order).
+func finished(_ frame: CIImage, _ fin: Finish, _ f: Int) -> CIImage {
+    var out = frame.cropped(to: frameRect)
+    if let cube = fin.cube {
+        let data = cube.withUnsafeBufferPointer { Data(buffer: $0) }
+        out = out.applyingFilter("CIColorCube", parameters: ["inputCubeDimension": fin.cubeSize, "inputCubeData": data]).cropped(to: frameRect)
+    }
+    if fin.glow > 0 {
+        let sw = Double(fin.glowSmall[0]), sh = Double(fin.glowSmall[1])
+        let small = out.transformed(by: CGAffineTransform(scaleX: sw / Double(W), y: sh / Double(H)))
+        let light = thresholdKernel.apply(extent: small.extent, arguments: [small])!
+            .clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: fin.glowSigma]).cropped(to: small.extent)
+            .transformed(by: CGAffineTransform(scaleX: Double(W) / sw, y: Double(H) / sh)).cropped(to: frameRect)
+        out = screenKernel.apply(extent: frameRect, arguments: [out, light, fin.glow])!
+    }
+    if fin.vignette > 0 || fin.grain > 0 {
+        out = vignetteKernel.apply(extent: frameRect, arguments: [out, CIVector(x: CGFloat(W), y: CGFloat(H)), fin.vignette, fin.vignetteFrom, fin.vignetteTo, fin.grain, Double(f % 997)])!
+    }
+    let colour = CIColor(red: CGFloat(fin.barColour[0]), green: CGFloat(fin.barColour[1]), blue: CGFloat(fin.barColour[2]))
+    if fin.bars[1] > 0 {
+        let bar = CGFloat(fin.bars[1])
+        for rect in [CGRect(x: 0, y: 0, width: CGFloat(W), height: bar), CGRect(x: 0, y: CGFloat(H) - bar, width: CGFloat(W), height: bar)] {
+            out = CIImage(color: colour).cropped(to: rect).composited(over: out)
+        }
+    }
+    if fin.bars[0] > 0 {
+        let bar = CGFloat(fin.bars[0])
+        for rect in [CGRect(x: 0, y: 0, width: bar, height: CGFloat(H)), CGRect(x: CGFloat(W) - bar, y: 0, width: bar, height: CGFloat(H))] {
+            out = CIImage(color: colour).cropped(to: rect).composited(over: out)
+        }
+    }
+    return out.cropped(to: frameRect)
 }
 
 /// Item `index` at its own frame `k`, placed on the frame: fitted inside it, sized, centred where the plan says (Core
@@ -398,6 +506,7 @@ kernel vec4 panelShadow(__sample image, vec4 rect, float height, float radius, f
 for f in 0..<plan.frames {
     var frame = black
     for (index, item) in plan.items.enumerated() {
+        if let fin = plan.finish, index == (plan.finishAt ?? plan.items.count) { frame = finished(frame, fin, f) }
         let k = f - item.start
         if k >= item.frames {
             videos[index] = nil; masks[index] = nil
@@ -441,6 +550,15 @@ for f in 0..<plan.frames {
                     let piece = a.cropped(to: rect).transformed(by: CGAffineTransform(translationX: m[0], y: -m[1]))
                     layer = weighted(piece, m[2]).composited(over: layer)
                 }
+            } else if mix.kind == "whip", let shift = mix.slide, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+                // xfade slideleft: the old clip pushed out to the left as the new one comes in from the right.
+                let p = shift[k], w = Double(plan.width)
+                layer = a.transformed(by: CGAffineTransform(translationX: -(1 - p) * w, y: 0)).cropped(to: frameRect)
+                    .composited(over: b.transformed(by: CGAffineTransform(translationX: p * w, y: 0)).cropped(to: frameRect))
+            } else if mix.kind == "cross-zoom", let sizes = mix.zoom, let a = posed(index - 1, f - before.start), let b = posed(index, k) {
+                // Into the old clip and out of the new, each streaked, faded across (moving_transitions.cross_zoom).
+                let z = sizes[k]
+                layer = weighted(streaked(a, z[0], z[2]), w[0]).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: weighted(streaked(b, z[1], z[2]), w[1])])
             } else if mix.kind == "light-wipe", let a = posed(index - 1, f - before.start), let b = posed(index, k) {
                 guard let kernel = lightWipeKernel, let wiped = kernel.apply(extent: frameRect, arguments: [a, b, Double(plan.width), Double(plan.height), Double(k)/Double(mix.frames)]) else {
                     fatalError("Could not draw the light wipe; use the FFmpeg fallback")
@@ -452,7 +570,9 @@ for f in 0..<plan.frames {
                 }
             }
             layer = layer.cropped(to: frameRect)
-            if mix.blur[k] > 0.01 {
+            if mix.blur[k] > 0.01, mix.kind == "whip" {
+                layer = sidewaysKernel.apply(extent: frameRect, roiCallback: { _, rect in rect.insetBy(dx: -CGFloat(3 * mix.blur[k] + 2), dy: 0) }, arguments: [layer.clampedToExtent(), mix.blur[k]])!.cropped(to: frameRect)
+            } else if mix.blur[k] > 0.01 {
                 layer = layer.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: mix.blur[k]]).cropped(to: frameRect)
             }
             frame = compositeLayer(layer, over: frame, mode: item.blend)
@@ -460,6 +580,7 @@ for f in 0..<plan.frames {
             frame = compositeLayer(shown, over: frame, mode: item.blend)
         }
     }
+    if let fin = plan.finish, (plan.finishAt ?? plan.items.count) >= plan.items.count { frame = finished(frame, fin, f) }
     while !input.isReadyForMoreMediaData {
         if writer.status == .failed || writer.status == .cancelled { fail("Encoder stopped: \(String(describing: writer.error))") }
         usleep(200)

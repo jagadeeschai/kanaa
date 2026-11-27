@@ -20,7 +20,8 @@ import numpy as np
 from app.core.config import settings
 from app.services.timeline_schema import Format, Text
 
-VERSION = 2  # 2: flames from the tops of the letters, sized to one line.
+VERSION = 3  # 2: flames from the tops of the letters, sized to one line. 3: made on the GPU; embers as soft dots.
+GPU_TOOL = Path(__file__).resolve().parents[2] / 'native' / 'title_fire.swift'
 LOOP = 4.0  # Seconds; the clip repeats under a longer title.
 FPS = 30
 STRENGTHS = {'glow': 0.55, 'blaze': 0.85, 'inferno': 1.15}  # How tall and bright the flames are.
@@ -84,17 +85,34 @@ class Burner:
         edges = np.flatnonzero(np.diff(rows))
         self.line = float(max((b - a for a, b in zip(edges[::2], edges[1::2])), default=self.box[1] - self.box[0]))
 
+    def offsets(self, n: int) -> list[int]:
+        """Frame n's scrolls: the two noises (up a whole height per loop, twice for the fine one, so the last frame meets
+        the first), the tongues', and the heights row. The GPU path takes these as they are, so both round the same."""
+        t = (n % round(LOOP * FPS)) / (LOOP * FPS)
+        return [round(t * self.h) % self.h, round(2 * t * self.h) % self.h, round(3 * t * self.h) % self.h, round(t * self.h) % self.h]
+
+    def sparks(self, n: int) -> list[float]:
+        """Frame n's embers: x, y and brightness of each one on the picture (half size)."""
+        t = (n % round(LOOP * FPS)) / (LOOP * FPS)
+        out = []
+        for x0, y0, phase, speed, wob in self.embers:
+            p = (t * speed + phase) % 1.0
+            x = x0 + math.sin(wob + p * 6) * 6; y = y0 - p * self.line * 3.0
+            if 0 <= x < self.w and 0 <= y < self.h:
+                out += [round(float(x), 4), round(float(y), 4), round(float((1 - p) ** 1.5), 5)]
+        return out
+
     def frame(self, n: int) -> np.ndarray:
-        """Frame n of the loop, RGB 0..1 at the full size."""
+        """Frame n of the loop, RGB 0..1 at the full size (the CPU fallback; native/title_fire.swift draws the same)."""
         import cv2
         t = (n % round(LOOP * FPS)) / (LOOP * FPS)  # 0..1 through the loop.
-        # Noise scrolls up a whole height per loop (twice for the fine one), so the last frame meets the first.
-        noise = 0.62 * np.roll(self.n1, -round(t * self.h), 0) + 0.38 * np.roll(self.n2, -round(2 * t * self.h), 0)
+        r1, r2, r3, rh = self.offsets(n)
+        noise = 0.62 * np.roll(self.n1, -r1, 0) + 0.38 * np.roll(self.n2, -r2, 0)
         sway = (np.sin(np.linspace(0, 2 * math.pi, self.h)[:, None] * 3 + 2 * math.pi * t) * 2).astype(np.float32)
         # How far a flame carries up: about the letters' height (more for a stronger fire), shorter where the noise is low.
         tall = max(8.0, self.line * 1.6 * self.strength)
         # Across the letters the flames reach different heights, from a quarter to one and a half times `tall`.
-        reach = tall * (0.25 + 1.25 * np.clip((self.heights[round(t * self.h) % self.h] - 0.25) * 1.8, 0, 1))
+        reach = tall * (0.25 + 1.25 * np.clip((self.heights[rh] - 0.25) * 1.8, 0, 1))
         fade = 1 - 0.1 ** (1 / np.maximum(4.0, reach))
         heat = np.zeros((self.h, self.w), np.float32)
         carry = np.zeros(self.w, np.float32)
@@ -104,19 +122,17 @@ class Burner:
         heat = cv2.remap(heat, (np.arange(self.w, dtype=np.float32)[None, :] + sway * 9 * (noise - 0.5)).astype(np.float32),
                          np.repeat(np.arange(self.h, dtype=np.float32)[:, None], self.w, 1), cv2.INTER_LINEAR)
         # Separate tongues across the letters, each flickering with the fine noise.
-        lick = np.clip((np.roll(self.n2, -round(3 * t * self.h), 0) - 0.28) * 2.2, 0, 1)  # Irregular tongues, flowing up.
+        lick = np.clip((np.roll(self.n2, -r3, 0) - 0.28) * 2.2, 0, 1)  # Irregular tongues, flowing up.
         tongues = np.clip(heat ** 1.7 * (0.3 + 0.7 * lick) * (0.55 + noise) - 0.1, 0, 1) * 1.6 * self.strength
         core = self.mask * (0.45 + 0.35 * noise) * self.strength  # The letters glow from inside, like hot metal.
         light = _colour(np.clip(tongues + core * 0.8, 0, 1.2))
         light += self.halo[..., None] * np.array([0.55, 0.2, 0.04], np.float32) * self.strength
         sparks = np.zeros((self.h, self.w), np.float32)
-        rise = self.line * 3.0
-        for x0, y0, phase, speed, wob in self.embers:
-            p = (t * speed + phase) % 1.0
-            x = x0 + math.sin(wob + p * 6) * 6; y = y0 - p * rise
-            if 0 <= x < self.w and 0 <= y < self.h:
-                cv2.circle(sparks, (int(x), int(y)), 1, float((1 - p) ** 1.5), -1, cv2.LINE_AA)
-        light += _blur(sparks, 0.8)[..., None] * np.array([1.0, 0.7, 0.3], np.float32) * 1.4
+        found = self.sparks(n)
+        for x, y, bright in zip(found[0::3], found[1::3], found[2::3]):  # Each ember a soft dot (as the GPU draws it).
+            ys, xs = np.mgrid[max(0, math.ceil(y - 4)):min(self.h, math.floor(y + 4) + 1), max(0, math.ceil(x - 4)):min(self.w, math.floor(x + 4) + 1)]
+            sparks[ys, xs] += np.exp(-((xs - x) ** 2 + (ys - y) ** 2) / (2 * 1.44)) * bright
+        light += sparks[..., None] * np.array([1.0, 0.7, 0.3], np.float32) * 1.4
         return cv2.resize(np.clip(light, 0, 1), (self.full[1], self.full[0]), interpolation=cv2.INTER_LINEAR)
 
 
@@ -133,6 +149,14 @@ def make(item: Text, fmt: Format, strength: str = 'blaze', on_progress=lambda _:
         raise ValueError('This title has no letters to set on fire.')
     burner = Burner(alpha, STRENGTHS[strength])
     target.parent.mkdir(parents=True, exist_ok=True)
+    import logging, os
+    if os.environ.get('KANAA_GPU_EFFECTS') != '0':  # On the GPU (AGENTS.md); the CPU below only if that fails.
+        try:
+            if _make_on_gpu(burner, fmt, target, on_progress):
+                on_progress(100)
+                return target
+        except Exception:
+            logging.getLogger(__name__).exception('GPU title fire failed; making it on the CPU')
     temporary = target.with_suffix('.tmp.mp4')
     total = round(LOOP * FPS)
     encode = subprocess.Popen([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{fmt.width}x{fmt.height}',
@@ -153,3 +177,32 @@ def make(item: Text, fmt: Format, strength: str = 'blaze', on_progress=lambda _:
         temporary.unlink(missing_ok=True)
     on_progress(100)
     return target
+
+
+def _make_on_gpu(burner: Burner, fmt: Format, target: Path, on_progress) -> bool:
+    """The loop drawn by native/title_fire.swift (Metal), with the same inputs as Burner.frame."""
+    import tempfile
+    from app.services.cutout_service import helper
+    try:
+        tool = helper(GPU_TOOL)
+    except RuntimeError:
+        return False
+    total = round(LOOP * FPS)
+    with tempfile.TemporaryDirectory(prefix='.title-fire-', dir=target.parent) as folder:
+        folder = Path(folder)
+        data = folder / 'fields.f32'
+        np.concatenate([field.astype(np.float32).reshape(-1) for field in (burner.mask, burner.source, burner.n1, burner.n2, burner.heights, burner.halo)]).tofile(data)
+        temporary = folder / 'fire.mp4'
+        plan = {'w': burner.w, 'h': burner.h, 'full_width': fmt.width, 'full_height': fmt.height, 'frames': total, 'fps': FPS, 'strength': burner.strength,
+                'tall': max(8.0, burner.line * 1.6 * burner.strength), 'data': str(data), 'offsets': [burner.offsets(n) for n in range(total)],
+                'embers': [burner.sparks(n) for n in range(total)], 'output': str(temporary), 'bitrate': max(8_000_000, fmt.width * fmt.height * 6)}
+        (folder / 'plan.json').write_text(json.dumps(plan))
+        process = subprocess.Popen([str(tool), str(folder / 'plan.json')], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in process.stdout:
+            if line.startswith('frame '):
+                on_progress(min(98, int(line.split()[1]) * 98 // total))
+        if process.wait() or not temporary.is_file():
+            raise RuntimeError(f'title_fire.swift: {process.stderr.read()[-300:]}')
+        # Faststart for playing while it loads, without re-encoding.
+        done = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-y', '-i', str(temporary), '-c', 'copy', '-movflags', '+faststart', str(target)])
+        return done.returncode == 0 and target.is_file()

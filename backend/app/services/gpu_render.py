@@ -28,19 +28,20 @@ FADES = {'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom', 
 DEFAULT_ADJUST = {'rotation': 0, 'flip_horizontal': False, 'flip_vertical': False, 'brightness': 1, 'contrast': 1, 'saturation': 1, 'gamma': 1, 'temperature': 1, 'tint': 1, 'fade': 0}
 EFFECTS = ('old_film', 'signal_damage', 'lens_surface', 'colour_splash', 'beat_pulse', 'tone_grade', 'mirror', 'zoom_blur', 'tilt_shift', 'echo',
            'chroma', 'freeze', 'reverse', 'ramp', 'cutout', 'shape', 'focus_pull')
-TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe', 'split', 'split-screen'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
+TRANSITIONS = {'crossfade', 'cross-blur', 'dip', 'flash', 'light-wipe', 'split', 'split-screen', 'whip', 'cross-zoom'}  # Drawn so far: a mix of the two pictures and a fill colour, blurred for cross-blur.
 
 
 def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[str]:
     """What in `timeline` the engine cannot draw yet; empty when it can draw all of it."""
     found: set[str] = set()
     compared = {item.graphic.compare_clip for layer in timeline.layers if layer.kind == 'text' and not layer.hidden for item in layer.items if item.graphic and item.graphic.kind == 'compare-divider'}
-    if timeline.finish or timeline.lut:
-        found.add('finish or LUT')
+    if timeline.lut:
+        found.add('LUT')
     for layer in timeline.layers:
         if layer.hidden or layer.kind == 'audio':
             continue
         if layer.kind=='captions':
+            finish_at = len(items) if finish_at is None else finish_at
             if not layer.shared_images:found.add('captions layers')
             if any(len(item.text)>500 for item in layer.items):found.add('captions longer than 500 characters')
             continue
@@ -272,7 +273,8 @@ def _transition(transition, frames: int, height: int, width: int = 1920) -> dict
     """How the clip before and this one mix, frame by frame through the transition: weights of the clip before, this
     clip and a fill colour (ffmpeg xfade: fade, and fadeblack/fadewhite or the custom dip of animation.xfade_name),
     and for a cross blur the blur at each frame (Builder.whip_blur)."""
-    from app.services.animation import CROSS_BLUR
+    from app.services.animation import CROSS_BLUR, WHIP_BLUR
+    from app.services.moving_transitions import ZOOM_BLUR, ZOOM_REACH
     kind = transition.kind
     colour = (transition.color or ('#ffffff' if kind == 'flash' else '#000000')).lower()
     weights, blur = [], []
@@ -283,7 +285,17 @@ def _transition(transition, frames: int, height: int, width: int = 1920) -> dict
             weights.append([round(p * before, 6), round((1 - p) * (1 - after), 6), round(p * (1 - before) + (1 - p) * after, 6)])
         else:
             weights.append([round(p, 6), round(1 - p, 6), 0])
-        blur.append(round(CROSS_BLUR * height * math.sin(math.pi * min(1, (i + 0.5) / frames)), 4) if kind == 'cross-blur' else 0)
+        peak = CROSS_BLUR if kind == 'cross-blur' else WHIP_BLUR if kind == 'whip' else 0  # A whip blurs sideways only (Builder.whip_blur).
+        blur.append(round(peak * height * math.sin(math.pi * min(1, (i + 0.5) / frames)), 4))
+    # Whip: xfade slideleft, the old clip pushed out left by the new one; per frame, xfade's progress (1: the old clip).
+    slide = [round(1 - i / frames, 6) for i in range(frames)] if kind == 'whip' else None
+    # Cross zoom (moving_transitions.cross_zoom): per frame the old clip's size, the new one's, and the streaks.
+    zoom = None
+    if kind == 'cross-zoom':
+        zoom = []
+        for i in range(frames):
+            q = i / frames; e = q * q * (3 - 2 * q)
+            zoom.append([round(1 + (ZOOM_REACH - 1) * e, 6), round(ZOOM_REACH - (ZOOM_REACH - 1) * e, 6), round(math.sin(math.pi * q) * ZOOM_BLUR, 6)])
     split = None
     if kind == 'split':
         from app.services.split_transition import panels
@@ -292,16 +304,18 @@ def _transition(transition, frames: int, height: int, width: int = 1920) -> dict
     if kind == 'split-screen':
         from app.services.split_screen import parts
         screen = [parts(k / frames, transition.direction, width, height) for k in range(frames)]
-    return {'screen': screen, 'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
+    return {'slide': slide, 'zoom': zoom, 'screen': screen, 'split': split, 'split_shadow': max(2, round(height*.012)) if kind == 'split' and transition.split_style == 'shadow' else 0, 'kind': kind, 'frames': frames, 'weights': weights, 'blur': blur, 'fill': [int(colour[k:k + 2], 16) / 255 for k in (1, 3, 5)]}
 
 
-def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None) -> dict:
-    """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`."""
+def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, bitrate: int, folder: Path | None = None, masks=None, until: float | None = None) -> dict:
+    """The engine's plan for a timeline `unsupported` accepts. Title pictures are drawn into `folder`. `until`: stop
+    there (seconds), for a look at one moment."""
     from app.services.timeline_service import playing_timeline
     from app.services import gpu_documentary
     timeline=playing_timeline(timeline)
     fps = timeline.format.fps
     items = []
+    finish_at = None  # The finish goes over everything drawn before the first caption (finish_service: captions stay clear).
     for position, layer in enumerate(timeline.layers):
         if layer.hidden or layer.kind not in ('video', 'text','captions','adjust'):
             continue
@@ -365,12 +379,35 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
                     items[-1]['scale'][k] *= 1 + pulse.size * pulse.strength * amount
             if head:
                 items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height, timeline.format.width)
-    return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(timeline.duration * fps),
-            'bitrate': bitrate, 'output': str(output), 'items': items}
+    return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(min(timeline.duration, until if until is not None else timeline.duration) * fps),
+            'bitrate': bitrate, 'output': str(output), 'items': items,
+            'finish': finish_plan(timeline.finish, timeline.format.width, timeline.format.height), 'finish_at': len(items) if finish_at is None else finish_at}
+
+
+def finish_plan(finish, width: int, height: int) -> dict | None:
+    """The cinematic finish for the engine, from finish_service's own formulas: the grade as a 33³ colour cube (red
+    fastest), the glow as finish_filters makes it (a quarter-size threshold, blurred, screened on), the vignette's
+    amount, the grain's strength in 8-bit levels and the bars in pixels."""
+    if finish is None:
+        return None
+    import numpy as np
+    from app.services import finish_service as fs
+    cube = None
+    if finish.grade > 0:
+        steps = np.linspace(0, 1, fs.LUT_SIZE)
+        blue, green, red = np.meshgrid(steps, steps, steps, indexing='ij')
+        graded = fs.tone(np.stack([red, green, blue], axis=-1).reshape(-1, 3), finish.grade)
+        cube = [round(float(v), 6) for v in np.concatenate([graded, np.ones((graded.shape[0], 1))], 1).reshape(-1)]
+    small = (max(2, width // 4 // 2 * 2), max(2, height // 4 // 2 * 2))
+    side, top = fs.bar_shares(width, height, finish.bars_ratio) if finish.letterbox else (0.0, 0.0)
+    colour = finish.bars_colour.lstrip('#')
+    return {'cube': cube, 'cube_size': fs.LUT_SIZE, 'glow': finish.glow, 'glow_small': list(small), 'glow_sigma': fs.GLOW_RADIUS * small[1],
+            'vignette': finish.vignette, 'vignette_from': fs.VIGNETTE_FROM, 'vignette_to': fs.VIGNETTE_TO, 'grain': finish.grain * fs.GRAIN_SPAN * 255 / 2,
+            'bars': [round(side * width), round(top * height)], 'bar_colour': [int(colour[k:k + 2], 16) / 255 for k in (0, 2, 4)]}
 
 
 def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, on_progress: Callable[[int], None] = lambda _: None,
-           bitrate: int = 16_000_000, tool: Path | None = None, masks=None, should_cancel=lambda: False) -> None:
+           bitrate: int = 16_000_000, tool: Path | None = None, masks=None, should_cancel=lambda: False, until: float | None = None) -> None:
     """A silent video of `timeline` drawn on the GPU. Raises ValueError naming what it cannot draw yet."""
     missing = unsupported(timeline, media)
     if missing:
@@ -380,7 +417,7 @@ def render(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path,
         tool = helper(SOURCE)
     import tempfile
     pictures = tempfile.TemporaryDirectory(prefix='.gpu-titles-', dir=output.parent)
-    work = plan(timeline, media, output, bitrate, Path(pictures.name), masks)
+    work = plan(timeline, media, output, bitrate, Path(pictures.name), masks, until)
     plan_file = output.with_suffix('.plan.json')
     plan_file.write_text(json.dumps(work), encoding='utf-8')
     process = None

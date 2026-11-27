@@ -351,3 +351,56 @@ class MatchesFfmpeg(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WhipZoomAndFinish(MatchesFfmpeg):
+    """The whip and cross-zoom transitions and the cinematic finish on the GPU, against the ffmpeg export frame by frame
+    (AGENTS.md: every feature renders on the GPU). Grain is random in both, so it is compared by strength."""
+
+    def compare(self, work, name):
+        ffmpeg_out, gpu_out = self.root / f'{name}-ffmpeg.mp4', self.root / f'{name}-gpu.mp4'
+        with mock.patch.dict(os.environ, {'KANAA_PARALLEL_EXPORT': '0', 'KANAA_GPU_RENDER': '0'}):
+            render_timeline(work, self.facts.__getitem__, lambda _: None, ffmpeg_out, lambda _: None, masks=lambda *_: self.mask)
+        gpu_render.render(work, self.facts.__getitem__, gpu_out, tool=self.tool, masks=lambda *_: self.mask)
+        log = subprocess.run(['ffmpeg', '-v', 'info', '-i', str(ffmpeg_out), '-i', str(gpu_out), '-lavfi', 'psnr=stats_file=-', '-f', 'null', '-'],
+                             capture_output=True, text=True).stdout
+        return [float(v) for v in re.findall(r'psnr_avg:([0-9.]+)', log)], ffmpeg_out, gpu_out
+
+    def test_whip_and_cross_zoom_match_ffmpeg(self):
+        from app.services.timeline_schema import Transition
+        work = timeline(18)
+        for clip, kind in zip(work.layers[0].items[1:], ('whip', 'cross-zoom')):
+            clip.transition_in = Transition(kind=kind, duration=0.8)
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        values, *_ = self.compare(work, 'moves')
+        cuts = [(clip.start - 0.4, clip.start + 0.4) for clip in work.layers[0].items[1:]]
+        during = [v for n, v in enumerate(values) if any(a <= n / FPS <= b for a, b in cuts)]
+        print(f'\nwhip/cross-zoom PSNR: average {sum(values) / len(values):.1f} dB, during the transitions {sum(during) / len(during):.1f} dB, worst {min(during):.1f} dB')
+        self.assertGreater(sum(values) / len(values), 35)
+        self.assertGreater(sum(during) / len(during), 26)  # Blur and resampling differ a little mid-move; the motion is the same.
+
+    def test_finish_matches_ffmpeg(self):
+        from app.services.timeline_schema import Finish
+        work = timeline(12)
+        work.finish = Finish(letterbox=True, grade=0.6, glow=0.4, vignette=0.45, grain=0)
+        self.assertEqual(gpu_render.unsupported(work, self.facts.__getitem__), [])
+        values, *_ = self.compare(work, 'finish')
+        print(f'\nfinish PSNR: average {sum(values) / len(values):.1f} dB, worst {min(values):.1f} dB')
+        self.assertGreater(sum(values) / len(values), 33)
+
+    def test_finish_grain_is_as_strong(self):
+        import numpy as np
+        from app.services.timeline_schema import Finish
+        work = timeline(12)
+        work.finish = Finish(grade=0, glow=0, vignette=0, grain=0.4)
+        _, ffmpeg_out, gpu_out = self.compare(work, 'grain')
+        def grain(path):
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '7', '-i', str(path), '-frames:v', '2', '-vf', 'crop=200:200:100:100', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'],
+                                 capture_output=True, check=True).stdout
+            a, b = np.frombuffer(raw, np.uint8).reshape(2, 200, 200).astype(float)
+            return float(np.std(a - b))
+        cpu, gpu = grain(ffmpeg_out), grain(gpu_out)
+        print(f'finish grain: ffmpeg {cpu:.2f}, GPU {gpu:.2f}')
+        self.assertGreater(gpu, cpu * .7); self.assertLess(gpu, cpu * 1.4)
+
+    test_same_picture_and_faster = None  # Not again here.

@@ -12,7 +12,8 @@ from app.services.job_service import JobCancelled
 logger = logging.getLogger(__name__)
 
 
-def try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg):
+def try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg, until: float | None = None):
+    """`until`: a look at one moment (the timeline already cut to it): silent, and only that long."""
     from app.services import gpu_render, timeline_service as reference
     from app.services.gpu_audio import compile_audio
     media = functools.cache(media)
@@ -33,9 +34,9 @@ def try_render(timeline, media, audio_asset, target, on_progress, should_cancel,
             folder = Path(directory)
             if should_cancel():
                 raise JobCancelled()
-            compiled = compile_audio(timeline, media, audio_asset, folder, prepared, masks, voices)
+            compiled = None if until is not None else compile_audio(timeline, media, audio_asset, folder, prepared, masks, voices)
             sound = None
-            if compiled.has_audio:
+            if compiled is not None and compiled.has_audio:
                 sound = reference.mix_audio(ffmpeg, compiled, folder, should_cancel)
                 if compiled.normalize_audio:
                     sound = reference.normalize_loudness(ffmpeg, compiled, sound, folder, should_cancel)
@@ -45,12 +46,12 @@ def try_render(timeline, media, audio_asset, target, on_progress, should_cancel,
             short = min(timeline.format.width, timeline.format.height)
             bitrate = {720: 9, 1080: 16, 1440: 28}.get(short, 50 if short >= 2160 else round(short * .015)) * 1_000_000
             gpu_render.render(timeline, media, silent, lambda p: on_progress(min(97, 3 + int(p * .94))), bitrate=bitrate,
-                              should_cancel=should_cancel, masks=masks)
+                              should_cancel=should_cancel, masks=masks, until=until)
             output = folder / 'output.mp4'
             audio_input = ['-i', str(sound)] if sound else []
             audio = ['-map', '1:a', '-c:a', 'aac', '-b:a', '192k'] if sound else ['-an']
             result = reference.run_cancellable([ffmpeg, '-nostdin', '-v', 'error', '-i', str(silent), *audio_input,
-                '-map', '0:v', *audio, '-c:v', 'copy', '-t', f'{timeline.duration:.6f}', *reference.BT709_OUTPUT_ARGS,
+                '-map', '0:v', *audio, '-c:v', 'copy', '-t', f'{min(timeline.duration, until if until is not None else timeline.duration):.6f}', *reference.BT709_OUTPUT_ARGS,
                 '-map_metadata', '-1', '-movflags', '+faststart', '-n', str(output)], should_cancel)
             if should_cancel():
                 raise JobCancelled()

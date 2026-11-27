@@ -64,3 +64,33 @@ class Route(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GpuMatchesCpu(unittest.TestCase):
+    """The burning title is made on the GPU (native/title_fire.swift, Metal); the CPU path is its fallback and draws
+    the same picture (AGENTS.md: every feature renders on the GPU)."""
+
+    def test_the_gpu_clip_matches_the_cpu_frames(self):
+        import subprocess
+        from app.services import title_fire
+        from app.services.timeline_schema import Format, Text
+        item = Text.model_validate({'id': 't', 'start': 0, 'length': 4, 'text': 'உடனே விழி தமிழா!', 'style': 'shadow', 'position': 'center', 'color': '#ffffff', 'size': 56,
+                                    'transform': {'x': 0.5, 'y': 0.6, 'scale': 1, 'opacity': 1, 'rotation': 0}})
+        fmt = Format.model_validate({'width': 640, 'height': 360, 'fps': 30})
+        with tempfile.TemporaryDirectory() as folder, patch('app.core.config.settings.data_dir', Path(folder)):
+            (Path(folder) / 'media').mkdir()
+            used = []
+            real = title_fire._make_on_gpu
+            with patch.object(title_fire, '_make_on_gpu', side_effect=lambda *a: used.append(1) or real(*a)):
+                made = title_fire.make(item, fmt, 'blaze')
+            self.assertEqual(used, [1])  # The GPU made it, not the fallback.
+            from app.services.title_design import letters
+            burner = Burner(letters(item, fmt, plain=False)[..., 3], STRENGTHS['blaze'])
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(made), '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+            gpu = np.frombuffer(raw, np.uint8).reshape(-1, 360, 640, 3).astype(np.float64)
+            self.assertEqual(len(gpu), round(LOOP * FPS))
+            for n in (0, 37, 74, 111):
+                cpu = burner.frame(n) * 255
+                mse = float(np.mean((gpu[n] - cpu) ** 2))
+                psnr = 10 * np.log10(255 ** 2 / max(mse, 1e-9))
+                self.assertGreater(psnr, 33, f'frame {n}: {psnr:.1f} dB')

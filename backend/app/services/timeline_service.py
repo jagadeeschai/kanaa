@@ -1764,14 +1764,18 @@ def render_timeline(timeline: Timeline, media: Callable[[int], MediaFacts], audi
             return
     if window is None and not draft and _render_in_slices(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg):
         return
+    if window:
+        # Only that moment: a look at minute four should not work through everything before it.
+        from app.services import render_window
+        timeline, moved = render_window.cut(timeline, window[0], window[1])
+        window = (window[0] - moved, window[1] - moved)
+        if window[0] <= 0.001:  # On the GPU, as the export (AGENTS.md: every feature renders on the GPU).
+            from app.services.gpu_export import try_render
+            if try_render(timeline, media, audio_asset, target, on_progress, should_cancel, prepared, masks, voices, hardware, ffmpeg, until=window[1]):
+                return
     logger.info('Exporting as one graph')
     with tempfile.TemporaryDirectory(prefix='.video-export-', dir=target.parent) as folder:
         folder = Path(folder)
-        if window:
-            # Only that moment: a look at minute four should not work through everything before it.
-            from app.services import render_window
-            timeline, moved = render_window.cut(timeline, window[0], window[1])
-            window = (window[0] - moved, window[1] - moved)
         compiled = compile_timeline(timeline, media, audio_asset, folder, prepared, masks, voices)
         video_args, graph, extra_threads = fit_threads(compiled)
         (folder / 'graph.txt').write_text(graph, encoding='utf-8')
