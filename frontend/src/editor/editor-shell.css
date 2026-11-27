@@ -480,6 +480,9 @@
 .fx-bloom-hit .ed-quick-art{background:radial-gradient(ellipse,#fffbdc,#bb883955 35%,#090d18 75%)}
 .fx-light-trails .ed-quick-art{background:repeating-linear-gradient(175deg,#09101d 0 9px,#7ebdff 10px,#09101d 12px 22px)}
 .fx-burnt-edge-leak .ed-quick-art{background:radial-gradient(ellipse at left,#ffc55a,#df431f88 25%,transparent 65%),#140b10}
+.fx-flames .ed-quick-art{background:linear-gradient(0deg,#fff3a0 0,#ffb22c 18%,#e2461b 38%,#4a0d05 58%,#0d0503 70%)}
+.fx-fire-glow .ed-quick-art{background:radial-gradient(ellipse at 50% 120%,#ff8a2e,#a8361088 45%,#120705 80%)}
+.fx-spark-burst .ed-quick-art{background:radial-gradient(circle at 50% 62%,#fff1c2 0,#ffb14a 6%,transparent 14%),repeating-conic-gradient(from 200deg at 50% 62%,#ffae4a33 0 2deg,transparent 2deg 11deg),#0d0806}
 .fx-optical-flare-warm .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 1px,#ffd36c55 8px,transparent 18px),linear-gradient(transparent 39%,#ffe0a2aa 40%,transparent 42%),#14100a}
 .fx-optical-flare-cool .ed-quick-art{background:radial-gradient(circle at 30% 40%,#fff 1px,#83bdff55 8px,transparent 18px),linear-gradient(transparent 39%,#add6ffaa 40%,transparent 42%),#080d18}
 

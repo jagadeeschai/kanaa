@@ -87,6 +87,8 @@ EFFECTS = [
 ]
 from app.services.cinematic_lights import LIGHTS, PAINTERS
 EFFECTS.extend(Effect(id, label, tamil, 'any', about) for id, label, tamil, about in LIGHTS)
+from app.services.fire_effects import FIRE, PAINTERS as FIRE_PAINTERS
+EFFECTS.extend(Effect(id, label, tamil, 'festival', about) for id, label, tamil, about in FIRE)
 
 BY_ID = {effect.id: effect for effect in EFFECTS}
 
@@ -1364,6 +1366,7 @@ EFFECT_PAINTERS: dict[str, Painter] = {
 }
 
 EFFECT_PAINTERS.update(PAINTERS)
+EFFECT_PAINTERS.update(FIRE_PAINTERS)
 
 
 def render_effect(effect_id: str, size: tuple[int, int], target: Path, on_progress: Callable[[int], None] = lambda _: None, should_cancel: Callable[[], bool] = lambda: False, options: dict | None = None) -> Path:
