@@ -66,6 +66,12 @@ presenter on a picture or video; then match_colour. Only show numbers you have a
 Lyric videos: add_song, read_lrc (the bracketed directions tell you the style and singer), plan_lyric_scenes with a
 brief, rewrite each scene's prompt to fit its words, make_scene_pictures, look_at_media, build_lyric_video, then look.
 Do not export unless asked: the person reviews first.
+
+Cinematic and music: look_options lists the looks, film stocks and settings. set_cinematic_looks gives video clips
+looks or a film stock (preview_looks first; make_it_cinematic asks the AI director). song_beats, velocity_edit and
+beat_pulse follow the project's song; auto_duck dips music under speech; set_finish grades the whole video.
+sync_lyrics finds when lines are really sung (an LRC is often off). picture_forms gives a picture as a sketch, a
+painting and a 3D glide, so it can return without repeating; cut_out_person makes hero cards and pop-outs.
 """
 
 
@@ -806,7 +812,9 @@ def build_server(api: KanaaApi) -> MCPServer:
                           lyric_font: Literal['standard', 'elegant', 'modern', 'playful', 'handwritten'] = 'elegant', lyric_colour: str = '#ffffff', lyric_size: int = 50,
                           canvas: Literal['landscape', 'portrait', 'square'] = 'landscape', presents: str | None = None, song_by: str | None = None,
                           music: str | None = None, presented_by: str | None = None, footer: str | None = None, accent: str = '#e8b04a',
-                          logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False) -> dict:
+                          logo_media_id: int | None = None, brand_intro: bool = True, project_id: int | None = None, house_style: bool = False,
+                          shots: bool = True, painted: bool = True, gentle: bool = True, karaoke: bool = False, night_sky: bool = True, lamp_glow: bool = True,
+                          arranged_by: str | None = None, singers: str | None = None, song_details: bool = True, signature: str | None = None) -> dict:
         """Builds a finished lyric video as an editor project, ready for the person to review (it is not exported):
         - scenes [{"media_id", "start"}]: pictures in order, each from `start` seconds of the song (the first from 0).
         - lyric_motion: into_clear (default): each line starts behind the person nearest the clear space and glides into
@@ -827,15 +835,27 @@ def build_server(api: KanaaApi) -> MCPServer:
         - project_id: update that editor project instead of making a new one (do this when redoing a video).
         - house_style: finish in the owner's house style (two answering lyric layers gliding from the centre, particle
           entrances, the title card and a lower-third, a touch on each scene). Use with lyric_motion plain.
+        - shots: a long scene becomes wide, medium and close shots of the same picture, cut on the beat (not with
+          into_clear or three_d); painted: every other scene's middle shot painted (watercolour, pencil, oil, dream).
+        - gentle (into_clear): pictures breathe a little; karaoke: words light up gold as they are sung.
+        - night_sky: stars twinkle in a night sky; lamp_glow: oil lamps and lanterns flicker. Both on this Mac.
+        - signature: a saved signature's name (e.g. the lyricist's): the song opens with that title card.
+        - song_details: credits as labels show them (opening card, ticker, end card) with `arranged_by`, `singers`.
+        After building: sync_lyrics checks the lyric times against the singing; picture_forms, velocity_edit,
+        beat_pulse, set_cinematic_looks (video clips), set_finish and auto_duck take it further.
         Takes a few minutes the first time (3D pictures). Returns the project id; look at it, then the person exports."""
         from kanaa_mcp.lyric_builder import build_lyric_video as build
-        return build(api, media, list_media, timeline_of, save, look_up, intro_for, name=name, song_asset_id=song_asset_id, song_seconds=song_seconds, cues=cues, scenes=scenes, look=look, lyric_motion=lyric_motion, three_d=three_d, lights=lights, lyric_font=lyric_font, lyric_colour=lyric_colour, lyric_size=lyric_size, canvas=canvas, presents=presents, song_by=song_by, music=music, presented_by=presented_by, footer=footer, accent=accent, logo_media_id=logo_media_id, brand_intro=brand_intro, project_id=project_id, house_style=house_style)
+        return build(api, media, list_media, timeline_of, save, look_up, intro_for, name=name, song_asset_id=song_asset_id, song_seconds=song_seconds, cues=cues, scenes=scenes, look=look, lyric_motion=lyric_motion, three_d=three_d, lights=lights, lyric_font=lyric_font, lyric_colour=lyric_colour, lyric_size=lyric_size, canvas=canvas, presents=presents, song_by=song_by, music=music, presented_by=presented_by, footer=footer, accent=accent, logo_media_id=logo_media_id, brand_intro=brand_intro, project_id=project_id, house_style=house_style,
+                     shots=shots, painted=painted, gentle=gentle, karaoke=karaoke, night_sky=night_sky, lamp_glow=lamp_glow, arranged_by=arranged_by, singers=singers, song_details=song_details, signature=signature)
 
     @server.tool(annotations=CHANGES)
     def export(project_id: int) -> dict:
         """Exports the project as Kanaa does (full quality) and waits for it: returns where the video is. Can take minutes."""
         status = api.wait(api.post(f'/projects/{project_id}/export', timeline_of(project_id))['job_id'], timeout=3600)
         return {'media_id': status.get('output_photo_id'), 'file': media(status['output_photo_id']).get('absolute_path') if status.get('output_photo_id') else None}
+
+    from kanaa_mcp import cinematic_tools
+    cinematic_tools.register(server, api, media, timeline_of, save, find, look_up, list_media, READ_ONLY, CHANGES)
 
     # For Kanaa itself (the lyric screen's Build video), the same helpers the build_lyric_video tool uses.
     server.lyric_helpers = (media, list_media, timeline_of, save, look_up, intro_for)  # type: ignore[attr-defined]
