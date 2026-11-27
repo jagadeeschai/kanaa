@@ -41,7 +41,6 @@ def unsupported(timeline: Timeline, media: Callable[[int], MediaFacts]) -> list[
         if layer.hidden or layer.kind == 'audio':
             continue
         if layer.kind=='captions':
-            finish_at = len(items) if finish_at is None else finish_at
             if not layer.shared_images:found.add('captions layers')
             if any(len(item.text)>500 for item in layer.items):found.add('captions longer than 500 characters')
             continue
@@ -315,10 +314,18 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
     timeline=playing_timeline(timeline)
     fps = timeline.format.fps
     items = []
+    from app.services.timeline_service import BRAND_LAYER_IDS
     finish_at = None  # The finish goes over everything drawn before the first caption (finish_service: captions stay clear).
+    brand_items, brand_from = [], None  # Brand layers draw after the finish, before the captions (Builder.add_brand_layers).
     for position, layer in enumerate(timeline.layers):
+        if brand_from is not None:
+            brand_items += items[brand_from:]; del items[brand_from:]; brand_from = None
         if layer.hidden or layer.kind not in ('video', 'text','captions','adjust'):
             continue
+        if layer.kind == 'video' and layer.id in BRAND_LAYER_IDS and layer.items:
+            brand_from = len(items)
+        if layer.kind == 'captions' and finish_at is None:
+            finish_at = len(items)
         if layer.kind == 'adjust':
             # A grade of everything drawn so far, faded as adjust_layer.strength says (the engine's "grade" items).
             from app.services.adjust_layer import strength
@@ -379,9 +386,13 @@ def plan(timeline: Timeline, media: Callable[[int], MediaFacts], output: Path, b
                     items[-1]['scale'][k] *= 1 + pulse.size * pulse.strength * amount
             if head:
                 items[-1]['transition'] = _transition(clip.transition_in, 2 * head, timeline.format.height, timeline.format.width)
+    if brand_from is not None:
+        brand_items += items[brand_from:]; del items[brand_from:]
+    finish_at = len(items) if finish_at is None else finish_at
+    items[finish_at:finish_at] = brand_items  # Right after the finish.
     return {'width': timeline.format.width, 'height': timeline.format.height, 'fps': fps, 'frames': round(min(timeline.duration, until if until is not None else timeline.duration) * fps),
             'bitrate': bitrate, 'output': str(output), 'items': items,
-            'finish': finish_plan(timeline.finish, timeline.format.width, timeline.format.height), 'finish_at': len(items) if finish_at is None else finish_at}
+            'finish': finish_plan(timeline.finish, timeline.format.width, timeline.format.height), 'finish_at': finish_at}
 
 
 def finish_plan(finish, width: int, height: int) -> dict | None:
