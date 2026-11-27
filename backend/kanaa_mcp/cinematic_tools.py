@@ -288,3 +288,46 @@ def register(server, api, media, timeline_of, save, find, look_up, list_media, R
             cv2.imwrite(str(target), out)
             made = api.upload('/media', target)
         return {'media_id': int(made['id']), 'width': int(out.shape[1]), 'height': int(out.shape[0])}
+
+
+def register_fire(server, api, timeline_of, save, find, look_up, CHANGES) -> None:
+    """Title on fire, as the editor's (frontend/src/timeline/titlefire.ts)."""
+
+    @server.tool(annotations=CHANGES)
+    def set_title_on_fire(project_id: int, text_id: str, strength: Literal['glow', 'blaze', 'inferno', 'out'] = 'blaze') -> dict:
+        """Sets a title's letters on fire: flames rising from the letters, a hot glow and drifting embers, made from the
+        title as it is now (a 4 s loop, repeated under it on a Screen "Title fire" layer). glow smoulders, blaze burns,
+        inferno roars; "out" puts the fire out. Moving or retyping the title later needs it set on fire again."""
+        before = timeline_of(project_id)
+        after = copy.deepcopy(before)
+        layer, text = find(after, text_id)
+        if layer['kind'] != 'text':
+            raise ToolError(f'{text_id} is not a title.')
+        prefix = f'fire-{text_id}-'
+        for each in after['layers']:
+            if each['id'] == 'title-fire':
+                each['items'] = [item for item in each['items'] if not item['id'].startswith(prefix)]
+        after['layers'] = [each for each in after['layers'] if each['id'] != 'title-fire' or each['items']]
+        if strength != 'out':
+            started = api.post('/text-fire', {'text': text, 'format': after['format'], 'strength': strength})
+            status = started if started.get('output_photo_id') is not None else api.wait(started['job_id'], timeout=900)
+            media_id, loop = int(look_up(status, 'output_photo_id')), float(look_up(status, 'seconds') or 4)
+            clips, at, n = [], 0.0, 0
+            while at < text['length'] - 0.05:
+                length = round(min(loop, text['length'] - at), 3)
+                clips.append({'id': f'{prefix}{n}', 'name': f'Title fire · {strength}', 'media_id': media_id, 'start': round(text['start'] + at, 3), 'in': 0, 'out': length, 'speed': 1,
+                              'volume': 0, 'muted': True, 'fade_in': 0.5 if n == 0 else 0, 'fade_out': 0.6 if at + loop >= text['length'] - 0.05 else 0,
+                              'transform': {'x': 0.5, 'y': 0.5, 'scale': 1, 'opacity': 1, 'rotation': 0}})
+                at += loop; n += 1
+            fire = next((each for each in after['layers'] if each['id'] == 'title-fire'), None)
+            if fire is None:
+                if sum(1 for each in after['layers'] if each['kind'] == 'video') >= 8:
+                    raise ToolError('Use up to 8 video layers: remove one to set a title on fire.')
+                fire = {'id': 'title-fire', 'kind': 'video', 'name': 'Title fire', 'blend': 'screen', 'magnetic': False, 'ripple': False, 'items': []}
+                after['layers'].insert(1, fire)
+            ends = lambda item: item['start'] + (item['out'] - item['in']) / item.get('speed', 1)
+            if any(clip['start'] < ends(item) and item['start'] < ends(clip) for clip in clips for item in fire['items']):
+                raise ToolError('Another title is already on fire at this time. Put its fire out, or move one of the titles.')
+            fire['items'] = sorted(fire['items'] + clips, key=lambda item: item['start'])
+        save(project_id, before, after, f"Title {text_id} {'fire out' if strength == 'out' else f'on fire ({strength})'}")
+        return {'text_id': text_id, 'strength': strength, 'clips': 0 if strength == 'out' else len(clips)}

@@ -763,6 +763,37 @@ def film_halation(identifier: int, body: dict):
     return {'status': 'preparing', 'job_id': job_id}
 
 
+@router.post('/text-fire')
+def text_fire(body: dict):
+    """A title on fire (title_fire.py): a looping clip of flames rising from its own letters, light on black, for a
+    Screen-blend layer under the title. A job; made once per title (text, font, size, place) and strength."""
+    from app.services import title_fire
+    from app.services.timeline_schema import Format, Text
+    try:
+        item, fmt = Text.model_validate(body['text']), Format.model_validate(body['format'])
+        strength = str(body.get('strength', 'blaze'))
+    except (KeyError, ValidationError) as exc:
+        raise HTTPException(400, 'This title is not valid.') from exc
+    if strength not in title_fire.STRENGTHS:
+        raise HTTPException(400, 'Choose glow, blaze or inferno.')
+    target = title_fire.target_path(item, fmt, strength)
+
+    def known():
+        with get_connection() as conn:
+            row = conn.execute('SELECT id FROM photos WHERE absolute_path = ?', (str(target.resolve()),)).fetchone()
+        return row[0] if row else None
+    if target.is_file() and known():
+        return {'status': 'ready', 'output_photo_id': known(), 'seconds': title_fire.LOOP}
+    holder: dict = {}
+
+    def run(should_cancel):
+        made = title_fire.make(item, fmt, strength, lambda value: update_job(holder['id'], progress=value))
+        name = f"{(item.text or 'Title').splitlines()[0][:40]} (on fire).mp4"
+        return {'progress': 100, 'output_photo_id': known() or index_media(made, name)['id'], 'seconds': title_fire.LOOP}
+    job_id = enqueue_render('title_fire', 'Title on fire', run, reserve=lambda job: holder.update(id=job), total=100)
+    return {'status': 'preparing', 'job_id': job_id}
+
+
 @router.post('/photos/{identifier}/shake')
 def handheld_shake(identifier: int, body: dict):
     """Handheld shake: a copy of the clip's part (film_service.py)."""

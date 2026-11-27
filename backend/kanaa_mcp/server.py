@@ -72,6 +72,7 @@ looks or a film stock (preview_looks first; make_it_cinematic asks the AI direct
 beat_pulse follow the project's song; auto_duck dips music under speech; set_finish grades the whole video.
 sync_lyrics finds when lines are really sung (an LRC is often off). picture_forms gives a picture as a sketch, a
 painting and a 3D glide, so it can return without repeating; cut_out_person makes hero cards and pop-outs.
+set_title_on_fire sets a title's letters burning (glow, blaze, inferno).
 """
 
 
@@ -856,6 +857,7 @@ def build_server(api: KanaaApi) -> MCPServer:
 
     from kanaa_mcp import cinematic_tools
     cinematic_tools.register(server, api, media, timeline_of, save, find, look_up, list_media, READ_ONLY, CHANGES)
+    cinematic_tools.register_fire(server, api, timeline_of, save, find, look_up, CHANGES)
 
     # For Kanaa itself (the lyric screen's Build video), the same helpers the build_lyric_video tool uses.
     server.lyric_helpers = (media, list_media, timeline_of, save, look_up, intro_for)  # type: ignore[attr-defined]

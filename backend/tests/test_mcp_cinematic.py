@@ -162,3 +162,26 @@ class Tools(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TitleFire(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.patch = patch('kanaa_mcp.server.HISTORY', Path(self.folder.name)); self.patch.start()
+        from kanaa_mcp.server import build_server
+        self.api = FakeApi()
+        self.api.timeline['layers'].append({'id': 'tx', 'kind': 'text', 'items': [{'id': 't1', 'start': 1, 'length': 9, 'text': 'தமிழா!', 'style': 'shadow', 'position': 'center', 'color': '#ffffff', 'size': 44}]})
+        self.server = build_server(self.api)
+
+    def tearDown(self):
+        self.patch.stop(); self.folder.cleanup()
+
+    def test_the_title_burns_for_its_whole_length_and_goes_out(self):
+        asyncio.run(self.server.call_tool('set_title_on_fire', {'project_id': 1, 'text_id': 't1', 'strength': 'inferno'}))
+        path, body = self.api.posts[-1]
+        self.assertEqual((path, body['strength'], body['text']['id']), ('/text-fire', 'inferno', 't1'))
+        fire = self.api.timeline['layers'][1]
+        self.assertEqual((fire['id'], fire['blend']), ('title-fire', 'screen'))
+        self.assertEqual([(clip['start'], clip['out']) for clip in fire['items']], [(1, 4.0), (5.0, 4.0), (9.0, 1.0)])
+        asyncio.run(self.server.call_tool('set_title_on_fire', {'project_id': 1, 'text_id': 't1', 'strength': 'out'}))
+        self.assertFalse(any(layer['id'] == 'title-fire' for layer in self.api.timeline['layers']))

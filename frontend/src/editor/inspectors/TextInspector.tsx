@@ -13,6 +13,7 @@ import { type TimeFieldProps, ValueSlider } from '../controls';
 import { Group, LayerModeContext, More, Panel, TabHeading } from '../layout';
 import { SONG_IDS } from '../../timeline/signatureTitles';
 import { SignatureCardGroup } from './SignatureCardGroup';
+import { TitleFireGroup } from './TitleFireGroup';
 import { ALargeSmall, Bookmark, Check, Crosshair, Lock, Move, Type, Users } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { AnimationPicker, BACKED_DESIGNS, Chips, CinemaPicker, DESIGN_TIPS, KeepClearPanel, SIMPLE_TITLE_PRESETS, TitleCover } from './parts';
@@ -64,6 +65,7 @@ export function TextInspector() {
       {fontsAndSize}
       {!forLayer && <SourceField text={text} onChange={onChange}/>}
     </Group>
+    {!forLayer && <TitleFireGroup text={text}/>}
     <Group title="Karaoke" tab="style" startOpen={Boolean(text.karaoke)} changed={Boolean(text.karaoke)} keywords="karaoke highlight sing along words lyrics light up">
       <label className="ed-check"><input type="checkbox" checked={Boolean(text.karaoke)} onChange={(event) => onKaraoke(event.target.checked ? text.karaoke?.color ?? KARAOKE_COLOUR : null)}/><span>Light the words as they are sung<small>{forLayer ? 'Each word changes colour in time with its line.' : 'Each word changes colour in time with the line. For a whole lyrics layer at once, use the layer’s settings (⋯ on the layer → Layer settings).'}</small></span></label>
       {forLayer && <p className="ed-group-tip">{t('Turns karaoke on or off for every title on this layer.')}</p>}
